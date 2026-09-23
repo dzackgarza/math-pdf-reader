@@ -8,6 +8,8 @@ from pathlib import Path
 from cyclopts import App
 from pydantic import HttpUrl
 
+from pdfbucket.extraction import plugin_by_id, run_extraction
+from pdfbucket.manifest import load_manifest
 from pdfbucket.models import CaptureRequest
 from pdfbucket.provenance import read_stored_item
 from pdfbucket.store import pdf_path, store_pdf
@@ -27,3 +29,10 @@ def capture(root: Path, pdf: Path, filename: str, pdf_url: str, source_url: str,
 def describe(root: Path, key: str) -> None:
     """Print the stored item for KEY, read from the PDF alone."""
     print(read_stored_item(pdf_path(root, key)).model_dump_json())
+
+
+@app.command
+def extract(root: Path, key: str, manifest: Path, plugin_id: str) -> None:
+    """Run the extraction plugin PLUGIN_ID listed in MANIFEST on KEY under ROOT; print the outcome."""
+    plugin = plugin_by_id(load_manifest(manifest), plugin_id)
+    print(run_extraction(root, key, plugin).model_dump_json())

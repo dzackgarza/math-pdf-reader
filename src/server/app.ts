@@ -4,6 +4,7 @@ import { z } from "zod";
 import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
 import { BucketEvents } from "./events";
+import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "./extractions";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
 import { captureBytes, describeItem, StoreCommandError, storedPdfPath } from "./store";
@@ -84,6 +85,8 @@ export function createApp(config: AppConfig): Hono {
     const item = await describeItem(config.root, key);
     return c.html(readerPage(item, new URL(c.req.url).origin));
   });
+
+  registerExtractionRoutes(app, config.root, EXTRACTIONS_MANIFEST);
 
   app.use(
     "/pdfjs/*",
