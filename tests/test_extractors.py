@@ -4,7 +4,7 @@ from pathlib import Path
 import pikepdf
 
 from pdfbucket_extractors.mineru_precise import ChunkResult, ContentList, Layout, joined, pages_per_chunk
-from pdfbucket_extractors.pages import page_ranges, split_pdf
+from pdfbucket_extractors.pages import page_count, page_ranges, split_pdf
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 MINERU = FIXTURES / "mineru-ten-page-notes"
@@ -21,7 +21,7 @@ def mineru_result() -> ChunkResult:
 def test_a_long_pdf_splits_into_chunks_of_the_same_pages_in_order(tmp_path: Path) -> None:
     source_pdf = FIXTURES / "long-notes.pdf"
 
-    chunks = split_pdf(source_pdf, page_ranges(210, 200), tmp_path)
+    chunks = split_pdf(source_pdf, page_ranges(page_count(source_pdf), 200), tmp_path)
 
     assert [path.name for path in chunks] == ["pages-0001-0200.pdf", "pages-0201-0210.pdf"]
     with pikepdf.open(source_pdf) as source, pikepdf.open(chunks[0]) as first, pikepdf.open(chunks[1]) as second:

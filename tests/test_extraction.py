@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import HttpUrl
 
+from pdfbucket.cli import app
 from pdfbucket.extraction import ExtractionFailed, ExtractionRejected, ExtractionSucceeded, LimitViolation, run_extraction
 from pdfbucket.manifest import MaxBytes, MaxPages, PluginCommand, PluginManifest
 from pdfbucket.models import CaptureRequest
@@ -119,3 +120,17 @@ def test_a_pdf_outside_the_accepted_limits_is_rejected_before_the_plugin_runs(tm
         plugin_id="fixture-record",
         violations=[LimitViolation(limit=MaxBytes(kind="max_bytes", value=size - 1), observed=size)],
     )
+
+
+def test_the_extract_command_runs_a_plugin_named_in_a_manifest_file_and_prints_the_outcome(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    (tmp_path / "root").mkdir()
+    root = stored_root(tmp_path / "root")
+    manifest = tmp_path / "extractions.json"
+    manifest.write_text(PluginManifest(plugins=[extractor("markdown", []), extractor("record", [])]).model_dump_json())
+
+    app(["extract", str(root), KEY, str(manifest), "fixture-record"], result_action="return_value")
+
+    outcome = ExtractionSucceeded.model_validate_json(capsys.readouterr().out)
+    assert outcome.plugin_id == "fixture-record"
+    assert (root / f"{KEY}.md").read_text().splitlines()[0] == "record"
+    assert [artifact.path for artifact in outcome.artifacts] == [f"{KEY}.extraction/source.pdf"]
