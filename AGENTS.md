@@ -61,7 +61,19 @@ skill). Record decisions in the roadmap's Decision Log through `agent-memory pla
 never by hand-editing vault Markdown. The card's status says whether the user has
 confirmed the current architecture.
 
-Reuse sources, each authoritative for its own domain:
+## Reuse policy
+
+Nothing in this repo is invented. Two kinds of source, handled differently:
+
+- **Mature external projects** (PDF.js, Tauri, WXT, React, the Zotero Connector, the local
+  write API addon): import directly, or fork. Cribbing code from them is also fine.
+- **The user's own prior repos** (below): reference implementations. Crib their code into
+  this repo because it is already written and debugged, and leave a comment naming the
+  source file. Never import them as dependencies, never keep the copies in sync, and never
+  treat their decisions as gospel: read them as a starting point that has survived some
+  debugging, nothing more.
+
+Reference implementations:
 
 - `~/gitclones/zotero-gui` (`dzackgarza/zotero-gui`): the library UI (table, collections
   sidebar, inspector, command palette), the subprocess resolver plugins and their JSON
@@ -121,8 +133,8 @@ but breaks one of these is wrong.
 6. **Plugins are commands.** Extraction and resolver plugins are external commands with a
    JSON manifest and contract. The app imports no provider SDK and holds no credentials.
 7. **This repo owns wiring only.** No hand-rolled PDF viewer, library table, search index,
-   metadata scraper or citation database. PDF.js renders; `zotero-gui` components display;
-   `mathread` code captures; plugins extract; Zotero cites. New code cites the reference it
-   follows.
+   metadata scraper or citation database. PDF.js renders; components cribbed from
+   `zotero-gui` display; code cribbed from `mathread` captures; plugins extract; Zotero
+   cites. Every cribbed or hand-written piece names the reference it follows.
 8. **Every commit leaves the repo and the vault clean.** Plan state lives in the vault card;
    repo docs describe how the system works, never what remains to do.
