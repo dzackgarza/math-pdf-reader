@@ -1,5 +1,0 @@
-.shell {
-  display: grid;
-  grid-template-columns: 16rem 1fr 24rem;
-  height: 100vh;
-}

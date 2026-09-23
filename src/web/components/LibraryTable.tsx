@@ -1,0 +1,227 @@
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { type Cell, flexRender, type Table } from "@tanstack/react-table";
+import { ChevronDown, ChevronUp, Eye, FileText, Inbox, RotateCcw } from "lucide-react";
+import prettyBytes from "pretty-bytes";
+import { type CSSProperties, type ReactNode, useState } from "react";
+import type { BucketItem } from "../../server/libraryContract";
+import { type ColumnKey, columnKey } from "../columnModel";
+import { shortDate, sourceDomain } from "../format";
+import { orderedLeafColumns, reorderColumn, resetColumnLayout } from "../useLibraryTable";
+import { Chip, TagChip } from "./Chips";
+
+type LibraryTableProps = {
+  table: Table<BucketItem>;
+  collectionNames: Map<string, string>;
+  selectedItemId: string | null;
+  onSelectItem: (id: string) => void;
+  onOpenItem: (id: string) => void;
+  empty: ReactNode;
+};
+
+const VISIBLE_CHIPS = 2;
+
+function widthStyle(size: number): CSSProperties {
+  return { width: size, minWidth: size, maxWidth: size };
+}
+
+function Overflow({ hidden }: { hidden: number }) {
+  if (hidden <= 0) {
+    return null;
+  }
+  return (
+    <span className="rounded-full bg-surface px-1.5 py-0.5 text-xs text-muted">+{hidden}</span>
+  );
+}
+
+function Chips({ children, hidden }: { children: ReactNode; hidden: number }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+      {children}
+      <Overflow hidden={hidden} />
+    </span>
+  );
+}
+
+function Muted({ children }: { children: ReactNode }) {
+  return <span className="text-muted tabular-nums">{children}</span>;
+}
+
+function Mono({ children }: { children: ReactNode }) {
+  return <span className="font-mono text-xs text-muted">{children}</span>;
+}
+
+// How each column draws an item.
+const CELL_RENDERERS: Record<
+  ColumnKey,
+  (item: BucketItem, names: Map<string, string>) => ReactNode
+> = {
+  title: (item) => (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <FileText aria-hidden className="h-4 w-4 shrink-0 text-red-600" />
+      <span className="truncate font-medium text-ink" title={item.title}>
+        {item.title}
+      </span>
+    </span>
+  ),
+  source: (item) => <Muted>{sourceDomain(item.url)}</Muted>,
+  dateAdded: (item) => <Muted>{shortDate(item.dateAdded)}</Muted>,
+  dateModified: (item) => <Muted>{shortDate(item.dateModified)}</Muted>,
+  tags: (item) => (
+    <Chips hidden={item.tags.length - VISIBLE_CHIPS}>
+      {item.tags.slice(0, VISIBLE_CHIPS).map((tag) => (
+        <TagChip key={tag} tag={tag} />
+      ))}
+    </Chips>
+  ),
+  collections: (item, names) => (
+    <Chips hidden={item.collections.length - VISIBLE_CHIPS}>
+      {item.collections.slice(0, VISIBLE_CHIPS).map((id) => (
+        <Chip key={id} label={names.get(id) ?? id} kind="collection" />
+      ))}
+    </Chips>
+  ),
+  sizeBytes: (item) => <Muted>{prettyBytes(item.file.sizeBytes)}</Muted>,
+  notes: (item) => <Muted>{item.notes.length}</Muted>,
+  key: (item) => <Mono>{item.id}</Mono>,
+  pdfUrl: (item) => <Mono>{item.provenance.pdf_url}</Mono>,
+};
+
+function renderCell(cell: Cell<BucketItem, unknown>, names: Map<string, string>): ReactNode {
+  return CELL_RENDERERS[columnKey(cell.column.id)](cell.row.original, names);
+}
+
+export default function LibraryTable({
+  table,
+  collectionNames,
+  selectedItemId,
+  onSelectItem,
+  onOpenItem,
+  empty,
+}: LibraryTableProps) {
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const rows = table.getRowModel().rows;
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto">
+      <ContextMenu.Root>
+        <table
+          className="w-full border-collapse text-left text-sm"
+          style={{ minWidth: table.getTotalSize() }}
+        >
+          <ContextMenu.Trigger asChild>
+            <thead className="sticky top-0 z-10 bg-white shadow-[inset_0_-1px_0_var(--color-line)]">
+              {table.getHeaderGroups().map((group) => (
+                <tr key={group.id}>
+                  {group.headers.map((header) => {
+                    const sorted = header.column.getIsSorted();
+                    return (
+                      <th
+                        key={header.id}
+                        draggable
+                        onDragStart={() => setDraggedColumn(header.column.id)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => {
+                          if (draggedColumn !== null) {
+                            reorderColumn(table, draggedColumn, header.column.id);
+                          }
+                          setDraggedColumn(null);
+                        }}
+                        onClick={header.column.getToggleSortingHandler()}
+                        style={widthStyle(header.getSize())}
+                        className="relative cursor-pointer select-none px-4 py-2.5 text-xs font-semibold text-muted hover:text-ink"
+                      >
+                        <span className="flex items-center gap-1">
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {sorted === "asc" && <ChevronUp className="h-3.5 w-3.5" />}
+                          {sorted === "desc" && <ChevronDown className="h-3.5 w-3.5" />}
+                        </span>
+                        <span
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Resize ${header.column.id}`}
+                          onMouseDown={header.getResizeHandler()}
+                          onClick={(event) => event.stopPropagation()}
+                          className="absolute top-2 right-0 bottom-2 w-1 cursor-col-resize rounded bg-line opacity-0 hover:opacity-100"
+                        />
+                      </th>
+                    );
+                  })}
+                </tr>
+              ))}
+            </thead>
+          </ContextMenu.Trigger>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={table.getVisibleLeafColumns().length}
+                  className="px-6 py-20 text-center"
+                >
+                  <Inbox aria-hidden className="mx-auto mb-3 h-9 w-9 text-faint" />
+                  {empty}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => {
+                const selected = row.id === selectedItemId;
+                return (
+                  <tr
+                    key={row.id}
+                    aria-selected={selected}
+                    onClick={() => onSelectItem(row.id)}
+                    onDoubleClick={() => onOpenItem(row.id)}
+                    className={`cursor-default border-b border-line ${
+                      selected ? "bg-accent-soft" : "bg-white hover:bg-surface"
+                    }`}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        style={widthStyle(cell.column.getSize())}
+                        className="truncate px-4 py-2"
+                      >
+                        {renderCell(cell, collectionNames)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+
+        <ContextMenu.Portal>
+          <ContextMenu.Content className="z-50 w-60 rounded-lg border border-line bg-white p-2 text-sm shadow-lg">
+            <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted">
+              <span className="flex items-center gap-1.5">
+                <Eye className="h-3.5 w-3.5" /> Columns
+              </span>
+              <button
+                type="button"
+                onClick={() => resetColumnLayout(table)}
+                className="flex items-center gap-1 text-accent hover:underline"
+              >
+                <RotateCcw className="h-3 w-3" /> Reset
+              </button>
+            </div>
+            {orderedLeafColumns(table).map((column) => (
+              <label
+                key={column.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-surface"
+              >
+                <input
+                  type="checkbox"
+                  checked={column.getIsVisible()}
+                  disabled={!column.getCanHide()}
+                  onChange={column.getToggleVisibilityHandler()}
+                  className="accent-accent"
+                />
+                {column.columnDef.meta?.label}
+              </label>
+            ))}
+          </ContextMenu.Content>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
+    </div>
+  );
+}

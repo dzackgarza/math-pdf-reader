@@ -12,7 +12,7 @@ import { z } from "zod";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { describeItem } from "../src/server/store";
+import { listItems } from "../src/server/store";
 import { extensionDefine } from "../wxt.config";
 import { lectureNotes, problemSet, startFixtureSite } from "./fixture-site";
 
@@ -163,7 +163,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await page.click("a#pdf");
   };
 
-  const provenance = async (key: string) => (await describeItem(bucket.root, key)).provenance;
+  const provenance = async (key: string) => (await listItems(bucket.root, [key]))[0]?.provenance;
   const served = () => site.requests.map((request) => `${request.method} ${request.path}`);
 
   beforeAll(async () => {

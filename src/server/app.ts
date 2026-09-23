@@ -5,9 +5,10 @@ import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
 import { BucketEvents } from "./events";
 import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "./extractions";
+import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
-import { captureBytes, describeItem, StoreCommandError, storedPdfPath } from "./store";
+import { captureBytes, StoreCommandError, storedPdfPath } from "./store";
 
 export type AppConfig = {
   root: string;
@@ -40,6 +41,8 @@ export function createApp(config: AppConfig): Hono {
     }
     throw error;
   });
+
+  const library = registerLibraryRoutes(app, config.root);
 
   app.get("/status", async (c) => {
     const origin = new URL(c.req.url).origin;
@@ -78,12 +81,13 @@ export function createApp(config: AppConfig): Hono {
   });
 
   app.get("/read/:key", async (c) => {
-    const key = c.req.param("key");
-    if (storedPdfPath(config.root, key) === null) {
+    const found = await library.item(c.req.param("key"));
+    if (found === null) {
       return c.notFound();
     }
-    const item = await describeItem(config.root, key);
-    return c.html(readerPage(item, new URL(c.req.url).origin));
+    return c.html(
+      readerPage(found.item, found.organization.collections, new URL(c.req.url).origin),
+    );
   });
 
   registerExtractionRoutes(app, config.root, EXTRACTIONS_MANIFEST);

@@ -60,6 +60,7 @@ export function storedPdfPath(root: string, key: string): string | null {
 export async function captureBytes(root: string, upload: CaptureUpload): Promise<CaptureResult> {
   const args = [
     "capture",
+    "--",
     root,
     "/dev/stdin",
     upload.pdf.name,
@@ -70,6 +71,9 @@ export async function captureBytes(root: string, upload: CaptureUpload): Promise
   return CaptureResultSchema.parse(JSON.parse(await runStore(args, upload.pdf)));
 }
 
-export async function describeItem(root: string, key: string): Promise<StoredItem> {
-  return StoredItemSchema.parse(JSON.parse(await runStore(["describe", root, key], "ignore")));
+// The stored items for these keys, read from the PDFs in one store process. `--` ends the
+// options, so a key that starts with a dash stays a key.
+export async function listItems(root: string, keys: string[]): Promise<StoredItem[]> {
+  const stdout = await runStore(["list", root, "--", ...keys], "ignore");
+  return z.array(StoredItemSchema).parse(JSON.parse(stdout));
 }

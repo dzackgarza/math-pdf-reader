@@ -43,10 +43,20 @@ def embed_provenance(pdf_bytes: bytes, provenance: CaptureProvenance) -> bytes:
     return output.getvalue()
 
 
+class MissingProvenanceError(ValueError):
+    """A PDF under the store root that does not carry the bucket's provenance keys."""
+
+    def __init__(self, path: Path, missing: list[str]) -> None:
+        super().__init__(f"{path} carries no embedded provenance for {', '.join(missing)}")
+
+
 def read_stored_item(path: Path) -> StoredItem:
     with pikepdf.open(path) as pdf:
         docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
-    fields = {field: docinfo.get(key) for field, key in DOCINFO_KEYS.items()}
+    missing = [field for field, key in DOCINFO_KEYS.items() if key not in docinfo]
+    if missing:
+        raise MissingProvenanceError(path, missing)
+    fields = {field: docinfo[key] for field, key in DOCINFO_KEYS.items()}
     return StoredItem(
         key=path.stem,
         provenance=CaptureProvenance.model_validate(fields),

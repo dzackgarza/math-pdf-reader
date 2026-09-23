@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pikepdf
 import pytest
+from pydantic import TypeAdapter
 
 from pdfbucket.cli import app
 from pdfbucket.models import CaptureResult, StoredItem
+from pdfbucket.provenance import MissingProvenanceError
 from pdfbucket.store import UnknownKeyError, pdf_path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -92,3 +94,24 @@ def test_the_key_is_the_uploaded_filename_without_its_pdf_suffix(capsys: pytest.
 
     assert result.item.key == key
     assert [p.name for p in tmp_path.iterdir()] == [f"{key}.pdf"]
+
+
+def test_list_reads_every_stored_item_from_the_files_alone(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    notes = run_capture(capsys, tmp_path, LECTURE_NOTES, "notes.pdf", "https://example.org/notes.pdf")
+    problems = run_capture(capsys, tmp_path, PROBLEM_SET, "problems.pdf", "https://example.org/problems.pdf")
+    (tmp_path / "organization.json").write_text("{}")
+
+    app(["list", str(tmp_path)], result_action="return_value")
+    listed = TypeAdapter(list[StoredItem]).validate_json(capsys.readouterr().out)
+    assert listed == [notes.item, problems.item]
+
+    app(["list", str(tmp_path), "problems"], result_action="return_value")
+    assert TypeAdapter(list[StoredItem]).validate_json(capsys.readouterr().out) == [problems.item]
+
+
+def test_list_refuses_a_stored_pdf_without_provenance(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    run_capture(capsys, tmp_path, LECTURE_NOTES, "notes.pdf", "https://example.org/notes.pdf")
+    (tmp_path / "hand-copied.pdf").write_bytes(PROBLEM_SET.read_bytes())
+
+    with pytest.raises(MissingProvenanceError):
+        app(["list", str(tmp_path)], result_action="return_value")
