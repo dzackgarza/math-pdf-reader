@@ -42,7 +42,7 @@ build-web:
     @bunx vite build --config src/web/vite.config.ts
 
 # Drive both built capture extensions (chromium and firefox on PATH) against the fixture site; screenshots land in $TMPDIR/pdf-bucket-capture-e2e.
-test-capture: fetch-pdfjs
+test-capture:
     @bun test tests/capture-e2e.test.ts
 
 # Start the bucket server with hot reload on the configured host and port.
