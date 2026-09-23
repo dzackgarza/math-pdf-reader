@@ -120,3 +120,26 @@ export async function removeStored(root: string, key: string): Promise<void> {
     JSON.parse(stdout),
   );
 }
+
+// Store bytes re-downloaded for a missing PDF under its key with the provenance recorded at
+// capture. The store refuses bytes that do not hash to the recorded original.
+export async function restorePdf(
+  root: string,
+  key: string,
+  bytes: Uint8Array<ArrayBuffer>,
+  provenance: StoredItem["provenance"],
+): Promise<CaptureResult> {
+  const args = [
+    "restore",
+    "--",
+    root,
+    "/dev/stdin",
+    key,
+    provenance.pdf_url,
+    provenance.source_url,
+    provenance.captured_at,
+    provenance.original_sha256,
+    provenance.title_hint,
+  ];
+  return CaptureResultSchema.parse(JSON.parse(await runStore(args, new Blob([bytes]))));
+}

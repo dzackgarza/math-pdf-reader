@@ -10,12 +10,26 @@ from pathvalidate import sanitize_filename
 from pydantic import BaseModel, ConfigDict
 from send2trash import send2trash
 
-from pdfbucket.models import CaptureRequest, CaptureResult, provenance_for
+from pdfbucket.models import (
+    CaptureProvenance,
+    CaptureRequest,
+    CaptureResult,
+    provenance_for,
+)
 from pdfbucket.provenance import embed_provenance, read_stored_item
 
 
 class UnknownKeyError(LookupError):
     """A key that names no stored PDF."""
+
+
+class ChangedPdfError(ValueError):
+    """Bytes offered for a stored item that do not hash to its recorded original SHA-256."""
+
+    def __init__(self, key: str, expected: str, observed: str) -> None:
+        super().__init__(
+            f"{key}: the bytes hash to {observed}, not the recorded original {expected}"
+        )
 
 
 def key_stem(filename: str) -> str:
@@ -29,8 +43,12 @@ def key_stem(filename: str) -> str:
     return stem
 
 
+def is_plain_key(key: str) -> bool:
+    return key == Path(key).name and key not in {"", ".", ".."}
+
+
 def pdf_path(root: Path, key: str) -> Path:
-    if key != Path(key).name or key in {"", ".", ".."}:
+    if not is_plain_key(key):
         raise UnknownKeyError(key)
     path = root / f"{key}.pdf"
     if not path.is_file():
@@ -50,12 +68,26 @@ def destination(root: Path, filename: str, original_sha256: str) -> tuple[Path, 
     `<key>--<sha256 prefix>`.
     """
     stem = key_stem(filename)
-    for candidate in (root / f"{stem}.pdf", root / f"{stem}--{original_sha256[:12]}.pdf"):
+    for candidate in (
+        root / f"{stem}.pdf",
+        root / f"{stem}--{original_sha256[:12]}.pdf",
+    ):
         if not candidate.exists():
             return candidate, False
         if read_stored_item(candidate).provenance.original_sha256 == original_sha256:
             return candidate, True
     raise AssertionError(f"two stored PDFs share the key prefix of {original_sha256}")
+
+
+def write_stored(path: Path, pdf_bytes: bytes, provenance: CaptureProvenance) -> None:
+    """Write the bytes with the provenance embedded; the file appears only complete."""
+    partial = path.with_suffix(".partial")
+    partial.write_bytes(embed_provenance(pdf_bytes, provenance))
+    partial.replace(path)
+
+
+def file_sha256(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
 
 
 def store_pdf(
@@ -71,15 +103,11 @@ def store_pdf(
     original_sha256 = sha256(pdf_bytes).hexdigest()
     path, existing = destination(root, filename, original_sha256)
     if not existing:
-        stored = embed_provenance(pdf_bytes, provenance_for(request, captured_at, original_sha256))
-        partial = path.with_suffix(".partial")
-        partial.write_bytes(stored)
-        partial.replace(path)
-
+        write_stored(
+            path, pdf_bytes, provenance_for(request, captured_at, original_sha256)
+        )
     return CaptureResult(
-        item=read_stored_item(path),
-        stored_sha256=sha256(path.read_bytes()).hexdigest(),
-        existing=existing,
+        item=read_stored_item(path), stored_sha256=file_sha256(path), existing=existing
     )
 
 
@@ -93,7 +121,33 @@ class RemovedItem(BaseModel):
 def remove_item(root: Path, key: str) -> RemovedItem:
     """Move the stored PDF and its extraction to the desktop trash; the PDF goes last."""
     pdf = pdf_path(root, key)
-    beside = [path for path in (root / f"{key}.md", root / f"{key}.extraction") if path.exists()]
+    beside = [
+        path
+        for path in (root / f"{key}.md", root / f"{key}.extraction")
+        if path.exists()
+    ]
     for path in [*beside, pdf]:
         send2trash(path)
     return RemovedItem(key=key, trashed=[path.name for path in [*beside, pdf]])
+
+
+def restore_pdf(
+    root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProvenance
+) -> CaptureResult:
+    """Store re-downloaded bytes under KEY with the provenance recorded when they were captured.
+
+    The bytes must be the originally captured ones: anything else is a changed PDF and is not
+    stored, so a key never holds bytes its recorded hash does not describe.
+    """
+    assert root.is_dir(), f"storage root must exist: {root}"
+    assert is_plain_key(key), f"not a store key: {key!r}"
+    path = root / f"{key}.pdf"
+    assert not path.exists(), f"{key} is already stored"
+
+    observed = sha256(pdf_bytes).hexdigest()
+    if observed != provenance.original_sha256:
+        raise ChangedPdfError(key, provenance.original_sha256, observed)
+    write_stored(path, pdf_bytes, provenance)
+    return CaptureResult(
+        item=read_stored_item(path), stored_sha256=file_sha256(path), existing=False
+    )

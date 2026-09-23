@@ -10,10 +10,10 @@ from pydantic import HttpUrl, TypeAdapter
 
 from pdfbucket.extraction import plugin_by_id, run_extraction
 from pdfbucket.manifest import load_manifest
-from pdfbucket.models import CaptureRequest, StoredItem
+from pdfbucket.models import CaptureProvenance, CaptureRequest, StoredItem
 from pdfbucket.provenance import read_stored_item
 from pdfbucket.resolution import resolve as resolve_item
-from pdfbucket.store import pdf_path, remove_item, store_pdf, stored_keys
+from pdfbucket.store import pdf_path, remove_item, restore_pdf, store_pdf, stored_keys
 
 app = App(help="PDF Bucket store")
 
@@ -24,6 +24,19 @@ def capture(root: Path, pdf: Path, filename: str, pdf_url: str, source_url: str,
     request = CaptureRequest(pdf_url=HttpUrl(pdf_url), source_url=HttpUrl(source_url), title_hint=title_hint)
     result = store_pdf(root, pdf.read_bytes(), request, filename, datetime.now(UTC))
     print(result.model_dump_json())
+
+
+@app.command
+def restore(root: Path, pdf: Path, key: str, pdf_url: str, source_url: str, captured_at: datetime, original_sha256: str, title_hint: str) -> None:
+    """Store the re-downloaded PDF at PDF under KEY with its recorded provenance; print the result."""
+    provenance = CaptureProvenance(
+        pdf_url=HttpUrl(pdf_url),
+        source_url=HttpUrl(source_url),
+        captured_at=captured_at,
+        original_sha256=original_sha256,
+        title_hint=title_hint,
+    )
+    print(restore_pdf(root, key, pdf.read_bytes(), provenance).model_dump_json())
 
 
 @app.command

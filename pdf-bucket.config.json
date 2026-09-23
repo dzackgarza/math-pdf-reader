@@ -13,5 +13,9 @@
   },
   "zotero": {
     "url": "http://127.0.0.1:23119"
+  },
+  "rebuild": {
+    "concurrent_downloads": 4,
+    "download_timeout_seconds": 120
   }
 }
