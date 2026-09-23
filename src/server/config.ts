@@ -4,9 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-export const CONFIG_PATH = fileURLToPath(
-  new URL("../../../pdf-bucket.config.json", import.meta.url),
-);
+export const CONFIG_PATH = fileURLToPath(new URL("../../pdf-bucket.config.json", import.meta.url));
 
 export const AppConfigSchema = z.strictObject({
   server: z.strictObject({

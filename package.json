@@ -3,12 +3,28 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "workspaces": [
-    "apps/*"
-  ],
   "scripts": {
-    "build": "bun run --filter '@pdf-bucket/*' build",
-    "typecheck": "bun run --filter '@pdf-bucket/*' typecheck",
-    "test": "bun test"
+    "dev": "bun run --hot src/server/index.ts",
+    "build": "vite build --config src/web/vite.config.ts && wxt build && wxt build -b firefox",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/server && tsc --noEmit -p src/web && tsc --noEmit -p src/extension && tsc --noEmit -p tests",
+    "test": "bun test",
+    "coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "hono": "^4.13.8",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "web-ext": "^10.5.0",
+    "wxt": "^0.21.3"
   }
 }

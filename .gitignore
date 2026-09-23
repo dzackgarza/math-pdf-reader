@@ -2,6 +2,8 @@ node_modules/
 dist/
 .output/
 .wxt/
+coverage/
+lcov.info
 target/
 gen/schemas/
 .venv/
@@ -11,3 +13,4 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.log
+*.tsbuildinfo

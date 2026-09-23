@@ -1,8 +1,9 @@
 # PDF Bucket — standalone PDF reading bucket: browser capture, PDF.js reader, send to Zotero.
 #
-# Bun workspace under apps/ (server, web, extension, desktop) plus a Python package under
-# plugins/ for extraction and resolver plugin wrappers. QC delegates to the global
-# ai-review-ci bun-python profile; bun, uv, wxt, vite and tauri are implementation details.
+# One Bun package: src/server (Hono), src/web (Vite + React), src/extension (WXT), tests/.
+# desktop/ holds the Tauri crate; src/pdfbucket_plugins is the Python plugin package. QC
+# delegates to the global ai-review-ci bun-python profile; bun, uv, wxt, vite and tauri are
+# implementation details.
 
 # ai-review-ci contract variables consumed by doctor and workflow installers.
 ai_review_ci_schema_version := "1"
@@ -20,14 +21,15 @@ default:
 # Build every app: web bundle, both extension targets, desktop binary.
 build:
     @bun run build
+    @cd desktop && bunx @tauri-apps/cli build
 
 # Start the bucket server on 127.0.0.1:8765 with hot reload.
 serve:
-    @bun run --filter @pdf-bucket/server dev
+    @bun run dev
 
 # Run the desktop window against a live server (starts the server first).
 run:
-    @bun run --filter @pdf-bucket/desktop tauri dev
+    @cd desktop && bunx @tauri-apps/cli dev
 
 # Run commit-tier Python and Bun QC through the central implementation.
 test-commit:

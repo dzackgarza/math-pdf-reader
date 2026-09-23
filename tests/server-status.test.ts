@@ -3,8 +3,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/app";
-import { CONFIG_PATH, loadAppConfig } from "../src/config";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig } from "../src/server/config";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;

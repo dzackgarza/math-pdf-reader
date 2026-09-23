@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.dzackgarza.pdfbucket",
   "build": {
-    "beforeDevCommand": "bun run --filter @pdf-bucket/server dev",
+    "beforeDevCommand": "bun run --cwd .. dev",
     "devUrl": "http://127.0.0.1:8765",
     "frontendDist": "../src"
   },

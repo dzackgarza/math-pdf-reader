@@ -4,6 +4,8 @@ import { defineConfig } from "wxt";
 // Chrome (declarativeNetRequest with response-header conditions, Chrome 128+) and the
 // blocking webRequest route for Firefox, which has no response-header rule condition.
 export default defineConfig({
+  srcDir: "src/extension",
+  imports: false,
   manifest: ({ browser }) => ({
     name: "PDF Bucket",
     permissions:
