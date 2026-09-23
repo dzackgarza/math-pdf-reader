@@ -20,7 +20,10 @@ import {
   ApiErrorSchema,
   type BucketItem,
   CollectionSchema,
+  ItemNoteSchema,
   LibraryPayloadSchema,
+  SavedSearchSchema,
+  SettingsSchema,
 } from "../src/server/libraryContract";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -221,6 +224,13 @@ test("the reader page shows the provenance panel and leads back to the library",
   const bucket = emptyBucket();
   const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   await send(bucket, "PUT", "/api/items/lattices/tags", { tags: ["topic:Lattices", "MMP"] });
+  const codes = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Coding Theory" })).json(),
+  );
+  await send(bucket, "PUT", "/api/items/lattices/collections", { collections: [codes.id] });
+  await send(bucket, "POST", "/api/items/lattices/notes", {
+    note: "Compare with the Leech lattice.",
+  });
 
   const { document } = parseHTML(await (await bucket.request("/read/lattices")).text());
   const panel = z
@@ -235,10 +245,78 @@ test("the reader page shows the provenance panel and leads back to the library",
     join(bucket.root, "lattices.pdf"),
     "Lattices",
     "MMP",
+    "Coding Theory",
+    "Compare with the Leech lattice.",
   ]) {
     expect(panel.textContent).toContain(fact);
   }
   expect(document.querySelector("iframe")?.getAttribute("src")).toBe(
     "/pdfjs/web/viewer.html?file=%2Fpdf%2Flattices.pdf",
   );
+});
+
+test("renames, note deletions and saved-search deletions persist, and unknown ids are refused", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const collection = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Lattice" })).json(),
+  );
+  const noted = LibraryPayloadSchema.parse(
+    await (
+      await send(bucket, "POST", "/api/items/lattices/notes", { note: "First reading." })
+    ).json(),
+  );
+  const note = ItemNoteSchema.parse(byId(noted.items).get("lattices")?.notes[0]);
+  const saved = SavedSearchSchema.parse(
+    await (
+      await send(bucket, "POST", "/api/saved-searches", {
+        name: "Codes",
+        search: {
+          query: "codes",
+          matchCase: false,
+          matchType: "any",
+          searchFields: {
+            title: true,
+            source: false,
+            pdfUrl: false,
+            tags: false,
+            notes: false,
+            key: false,
+          },
+        },
+      })
+    ).json(),
+  );
+
+  await send(bucket, "PATCH", `/api/collections/${collection.id}`, { name: "Lattices" });
+  await bucket.request(`/api/items/lattices/notes/${note.id}`, { method: "DELETE" });
+  await bucket.request(`/api/saved-searches/${saved.id}`, { method: "DELETE" });
+
+  const restarted = await library(open(bucket.root));
+  expect(restarted.collections).toEqual([{ id: collection.id, name: "Lattices" }]);
+  expect(byId(restarted.items).get("lattices")?.notes).toEqual([]);
+  expect(restarted.savedSearches).toEqual([]);
+
+  const renameUnknown = await send(bucket, "PATCH", "/api/collections/nope", { name: "X" });
+  expect(await errorKind(renameUnknown)).toBe("unknown_collection");
+  const deleteUnknownNote = await bucket.request(`/api/items/lattices/notes/${note.id}`, {
+    method: "DELETE",
+  });
+  expect(await errorKind(deleteUnknownNote)).toBe("unknown_note");
+  const deleteUnknownSearch = await bucket.request(`/api/saved-searches/${saved.id}`, {
+    method: "DELETE",
+  });
+  expect(await errorKind(deleteUnknownSearch)).toBe("unknown_saved_search");
+});
+
+test("settings report the served root, its filing file and the pinned PDF.js version", async () => {
+  const bucket = emptyBucket();
+
+  const settings = SettingsSchema.parse(await (await bucket.request("/api/settings")).json());
+
+  expect(settings).toEqual({
+    root: bucket.root,
+    organizationFile: join(bucket.root, "organization.json"),
+    pdfjsVersion: config.pdfjs.version,
+  });
 });

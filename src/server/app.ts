@@ -75,11 +75,7 @@ export function createApp(config: AppConfig): Hono {
   });
 
   app.get("/read/:key", async (c) => {
-    const key = c.req.param("key");
-    if (storedPdfPath(config.root, key) === null) {
-      return c.notFound();
-    }
-    const found = await library.item(key);
+    const found = await library.item(c.req.param("key"));
     if (found === null) {
       return c.notFound();
     }
