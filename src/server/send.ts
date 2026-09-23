@@ -111,7 +111,12 @@ export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero:
           return { step: "pdf", attachmentKey: existing.attachmentKey };
         }
         const bytes = await readFile(indexed.path);
-        const attachmentKey = await zotero.attachBytes(itemKey, `${key}.pdf`, "Full Text PDF", bytes);
+        const attachmentKey = await zotero.attachBytes(
+          itemKey,
+          `${key}.pdf`,
+          "Full Text PDF",
+          bytes,
+        );
         return { step: "pdf", attachmentKey };
       },
       // Named as the extraction loop names a Markdown child, which marks an item extracted.
