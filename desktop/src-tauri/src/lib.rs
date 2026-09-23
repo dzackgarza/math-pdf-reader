@@ -30,8 +30,10 @@ pub fn run() -> tauri::Result<()> {
                     .permission("core:window:allow-set-focus")
                     .permission("core:window:allow-unminimize"),
             )?;
+            // The file is one function expression statement; binding it in a block keeps the
+            // call valid whatever the statement's terminator.
             let follower = format!(
-                "({})({});",
+                "{{ const followOpenEvents = {}\nfollowOpenEvents({}); }}",
                 include_str!("follow-open-events.js"),
                 serde_json::to_string(&origin)?
             );
