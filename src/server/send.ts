@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Mutex } from "async-mutex";
 import type { Context, Hono } from "hono";
+import { arxivId } from "../resolvers/arxivId";
 import { REPO_ROOT } from "./config";
 import type { LibraryState } from "./library";
 import type {
@@ -80,12 +81,19 @@ export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero:
       resolution.status === "resolved"
         ? { kind: "resolver", pluginId: resolution.plugin_id, identifier: resolution.identifier }
         : { kind: "manuscript" };
-    const bibtex =
-      resolution.status === "resolved"
-        ? resolution.bibtex
-        : manuscriptBibtex(provenance.title_hint);
-    const itemKey = await zotero.importBibtex(bibtex);
+    const itemKey = await createZoteroItem(resolution, provenance.title_hint);
     return { itemKey, sentAt: new Date().toISOString(), source, steps: [] };
+  }
+
+  // Zotero's BibTeX import maps `@misc` to `document` and maps no entry type to `preprint`, so
+  // an arXiv item goes through Zotero's own arXiv translator instead; the resolver has already
+  // confirmed the id against arXiv. DOI, ISBN and zbMATH BibTeX map to their right types.
+  function createZoteroItem(resolution: Resolution, title: string): Promise<string> {
+    if (resolution.status === "resolved" && resolution.plugin_id === "arxiv") {
+      return zotero.importByIdentifier(`arXiv:${arxivId(resolution.identifier)}`);
+    }
+    const bibtex = resolution.status === "resolved" ? resolution.bibtex : manuscriptBibtex(title);
+    return zotero.importBibtex(bibtex);
   }
 
   async function perform(step: SendStep, itemKey: string, indexed: IndexedItem) {
@@ -95,15 +103,17 @@ export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero:
         await zotero.setUrlAndAccessDate(itemKey, provenance.source_url, provenance.captured_at);
         return { step: "fields" };
       },
-      pdf: async () => ({
-        step: "pdf",
-        attachmentKey: await zotero.attachBytes(
-          itemKey,
-          `${key}.pdf`,
-          "Full Text PDF",
-          await readFile(indexed.path),
-        ),
-      }),
+      // The captured PDF once: Zotero's own copy when its import downloaded the same bytes,
+      // otherwise the bucket's stored file.
+      pdf: async () => {
+        const existing = await zotero.pdfWithHash(itemKey, provenance.original_sha256);
+        if (existing.kind === "found") {
+          return { step: "pdf", attachmentKey: existing.attachmentKey };
+        }
+        const bytes = await readFile(indexed.path);
+        const attachmentKey = await zotero.attachBytes(itemKey, `${key}.pdf`, "Full Text PDF", bytes);
+        return { step: "pdf", attachmentKey };
+      },
       // Named as the extraction loop names a Markdown child, which marks an item extracted.
       markdown: async () => ({
         step: "markdown",

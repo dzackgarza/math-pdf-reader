@@ -1,7 +1,25 @@
 // The Zotero local write API: the endpoints the local-write-api addon adds to Zotero's own
-// HTTP server (`POST /write` with an `operation`, `POST /attach`). The send action is the
-// only caller; nothing else in the bucket writes to Zotero.
+// HTTP server (`POST /write` with an `operation`, `POST /attach`), plus the reads of Zotero's
+// local API (`/api/users/0/...`) that a send needs. The send action is the only caller;
+// nothing else in the bucket writes to Zotero.
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+const ChildrenSchema = z.array(
+  z.object({
+    key: z.string().min(1),
+    data: z.object({
+      itemType: z.string(),
+      contentType: z.string().optional(),
+      linkMode: z.string().optional(),
+    }),
+  }),
+);
+
+// An existing PDF attachment of an item, or none, for the send's `pdf` step.
+export type ExistingPdf = { kind: "found"; attachmentKey: string } | { kind: "absent" };
 
 // A write Zotero refused, or a Zotero that did not answer.
 export class ZoteroError extends Error {}
@@ -15,6 +33,13 @@ const ErrorResponseSchema = z.object({
 const ImportBibtexSchema = z.object({
   success: z.literal(true),
   operation: z.literal("import_bibtex"),
+  item_key: z.string().min(1),
+  details: z.object({ item_count: z.literal(1) }),
+});
+
+const ImportByIdentifierSchema = z.object({
+  success: z.literal(true),
+  operation: z.literal("import_by_identifier"),
   item_key: z.string().min(1),
   details: z.object({ item_count: z.literal(1) }),
 });
@@ -64,6 +89,35 @@ export class ZoteroWriteApi {
   async importBibtex(bibtex: string): Promise<string> {
     const body = { operation: "import_bibtex", bibtex };
     return (await this.post("/write", body, ImportBibtexSchema)).item_key;
+  }
+
+  // Creates one item in the library root with Zotero's own translator for the identifier
+  // (for `arXiv:<id>`, its arXiv translator, which makes a preprint); answers its key.
+  async importByIdentifier(identifier: string): Promise<string> {
+    const body = { operation: "import_by_identifier", identifier };
+    return (await this.post("/write", body, ImportByIdentifierSchema)).item_key;
+  }
+
+  // A stored PDF attachment of the item whose file hashes to `sha256`. Zotero's identifier
+  // import downloads the publisher's PDF itself (arXiv's, for a preprint); when those are the
+  // bytes the bucket captured, the send keeps that attachment instead of adding a second copy.
+  // The local API names each attachment's file with `/file/view/url`.
+  async pdfWithHash(itemKey: string, sha256: string): Promise<ExistingPdf> {
+    const items = new URL(`/api/users/0/items/${itemKey}/children?format=json`, this.baseUrl);
+    const children = ChildrenSchema.parse(await (await fetch(items)).json());
+    const stored = children.filter(
+      ({ data }) =>
+        data.contentType === "application/pdf" && data.linkMode?.startsWith("imported") === true,
+    );
+    for (const child of stored) {
+      const view = new URL(`/api/users/0/items/${child.key}/file/view/url`, this.baseUrl);
+      const fileUrl = (await (await fetch(view)).text()).trim();
+      const bytes = await readFile(fileURLToPath(fileUrl));
+      if (createHash("sha256").update(bytes).digest("hex") === sha256) {
+        return { kind: "found", attachmentKey: child.key };
+      }
+    }
+    return { kind: "absent" };
   }
 
   async setUrlAndAccessDate(itemKey: string, url: string, accessedAt: string): Promise<void> {
