@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from cyclopts import App
-from pydantic import HttpUrl
+from pydantic import HttpUrl, TypeAdapter
 
-from pdfbucket.models import CaptureRequest
+from pdfbucket.models import CaptureRequest, StoredItem
 from pdfbucket.provenance import read_stored_item
-from pdfbucket.store import pdf_path, store_pdf
+from pdfbucket.store import pdf_path, store_pdf, stored_keys
 
 app = App(help="PDF Bucket store")
 
@@ -27,3 +27,10 @@ def capture(root: Path, pdf: Path, filename: str, pdf_url: str, source_url: str,
 def describe(root: Path, key: str) -> None:
     """Print the stored item for KEY, read from the PDF alone."""
     print(read_stored_item(pdf_path(root, key)).model_dump_json())
+
+
+@app.command(name="list")
+def list_items(root: Path, *keys: str) -> None:
+    """Print the stored items for KEYS, or for every PDF under ROOT, read from the PDFs alone."""
+    items = [read_stored_item(pdf_path(root, key)) for key in keys or stored_keys(root)]
+    print(TypeAdapter(list[StoredItem]).dump_json(items).decode())

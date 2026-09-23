@@ -36,6 +36,11 @@ def pdf_path(root: Path, key: str) -> Path:
     return path
 
 
+def stored_keys(root: Path) -> list[str]:
+    """Every stored key under ROOT, in key order."""
+    return sorted(path.stem for path in root.glob("*.pdf") if path.is_file())
+
+
 def destination(root: Path, filename: str, original_sha256: str) -> tuple[Path, bool]:
     """The path for these bytes and whether the same bytes are already stored there.
 
