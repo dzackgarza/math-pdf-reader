@@ -11,7 +11,7 @@ jobs:
       tier: test-ci
       profile: 'bun-python'
       infra_ref: 'main'
-      setup_recipe: ci-setup-desktop
+      setup_recipe: ci-setup
   deterministic-diff:
     uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
     permissions:

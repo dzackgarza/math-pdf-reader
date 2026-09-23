@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { STORE_COMMAND } from "./config";
-import { ProvenanceSchema } from "./libraryContract";
+import { ProvenanceSchema } from "./contract";
 
 const StoredItemSchema = z.strictObject({
   key: z.string().min(1),

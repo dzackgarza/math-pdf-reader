@@ -1,4 +1,17 @@
 import { defineConfig } from "wxt";
+import { type AppConfig, CONFIG_PATH, loadAppConfig } from "./src/server/config";
+
+// The extension learns the bucket origin and the minimum frame size from
+// pdf-bucket.config.json at build time; src/extension/bucket-config.ts reads this define.
+export function extensionDefine(config: AppConfig): Record<string, string> {
+  return {
+    PDF_BUCKET_BUILD: JSON.stringify({
+      bucketOrigin: `http://${config.server.host}:${config.server.port}`,
+      minFrameWidth: config.capture.min_frame_width,
+      minFrameHeight: config.capture.min_frame_height,
+    }),
+  };
+}
 
 // Interception permissions follow mozilla/pdf.js extensions/chromium/manifest.json for
 // Chrome (declarativeNetRequest with response-header conditions, Chrome 128+) and the
@@ -6,6 +19,7 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   srcDir: "src/extension",
   imports: false,
+  vite: () => ({ define: extensionDefine(loadAppConfig(CONFIG_PATH)) }),
   manifest: ({ browser }) => ({
     name: "PDF Bucket",
     permissions:
@@ -13,6 +27,7 @@ export default defineConfig({
         ? ["webRequest", "webRequestBlocking", "storage"]
         : ["declarativeNetRequestWithHostAccess", "storage"],
     host_permissions: ["<all_urls>"],
+    web_accessible_resources: [{ resources: ["capture.html"], matches: ["<all_urls>"] }],
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {

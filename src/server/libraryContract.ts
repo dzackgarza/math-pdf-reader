@@ -1,14 +1,7 @@
 // The library API contract: what `/api/library` and the filing mutations send and accept.
 // Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
-
-export const ProvenanceSchema = z.strictObject({
-  pdf_url: z.url(),
-  source_url: z.url(),
-  captured_at: z.iso.datetime({ offset: true }),
-  original_sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  title_hint: z.string().min(1),
-});
+import { ProvenanceSchema } from "./contract";
 
 export const SEARCH_FIELDS = ["title", "source", "pdfUrl", "tags", "notes", "key"] as const;
 
