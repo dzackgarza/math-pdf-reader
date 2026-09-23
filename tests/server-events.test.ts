@@ -39,7 +39,12 @@ function openReaderEvents(response: Response) {
 
 test("every capture, new or existing, broadcasts its reader URL to event subscribers", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-events-"));
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+  });
   const subscription = await app.request(`${origin}/api/events`);
   expect(subscription.headers.get("content-type")).toStartWith("text/event-stream");
   const events = openReaderEvents(subscription);

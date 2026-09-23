@@ -1,0 +1,32 @@
+{
+  "publishers": ["Springer"],
+  "identifiers": { "goodreads": ["338302"], "librarything": ["75772"] },
+  "covers": [245194],
+  "lc_classifications": ["QA564-609"],
+  "key": "/books/OL7448103M",
+  "authors": [{ "key": "/authors/OL196741A" }],
+  "ocaid": "algebraicgeometr00hart",
+  "languages": [{ "key": "/languages/eng" }],
+  "source_records": [
+    "ia:algebraicgeometr00hart",
+    "ia:algebraicgeometr00hart_312",
+    "ia:algebraicgeometr00hart_750",
+    "ia:algebraicgeometr00hart_817",
+    "ia:algebraicgeometr00rhar",
+    "bwb:9780387902449",
+    "promise:bwb_daily_pallets_2023-05-04:P8-DBI-649"
+  ],
+  "title": "Algebraic Geometry (Graduate Texts in Mathematics)",
+  "number_of_pages": 512,
+  "isbn_13": ["9780387902449"],
+  "isbn_10": ["0387902449"],
+  "publish_date": "April 1, 1997",
+  "works": [{ "key": "/works/OL1717865W" }],
+  "type": { "key": "/type/edition" },
+  "first_sentence": { "type": "/type/text", "value": "Let k be a fixed algebraically closed field." },
+  "local_id": ["urn:bwbsku:P8-DBI-649"],
+  "latest_revision": 14,
+  "revision": 14,
+  "created": { "type": "/type/datetime", "value": "2008-04-29T13:35:46.876380" },
+  "last_modified": { "type": "/type/datetime", "value": "2023-05-06T01:07:19.745920" }
+}

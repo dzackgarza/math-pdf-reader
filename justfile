@@ -101,3 +101,8 @@ extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
 # 1600x1000, WebKitGTK on a headless 1400x900 display, the desktop window size) and print the load timings.
 library-screenshots: fetch-pdfjs build-web
     @uv run --script scripts/library_screenshots.py docs/m2
+
+# Screenshot the send action's states (idle, sending, failed, sent, refused, remove) into docs/m3
+# against a two-item bucket whose Zotero is a closed port, so nothing reaches a real library.
+send-screenshots: fetch-pdfjs build-web
+    @uv run --script scripts/library_screenshots.py send docs/m3

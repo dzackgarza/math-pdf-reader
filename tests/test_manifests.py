@@ -15,7 +15,7 @@ def test_shipped_manifests_load_and_carry_only_declared_plugins() -> None:
     resolvers = load_manifest(MANIFESTS / "resolvers.json")
 
     assert [plugin.id for plugin in extractions.plugins] == ["mineru-flash", "mineru-precise", "mistral-ocr"]
-    assert [plugin.id for plugin in resolvers.plugins] == []
+    assert [plugin.id for plugin in resolvers.plugins] == ["doi", "isbn", "arxiv", "zbmath"]
 
 
 def test_every_shipped_extraction_command_resolves_and_receives_the_pdf_and_its_output_directory(tmp_path: Path) -> None:

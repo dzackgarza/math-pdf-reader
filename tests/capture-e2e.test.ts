@@ -41,7 +41,12 @@ function sha256(bytes: Uint8Array): string {
 
 function startBucket(port: number) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-store-"));
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+  });
   const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
   if (server.port === undefined) {
     throw new Error("the bucket server did not bind a TCP port");

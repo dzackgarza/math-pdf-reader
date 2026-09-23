@@ -1,18 +1,28 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import {
+  AlertTriangle,
   BookOpen,
   Check,
   CheckCircle2,
   Copy,
   ExternalLink,
   FileText,
+  LoaderCircle,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
-import type { BucketItem, Collection, Extraction } from "../../server/libraryContract";
+import type {
+  BucketItem,
+  Collection,
+  Extraction,
+  SendSource,
+  ZoteroStatus,
+} from "../../server/libraryContract";
 import { dateTime, isTopic, shortDate, sourceDomain, topicName, topicTag } from "../format";
+import type { SendAttempt } from "../libraryActions";
 import { Chip, TagChip } from "./Chips";
 import { AddByName, AddToCollection } from "./FilingEditors";
 
@@ -23,11 +33,18 @@ export type ItemFilingActions = {
   deleteNote: (noteId: string) => void;
 };
 
+export type ItemSendActions = {
+  attempt: SendAttempt | null;
+  onSend: () => void;
+  onRemove: () => void;
+};
+
 type InspectorPanelProps = {
   item: BucketItem;
   collections: Collection[];
   knownTags: string[];
   filing: ItemFilingActions;
+  send: ItemSendActions;
   onOpenReader: () => void;
   onClose: () => void;
 };
@@ -112,6 +129,35 @@ function ExtractionFiles({ extraction }: { extraction: Extraction }) {
   );
 }
 
+// Where the item's Zotero metadata came from.
+function sendSourceLabel(source: SendSource): string {
+  return source.kind === "manuscript"
+    ? "Manuscript: no identifier found"
+    : `${source.pluginId} resolver on ${source.identifier}`;
+}
+
+function ZoteroFact({ zotero }: { zotero: ZoteroStatus }) {
+  if (zotero.status === "unsent") {
+    return <span className="text-muted">Not sent</span>;
+  }
+  const { itemKey, sentAt, source } = zotero.record;
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-xs">{itemKey}</span>
+        <CopyButton value={itemKey} label="Zotero item key" />
+        <span className="text-muted">· {shortDate(sentAt)}</span>
+      </div>
+      <p className="truncate text-xs text-muted" title={sendSourceLabel(source)}>
+        {sendSourceLabel(source)}
+      </p>
+      {zotero.pending.length > 0 && (
+        <p className="text-xs text-amber-700">Still to send: {zotero.pending.join(", ")}</p>
+      )}
+    </div>
+  );
+}
+
 function FilingRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
@@ -126,7 +172,7 @@ function Details({
   collections,
   knownTags,
   filing,
-}: Omit<InspectorPanelProps, "onOpenReader" | "onClose">) {
+}: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose">) {
   const { provenance } = item;
   const names = new Map(collections.map((collection) => [collection.id, collection.name]));
   const topics = item.tags.filter(isTopic);
@@ -167,6 +213,9 @@ function Details({
         <Fact label="Cache status">
           <CheckCircle2 aria-hidden className="h-4 w-4 shrink-0 text-filed" />
           Stored locally ({prettyBytes(item.file.sizeBytes)})
+        </Fact>
+        <Fact label="Zotero">
+          <ZoteroFact zotero={item.zotero} />
         </Fact>
         <Fact label="SHA-256">
           <span className="font-mono text-xs" title={provenance.original_sha256}>
@@ -272,6 +321,68 @@ function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }
   );
 }
 
+function isComplete(zotero: ZoteroStatus): boolean {
+  return zotero.status === "sent" && zotero.pending.length === 0;
+}
+
+// The outcome of the last send, or the item's place in Zotero once every step is done.
+function SendNotice({ item, attempt }: { item: BucketItem; attempt: SendAttempt | null }) {
+  if (attempt?.kind === "refused" || attempt?.kind === "failed") {
+    const refused = attempt.kind === "refused";
+    return (
+      <p
+        role="alert"
+        className={`flex items-start gap-2 rounded-lg px-3 py-2 text-sm ${refused ? "bg-amber-50 text-amber-900" : "bg-red-50 text-red-800"}`}
+      >
+        <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+        <span className="min-w-0 break-words">
+          {refused ? "Not sent again: " : "Send failed: "}
+          {attempt.message}
+        </span>
+      </p>
+    );
+  }
+  if (item.zotero.status === "sent" && isComplete(item.zotero)) {
+    return (
+      <p className="flex items-center gap-2 rounded-lg bg-filed-soft px-3 py-2 text-sm text-filed">
+        <CheckCircle2 aria-hidden className="h-4 w-4 shrink-0" />
+        In Zotero as <span className="font-mono text-xs">{item.zotero.record.itemKey}</span>
+      </p>
+    );
+  }
+  return null;
+}
+
+const SECONDARY_BUTTON =
+  "inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-sm font-medium disabled:opacity-60";
+
+function SendButton({ item, send }: { item: BucketItem; send: ItemSendActions }) {
+  if (isComplete(item.zotero)) {
+    return (
+      <button
+        type="button"
+        onClick={send.onRemove}
+        className={`${SECONDARY_BUTTON} text-red-700 hover:bg-red-50`}
+      >
+        <Trash2 className="h-4 w-4" /> Remove from bucket
+      </button>
+    );
+  }
+  if (send.attempt?.kind === "sending") {
+    return (
+      <button type="button" disabled className={SECONDARY_BUTTON}>
+        <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-accent" /> Sending to Zotero…
+      </button>
+    );
+  }
+  return (
+    <button type="button" onClick={send.onSend} className={`${SECONDARY_BUTTON} hover:bg-surface`}>
+      <Send className="h-4 w-4" />
+      {item.zotero.status === "sent" ? "Finish sending to Zotero" : "Send to Zotero"}
+    </button>
+  );
+}
+
 const TAB_CLASSES =
   "border-b-2 border-transparent px-1 pb-2.5 text-sm font-medium text-muted data-[state=active]:border-accent data-[state=active]:text-accent";
 
@@ -316,14 +427,18 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           </Tabs.Content>
         </div>
       </Tabs.Root>
-      <footer className="flex gap-2 border-t border-line px-5 py-4">
-        <button
-          type="button"
-          onClick={onOpenReader}
-          className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <BookOpen className="h-4 w-4" /> Open Reader
-        </button>
+      <footer className="space-y-3 border-t border-line px-5 py-4">
+        <SendNotice item={item} attempt={props.send.attempt} />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onOpenReader}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            <BookOpen className="h-4 w-4" /> Open Reader
+          </button>
+          <SendButton item={item} send={props.send} />
+        </div>
       </footer>
     </aside>
   );

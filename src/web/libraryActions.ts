@@ -2,19 +2,23 @@
 // confirmation), calls the library API, and moves to the result.
 import {
   type AdvancedSearchSettings,
+  type BucketItem,
   CollectionSchema,
   LibraryPayloadSchema,
   SavedSearchSchema,
+  SendResponseSchema,
 } from "../server/libraryContract";
 import type { ConfirmRequest } from "./components/ConfirmDialog";
 import type { ItemFilingActions } from "./components/InspectorPanel";
 import type { NameRequest } from "./components/NameDialog";
 import { organizationPath } from "./routes";
 import type { OrganizationActions } from "./screens/OrganizationScreen";
-import type { Mutate } from "./useLibraryApi";
+import { BucketRequestError, type Mutate } from "./useLibraryApi";
 
 export type ActionContext = {
   mutate: Mutate;
+  // Reads the library again, for a failed call that may still have changed it.
+  refresh: () => void;
   navigate: (path: string) => void;
   askName: (request: NameRequest) => void;
   confirm: (request: ConfirmRequest) => void;
@@ -144,4 +148,44 @@ export function organizationActions(context: ActionContext): OrganizationActions
         organizationPath("saved"),
       ),
   };
+}
+
+// What the window shows about a send while or after it runs; a completed send shows through
+// the item's own Zotero status instead.
+export type SendAttempt =
+  | { kind: "sending" }
+  | { kind: "refused"; message: string }
+  | { kind: "failed"; message: string };
+
+export function sendToZotero(
+  context: ActionContext,
+  key: string,
+  onAttempt: (attempt: SendAttempt | null) => void,
+): void {
+  onAttempt({ kind: "sending" });
+  context.mutate(SendResponseSchema, "POST", `${itemPath(key)}/zotero`).then(
+    () => onAttempt(null),
+    (error: Error) => {
+      // A failed send may have recorded its Zotero item before the failing step.
+      context.refresh();
+      const refused = error instanceof BucketRequestError && error.kind === "already_sent";
+      onAttempt({ kind: refused ? "refused" : "failed", message: error.message });
+    },
+  );
+}
+
+export function removeFromBucket(context: ActionContext, item: BucketItem, onRemoved: () => void) {
+  if (item.zotero.status !== "sent") {
+    return;
+  }
+  context.confirm({
+    title: `Remove “${item.title}” from the bucket?`,
+    description: `The PDF and its extraction move to the desktop trash. Zotero keeps item ${item.zotero.record.itemKey} with the PDF attached.`,
+    confirmLabel: "Remove from bucket",
+    onConfirm: () =>
+      run(
+        context,
+        context.mutate(LibraryPayloadSchema, "DELETE", itemPath(item.id)).then(onRemoved),
+      ),
+  });
 }

@@ -35,7 +35,12 @@ const problemSet = join(import.meta.dir, "fixtures/problem-set.pdf");
 type Bucket = { root: string; request: (path: string, init?: RequestInit) => Promise<Response> };
 
 function open(root: string): Bucket {
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+  });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }
 

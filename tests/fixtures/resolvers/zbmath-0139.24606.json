@@ -1,0 +1,297 @@
+{
+  "result": [
+    {
+      "biographic_references": [],
+      "contributors": { "authors": [{ "aliases": [], "checked": "1", "codes": ["zadeh.lotfi-asker"], "name": "Zadeh, L. A." }], "author_references": [], "editors": [] },
+      "database": "Zbl",
+      "datestamp": "0001-01-01T00:00:00Z",
+      "document_type": { "code": "j", "description": "journal article" },
+      "editorial_contributions": [
+        {
+          "language": "English",
+          "reviewer": {
+            "author_code": "da-costa.newton-carneiro-affonso",
+            "reviewer_id": "3255",
+            "name": "Newton C. A. da Costa",
+            "sign": "Newton C. A. da Costa (São Paulo)"
+          },
+          "text": "A fuzzy set is a ``set'' of elements with a continuum of ``grades of membership''. The rigorous definition is: let \\(X\\) be a set of objects (elements); a fuzzy set \\(A\\) in \\(X\\) is defined by a ``membership (characteristic) function'' \\(f_A\\), which associates with each element \\(x\\in X\\) a real number \\(f_A(x)\\in [0,1]\\). The value \\(f_A(x)\\) of \\(f_A\\) at \\(x\\) represents the grade of membership of \\(x\\) in \\(A\\). If \\(A\\) is an ``ordinary'' set, its membership function \\(f_A\\) can take on only the values 0 and 1: \\(x\\in A\\Leftrightarrow f_A(x) = 1\\) and \\(x\\neq A \\Leftrightarrow f_A(x)=0\\). Various usual notions are extended to such sets (for instance, the notions of union, intersection and convexity).",
+          "contribution_type": "review"
+        }
+      ],
+      "id": 3226241,
+      "identifier": "0139.24606",
+      "keywords": [],
+      "language": { "languages": ["English"], "addition": [null] },
+      "license": [],
+      "links": [{ "identifier": "10.1016/S0019-9958(65)90241-X", "type": "doi", "url": "https://doi.org/10.1016/S0019-9958(65)90241-X" }],
+      "msc": [{ "code": "03E72", "scheme": "msc2020", "text": "Theory of fuzzy sets, etc." }],
+      "references": [
+        {
+          "doi": null,
+          "position": "1",
+          "text": "Zadeh L A. Fuzzy sets. Inf Control, 1965, 3: 338-353",
+          "zbmath": { "author_codes": ["zadeh.lotfi-asker"], "document_id": 3226241, "msc": ["03E72"], "prefix": "Zbl", "series_id": 453, "year": "1965" }
+        },
+        {
+          "doi": null,
+          "position": "2",
+          "text": "Pawlak Z. Rough sets. Int J Comput Inf Sci, 1982, 11: 341-356",
+          "zbmath": {
+            "author_codes": ["pawlak.zdzislaw"],
+            "document_id": 3789867,
+            "msc": ["68T05", "68T10", "03E99", "68T37", "62H30", "03B52"],
+            "prefix": "Zbl",
+            "series_id": 460,
+            "year": "1982"
+          }
+        },
+        {
+          "doi": null,
+          "position": "3",
+          "text": "Zhang L, Zhang B. Theory and Applications of Problem Solving (in Chinese). Beijing: Tsinghua University Press, 1990",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "4",
+          "text": "Liang P, Song F. What does a probabilistic interpretation of fuzzy sets mean? IEEE Trans Fuzzy Syst, 1996, 4: 200-205",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "5",
+          "text": "Lucero Y C, Nava P A. A method for membership function generation from training samples. http://www.ece.utep.edu/research/webfuzzy/docs/electro99.doc",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "6",
+          "text": "Mitsuishi T, Endou N, Shidama Y. The concept of fuzzy set and membership function and basic properties of fuzzy set operation. J Formal Math, 2000, 12: 1-6",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "7",
+          "text": "Lin T Y. Neighborhood systems and approximation in relational databases and knowledge bases. In: Proceedings of the 4th International Symposium on Methodologies of Intelligent Systems, Turin, 1988",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "8",
+          "text": "Lin T Y. Topological and fuzzy rough Sets. In: Slowinski R, ed. Decision Support by Experience-Application of the Rough Sets Theory. Kluwer Academic Publishers, 1992. 287-304",
+          "zbmath": {
+            "author_codes": ["slowinski.roman"],
+            "document_id": 108581,
+            "msc": ["68-00", "00B15", "68T01", "68T30", "68T27"],
+            "prefix": "Zbl",
+            "series_id": 4405,
+            "year": "1992"
+          }
+        },
+        {
+          "doi": null,
+          "position": "9",
+          "text": "Lin T Y. Neighborhood systems-application to qualitative fuzzy and rough sets, in: Wang P P, ed. Advances in Machine Intelligence and Soft-Computing. Department of Electrical Engineering, Duke University, Durham, North Carolina, USA, 1997. 132-155",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "10",
+          "text": "Lin T Y. Context free fuzzy sets and information tables. In: European Congress on Intelligent Techniques and Soft Computing, 1998. 76-80",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "11",
+          "text": "Skowron A, Stepaniuk J. Tolerance approximation spaces. Fund Inf, 1996, (27): 245-253",
+          "zbmath": {
+            "author_codes": ["skowron.andrzej", "stepaniuk.jaroslaw"],
+            "document_id": 927110,
+            "msc": ["68T30", "68T27"],
+            "prefix": "Zbl",
+            "series_id": 858,
+            "year": "1996"
+          }
+        },
+        {
+          "doi": null,
+          "position": "12",
+          "text": "Doherty P, Lukaszewicz W, Szalas A. Tolerance spaces and approximative representational structures. In: Proceeding of 26 th German Conference on Artificial Intelligence, Hamburg, Germany, 2003. 475-489",
+          "zbmath": {
+            "author_codes": ["lukaszewicz.witold", "szalas.andrzej", "doherty.patrick"],
+            "document_id": 5677230,
+            "msc": ["68T30"],
+            "prefix": "Zbl",
+            "series_id": 0,
+            "year": "2003"
+          }
+        },
+        {
+          "doi": null,
+          "position": "13",
+          "text": "Cattaneo G. Abstract Approximation Spaces for Rough Theories, Ruogh Sets in Knowledge Discovery 1: Methodology and Applications. Heidelberg: Physica-Verlag, 1998. 59-98",
+          "zbmath": { "author_codes": ["cattaneo.gianpiero"], "document_id": 1303618, "msc": ["68T30", "06A06", "06C15"], "prefix": "Zbl", "series_id": 0, "year": "1998" }
+        },
+        {
+          "doi": null,
+          "position": "14",
+          "text": "Cattaneo G, Ciucci D. Algebraic structures for rough sets. In: Lecture Notes in Computer Science 3135. Berlin: Springer, 2004. 208-252",
+          "zbmath": {
+            "author_codes": ["cattaneo.gianpiero", "ciucci.davide"],
+            "document_id": 2199584,
+            "msc": ["68T37", "03E72"],
+            "prefix": "Zbl",
+            "series_id": 0,
+            "year": "2004"
+          }
+        },
+        {
+          "doi": null,
+          "position": "15",
+          "text": "Slowinski R, Vanderpooten D. A generalized definition of rough approximations based on similarity. IEEE Trans Knowl Data Eng, 2000, 12: 331-336",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "16",
+          "text": "Shi Z Z. The model and application of tolerance granular spaces. In: Miao D Q, ed. Granular Computing: Past, Present and Future (Chinese), Scientific Publishing Company. 2007. 42-82",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "17",
+          "text": "Zhu F, Wang F Y. Covering based granular computing. In: Miao D Q. ed. Granular Computing: Past, Present and Future (Chinese). Scientific Publishing Compony, 2007. 83-111",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "18",
+          "text": "Yao Y Y. The art of granular computing. In: Miao D Q, ed. Granular Computing: Past, Present and Future (in Chinese). Scientific Publishing Compony, 2007. 1-20",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "19",
+          "text": "Zhang L, Zhang B. Fuzzy quotient spaces (fuzzy granular computing approaches). Chin J Soft, 2003, 14: 770-776",
+          "zbmath": { "author_codes": ["zhang.bo.6", "zhang.ling"], "document_id": 1919422, "msc": ["68Q10"], "prefix": "Zbl", "series_id": 3003, "year": "2003" }
+        },
+        {
+          "doi": null,
+          "position": "20",
+          "text": "Zhang L, Zhang B. The theory and application of tolerance relations. Int J Granular Compu, Rough Sets Intell Syst, (accepted)",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "21",
+          "text": "Zhang L, Zhang B. The structural analysis of fuzzy sets. Int J Approx Reason, 2005, 40: 92-108",
+          "zbmath": { "author_codes": ["zhang.bo.6", "zhang.ling"], "document_id": 2196858, "msc": ["03E72", "68T37"], "prefix": "Zbl", "series_id": 1181, "year": "2005" }
+        },
+        {
+          "doi": null,
+          "position": "22",
+          "text": "Boixader D, Jacas J, Recasens J. Upper and lower approximations of fuzzy sets. Int J General Sys, 2000, 29: 555-568",
+          "zbmath": {
+            "author_codes": ["jacas.joan", "recasens.jordi", "boixader.dionis"],
+            "document_id": 1513117,
+            "msc": ["03E72", "54A40"],
+            "prefix": "Zbl",
+            "series_id": 97,
+            "year": "2000"
+          }
+        },
+        {
+          "doi": null,
+          "position": "23",
+          "text": "Radzikowska A M, Kerre E E. A comparative study of fuzzy rough sets. Fuzzy Sets Syst, 2002, 126: 137-155",
+          "zbmath": {
+            "author_codes": ["kerre.etienne-e", "radzikowska.anna-maria"],
+            "document_id": 1758519,
+            "msc": ["03E72"],
+            "prefix": "Zbl",
+            "series_id": 428,
+            "year": "2002"
+          }
+        },
+        {
+          "doi": null,
+          "position": "24",
+          "text": "Wu W Z, Zhang W X. Generalized fuzzy rough sets. Inf Sci, 2003, 151: 263-282",
+          "zbmath": { "author_codes": ["zhang.wenxiu", "mi.jusheng", "wu.weizhi"], "document_id": 1924639, "msc": ["03E72"], "prefix": "Zbl", "series_id": 454, "year": "2003" }
+        },
+        {
+          "doi": null,
+          "position": "25",
+          "text": "Mi J S, Zhang W X. An axiomatic characterization of fuzzy generalization of rough sets. Int J General Syst, 2004, 160: 235-249",
+          "zbmath": { "author_codes": ["zhang.wenxiu", "mi.jusheng"], "document_id": 2066800, "msc": ["03E72"], "prefix": "Zbl", "series_id": 454, "year": "2004" }
+        },
+        {
+          "doi": null,
+          "position": "26",
+          "text": "Yeung D S, Chen D G, Tsang E C, et al. On the generalization of fuzzy rough sets. IEEE Trans Fuzzy Syst, 2005, 13: 343-361",
+          "zbmath": { "author_codes": [], "document_id": null, "msc": [], "prefix": null, "series_id": 0, "year": null }
+        },
+        {
+          "doi": null,
+          "position": "27",
+          "text": "Mi J S, Leung Y, Wu W Z. An uncertainty in partition-based fuzzy rough sets. Int J General Syst, 2005, 34: 77-90",
+          "zbmath": {
+            "author_codes": ["leung.andrew-yee-tak", "mi.jusheng", "wu.weizhi"],
+            "document_id": 2187445,
+            "msc": ["03E72"],
+            "prefix": "Zbl",
+            "series_id": 97,
+            "year": "2005"
+          }
+        },
+        {
+          "doi": null,
+          "position": "28",
+          "text": "Zadeh L A. Similarity relations and fuzzy orderings. Inf Sci,",
+          "zbmath": { "author_codes": ["zadeh.lotfi-asker"], "document_id": 3346353, "msc": ["03E72"], "prefix": "Zbl", "series_id": 454, "year": "1971" }
+        }
+      ],
+      "source": {
+        "book": [],
+        "pages": "338-353",
+        "series": [
+          {
+            "acronym": null,
+            "issn": [{ "number": "0019-9958", "type": "print" }],
+            "issue": null,
+            "issue_id": 134593,
+            "parallel_title": null,
+            "part": null,
+            "publisher": "Academic Press, New York etc.",
+            "series_id": 453,
+            "short_title": "Inf. Control",
+            "title": "Information and Control",
+            "volume": "8",
+            "year": "1965"
+          }
+        ],
+        "source": "Inf. Control 8, 338-353 (1965)."
+      },
+      "states": [
+        ["s", "item with single author"],
+        ["r", "item has references"],
+        ["c", "is cited"]
+      ],
+      "title": { "addition": null, "original": null, "subtitle": null, "title": "Fuzzy sets" },
+      "year": "1965",
+      "zbmath_url": "https://zbmath.org/3226241"
+    }
+  ],
+  "status": {
+    "execution": "successful request",
+    "execution_bool": true,
+    "internal_code": "ok",
+    "last_id": null,
+    "nr_total_results": 1,
+    "nr_request_results": 1,
+    "query_execution_time_in_seconds": 0.08739566802978516,
+    "status_code": 200,
+    "time_stamp": "2026-09-23T16:33:17Z"
+  }
+}

@@ -30,6 +30,8 @@ import {
   setTags,
   unfiled,
 } from "./organization";
+import { sendRoutes, zoteroStatus } from "./send";
+import type { ZoteroWriteApi } from "./zotero";
 
 export function bucketItem(indexed: IndexedItem, organization: Organization): BucketItem {
   const { key, provenance } = indexed.stored;
@@ -42,6 +44,7 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
     collections: filing.collections,
     notes: filing.notes,
     extraction: indexed.extraction,
+    zotero: zoteroStatus(filing.zotero, indexed.extraction),
     dateAdded: provenance.captured_at,
     dateModified: filing.modifiedAt,
     provenance,
@@ -75,7 +78,7 @@ function now(): string {
 }
 
 // The stored items and their filing for one bucket root, shared by the route groups.
-class LibraryState {
+export class LibraryState {
   readonly index: LibraryIndex;
   readonly organizations: OrganizationStore;
 
@@ -92,8 +95,12 @@ class LibraryState {
     };
   }
 
+  async indexed(key: string): Promise<IndexedItem | undefined> {
+    return (await this.index.items()).find((indexed) => indexed.stored.key === key);
+  }
+
   async isStored(key: string): Promise<boolean> {
-    return (await this.index.items()).some((indexed) => indexed.stored.key === key);
+    return (await this.indexed(key)) !== undefined;
   }
 
   async collectionIds(): Promise<Set<string>> {
@@ -222,12 +229,12 @@ function savedSearchRoutes(app: Hono, state: LibraryState) {
   });
 }
 
-export function registerLibraryRoutes(app: Hono, root: string): Library {
+export function registerLibraryRoutes(app: Hono, root: string, zotero: ZoteroWriteApi): Library {
   const state = new LibraryState(root);
   const library: Library = {
     payload: async () => state.payloadOf(await state.organizations.read()),
     item: async (key) => {
-      const indexed = (await state.index.items()).find((candidate) => candidate.stored.key === key);
+      const indexed = await state.indexed(key);
       if (indexed === undefined) {
         return null;
       }
@@ -248,5 +255,6 @@ export function registerLibraryRoutes(app: Hono, root: string): Library {
   itemRoutes(app, state);
   collectionRoutes(app, state);
   savedSearchRoutes(app, state);
+  sendRoutes(app, state, root, zotero);
   return library;
 }

@@ -10,5 +10,8 @@
   "capture": {
     "min_frame_width": 700,
     "min_frame_height": 350
+  },
+  "zotero": {
+    "url": "http://127.0.0.1:23119"
   }
 }

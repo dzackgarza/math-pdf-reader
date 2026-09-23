@@ -26,6 +26,8 @@ export const AppConfigSchema = z.strictObject({
     min_frame_width: z.number().int().positive(),
     min_frame_height: z.number().int().positive(),
   }),
+  // Zotero's local HTTP server; the send action writes through its local write API.
+  zotero: z.strictObject({ url: z.url({ protocol: /^http$/ }) }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

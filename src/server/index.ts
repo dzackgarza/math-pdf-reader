@@ -18,5 +18,10 @@ export default {
   hostname: config.server.host,
   // Extraction requests stay open for minutes while a provider works; 0 disables the timeout.
   idleTimeout: 0,
-  fetch: createApp({ root, version: VERSION, pdfjsDir: pdfjsDir(config) }).fetch,
+  fetch: createApp({
+    root,
+    version: VERSION,
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+  }).fetch,
 };

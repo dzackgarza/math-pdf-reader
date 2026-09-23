@@ -30,7 +30,12 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
   form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
   form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
   form.set("title_hint", "Ten Lectures on Integral Lattices");
-  const captureApp = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const captureApp = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+  });
   const captured = await captureApp.request(`${origin}/capture-bytes`, {
     method: "POST",
     body: form,
@@ -59,7 +64,12 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
 
 test("the shipped extraction plugins are listed with their accepted inputs", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-plugins-"));
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+  });
 
   const response = await app.request(`${origin}/api/plugins/extractions`);
 

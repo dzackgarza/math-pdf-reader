@@ -28,7 +28,10 @@ import {
   createCollection,
   filingActions,
   organizationActions,
+  removeFromBucket,
+  type SendAttempt,
   saveSearch,
+  sendToZotero,
 } from "./libraryActions";
 import { type LibraryView, reconcileView, viewName, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
@@ -64,10 +67,19 @@ type WorkspaceProps = {
   screen: Screen;
   mutate: Mutate;
   reload: () => void;
+  refresh: () => void;
   initialLayout: ColumnLayout;
 };
 
-function Workspace({ payload, read, screen, mutate, reload, initialLayout }: WorkspaceProps) {
+function Workspace({
+  payload,
+  read,
+  screen,
+  mutate,
+  reload,
+  refresh,
+  initialLayout,
+}: WorkspaceProps) {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState<AdvancedSearchSettings>(defaultSearchSettings);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -75,6 +87,7 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
   const [nameRequest, setNameRequest] = useState<NameRequest | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [sendAttempts, setSendAttempts] = useState<ReadonlyMap<string, SendAttempt>>(new Map());
   const palette = useRef<CommandPaletteHostHandle>(null);
 
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
@@ -91,6 +104,7 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
 
   const context: ActionContext = {
     mutate,
+    refresh,
     navigate,
     askName: setNameRequest,
     confirm: setConfirmRequest,
@@ -101,12 +115,25 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
     saveSearch(context, search, () => setSearch(defaultSearchSettings()));
 
   const openReader = (key: string) => window.location.assign(readerUrl(key));
+  const send = (key: string) =>
+    sendToZotero(context, key, (attempt) =>
+      setSendAttempts((attempts) => {
+        const next = new Map(attempts);
+        if (attempt === null) {
+          next.delete(key);
+        } else {
+          next.set(key, attempt);
+        }
+        return next;
+      }),
+    );
 
   const commands = createAppCommands({
     navigate,
     newCollection,
     saveSearch: saveCurrentSearch,
     openSelectedInReader: selected === undefined ? null : () => openReader(selected.id),
+    sendSelectedToZotero: selected === undefined ? null : () => send(selected.id),
     reloadLibrary: reload,
     showAllColumns: () => table.toggleAllColumnsVisible(true),
     resetColumns: () => resetColumnLayout(table),
@@ -174,6 +201,11 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
               collections={payload.collections}
               knownTags={knownTags}
               filing={filingActions(context, selected.id)}
+              send={{
+                attempt: sendAttempts.get(selected.id) ?? null,
+                onSend: () => send(selected.id),
+                onRemove: () => removeFromBucket(context, selected, () => setSelectedId(null)),
+              }}
               onOpenReader={() => openReader(selected.id)}
               onClose={() => setSelectedId(null)}
             />
@@ -222,7 +254,7 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
 }
 
 export default function App() {
-  const { state, reload, mutate } = useLibraryApi();
+  const { state, reload, refresh, mutate } = useLibraryApi();
   const read = useBucketStatus();
   const [location] = useLocation();
   const [layoutRead, setLayoutRead] = useState(readColumnLayout);
@@ -308,6 +340,7 @@ export default function App() {
       screen={screen}
       mutate={mutate}
       reload={reload}
+      refresh={refresh}
       initialLayout={layoutRead.layout}
     />
   );

@@ -55,6 +55,53 @@ export const ExtractionSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+// The steps of a send after Zotero has created the item: set its URL and access date, attach
+// the PDF, attach the extraction Markdown when the item has one.
+export const SEND_STEPS = ["fields", "pdf", "markdown"] as const;
+
+export const SendStepSchema = z.discriminatedUnion("step", [
+  z.strictObject({ step: z.literal("fields") }),
+  z.strictObject({ step: z.literal("pdf"), attachmentKey: z.string().min(1) }),
+  z.strictObject({ step: z.literal("markdown"), attachmentKey: z.string().min(1) }),
+]);
+
+// How the Zotero item's metadata was found: a resolver plugin on an identifier, or, for an
+// item with no identifier, a manuscript entry carrying only the title.
+export const SendSourceSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("resolver"),
+    pluginId: z.string().min(1),
+    identifier: z.string().min(1),
+  }),
+  z.strictObject({ kind: z.literal("manuscript") }),
+]);
+
+// The Zotero item a send created, and the steps done on it so far.
+export const ZoteroRecordSchema = z.strictObject({
+  itemKey: z.string().min(1),
+  sentAt: z.iso.datetime({ offset: true }),
+  source: SendSourceSchema,
+  steps: z.array(SendStepSchema),
+});
+
+// `pending` lists the steps still owed: a send that failed part way, or an extraction made
+// after the send, leaves steps a later send completes.
+export const ZoteroStatusSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("unsent") }),
+  z.strictObject({
+    status: z.literal("sent"),
+    record: ZoteroRecordSchema,
+    pending: z.array(z.enum(SEND_STEPS)),
+  }),
+]);
+
+// The answer to a send: the Zotero item and the steps this send performed.
+export const SendResponseSchema = z.strictObject({
+  itemKey: z.string().min(1),
+  created: z.boolean(),
+  performed: z.array(z.enum(SEND_STEPS)),
+});
+
 // The library item: title, url, tags, collections, notes and dates carry the same meaning
 // as in a reference-manager item; provenance, file and extraction are the bucket's own.
 export const BucketItemSchema = z.strictObject({
@@ -69,6 +116,7 @@ export const BucketItemSchema = z.strictObject({
   provenance: ProvenanceSchema,
   file: z.strictObject({ path: z.string().min(1), sizeBytes: z.number().int().nonnegative() }),
   extraction: ExtractionSchema,
+  zotero: ZoteroStatusSchema,
 });
 
 export const LibraryPayloadSchema = z.strictObject({
@@ -83,6 +131,10 @@ export const API_ERROR_KINDS = [
   "unknown_collection",
   "unknown_note",
   "unknown_saved_search",
+  "already_sent",
+  "not_sent",
+  "resolver_failed",
+  "zotero_failed",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({
@@ -132,3 +184,9 @@ export type LibraryPayload = z.infer<typeof LibraryPayloadSchema>;
 export type ApiErrorKind = (typeof API_ERROR_KINDS)[number];
 export type Settings = z.infer<typeof SettingsSchema>;
 export type Extraction = z.infer<typeof ExtractionSchema>;
+export type SendStep = (typeof SEND_STEPS)[number];
+export type SendStepDone = z.infer<typeof SendStepSchema>;
+export type SendSource = z.infer<typeof SendSourceSchema>;
+export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
+export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
+export type SendResponse = z.infer<typeof SendResponseSchema>;

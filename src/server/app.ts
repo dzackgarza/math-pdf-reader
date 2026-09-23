@@ -9,11 +9,14 @@ import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
 import { captureBytes, StoreCommandError, storedPdfPath } from "./store";
+import { ZoteroError, ZoteroWriteApi } from "./zotero";
 
 export type AppConfig = {
   root: string;
   version: string;
   pdfjsDir: string;
+  // Zotero's local HTTP server, which carries the write API the send action uses.
+  zoteroUrl: string;
 };
 
 const CaptureFormSchema = z.strictObject({
@@ -39,10 +42,13 @@ export function createApp(config: AppConfig): Hono {
         500,
       );
     }
+    if (error instanceof ZoteroError) {
+      return c.json({ error: { kind: "zotero_failed", message: error.message } }, 502);
+    }
     throw error;
   });
 
-  const library = registerLibraryRoutes(app, config.root);
+  const library = registerLibraryRoutes(app, config.root, new ZoteroWriteApi(config.zoteroUrl));
 
   app.get("/status", async (c) => {
     const origin = new URL(c.req.url).origin;

@@ -16,7 +16,15 @@ const pdfSource = "https://www.math.example.edu/~author/lattices.pdf";
 
 function bucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-capture-"));
-  return { root, app: createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) }) };
+  return {
+    root,
+    app: createApp({
+      root,
+      version: "0.1.0",
+      pdfjsDir: pdfjsDir(config),
+      zoteroUrl: config.zotero.url,
+    }),
+  };
 }
 
 function captureForm(
