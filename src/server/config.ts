@@ -1,5 +1,4 @@
-// Declared config surface, cribbed from zotero-gui (src/server/config.ts): one JSON file,
-// strict schema, no runtime defaults.
+// Declared config surface: one JSON file, strict schema, no runtime defaults.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";

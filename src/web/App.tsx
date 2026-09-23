@@ -1,6 +1,4 @@
-// Library shell. The table, collections sidebar, inspector and command palette are
-// cribbed from zotero-gui (src/components/*) in milestone M2.
-import "./App.css";
+// Library shell: table, collections sidebar, inspector and command palette land in M2.
 
 export default function App() {
   return (

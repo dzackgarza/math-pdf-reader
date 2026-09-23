@@ -68,10 +68,11 @@ Nothing in this repo is invented. Two kinds of source, handled differently:
 - **Mature external projects** (PDF.js, Tauri, WXT, React, the Zotero Connector, the local
   write API addon): import directly, or fork. Cribbing code from them is also fine.
 - **The user's own prior repos** (below): reference implementations. Crib their code into
-  this repo because it is already written and debugged, and leave a comment naming the
-  source file. Never import them as dependencies, never keep the copies in sync, and never
-  treat their decisions as gospel: read them as a starting point that has survived some
-  debugging, nothing more.
+  this repo because it is already written and debugged, then treat it as this repo's code.
+  Never import them as dependencies, never keep the copies in sync, never treat their
+  decisions as gospel, and never name them in code, comments, docstrings, error text or
+  user-facing docs: they will not exist when this project is mature. Commit messages are
+  the only place their names belong.
 
 Reference implementations:
 
@@ -96,7 +97,7 @@ to build from scratch.
 | Mockup | Element | Where it lives |
 | --- | --- | --- |
 | library (1) | Library / Inbox / Offline Cache | bucket index views; every stored item is cached by construction |
-| library (1) | Collections, Tags, Saved Searches | `zotero-gui` sidebar and table over the bucket index; topics are a `topic:` tag namespace or saved searches |
+| library (1) | Collections, Tags, Saved Searches | `zotero-gui`'s sidebar and table, cribbed, over the bucket index; topics are a `topic:` tag namespace or saved searches |
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
 | library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256 | provenance embedded in the PDF, shown by the reused inspector |
 | library (1) | Send to Zotero | the send action: resolver plugins to BibTeX, then `import_bibtex` and `attach_bytes` on the local write API; or open the reader URL in a browser and press the Zotero Connector |
@@ -134,8 +135,9 @@ but breaks one of these is wrong.
    JSON manifest and contract. The app imports no provider SDK and holds no credentials.
 7. **This repo owns wiring only.** No hand-rolled PDF viewer, library table, search index,
    metadata scraper or citation database. PDF.js renders; components cribbed from
-   `zotero-gui` display; code cribbed from `mathread` captures; plugins extract; Zotero
-   cites. Every cribbed or hand-written piece names the reference it follows.
+   `zotero-gui` display; the capture extension cribbed from `mathread` captures; plugins
+   cribbed from `zotero-library-tools` extract; Zotero cites. Cribbing is how this repo
+   avoids writing those pieces; the cribbed code carries no mention of where it came from.
 8. **Every commit leaves the repo and the vault clean.** Plan state lives in the vault card;
    repo docs describe how the system works, never what remains to do.
 

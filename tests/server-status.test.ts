@@ -1,4 +1,3 @@
-// Cribbed from mathread tests/test_capture.py (status contract tests).
 import { expect, test } from "bun:test";
 import { mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";

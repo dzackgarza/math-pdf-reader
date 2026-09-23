@@ -1,7 +1,7 @@
 """Plugin manifest contract.
 
-Shape cribbed from zotero-gui (resolver-plugins.json, src/server/resolverPlugins.ts):
-a plugin is an external command plus the inputs it accepts. Extraction plugins and
+
+A plugin is an external command plus the inputs it accepts. Extraction plugins and
 resolver plugins share this manifest shape.
 """
 

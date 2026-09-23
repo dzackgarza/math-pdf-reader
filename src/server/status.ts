@@ -1,5 +1,4 @@
-// Status contract cribbed from mathread (src/mathread/server.py, `/status`):
-// the capture extension and the desktop window poll this before acting.
+// Status contract: the capture extension and the desktop window poll this before acting.
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 
