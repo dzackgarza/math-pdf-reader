@@ -10,5 +10,9 @@
   "capture": {
     "min_frame_width": 700,
     "min_frame_height": 350
+  },
+  "rebuild": {
+    "concurrent_downloads": 4,
+    "download_timeout_seconds": 120
   }
 }

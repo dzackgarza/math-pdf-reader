@@ -7,6 +7,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Semaphore } from "async-mutex";
 import { z } from "zod";
+import type { AppConfig } from "./config";
 import { ProvenanceSchema } from "./contract";
 import { CollectionSchema, SavedSearchSchema } from "./libraryContract";
 import {
@@ -46,9 +47,7 @@ export type RebuildOutcome =
       observed_sha256: string;
     };
 
-// Downloads at once while rebuilding; enough to overlap network waits without hammering a host.
-const DOWNLOADS = 4;
-const DOWNLOAD_TIMEOUT_MS = 120_000;
+export type RebuildSettings = AppConfig["rebuild"];
 
 // The previous export lists items the store no longer holds. Writing a new export would drop
 // the only record that can bring them back.
@@ -124,8 +123,9 @@ export async function importIndex(root: string, exportFile: string): Promise<Org
 type Download = { bytes: Uint8Array<ArrayBuffer> } | { failure: string };
 
 // The one boundary where a network rejection becomes a dead-URL outcome.
-async function download(url: string): Promise<Download> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) }).then(
+async function download(url: string, timeoutSeconds: number): Promise<Download> {
+  const signal = AbortSignal.timeout(timeoutSeconds * 1000);
+  const response = await fetch(url, { signal }).then(
     (answer) => answer,
     (error: Error) => error,
   );
@@ -141,12 +141,16 @@ async function download(url: string): Promise<Download> {
   );
 }
 
-async function rebuildItem(root: string, item: ExportedItem): Promise<RebuildOutcome> {
+async function rebuildItem(
+  root: string,
+  item: ExportedItem,
+  settings: RebuildSettings,
+): Promise<RebuildOutcome> {
   const { key, provenance } = item;
   if (storedPdfPath(root, key) !== null) {
     return { key, status: "present" };
   }
-  const fetched = await download(provenance.pdf_url);
+  const fetched = await download(provenance.pdf_url, settings.download_timeout_seconds);
   if ("failure" in fetched) {
     return { key, status: "dead", pdf_url: provenance.pdf_url, reason: fetched.failure };
   }
@@ -165,11 +169,15 @@ async function rebuildItem(root: string, item: ExportedItem): Promise<RebuildOut
 }
 
 // Every item the export lists, in export order: present, restored, or reported by key.
-export async function rebuildCache(root: string, exportFile: string): Promise<RebuildOutcome[]> {
+export async function rebuildCache(
+  root: string,
+  exportFile: string,
+  settings: RebuildSettings,
+): Promise<RebuildOutcome[]> {
   mkdirSync(root, { recursive: true });
   const index = await readIndexExport(exportFile);
-  const downloads = new Semaphore(DOWNLOADS);
+  const downloads = new Semaphore(settings.concurrent_downloads);
   return Promise.all(
-    index.items.map((item) => downloads.runExclusive(() => rebuildItem(root, item))),
+    index.items.map((item) => downloads.runExclusive(() => rebuildItem(root, item, settings))),
   );
 }

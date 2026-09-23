@@ -39,10 +39,13 @@ provision: fetch-pdfjs
     (cd desktop && bunx @tauri-apps/cli build --no-bundle)
     units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     origin=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
-    path="$(dirname "$(command -v bun)"):$(dirname "$(command -v uv)"):/usr/local/bin:/usr/bin"
+    bun=$(which bun)
+    uv=$(which uv)
+    direnv=$(which direnv)
+    path="$(dirname "$bun"):$(dirname "$uv"):/usr/local/bin:/usr/bin"
     mkdir -p "$units"
     for template in systemd/*; do
-        sed -e "s|@REPO@|$repo|g" -e "s|@BUN@|$(command -v bun)|g" -e "s|@DIRENV@|$(command -v direnv)|g" \
+        sed -e "s|@REPO@|$repo|g" -e "s|@BUN@|$bun|g" -e "s|@DIRENV@|$direnv|g" \
             -e "s|@ORIGIN@|$origin|g" -e "s|@PATH@|$path|g" "$template" > "$units/$(basename "$template")"
     done
     systemd-analyze --user verify "$units"/pdf-bucket.service "$units"/pdf-bucket-window.service \

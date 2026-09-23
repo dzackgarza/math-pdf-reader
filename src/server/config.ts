@@ -26,6 +26,11 @@ export const AppConfigSchema = z.strictObject({
     min_frame_width: z.number().int().positive(),
     min_frame_height: z.number().int().positive(),
   }),
+  // `just rebuild-cache`: downloads at once, and how long one may take before its URL is dead.
+  rebuild: z.strictObject({
+    concurrent_downloads: z.number().int().positive(),
+    download_timeout_seconds: z.number().int().positive(),
+  }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

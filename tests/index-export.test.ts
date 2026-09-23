@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CONFIG_PATH, loadAppConfig } from "../src/server/config";
 import {
   exportIndex,
   FilingExistsError,
@@ -19,6 +20,8 @@ import {
   setTags,
 } from "../src/server/organization";
 import { captureBytes, listItems } from "../src/server/store";
+
+const config = loadAppConfig(CONFIG_PATH);
 
 // Every capture and restore runs the Python store in its own process.
 setDefaultTimeout(30_000);
@@ -94,7 +97,7 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
     unlinkSync(join(root, `${key}.pdf`));
   }
 
-  const outcomes = await rebuildCache(root, exportFile);
+  const outcomes = await rebuildCache(root, exportFile, config.rebuild);
 
   const restored = await listItems(root, ["2401.00001", "lecture-notes", "ten-page-notes"]);
   expect(outcomes).toEqual([
@@ -193,7 +196,7 @@ test("an export imported into an empty store and rebuilt there exports byte for 
   const restoredRoot = join(temporaryDirectory("restored"), "pdf-bucket");
   const imported = await importIndex(restoredRoot, exportFile);
   expect(imported).toEqual(await organizations.read());
-  const outcomes = await rebuildCache(restoredRoot, exportFile);
+  const outcomes = await rebuildCache(restoredRoot, exportFile, config.rebuild);
   expect(outcomes.map((outcome) => [outcome.key, outcome.status])).toEqual([
     ["2401.00001", "restored"],
     ["lattices", "restored"],
