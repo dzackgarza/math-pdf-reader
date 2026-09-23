@@ -1,9 +1,10 @@
-"""Seed a bucket root with COUNT generated PDFs, each stored through the real store.
+"""Seed a bucket root with COUNT PDFs made from committed fixtures, stored through the real store.
 
 Run inside the project environment: `uv run --locked python scripts/seed_bucket.py ROOT COUNT`.
-Every PDF is a one-page document whose text is its title; its provenance (PDF URL, source
-page, capture time, original hash) is embedded by `pdfbucket.store.store_pdf`, exactly as a
-browser capture would. Titles, sources and capture times are synthetic and deterministic.
+Every PDF is a copy of a committed fixture PDF (tests/fixtures) with its own document title;
+its provenance (PDF URL, source page, capture time, original hash) is embedded by
+`pdfbucket.store.store_pdf`, exactly as a browser capture would. Titles, sources and capture
+times are synthetic and deterministic.
 """
 
 from __future__ import annotations
@@ -58,30 +59,23 @@ SOURCES = [
     ("https://www.numdam.org/item/{id}/", "https://www.numdam.org/item/{id}.pdf"),
 ]
 NEWEST_CAPTURE = datetime(2026, 9, 20, 14, 30, tzinfo=UTC)
+FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
+# Committed PDFs the seeded items are copies of; nothing is downloaded.
+FIXTURE_PDFS = ["lecture-notes.pdf", "ten-page-notes.pdf", "long-notes.pdf", "problem-set.pdf"]
 
 
-def title_page(title: str) -> bytes:
-    """A one-page PDF whose content stream sets TITLE in Helvetica."""
-    pdf = pikepdf.new()
-    escaped = title.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-    content = f"BT /F1 20 Tf 72 700 Td ({escaped}) Tj ET".encode("latin-1", "replace")
-    font = pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1, BaseFont=pikepdf.Name.Helvetica)
-    page = pikepdf.Page(
-        pikepdf.Dictionary(
-            Type=pikepdf.Name.Page,
-            MediaBox=[0, 0, 612, 792],
-            Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=font)),
-            Contents=pdf.make_stream(content),
-        )
-    )
-    pdf.pages.append(page)
+def titled_copy(fixture: bytes, title: str) -> bytes:
+    """The committed fixture PDF with TITLE as its document title, so each seeded PDF has its own bytes."""
     output = BytesIO()
-    pdf.save(output)
+    with pikepdf.open(BytesIO(fixture)) as pdf:
+        pdf.docinfo["/Title"] = title
+        pdf.save(output)
     return output.getvalue()
 
 
 def seed(root: Path, count: int) -> None:
     rng = random.Random(8)
+    fixtures = [(FIXTURES / name).read_bytes() for name in FIXTURE_PDFS]
     root.mkdir(parents=True, exist_ok=True)
     for index in range(count):
         title = rng.choice(CLAIMS).format(subject=rng.choice(SUBJECTS), n=rng.randint(2, 24))
@@ -93,7 +87,8 @@ def seed(root: Path, count: int) -> None:
             title_hint=title,
         )
         captured_at = NEWEST_CAPTURE - timedelta(hours=index * 7 + rng.randint(0, 6), minutes=rng.randint(0, 59))
-        store_pdf(root, title_page(title), request, f"{identifier}.pdf", captured_at)
+        fixture = fixtures[index % len(fixtures)]
+        store_pdf(root, titled_copy(fixture, title), request, f"{identifier}.pdf", captured_at)
 
 
 if __name__ == "__main__":

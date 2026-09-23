@@ -6,10 +6,11 @@
 
 Builds three bucket roots in a temporary directory: an empty one, one holding a PDF without
 embedded provenance (the error state), and one seeded with 1,000 PDFs through the real store
-(`scripts/seed_bucket.py`). Serves each with `src/server/serveBucket.ts` on a free port, files
-part of the seeded library through the library API, then captures each screen in Playwright's
-Chromium and the library and reader in the system WebKitGTK (the engine of the desktop window)
-through WebKitWebDriver on a headless Weston. Prints the load and filter timings as JSON.
+(`scripts/seed_bucket.py`, from committed fixture PDFs). Serves each with
+`src/server/serveBucket.ts` on a free port, files part of the seeded library through the library
+API, lays the committed MinerU output beside one item as its extraction, then captures each
+screen in the system Chromium driven by Playwright, and the library and reader in the system
+WebKitGTK (the engine of the desktop window) through WebKitWebDriver on a headless Weston. Prints the load and filter timings as JSON.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from contextlib import ExitStack
@@ -137,7 +137,30 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
             "search": {"query": "survey lectures", "matchCase": False, "matchType": "any", "searchFields": fields},
         },
     )
-    return {"birational": birational, "saved": str(flips_search["id"]), "reader": str(recent[0]["id"]), "title": str(recent[0]["title"])}
+    return {
+        "birational": birational,
+        "saved": str(flips_search["id"]),
+        "reader": str(recent[0]["id"]),
+        "title": str(recent[0]["title"]),
+        "extracted": str(recent[1]["id"]),
+    }
+
+
+def place_extraction(root: Path, key: str) -> None:
+    """Lay out the committed MinerU output as the extraction runner does: artifacts first,
+    the Markdown last."""
+    shipped = REPO / "tests/fixtures/mineru-ten-page-notes"
+    (root / f"{key}.extraction").mkdir()
+    for name in ("content_list.json", "layout.json"):
+        shutil.copy(shipped / name, root / f"{key}.extraction" / name)
+    shutil.copy(shipped / "full.md", root / f"{key}.md")
+
+
+def system_chromium() -> str:
+    """The system Chromium, so the run downloads no browser."""
+    path = shutil.which("chromium")
+    assert path is not None, "chromium is not on PATH"
+    return path
 
 
 def shoot(page: Page, out: Path, name: str) -> None:
@@ -147,7 +170,7 @@ def shoot(page: Page, out: Path, name: str) -> None:
 def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) -> dict[str, float]:
     timings: dict[str, float] = {}
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(executable_path=system_chromium())
         page = browser.new_page(viewport=VIEWPORT)
 
         page.goto(origins["empty"])
@@ -175,6 +198,11 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.get_by_role("row").filter(has_text=filed["title"]).first.click()
         page.get_by_role("complementary", name="Item details").wait_for()
         shoot(page, out, "library-populated")
+
+        page.get_by_role("row").nth(2).click()
+        page.get_by_role("complementary", name="Item details").get_by_text("content_list.json").wait_for()
+        shoot(page, out, "inspector-extraction")
+        page.get_by_role("row").filter(has_text=filed["title"]).first.click()
 
         page.get_by_role("tab", name="Notes").click()
         shoot(page, out, "inspector-notes")
@@ -289,7 +317,6 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
 def main(out: Path) -> None:
     """Write the screenshots into OUT and print the timings."""
     out.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     with ExitStack() as stack:
         scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-evidence-")))
         roots = {name: scratch / name for name in ("empty", "broken", "seeded")}
@@ -317,6 +344,7 @@ def main(out: Path) -> None:
         assert isinstance(items, list)
         assert len(items) == SEEDED_COUNT, f"seeded library lists {len(items)} items"
         filed = file_library(origins["seeded"], items)
+        place_extraction(roots["seeded"], filed["extracted"])
 
         timings = {
             "seed_1000_pdfs_s": seed_seconds,
