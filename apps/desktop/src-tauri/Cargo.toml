@@ -31,3 +31,9 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Lint silencing is checked, not free: #[allow] is denied; use #[expect(..., reason = "...")]
+# (clippy restriction lints allow_attributes, allow_attributes_without_reason).
+[lints.clippy]
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
