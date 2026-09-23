@@ -66,3 +66,14 @@ test-push:
 test-ci:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-ci
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-ci
+
+# Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
+extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root=$(mktemp -d --suffix=-pdf-bucket-evidence)
+    key=$(basename "{{fixture}}" .pdf)
+    uv run --locked pdfbucket capture "$root" "{{fixture}}" "$key.pdf" \
+        "https://www.math.example.edu/~author/$key.pdf" "https://www.math.example.edu/~author/teaching.html" "$key" >/dev/null
+    echo "root: $root"
+    uv run --locked pdfbucket extract "$root" "$key" plugins/manifests/extractions.json "{{plugin}}"

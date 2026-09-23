@@ -1,0 +1,101 @@
+[
+  { "page_idx": 0, "type": "text", "text": "Ten Lectures on Integral Lattices", "text_level": 1, "bbox": [315, 192, 707, 212] },
+  { "page_idx": 0, "type": "text", "text": "Lecture Notes", "text_level": 2, "bbox": [448, 231, 574, 246] },
+  { "page_idx": 0, "type": "text", "text": "1 Lattices", "text_level": 2, "bbox": [221, 280, 361, 297] },
+  {
+    "page_idx": 0,
+    "type": "text",
+    "text": "Definition 1. A lattice is a free Z-module L of finite rank with a symmetric bilinear form b : $L \\times L \\to \\mathbb { Q }$ . It is integral if $b ( L , L ) \\subseteq \\mathbb { Z } .$",
+    "bbox": [218, 309, 803, 338]
+  },
+  { "page_idx": 0, "type": "page_number", "text": "1", "bbox": [505, 824, 517, 835] },
+  { "page_idx": 1, "type": "text", "text": "2 Gram matrices", "text_level": 2, "bbox": [220, 145, 445, 162] },
+  {
+    "page_idx": 1,
+    "type": "text",
+    "text": "For a basis $e _ { 1 } , \\ldots , e _ { n }$ of L the Gram matrix is $G = ( b ( e _ { i } , e _ { j } ) ) _ { i , j }$ , and",
+    "bbox": [218, 174, 727, 189]
+  },
+  { "page_idx": 1, "type": "equation", "text": "$$\n\\det L = \\det G.\n$$", "text_format": "latex", "bbox": [455, 200, 566, 214] },
+  {
+    "page_idx": 1,
+    "type": "text",
+    "text": "A change of basis by $P \\in \\operatorname { G L } _ { n } ( \\mathbb { Z } )$ replaces G by $P ^ { T } G P$",
+    "bbox": [220, 225, 636, 241]
+  },
+  { "page_idx": 1, "type": "page_number", "text": "2", "bbox": [505, 824, 517, 835] },
+  { "page_idx": 2, "type": "text", "text": "3 Dual lattices", "text_level": 2, "bbox": [220, 143, 416, 161] },
+  {
+    "page_idx": 2,
+    "type": "text",
+    "text": "The dual lattice is $L ^ { \\vee } = \\{ x \\in L \\otimes \\mathbb { Q } : b ( x , L ) \\subseteq \\mathbb { Z } \\}$ . For integral L we have $L \\subseteq L ^ { \\vee }$ and $[ L ^ { \\vee } : L ] = | \\operatorname* { d e i } L |$",
+    "bbox": [220, 173, 803, 203]
+  },
+  { "page_idx": 2, "type": "page_number", "text": "3", "bbox": [505, 824, 517, 835] },
+  { "page_idx": 3, "type": "text", "text": "4 Discriminant forms", "text_level": 2, "bbox": [220, 143, 495, 162] },
+  {
+    "page_idx": 3,
+    "type": "text",
+    "text": "For an even lattice the discriminant group $A _ { L } = L ^ { \\vee } / L$ carries the quadratic form",
+    "bbox": [218, 174, 803, 202]
+  },
+  { "page_idx": 3, "type": "equation", "text": "$$\nq _ {L} (x + L) = \\frac {1}{2} b (x, x) \\bmod \\mathbb {Z}.\n$$", "text_format": "latex", "bbox": [403, 202, 618, 218] },
+  { "page_idx": 3, "type": "page_number", "text": "4", "bbox": [505, 824, 519, 835] },
+  { "page_idx": 4, "type": "text", "text": "5 Root lattices", "text_level": 2, "bbox": [220, 145, 418, 161] },
+  {
+    "page_idx": 4,
+    "type": "text",
+    "text": "The root lattice $A _ { n }$ $\\textstyle \\left\\{ x \\in \\mathbb { Z } ^ { n + 1 } : \\sum _ { i } x _ { i } = 0 \\right\\}$ , with det $A _ { n } = n + 1$ . The lattice $D _ { n }$ is $\\left\\{ x \\in \\mathbb { Z } ^ { n } : \\sum _ { i } x _ { i } \\equiv 0 { \\pmod { 2 } } \\right\\}$",
+    "bbox": [220, 173, 803, 204]
+  },
+  { "page_idx": 4, "type": "page_number", "text": "5", "bbox": [505, 824, 517, 835] },
+  { "page_idx": 5, "type": "text", "text": "6 The lattice $E _ { 8 }$", "text_level": 2, "bbox": [220, 143, 431, 162] },
+  {
+    "page_idx": 5,
+    "type": "text",
+    "text": "Theorem 1. ${ \\cal E } _ { 8 } = D _ { 8 } \\cup ( D _ { 8 } + { \\textstyle \\frac { 1 } { 2 } } ( 1 , . . . , 1 ) )$ is the unique even unimodular positive definite lattice of rank 8, and it has 240 roots.",
+    "bbox": [218, 173, 803, 203]
+  },
+  { "page_idx": 5, "type": "page_number", "text": "6", "bbox": [505, 824, 517, 835] },
+  { "page_idx": 6, "type": "text", "text": "7 Theta series", "text_level": 2, "bbox": [220, 143, 411, 162] },
+  {
+    "page_idx": 6,
+    "type": "equation",
+    "text": "$$\n\\theta_ {E _ {8}} (q) = 1 + 2 4 0 \\sum_ {n \\geq 1} \\sigma_ {3} (n) q ^ {n}.\n$$",
+    "text_format": "latex",
+    "bbox": [400, 200, 621, 231]
+  },
+  {
+    "page_idx": 6,
+    "type": "text",
+    "text": "The theta series of a positive definite lattice is $\\begin{array} { r } { \\theta _ { L } ( q ) = \\sum _ { x \\in L } q ^ { b ( x , x ) / 2 } } \\end{array}$ . For $E _ { 8 }$",
+    "bbox": [220, 173, 801, 189]
+  },
+  { "page_idx": 6, "type": "page_number", "text": "7", "bbox": [505, 822, 517, 835] },
+  { "page_idx": 7, "type": "text", "text": "8 Genus", "text_level": 2, "bbox": [220, 145, 341, 161] },
+  {
+    "page_idx": 7,
+    "type": "text",
+    "text": "Two lattices are in the same genus if $L \\otimes \\mathbb { Z } _ { p } \\cong M \\otimes \\mathbb { Z } _ { p }$ for every prime p and $L \\otimes \\mathbb { R } \\cong M \\otimes \\mathbb { R }$",
+    "bbox": [220, 173, 803, 202]
+  },
+  { "page_idx": 7, "type": "page_number", "text": "8", "bbox": [505, 824, 517, 835] },
+  { "page_idx": 8, "type": "text", "text": "9 The mass formula", "text_level": 2, "bbox": [220, 143, 480, 162] },
+  { "page_idx": 8, "type": "text", "text": "The Smith–Minkowski–Siegel mass formula states", "bbox": [220, 174, 591, 189] },
+  {
+    "page_idx": 8,
+    "type": "equation",
+    "text": "$$\n\\sum_ {M \\in \\mathrm{gen} (L)} \\frac {1}{| \\mathrm{O} (M) |} = \\mathrm{mass} (L).\n$$",
+    "text_format": "latex",
+    "bbox": [403, 199, 618, 235]
+  },
+  { "page_idx": 8, "type": "page_number", "text": "9", "bbox": [505, 822, 517, 835] },
+  { "page_idx": 9, "type": "text", "text": "10 Niemeier lattices", "text_level": 2, "bbox": [221, 143, 480, 162] },
+  {
+    "page_idx": 9,
+    "type": "text",
+    "text": "There are exactly 24 even unimodular positive definite lattices of rank 24; the Leech lattice is the only one without roots.",
+    "bbox": [218, 174, 803, 203]
+  },
+  { "page_idx": 9, "type": "page_number", "text": "10", "bbox": [502, 822, 522, 835] }
+]
