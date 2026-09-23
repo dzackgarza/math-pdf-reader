@@ -3,9 +3,10 @@ import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
+import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
-import { captureBytes, describeItem, StoreCommandError, storedPdfPath } from "./store";
+import { captureBytes, StoreCommandError, storedPdfPath } from "./store";
 
 export type AppConfig = {
   root: string;
@@ -37,6 +38,8 @@ export function createApp(config: AppConfig): Hono {
     }
     throw error;
   });
+
+  const library = registerLibraryRoutes(app, config.root);
 
   app.get("/status", async (c) => {
     const origin = new URL(c.req.url).origin;
@@ -76,8 +79,13 @@ export function createApp(config: AppConfig): Hono {
     if (storedPdfPath(config.root, key) === null) {
       return c.notFound();
     }
-    const item = await describeItem(config.root, key);
-    return c.html(readerPage(item, new URL(c.req.url).origin));
+    const found = await library.item(key);
+    if (found === null) {
+      return c.notFound();
+    }
+    return c.html(
+      readerPage(found.item, found.organization.collections, new URL(c.req.url).origin),
+    );
   });
 
   app.use(

@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pikepdf
 import pytest
-from pydantic import TypeAdapter, ValidationError
+from pydantic import TypeAdapter
 
 from pdfbucket.cli import app
 from pdfbucket.models import CaptureResult, StoredItem
+from pdfbucket.provenance import MissingProvenanceError
 from pdfbucket.store import UnknownKeyError, pdf_path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -112,5 +113,5 @@ def test_list_refuses_a_stored_pdf_without_provenance(capsys: pytest.CaptureFixt
     run_capture(capsys, tmp_path, LECTURE_NOTES, "notes.pdf", "https://example.org/notes.pdf")
     (tmp_path / "hand-copied.pdf").write_bytes(PROBLEM_SET.read_bytes())
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(MissingProvenanceError):
         app(["list", str(tmp_path)], result_action="return_value")

@@ -3,14 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { STORE_COMMAND } from "./config";
-
-export const ProvenanceSchema = z.strictObject({
-  pdf_url: z.url(),
-  source_url: z.url(),
-  captured_at: z.iso.datetime({ offset: true }),
-  original_sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  title_hint: z.string().min(1),
-});
+import { ProvenanceSchema } from "./libraryContract";
 
 const StoredItemSchema = z.strictObject({
   key: z.string().min(1),
@@ -67,6 +60,7 @@ export function storedPdfPath(root: string, key: string): string | null {
 export async function captureBytes(root: string, upload: CaptureUpload): Promise<CaptureResult> {
   const args = [
     "capture",
+    "--",
     root,
     "/dev/stdin",
     upload.pdf.name,
@@ -77,6 +71,9 @@ export async function captureBytes(root: string, upload: CaptureUpload): Promise
   return CaptureResultSchema.parse(JSON.parse(await runStore(args, upload.pdf)));
 }
 
-export async function describeItem(root: string, key: string): Promise<StoredItem> {
-  return StoredItemSchema.parse(JSON.parse(await runStore(["describe", root, key], "ignore")));
+// The stored items for these keys, read from the PDFs in one store process. `--` ends the
+// options, so a key that starts with a dash stays a key.
+export async function listItems(root: string, keys: string[]): Promise<StoredItem[]> {
+  const stdout = await runStore(["list", root, "--", ...keys], "ignore");
+  return z.array(StoredItemSchema).parse(JSON.parse(stdout));
 }

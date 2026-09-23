@@ -1,6 +1,6 @@
 // The capture response: what a capture client (the browser extension) receives.
 import { z } from "zod";
-import { ProvenanceSchema } from "./store";
+import { ProvenanceSchema } from "./libraryContract";
 
 export const CaptureResponseSchema = z.strictObject({
   key: z.string().min(1),
