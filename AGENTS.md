@@ -47,7 +47,11 @@ Zotero stays the citation store; the bucket is the reading store.
 
 ## Where the plan is
 
-The plan is a card in the agent-memory vault, not a file in this repo.
+The execution tracker is the GitHub issue tree rooted at
+[#4 PDF Bucket roadmap](https://github.com/dzackgarza/math-pdf-reader/issues/4): its
+sub-issues are the milestones in delivery order, each with its definition of done and its
+blockers. The plan of record, with the invariants, the Decision Log and the handoff, is a
+card in the agent-memory vault, not a file in this repo.
 
 ```bash
 agent-memory plan show PLAN-PDF-BUCKET-ROADMAP     # roadmap: milestones, invariants, decisions
