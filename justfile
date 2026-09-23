@@ -1,7 +1,7 @@
 # PDF Bucket — standalone PDF reading bucket: browser capture, PDF.js reader, send to Zotero.
 #
 # One Bun package: src/server (Hono), src/web (Vite + React), src/extension (WXT), tests/.
-# desktop/ holds the Tauri crate; src/pdfbucket_plugins is the Python plugin package. QC
+# desktop/ holds the Tauri crate; src/pdfbucket is the Python store and plugin package. QC
 # delegates to the global ai-review-ci bun-python profile; bun, uv, wxt, vite and tauri are
 # implementation details.
 
@@ -19,17 +19,38 @@ default:
     @just --list
 
 # Build every app: web bundle, both extension targets, desktop binary.
-build:
+build: fetch-pdfjs
     @bun run build
     @cd desktop && bunx @tauri-apps/cli build
 
-# Start the bucket server on 127.0.0.1:8765 with hot reload.
-serve:
+# Unpack the pinned prebuilt PDF.js viewer release into vendor/ (version and hash in pdf-bucket.config.json).
+fetch-pdfjs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(jq -r .pdfjs.version pdf-bucket.config.json)
+    dest="vendor/pdfjs-$version"
+    [[ -f "$dest/web/viewer.html" ]] && exit 0
+    zip=$(mktemp --suffix=.zip)
+    curl -fsSL -o "$zip" "https://github.com/mozilla/pdf.js/releases/download/v$version/pdfjs-$version-dist.zip"
+    echo "$(jq -r .pdfjs.sha256 pdf-bucket.config.json)  $zip" | sha256sum --check --quiet
+    mkdir -p "$dest"
+    unzip -q "$zip" -d "$dest"
+    trash "$zip"
+
+# Build the library UI that the server serves at /.
+build-web:
+    @bunx vite build --config src/web/vite.config.ts
+
+# Start the bucket server with hot reload on the configured host and port.
+serve: fetch-pdfjs build-web
     @bun run dev
 
-# Run the desktop window against a live server (starts the server first).
-run:
-    @cd desktop && bunx @tauri-apps/cli dev
+# Open the desktop window; Tauri starts the server first and waits for its URL.
+run: fetch-pdfjs build-web
+    #!/usr/bin/env bash
+    set -euo pipefail
+    url=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
+    cd desktop && bunx @tauri-apps/cli dev --config "{\"build\":{\"devUrl\":\"$url\"}}"
 
 # Run commit-tier Python and Bun QC through the central implementation.
 test-commit:

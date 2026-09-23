@@ -5,7 +5,6 @@
   "identifier": "com.dzackgarza.pdfbucket",
   "build": {
     "beforeDevCommand": "bun run --cwd .. dev",
-    "devUrl": "http://127.0.0.1:8765",
     "frontendDist": "../src"
   },
   "app": {
@@ -13,7 +12,6 @@
     "windows": [
       {
         "title": "PDF Bucket",
-        "url": "http://127.0.0.1:8765",
         "width": 1400,
         "height": 900
       }

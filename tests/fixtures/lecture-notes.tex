@@ -1,0 +1,20 @@
+\documentclass{article}
+\usepackage{amsmath,amsthm}
+\title{Lattices and Quadratic Forms}
+\author{Lecture Notes}
+\date{}
+\newtheorem{theorem}{Theorem}
+\begin{document}
+\maketitle
+\section{Even unimodular lattices}
+A lattice $L \subset \mathbb{R}^n$ is \emph{even} if $x \cdot x \in 2\mathbb{Z}$ for all $x \in L$,
+and \emph{unimodular} if $\det L = \pm 1$.
+\begin{theorem}
+An even unimodular positive definite lattice of rank $n$ exists if and only if $8 \mid n$.
+\end{theorem}
+\[ \theta_{E_8}(q) = 1 + 240 \sum_{n \geq 1} \sigma_3(n) q^n. \]
+\newpage
+\section{Discriminant forms}
+For an even lattice $L$ the discriminant group is $A_L = L^\vee / L$ with the form
+$q_L(x) = x \cdot x \bmod 2\mathbb{Z}$.
+\end{document}

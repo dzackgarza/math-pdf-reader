@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import pytest
-from pdfbucket_plugins.manifest import PluginManifest, load_manifest
 from pydantic import ValidationError
+
+from pdfbucket.manifest import PluginManifest, load_manifest
 
 MANIFESTS = Path(__file__).resolve().parents[1] / "plugins" / "manifests"
 
