@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { xdgData } from "xdg-basedir";
 import { z } from "zod";
 
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -16,7 +17,6 @@ export const AppConfigSchema = z.strictObject({
     host: z.string().min(1),
     port: z.number().int().positive(),
   }),
-  root: z.string().min(1),
   pdfjs: z.strictObject({
     version: z.string().regex(/^\d+\.\d+\.\d+$/),
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -37,4 +37,13 @@ export function loadAppConfig(configPath: string): AppConfig {
 // The prebuilt PDF.js viewer, unpacked from the pinned release by `just fetch-pdfjs`.
 export function pdfjsDir(config: AppConfig): string {
   return join(REPO_ROOT, "vendor", `pdfjs-${config.pdfjs.version}`);
+}
+
+// Permanent data (stored PDFs, the library index) lives in the XDG data directory:
+// $XDG_DATA_HOME/pdf-bucket, which is ~/.local/share/pdf-bucket when XDG_DATA_HOME is unset.
+export function dataRoot(): string {
+  if (xdgData === undefined) {
+    throw new Error("no XDG data directory: neither XDG_DATA_HOME nor HOME is set");
+  }
+  return join(xdgData, "pdf-bucket");
 }

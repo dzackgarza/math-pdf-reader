@@ -14,6 +14,11 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 | `src/pdfbucket` | Python package: provenance embedding, PDF store, plugin manifest contract |
 | `plugins/manifests` | Shipped extraction and resolver plugin manifests |
 | `tests/` | Bun tests (`*.test.ts`) and Python tests (`test_*.py`) |
+| `tests/fixtures` | Everything the tests and evidence scripts consume, including the Zotero Connector build (zip) |
+
+## Data
+
+Stored PDFs and the library index live in `$XDG_DATA_HOME/pdf-bucket` (`~/.local/share/pdf-bucket` when `XDG_DATA_HOME` is unset).
 
 ## Commands
 

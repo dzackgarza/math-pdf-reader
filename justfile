@@ -61,12 +61,24 @@ test-commit:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-commit
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-commit
 
-# Run the full Python and Bun test suites before pushing.
+# Run the full Python and Bun test suites and the desktop crate's Rust checks before pushing.
 test-push:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-push
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-push
+    @just desktop-rust-checks
 
-# Run CI acceptance QC through both central implementations.
+# Run CI acceptance QC through the Python, Bun and Rust central implementations.
 test-ci:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-ci
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-ci
+    @just desktop-rust-checks
+
+# rustfmt check and clippy with warnings denied on the Tauri crate, from the central Rust implementation.
+desktop-rust-checks:
+    @just -f ~/ai-review-ci/justfiles/rust.just -d . _rustfmt
+    @just -f ~/ai-review-ci/justfiles/rust.just -d . _clippy
+
+# Install Tauri's Linux build inputs on the CI runner; the qc-ci job runs it as its setup_recipe.
+ci-setup-desktop:
+    sudo apt-get update
+    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev

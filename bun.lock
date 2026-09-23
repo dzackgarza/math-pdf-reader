@@ -9,6 +9,7 @@
         "hono": "^4.13.8",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
+        "xdg-basedir": "^5.1.0",
         "zod": "^4.4.3",
       },
       "devDependencies": {
