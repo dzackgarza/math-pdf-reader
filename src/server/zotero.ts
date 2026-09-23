@@ -30,9 +30,10 @@ const AttachSchema = z.object({
   attachment_key: z.string().min(1),
 });
 
-// Zotero stores dates as UTC `YYYY-MM-DD HH:MM:SS`.
+// update_item_fields merges the fields into the item's API JSON, where Zotero reads a date-time
+// only in the API's ISO 8601 UTC form `YYYY-MM-DDTHH:MM:SSZ` and drops any other.
 export function zoteroDateTime(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 19).replace("T", " ");
+  return `${new Date(iso).toISOString().slice(0, 19)}Z`;
 }
 
 export class ZoteroWriteApi {
