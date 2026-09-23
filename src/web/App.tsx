@@ -202,7 +202,7 @@ function Workspace({
               knownTags={knownTags}
               filing={filingActions(context, selected.id)}
               send={{
-                attempt: sendAttempts.get(selected.id) ?? null,
+                attempt: sendAttempts.get(selected.id),
                 onSend: () => send(selected.id),
                 onRemove: () => removeFromBucket(context, selected, () => setSelectedId(null)),
               }}

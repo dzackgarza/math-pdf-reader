@@ -3,7 +3,7 @@
     {
       "id": "doi",
       "name": "DOI Resolver",
-      "command": ["bun", "../resolvers/doi.ts", "https://doi.org"],
+      "command": ["bun", "../../src/resolvers/doi.ts", "https://doi.org"],
       "accepted_inputs": [
         {
           "kind": "identifier",
@@ -17,7 +17,7 @@
     {
       "id": "isbn",
       "name": "ISBN Resolver",
-      "command": ["bun", "../resolvers/isbn.ts", "https://openlibrary.org"],
+      "command": ["bun", "../../src/resolvers/isbn.ts", "https://openlibrary.org"],
       "accepted_inputs": [
         {
           "kind": "identifier",
@@ -31,7 +31,7 @@
     {
       "id": "arxiv",
       "name": "arXiv Resolver",
-      "command": ["bun", "../resolvers/arxiv.ts", "https://arxiv.org"],
+      "command": ["bun", "../../src/resolvers/arxiv.ts", "https://arxiv.org"],
       "accepted_inputs": [
         {
           "kind": "identifier",
@@ -52,7 +52,7 @@
     {
       "id": "zbmath",
       "name": "zbMATH Resolver",
-      "command": ["bun", "../resolvers/zbmath.ts", "https://api.zbmath.org"],
+      "command": ["bun", "../../src/resolvers/zbmath.ts", "https://api.zbmath.org"],
       "accepted_inputs": [
         {
           "kind": "identifier",

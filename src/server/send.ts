@@ -61,11 +61,6 @@ function apiError(c: Context, status: 404 | 409 | 502, kind: ApiErrorKind, messa
 
 type ResolverFailure = Extract<Resolution, { status: "failed" }>;
 
-function lastLine(text: string): string {
-  const lines = text.trim().split("\n");
-  return lines[lines.length - 1] ?? "";
-}
-
 export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero: ZoteroWriteApi) {
   // One send or removal at a time, so two clicks never create two Zotero items.
   const sends = new Mutex();
@@ -139,7 +134,7 @@ export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero:
 
       const created = existing === undefined ? await create(indexed) : existing;
       if ("status" in created) {
-        const message = `resolver ${created.plugin_id} failed on ${created.identifier} (exit ${created.exit_code}): ${lastLine(created.stderr)}`;
+        const message = `resolver ${created.plugin_id} failed on ${created.identifier} (exit ${created.exit_code}): ${created.stderr.trim()}`;
         return apiError(c, 502, "resolver_failed", message);
       }
       await save(key, created);

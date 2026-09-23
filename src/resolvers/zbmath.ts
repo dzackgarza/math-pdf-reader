@@ -60,7 +60,9 @@ function optionalText(value: string | null | undefined): string | undefined {
 }
 
 function articleBibtex(document: ZbmathDocument, zbl: string): string {
-  const [journal] = [...(document.source.serial ?? []), ...(document.source.series ?? [])];
+  const [journal] = [document.source.serial, document.source.series]
+    .filter((entries) => Array.isArray(entries))
+    .flat();
   invariant(journal !== undefined, "zbMATH article carries no serial or series source");
   const title = text(document.title.title);
   const subtitle = optionalText(document.title.subtitle);

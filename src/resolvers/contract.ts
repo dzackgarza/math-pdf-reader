@@ -1,12 +1,13 @@
 // The resolver plugin contract: the identifier or URL arrives on stdin, the upstream service's
-// base URL is the first argument, and exactly one BibTeX entry leaves on stdout. Any failure
-// throws, so the process exits non-zero with the reason on stderr.
+// base URL is the first argument, and exactly one BibTeX entry leaves on stdout. A broken
+// invariant exits 1 with its reason as the whole of stderr.
 import { Cite, type CSL, type CSLName } from "@citation-js/core";
 import "@citation-js/plugin-bibtex";
 
 export function invariant(condition: boolean, message: string): asserts condition {
   if (!condition) {
-    throw new Error(message);
+    process.stderr.write(`${message}\n`);
+    process.exit(1);
   }
 }
 

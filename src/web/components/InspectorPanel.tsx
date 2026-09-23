@@ -34,7 +34,7 @@ export type ItemFilingActions = {
 };
 
 export type ItemSendActions = {
-  attempt: SendAttempt | null;
+  attempt: SendAttempt | undefined;
   onSend: () => void;
   onRemove: () => void;
 };
@@ -326,7 +326,7 @@ function isComplete(zotero: ZoteroStatus): boolean {
 }
 
 // The outcome of the last send, or the item's place in Zotero once every step is done.
-function SendNotice({ item, attempt }: { item: BucketItem; attempt: SendAttempt | null }) {
+function SendNotice({ item, attempt }: { item: BucketItem; attempt: SendAttempt | undefined }) {
   if (attempt?.kind === "refused" || attempt?.kind === "failed") {
     const refused = attempt.kind === "refused";
     return (
