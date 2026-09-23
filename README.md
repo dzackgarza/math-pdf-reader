@@ -11,7 +11,8 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 | `apps/web` | React library UI served by the server |
 | `apps/extension` | WXT WebExtension, built for Chrome and Firefox |
 | `apps/desktop` | Tauri window that loads the server URL |
-| `plugins/` | Plugin manifests and the Python package that wraps extraction and resolver commands |
+| `src/pdfbucket_plugins` | Python package: plugin manifest contract and command wrappers |
+| `plugins/manifests` | Shipped extraction and resolver plugin manifests |
 | `tests/` | Python tests; TypeScript tests live beside each app |
 
 ## Commands
