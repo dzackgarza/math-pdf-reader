@@ -131,6 +131,7 @@ export const API_ERROR_KINDS = [
   "unknown_collection",
   "unknown_note",
   "unknown_saved_search",
+  "unknown_plugin",
   "already_sent",
   "not_sent",
   "resolver_failed",

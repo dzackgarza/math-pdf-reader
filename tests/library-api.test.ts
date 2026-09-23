@@ -17,6 +17,7 @@ import { z } from "zod";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { type CaptureResponse, CaptureResponseSchema } from "../src/server/contract";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -40,6 +41,7 @@ function open(root: string): Bucket {
     version: "0.1.0",
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
   });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }

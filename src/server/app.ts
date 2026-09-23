@@ -4,7 +4,7 @@ import { z } from "zod";
 import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
 import { BucketEvents } from "./events";
-import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "./extractions";
+import { registerExtractionRoutes } from "./extractions";
 import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
@@ -17,6 +17,8 @@ export type AppConfig = {
   pdfjsDir: string;
   // Zotero's local HTTP server, which carries the write API the send action uses.
   zoteroUrl: string;
+  // The extraction plugins the inspector lists and runs.
+  extractionsManifest: string;
 };
 
 const CaptureFormSchema = z.strictObject({
@@ -96,7 +98,7 @@ export function createApp(config: AppConfig): Hono {
     );
   });
 
-  registerExtractionRoutes(app, config.root, EXTRACTIONS_MANIFEST);
+  registerExtractionRoutes(app, config.root, config.extractionsManifest);
 
   app.use(
     "/pdfjs/*",

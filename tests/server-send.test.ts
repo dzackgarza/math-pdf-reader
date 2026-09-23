@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -31,7 +32,13 @@ type Bucket = { root: string; request: (path: string, init?: RequestInit) => Pro
 
 function emptyBucket(): Bucket {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-"));
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config), zoteroUrl });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }
 

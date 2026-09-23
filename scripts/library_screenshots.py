@@ -38,6 +38,7 @@ REPO = Path(__file__).resolve().parents[1]
 SEEDED_COUNT = 1000
 VIEWPORT = {"width": 1600, "height": 1000}
 FILED_COUNT = 300
+SHIPPED_EXTRACTIONS = REPO / "plugins/manifests/extractions.json"
 
 app = App()
 
@@ -55,10 +56,11 @@ def closed_port_url() -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def serve(stack: ExitStack, root: Path, zotero_url: str) -> str:
-    """Start the bucket app over ROOT on a free port, writing to Zotero at ZOTERO_URL; return its origin."""
+def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> str:
+    """Start the bucket app over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
+    plugins listed in EXTRACTIONS; return its origin."""
     process = subprocess.Popen(
-        ["bun", "src/server/serveBucket.ts", str(root), zotero_url], cwd=REPO, stdout=subprocess.PIPE, text=True, env=project_env()
+        ["bun", "src/server/serveBucket.ts", str(root), zotero_url, str(extractions)], cwd=REPO, stdout=subprocess.PIPE, text=True, env=project_env()
     )
     stack.callback(process.terminate)
     assert process.stdout is not None
@@ -346,7 +348,7 @@ def main(out: Path) -> None:
         )
         list_seconds = time.perf_counter() - started
 
-        origins = {name: serve(stack, root, closed_port_url()) for name, root in roots.items()}
+        origins = {name: serve(stack, root, closed_port_url(), SHIPPED_EXTRACTIONS) for name, root in roots.items()}
         cold, payload = timed_library_load(origins["seeded"])
         warm, _ = timed_library_load(origins["seeded"])
         items = payload["items"]
@@ -407,7 +409,7 @@ def send(out: Path) -> None:
             "On The Cyclicity of Algebraic Lattices",
         )
         record_sent(root, "2609.21174v1")
-        origin = serve(stack, root, closed_port_url())
+        origin = serve(stack, root, closed_port_url(), SHIPPED_EXTRACTIONS)
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(executable_path=system_chromium())
