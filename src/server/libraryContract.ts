@@ -97,6 +97,25 @@ export const SettingsSchema = z.strictObject({
   pdfjsVersion: z.string().min(1),
 });
 
+// The collection and every collection below it.
+export function collectionSubtree(collections: Collection[], id: string): Set<string> {
+  const subtree = new Set([id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const collection of collections) {
+      const below = collection.parentId !== undefined && subtree.has(collection.parentId);
+      if (below && !subtree.has(collection.id)) {
+        subtree.add(collection.id);
+        grew = true;
+      }
+    }
+  }
+  return subtree;
+}
+
+// Topics are tags in this namespace; the library shows them without the prefix.
+export const TOPIC_PREFIX = "topic:";
+
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type AdvancedSearchSettings = z.infer<typeof AdvancedSearchSettingsSchema>;
 export type Collection = z.infer<typeof CollectionSchema>;

@@ -3,7 +3,7 @@
 // leads back to the library, and the provenance panel read from the PDF itself.
 import { html } from "hono/html";
 import prettyBytes from "pretty-bytes";
-import type { BucketItem, Collection } from "./libraryContract";
+import { type BucketItem, type Collection, TOPIC_PREFIX } from "./libraryContract";
 
 export function pdfUrlPath(key: string): string {
   return `/pdf/${encodeURIComponent(key)}.pdf`;
@@ -12,8 +12,6 @@ export function pdfUrlPath(key: string): string {
 export function readerUrlPath(key: string): string {
   return `/read/${encodeURIComponent(key)}`;
 }
-
-const TOPIC_PREFIX = "topic:";
 
 function capturedAt(iso: string): string {
   return new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
@@ -74,6 +72,10 @@ export function readerPage(item: BucketItem, collections: Collection[], origin: 
       header h1 { margin: 0; font-size: 1rem; font-weight: 600; line-height: 1.3; }
       header p { margin: 0; color: var(--muted); font-size: 0.8125rem; }
       main { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; min-height: 0; }
+      @media (max-width: 64rem) {
+        main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 40vh; }
+        aside { border-left: 0; border-top: 1px solid var(--line); }
+      }
       iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
       aside { overflow-y: auto; background: #fff; border-left: 1px solid var(--line); padding: 1.25rem; }
       aside h2 { margin: 0 0 0.25rem; font-size: 1rem; font-weight: 600; }

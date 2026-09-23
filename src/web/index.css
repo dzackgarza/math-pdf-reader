@@ -1,7 +1,27 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --color-ink: #101828;
+  --color-muted: #667085;
+  --color-faint: #98a2b3;
+  --color-line: #e6e8ec;
+  --color-surface: #f7f8fa;
+  --color-accent: #2563eb;
+  --color-accent-soft: #eef4ff;
+  --color-topic: #6d28d9;
+  --color-topic-soft: #f3efff;
+  --color-filed: #067647;
+  --color-filed-soft: #ecfdf3;
+}
+
 html,
 body,
 #root {
   margin: 0;
   height: 100%;
-  font-family: system-ui, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }

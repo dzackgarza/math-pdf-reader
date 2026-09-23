@@ -66,3 +66,8 @@ test-push:
 test-ci:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-ci
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-ci
+
+# Seed empty, broken and 1,000-PDF bucket stores; screenshot every library state into docs/m2 (Chromium at
+# 1600x1000, WebKitGTK on a headless 1400x900 display, the desktop window size) and print the load timings.
+library-screenshots: fetch-pdfjs build-web
+    @uv run --script scripts/library_screenshots.py docs/m2

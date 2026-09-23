@@ -6,7 +6,12 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Collection, ItemNote, SavedSearch } from "./libraryContract";
-import { CollectionSchema, ItemNoteSchema, SavedSearchSchema } from "./libraryContract";
+import {
+  CollectionSchema,
+  collectionSubtree,
+  ItemNoteSchema,
+  SavedSearchSchema,
+} from "./libraryContract";
 
 const ItemFilingSchema = z.strictObject({
   tags: z.array(z.string().min(1)),
@@ -104,25 +109,6 @@ export function renameCollection(org: Organization, id: string, name: string): O
       collection.id === id ? { ...collection, name } : collection,
     ),
   };
-}
-
-// The collection and every collection below it.
-export function collectionSubtree(collections: Collection[], id: string): Set<string> {
-  const subtree = new Set([id]);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const collection of collections) {
-      if (
-        collection.parentId !== undefined &&
-        subtree.has(collection.parentId) &&
-        !subtree.has(collection.id)
-      ) {
-        subtree.add(collection.id);
-        grew = true;
-      }
-    }
-  }
-  return subtree;
 }
 
 // Deleting a collection deletes its subcollections and takes every item out of them.

@@ -1,0 +1,61 @@
+// The screens the window shows, addressed by the hash path (`/#/organization/tags/MMP`).
+import type { LibraryView } from "./librarySelectors";
+
+export const ORGANIZATION_TABS = ["collections", "topics", "tags", "saved"] as const;
+
+export type OrganizationTab = (typeof ORGANIZATION_TABS)[number];
+
+export type Screen =
+  | { kind: "library"; view: LibraryView }
+  | { kind: "organization"; tab: OrganizationTab; entry: string | null }
+  | { kind: "settings" };
+
+const LIBRARY_VIEWS: Record<string, LibraryView> = {
+  "/": { kind: "all" },
+  "/inbox": { kind: "inbox" },
+  "/cache": { kind: "cache" },
+};
+
+function organizationTab(segment: string | undefined): OrganizationTab | null {
+  const tab = ORGANIZATION_TABS.find((candidate) => candidate === segment);
+  return tab === undefined ? null : tab;
+}
+
+// The screen at a path, or null for a path the window never links to.
+export function screenAt(path: string): Screen | null {
+  const view = LIBRARY_VIEWS[path];
+  if (view !== undefined) {
+    return { kind: "library", view };
+  }
+  if (path === "/settings") {
+    return { kind: "settings" };
+  }
+  const [, section, tabSegment, entry] = path.split("/");
+  const tab = organizationTab(tabSegment);
+  if (section !== "organization" || tab === null) {
+    return null;
+  }
+  return {
+    kind: "organization",
+    tab,
+    entry: entry === undefined ? null : decodeURIComponent(entry),
+  };
+}
+
+export function organizationPath(tab: OrganizationTab, entry?: string): string {
+  return entry === undefined
+    ? `/organization/${tab}`
+    : `/organization/${tab}/${encodeURIComponent(entry)}`;
+}
+
+export function entryView(tab: OrganizationTab, entry: string): LibraryView {
+  switch (tab) {
+    case "collections":
+      return { kind: "collection", id: entry };
+    case "topics":
+    case "tags":
+      return { kind: "tag", tag: entry };
+    case "saved":
+      return { kind: "saved", id: entry };
+  }
+}
