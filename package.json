@@ -12,6 +12,7 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "async-mutex": "^0.5.0",
     "content-disposition": "^3.0.0",
     "hono": "^4.13.8",
     "react": "^19.2.8",
