@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-09-23",
+  "responses": [
+    {
+      "request": "/bibtex/2609.21174v1",
+      "live": "https://arxiv.org/bibtex/2609.21174v1",
+      "file": "arxiv-2609.21174v1.bib",
+      "content_type": "text/plain; charset=utf-8"
+    },
+    {
+      "request": "/10.4007/annals.2017.185.3.7",
+      "live": "https://doi.org/10.4007/annals.2017.185.3.7 (Accept: application/x-bibtex)",
+      "file": "doi-10.4007-annals.2017.185.3.7.bib",
+      "content_type": "application/x-bibtex"
+    },
+    {
+      "request": "/isbn/9780387902449.json",
+      "live": "https://openlibrary.org/isbn/9780387902449.json",
+      "file": "openlibrary-isbn-9780387902449.json",
+      "content_type": "application/json"
+    },
+    {
+      "request": "/authors/OL196741A.json",
+      "live": "https://openlibrary.org/authors/OL196741A.json",
+      "file": "openlibrary-author-OL196741A.json",
+      "content_type": "application/json"
+    },
+    {
+      "request": "/v1/document/_search?search_string=an%3A0139.24606&results_per_page=1",
+      "live": "https://api.zbmath.org/v1/document/_search?search_string=an:0139.24606&results_per_page=1",
+      "file": "zbmath-0139.24606.json",
+      "content_type": "application/json"
+    }
+  ]
+}

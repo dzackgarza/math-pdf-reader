@@ -18,6 +18,7 @@ import { $ } from "bun";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir, REPO_ROOT } from "../src/server/config";
 import { CaptureResponseSchema } from "../src/server/contract";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { CollectionSchema } from "../src/server/libraryContract";
 
 const fixtures = join(import.meta.dir, "fixtures");
@@ -49,7 +50,14 @@ const root = join(xdg, "pdf-bucket");
 const exportFile = join(xdg, "pdf-bucket-export", "index.json");
 mkdirSync(root);
 const env = { ...process.env, XDG_DATA_HOME: xdg };
-const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(loadAppConfig(CONFIG_PATH)) });
+const config = loadAppConfig(CONFIG_PATH);
+const app = createApp({
+  root,
+  version: "0.1.0",
+  pdfjsDir: pdfjsDir(config),
+  zoteroUrl: config.zotero.url,
+  extractionsManifest: EXTRACTIONS_MANIFEST,
+});
 const api = (path: string, init?: RequestInit) => app.request(`http://bucket${path}`, init);
 
 function sha256(path: string): string {

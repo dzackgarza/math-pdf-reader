@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "./app";
 import { CONFIG_PATH, dataRoot, loadAppConfig, pdfjsDir } from "./config";
+import { EXTRACTIONS_MANIFEST } from "./extractions";
 
 const VERSION = "0.1.0";
 
@@ -18,5 +19,11 @@ export default {
   hostname: config.server.host,
   // Extraction requests stay open for minutes while a provider works; 0 disables the timeout.
   idleTimeout: 0,
-  fetch: createApp({ root, version: VERSION, pdfjsDir: pdfjsDir(config) }).fetch,
+  fetch: createApp({
+    root,
+    version: VERSION,
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  }).fetch,
 };

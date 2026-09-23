@@ -127,6 +127,16 @@ extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
 library-screenshots: fetch-pdfjs build-web
     @uv run --script scripts/library_screenshots.py docs/m2
 
+# Screenshot the send action's states (idle, sending, failed, sent, refused, remove) into docs/m3
+# against a two-item bucket whose Zotero is a closed port, so nothing reaches a real library.
+send-screenshots: fetch-pdfjs build-web
+    @uv run --script scripts/library_screenshots.py send docs/m3
+
+# Screenshot the inspector's extraction runs (idle, running, succeeded, failed, rejected) into
+# docs/m4 against the committed fixture extractor, so no provider is called.
+extract-screenshots: fetch-pdfjs build-web
+    @uv run --script scripts/library_screenshots.py extract docs/m4
+
 # Export, wipe, import and rebuild a temporary store through the recipes above, then delete three
 # PDFs (one at a URL the fixture publisher has taken down) and rebuild again; prints the transcript.
 cache-evidence:

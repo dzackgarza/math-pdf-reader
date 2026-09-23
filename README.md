@@ -11,9 +11,10 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 | `src/web` | React library UI served by the server |
 | `src/extension` | WXT WebExtension, built for Chrome and Firefox |
 | `desktop/` | Tauri window that loads the server URL |
-| `src/pdfbucket` | Python package: provenance embedding, PDF store, plugin manifest contract |
+| `src/pdfbucket` | Python package: provenance embedding, PDF store, plugin manifest contract, extraction and resolver runners |
 | `systemd/` | User unit templates that `just provision` renders and installs |
 | `plugins/manifests` | Shipped extraction and resolver plugin manifests |
+| `src/resolvers` | Resolver plugins: an identifier or URL on stdin, one BibTeX entry on stdout |
 | `tests/` | Bun tests (`*.test.ts`) and Python tests (`test_*.py`) |
 | `tests/fixtures` | Everything the tests and evidence scripts consume, including the Zotero Connector build (zip) |
 

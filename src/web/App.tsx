@@ -26,9 +26,14 @@ import TopBar from "./components/TopBar";
 import {
   type ActionContext,
   createCollection,
+  type ExtractionAttempt,
+  extractWith,
   filingActions,
   organizationActions,
+  removeFromBucket,
+  type SendAttempt,
   saveSearch,
+  sendToZotero,
 } from "./libraryActions";
 import { type LibraryView, reconcileView, viewName, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
@@ -36,7 +41,9 @@ import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import { defaultSearchSettings } from "./search";
 import { type StatusRead, useBucketStatus } from "./useBucketStatus";
-import { type Mutate, useLibraryApi } from "./useLibraryApi";
+import { useExtractionPlugins } from "./useExtractionPlugins";
+import { useKeyedAttempts } from "./useKeyedAttempts";
+import { type LibraryApi, useLibraryApi } from "./useLibraryApi";
 import { resetColumnLayout, useLibraryTable } from "./useLibraryTable";
 
 function readerUrl(key: string): string {
@@ -62,12 +69,12 @@ type WorkspaceProps = {
   payload: LibraryPayload;
   read: StatusRead;
   screen: Screen;
-  mutate: Mutate;
-  reload: () => void;
+  api: LibraryApi;
   initialLayout: ColumnLayout;
 };
 
-function Workspace({ payload, read, screen, mutate, reload, initialLayout }: WorkspaceProps) {
+function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps) {
+  const { mutate, reload, refresh } = api;
   const [, navigate] = useLocation();
   const [search, setSearch] = useState<AdvancedSearchSettings>(defaultSearchSettings);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -75,6 +82,9 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
   const [nameRequest, setNameRequest] = useState<NameRequest | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [sendAttempts, setSendAttempt] = useKeyedAttempts<SendAttempt>();
+  const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
+  const plugins = useExtractionPlugins();
   const palette = useRef<CommandPaletteHostHandle>(null);
 
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
@@ -91,6 +101,7 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
 
   const context: ActionContext = {
     mutate,
+    refresh,
     navigate,
     askName: setNameRequest,
     confirm: setConfirmRequest,
@@ -101,12 +112,17 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
     saveSearch(context, search, () => setSearch(defaultSearchSettings()));
 
   const openReader = (key: string) => window.location.assign(readerUrl(key));
+  const send = (key: string) =>
+    sendToZotero(context, key, (attempt) => setSendAttempt(key, attempt));
+  const extract = (key: string, pluginId: string) =>
+    extractWith(context, key, pluginId, (attempt) => setExtractionAttempt(key, attempt));
 
   const commands = createAppCommands({
     navigate,
     newCollection,
     saveSearch: saveCurrentSearch,
     openSelectedInReader: selected === undefined ? null : () => openReader(selected.id),
+    sendSelectedToZotero: selected === undefined ? null : () => send(selected.id),
     reloadLibrary: reload,
     showAllColumns: () => table.toggleAllColumnsVisible(true),
     resetColumns: () => resetColumnLayout(table),
@@ -174,6 +190,16 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
               collections={payload.collections}
               knownTags={knownTags}
               filing={filingActions(context, selected.id)}
+              send={{
+                attempt: sendAttempts.get(selected.id),
+                onSend: () => send(selected.id),
+                onRemove: () => removeFromBucket(context, selected, () => setSelectedId(null)),
+              }}
+              extraction={{
+                plugins,
+                attempt: extractionAttempts.get(selected.id),
+                onRun: (pluginId) => extract(selected.id, pluginId),
+              }}
               onOpenReader={() => openReader(selected.id)}
               onClose={() => setSelectedId(null)}
             />
@@ -222,7 +248,8 @@ function Workspace({ payload, read, screen, mutate, reload, initialLayout }: Wor
 }
 
 export default function App() {
-  const { state, reload, mutate } = useLibraryApi();
+  const { state, ...api } = useLibraryApi();
+  const { reload } = api;
   const read = useBucketStatus();
   const [location] = useLocation();
   const [layoutRead, setLayoutRead] = useState(readColumnLayout);
@@ -306,8 +333,7 @@ export default function App() {
       payload={state.payload}
       read={read}
       screen={screen}
-      mutate={mutate}
-      reload={reload}
+      api={api}
       initialLayout={layoutRead.layout}
     />
   );

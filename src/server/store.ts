@@ -78,6 +78,49 @@ export async function listItems(root: string, keys: string[]): Promise<StoredIte
   return z.array(StoredItemSchema).parse(JSON.parse(stdout));
 }
 
+export const ResolutionSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("resolved"),
+    key: z.string().min(1),
+    plugin_id: z.string().min(1),
+    identifier: z.string().min(1),
+    bibtex: z.string().startsWith("@"),
+  }),
+  z.strictObject({
+    status: z.literal("unidentified"),
+    key: z.string().min(1),
+    candidates: z.array(z.string()),
+  }),
+  z.strictObject({
+    status: z.literal("failed"),
+    key: z.string().min(1),
+    plugin_id: z.string().min(1),
+    identifier: z.string().min(1),
+    exit_code: z.int(),
+    stderr: z.string(),
+  }),
+]);
+
+export type Resolution = z.infer<typeof ResolutionSchema>;
+
+// Finds an identifier for the item and resolves it to BibTeX with a plugin in the manifest.
+export async function resolveItem(
+  root: string,
+  key: string,
+  manifest: string,
+): Promise<Resolution> {
+  const stdout = await runStore(["resolve", "--", root, key, manifest], "ignore");
+  return ResolutionSchema.parse(JSON.parse(stdout));
+}
+
+// Moves the stored PDF and its extraction to the desktop trash.
+export async function removeStored(root: string, key: string): Promise<void> {
+  const stdout = await runStore(["remove", "--", root, key], "ignore");
+  z.strictObject({ key: z.literal(key), trashed: z.array(z.string()).min(1) }).parse(
+    JSON.parse(stdout),
+  );
+}
+
 // Store bytes re-downloaded for a missing PDF under its key with the provenance recorded at
 // capture. The store refuses bytes that do not hash to the recorded original.
 export async function restorePdf(

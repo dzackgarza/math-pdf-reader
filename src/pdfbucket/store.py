@@ -7,8 +7,15 @@ from hashlib import sha256
 from pathlib import Path
 
 from pathvalidate import sanitize_filename
+from pydantic import BaseModel, ConfigDict
+from send2trash import send2trash
 
-from pdfbucket.models import CaptureProvenance, CaptureRequest, CaptureResult, provenance_for
+from pdfbucket.models import (
+    CaptureProvenance,
+    CaptureRequest,
+    CaptureResult,
+    provenance_for,
+)
 from pdfbucket.provenance import embed_provenance, read_stored_item
 
 
@@ -59,7 +66,10 @@ def destination(root: Path, filename: str, original_sha256: str) -> tuple[Path, 
     `<key>--<sha256 prefix>`.
     """
     stem = key_stem(filename)
-    for candidate in (root / f"{stem}.pdf", root / f"{stem}--{original_sha256[:12]}.pdf"):
+    for candidate in (
+        root / f"{stem}.pdf",
+        root / f"{stem}--{original_sha256[:12]}.pdf",
+    ):
         if not candidate.exists():
             return candidate, False
         if read_stored_item(candidate).provenance.original_sha256 == original_sha256:
@@ -93,6 +103,22 @@ def store_pdf(
     if not existing:
         write_stored(path, pdf_bytes, provenance_for(request, captured_at, original_sha256))
     return CaptureResult(item=read_stored_item(path), stored_sha256=file_sha256(path), existing=existing)
+
+
+class RemovedItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    key: str
+    trashed: list[str]
+
+
+def remove_item(root: Path, key: str) -> RemovedItem:
+    """Move the stored PDF and its extraction to the desktop trash; the PDF goes last."""
+    pdf = pdf_path(root, key)
+    beside = [path for path in (root / f"{key}.md", root / f"{key}.extraction") if path.exists()]
+    for path in [*beside, pdf]:
+        send2trash(path)
+    return RemovedItem(key=key, trashed=[path.name for path in [*beside, pdf]])
 
 
 def restore_pdf(root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProvenance) -> CaptureResult:

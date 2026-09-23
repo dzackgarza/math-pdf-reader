@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import time
@@ -37,6 +38,7 @@ REPO = Path(__file__).resolve().parents[1]
 SEEDED_COUNT = 1000
 VIEWPORT = {"width": 1600, "height": 1000}
 FILED_COUNT = 300
+SHIPPED_EXTRACTIONS = REPO / "plugins/manifests/extractions.json"
 
 app = App()
 
@@ -46,10 +48,19 @@ def project_env() -> dict[str, str]:
     return {name: value for name, value in os.environ.items() if name != "VIRTUAL_ENV"}
 
 
-def serve(stack: ExitStack, root: Path) -> str:
-    """Start the bucket app over ROOT on a free port; return its origin."""
+def closed_port_url() -> str:
+    """A loopback URL nothing listens on, so a Zotero request fails instead of writing anywhere."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    return f"http://127.0.0.1:{port}"
+
+
+def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> str:
+    """Start the bucket app over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
+    plugins listed in EXTRACTIONS; return its origin."""
     process = subprocess.Popen(
-        ["bun", "src/server/serveBucket.ts", str(root)], cwd=REPO, stdout=subprocess.PIPE, text=True, env=project_env()
+        ["bun", "src/server/serveBucket.ts", str(root), zotero_url, str(extractions)], cwd=REPO, stdout=subprocess.PIPE, text=True, env=project_env()
     )
     stack.callback(process.terminate)
     assert process.stdout is not None
@@ -337,7 +348,7 @@ def main(out: Path) -> None:
         )
         list_seconds = time.perf_counter() - started
 
-        origins = {name: serve(stack, root) for name, root in roots.items()}
+        origins = {name: serve(stack, root, closed_port_url(), SHIPPED_EXTRACTIONS) for name, root in roots.items()}
         cold, payload = timed_library_load(origins["seeded"])
         warm, _ = timed_library_load(origins["seeded"])
         items = payload["items"]
@@ -355,6 +366,159 @@ def main(out: Path) -> None:
         timings |= chromium_screens(out, origins, filed)
         webkit_screens(stack, out, origins, filed)
     print(json.dumps({name: round(value, 3) for name, value in timings.items()}, indent=2))
+
+
+def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, source_url: str, title: str) -> None:
+    command = ["uv", "run", "--locked", "pdfbucket", "capture", str(root), f"tests/fixtures/{fixture}", f"{key}.pdf", pdf_url, source_url, title]
+    subprocess.run(command, cwd=REPO, check=True, env=project_env(), stdout=subprocess.DEVNULL)
+
+
+def record_sent(root: Path, key: str) -> None:
+    """File KEY as a complete send, as the send action records one in the filing document."""
+    record = {
+        "itemKey": "Q7ZK3M2P",
+        "sentAt": "2026-09-23T18:00:00.000Z",
+        "source": {"kind": "resolver", "pluginId": "arxiv", "identifier": "https://arxiv.org/abs/2609.21174v1"},
+        "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
+    }
+    filing = {"tags": [], "collections": [], "notes": [], "modifiedAt": record["sentAt"], "zotero": record}
+    organization = {"version": 1, "collections": [], "savedSearches": [], "items": {key: filing}}
+    (root / "organization.json").write_text(json.dumps(organization))
+
+
+@app.command
+def send(out: Path) -> None:
+    """Screenshot the send action's states into OUT against a bucket whose Zotero never answers."""
+    out.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as stack:
+        root = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-send-")))
+        capture_fixture(
+            root,
+            "lecture-notes.pdf",
+            "lecture-notes",
+            "https://www.math.example.edu/~author/lecture-notes.pdf",
+            "https://www.math.example.edu/~author/teaching.html",
+            "Lattices and Quadratic Forms",
+        )
+        capture_fixture(
+            root,
+            "arxiv-2609.21174v1.pdf",
+            "2609.21174v1",
+            "https://arxiv.org/pdf/2609.21174v1",
+            "https://arxiv.org/abs/2609.21174v1",
+            "On The Cyclicity of Algebraic Lattices",
+        )
+        record_sent(root, "2609.21174v1")
+        origin = serve(stack, root, closed_port_url(), SHIPPED_EXTRACTIONS)
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=system_chromium())
+            page = browser.new_page(viewport=VIEWPORT)
+            page.goto(origin)
+            details = page.get_by_role("complementary", name="Item details")
+
+            page.get_by_role("row").filter(has_text="Lattices and Quadratic Forms").click()
+            details.get_by_role("button", name="Send to Zotero").wait_for()
+            shoot(page, out, "send-idle")
+
+            held: list[Route] = []
+            page.route("**/api/items/*/zotero", lambda route: held.append(route))
+            details.get_by_role("button", name="Send to Zotero").click()
+            details.get_by_role("button", name="Sending to Zotero…").wait_for()
+            shoot(page, out, "send-sending")
+            for route in held:
+                route.continue_()
+            page.unroute("**/api/items/*/zotero")
+            details.get_by_role("alert").wait_for()
+            shoot(page, out, "send-failed")
+
+            page.get_by_role("row").filter(has_text="On The Cyclicity").click()
+            details.get_by_role("button", name="Remove from bucket").wait_for()
+            shoot(page, out, "send-sent")
+
+            page.keyboard.press("Control+Shift+P")
+            page.get_by_placeholder("Run a command").fill("Send selected")
+            page.keyboard.press("Enter")
+            details.get_by_role("alert").wait_for()
+            shoot(page, out, "send-refused")
+
+            details.get_by_role("button", name="Remove from bucket").click()
+            page.get_by_role("alertdialog").wait_for()
+            shoot(page, out, "send-remove-confirm")
+            browser.close()
+
+
+def fixture_extractions(directory: Path) -> Path:
+    """A manifest of the committed fixture extractor in three modes: one that writes Markdown and
+    an artifact, one that fails with a message on stderr, one limited to five pages."""
+    extractor = str(REPO / "tests/fixtures/plugins/extractor.sh")
+
+    def plugin(mode: str, name: str, max_pages: int) -> dict[str, object]:
+        limits = [{"kind": "max_pages", "value": max_pages}]
+        return {
+            "id": mode,
+            "name": name,
+            "command": ["sh", extractor, mode, "$pdf", "$output"],
+            "accepted_inputs": [{"kind": "pdf", "id": "pdf", "label": f"PDF up to {max_pages} pages", "limits": limits}],
+        }
+
+    manifest = directory / "extractions.json"
+    plugins = [
+        plugin("record", "Fixture: writes files", 20),
+        plugin("fail", "Fixture: fails", 20),
+        plugin("markdown", "Fixture: 5 pages max", 5),
+    ]
+    manifest.write_text(json.dumps({"plugins": plugins}))
+    return manifest
+
+
+@app.command
+def extract(out: Path) -> None:
+    """Screenshot the inspector's extraction runs into OUT against the committed fixture extractor."""
+    out.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as stack:
+        scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-extract-")))
+        root = scratch / "bucket"
+        root.mkdir()
+        homepage = "https://www.math.example.edu/~author/"
+        capture_fixture(root, "lecture-notes.pdf", "lecture-notes", f"{homepage}lecture-notes.pdf", f"{homepage}teaching.html", "Lattices and Quadratic Forms")
+        capture_fixture(root, "ten-page-notes.pdf", "ten-page-notes", f"{homepage}ten-page-notes.pdf", f"{homepage}teaching.html", "Ten Lectures on Integral Lattices")
+        origin = serve(stack, root, closed_port_url(), fixture_extractions(scratch))
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=system_chromium())
+            page = browser.new_page(viewport=VIEWPORT)
+            page.goto(origin)
+            details = page.get_by_role("complementary", name="Item details")
+            plugin = details.get_by_label("Extraction plugin")
+
+            page.get_by_role("row").filter(has_text="Lattices and Quadratic Forms").click()
+            details.get_by_role("button", name="Run").wait_for()
+            shoot(page, out, "extract-idle")
+
+            held: list[Route] = []
+            page.route("**/api/items/*/extractions/*", lambda route: held.append(route))
+            details.get_by_role("button", name="Run").click()
+            details.get_by_role("button", name="Running…").wait_for()
+            shoot(page, out, "extract-running")
+            for route in held:
+                route.continue_()
+            page.unroute("**/api/items/*/extractions/*")
+            details.get_by_text("artifacts/source.pdf").or_(details.get_by_text("source.pdf")).first.wait_for()
+            shoot(page, out, "extract-succeeded")
+
+            page.get_by_role("row").filter(has_text="Ten Lectures on Integral Lattices").click()
+            plugin.select_option("fail")
+            details.get_by_role("button", name="Run").click()
+            details.get_by_role("alert").wait_for()
+            shoot(page, out, "extract-failed")
+
+            plugin.select_option("markdown")
+            details.get_by_role("button", name="Run").click()
+            details.get_by_role("alert").filter(has_text="did not run").wait_for()
+            shoot(page, out, "extract-rejected")
+            browser.close()
+        print(json.dumps(sorted(path.name for path in root.iterdir())))
 
 
 if __name__ == "__main__":

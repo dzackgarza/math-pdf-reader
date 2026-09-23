@@ -12,6 +12,7 @@ import { z } from "zod";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { listItems } from "../src/server/store";
 import { extensionDefine } from "../wxt.config";
 import { lectureNotes, problemSet, startFixtureSite } from "./fixture-site";
@@ -41,7 +42,13 @@ function sha256(bytes: Uint8Array): string {
 
 function startBucket(port: number) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-store-"));
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
   const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
   if (server.port === undefined) {
     throw new Error("the bucket server did not bind a TCP port");

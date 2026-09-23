@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import {
+  type ApiErrorKind,
   ApiErrorSchema,
   type LibraryPayload,
   LibraryPayloadSchema,
@@ -24,8 +25,9 @@ const FailureSchema = z.union([ApiErrorSchema, StoreFailureSchema]);
 
 // A refusal from the bucket server: what went wrong, and the store's full output when the
 // store command itself failed.
-class BucketRequestError extends Error {
+export class BucketRequestError extends Error {
   constructor(
+    readonly kind: ApiErrorKind | "store_command_failed",
     message: string,
     readonly detail: string | null,
   ) {
@@ -33,14 +35,15 @@ class BucketRequestError extends Error {
   }
 }
 
-async function requestError(response: Response): Promise<BucketRequestError> {
+export async function requestError(response: Response): Promise<BucketRequestError> {
   const failure = FailureSchema.parse(await response.json());
   if (failure.error !== "store_command_failed") {
-    return new BucketRequestError(failure.error.message, null);
+    return new BucketRequestError(failure.error.kind, failure.error.message, null);
   }
   // The store's last line names the failure (for example the PDF that has no provenance).
   const lines = failure.stderr.trim().split("\n");
   return new BucketRequestError(
+    failure.error,
     `${lines[lines.length - 1]} (exit ${failure.exit_code})`,
     failure.stderr,
   );
@@ -68,6 +71,9 @@ export type Mutate = <T extends z.ZodType>(
   path: string,
   body?: object,
 ) => Promise<z.infer<T>>;
+
+// The library calls the window makes once the library has loaded.
+export type LibraryApi = { reload: () => void; refresh: () => void; mutate: Mutate };
 
 export function useLibraryApi() {
   const [state, setState] = useState<LibraryState>({ status: "loading" });
@@ -104,5 +110,8 @@ export function useLibraryApi() {
     [show],
   );
 
-  return { state, reload, mutate };
+  // Reads the library again without passing through the loading screen.
+  const refresh = useCallback(() => show(fetchLibrary()), [show]);
+
+  return { state, reload, refresh, mutate };
 }

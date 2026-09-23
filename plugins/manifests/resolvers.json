@@ -1,3 +1,74 @@
 {
-  "plugins": []
+  "plugins": [
+    {
+      "id": "doi",
+      "name": "DOI Resolver",
+      "command": ["bun", "../../src/resolvers/doi.ts", "https://doi.org"],
+      "accepted_inputs": [
+        {
+          "kind": "identifier",
+          "id": "doi",
+          "label": "DOI",
+          "example": "10.4007/annals.2017.185.3.7",
+          "pattern": "^(?:https?://(?:dx\\.)?doi\\.org/)?10\\.\\d{4,9}/\\S+$"
+        }
+      ]
+    },
+    {
+      "id": "isbn",
+      "name": "ISBN Resolver",
+      "command": ["bun", "../../src/resolvers/isbn.ts", "https://openlibrary.org"],
+      "accepted_inputs": [
+        {
+          "kind": "identifier",
+          "id": "isbn",
+          "label": "ISBN",
+          "example": "978-0-387-90244-9",
+          "pattern": "^(?:isbn:?\\s*)?(?:97[89][-\\s]?)?[0-9][-0-9\\s]{8,}[0-9Xx]$"
+        }
+      ]
+    },
+    {
+      "id": "arxiv",
+      "name": "arXiv Resolver",
+      "command": ["bun", "../../src/resolvers/arxiv.ts", "https://arxiv.org"],
+      "accepted_inputs": [
+        {
+          "kind": "identifier",
+          "id": "arxiv-id",
+          "label": "arXiv ID",
+          "example": "2609.21174",
+          "pattern": "^(?:arxiv:)?(?:\\d{4}\\.\\d{4,5}|[a-z-]+(?:\\.[A-Z]{2})?/\\d{7})(?:v\\d+)?$"
+        },
+        {
+          "kind": "identifier",
+          "id": "arxiv-url",
+          "label": "arXiv URL",
+          "example": "https://arxiv.org/abs/2609.21174",
+          "pattern": "^https?://arxiv\\.org/(?:abs|pdf)/[^\\s]+$"
+        }
+      ]
+    },
+    {
+      "id": "zbmath",
+      "name": "zbMATH Resolver",
+      "command": ["bun", "../../src/resolvers/zbmath.ts", "https://api.zbmath.org"],
+      "accepted_inputs": [
+        {
+          "kind": "identifier",
+          "id": "zbmath-an",
+          "label": "zbMATH AN",
+          "example": "an:0139.24606",
+          "pattern": "^(?:an:)?\\d{4}\\.\\d{5}$"
+        },
+        {
+          "kind": "identifier",
+          "id": "zbmath-url",
+          "label": "zbMATH URL",
+          "example": "https://zbmath.org/?q=an:0139.24606",
+          "pattern": "^https?://(?:www\\.)?zbmath\\.org/\\?q=(?:an:|an%3A)\\d{4}\\.\\d{5}$"
+        }
+      ]
+    }
+  ]
 }

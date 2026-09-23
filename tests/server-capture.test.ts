@@ -7,6 +7,7 @@ import { parseHTML } from "linkedom";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { CaptureResponseSchema } from "../src/server/contract";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -16,7 +17,16 @@ const pdfSource = "https://www.math.example.edu/~author/lattices.pdf";
 
 function bucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-capture-"));
-  return { root, app: createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) }) };
+  return {
+    root,
+    app: createApp({
+      root,
+      version: "0.1.0",
+      pdfjsDir: pdfjsDir(config),
+      zoteroUrl: config.zotero.url,
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+    }),
+  };
 }
 
 function captureForm(

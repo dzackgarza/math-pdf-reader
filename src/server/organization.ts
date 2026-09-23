@@ -5,12 +5,13 @@ import { existsSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { Collection, ItemNote, SavedSearch } from "./libraryContract";
+import type { Collection, ItemNote, SavedSearch, ZoteroRecord } from "./libraryContract";
 import {
   CollectionSchema,
   collectionSubtree,
   ItemNoteSchema,
   SavedSearchSchema,
+  ZoteroRecordSchema,
 } from "./libraryContract";
 
 export const ItemFilingSchema = z.strictObject({
@@ -18,6 +19,8 @@ export const ItemFilingSchema = z.strictObject({
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),
   modifiedAt: z.iso.datetime({ offset: true }),
+  // Present once a send has created the item in Zotero.
+  zotero: ZoteroRecordSchema.optional(),
 });
 
 const OrganizationSchema = z.strictObject({
@@ -94,6 +97,15 @@ export function deleteNote(
     ...filing,
     notes: filing.notes.filter((note) => note.id !== noteId),
   }));
+}
+
+export function setZoteroRecord(
+  org: Organization,
+  key: string,
+  record: ZoteroRecord,
+  now: string,
+): Organization {
+  return fileItem(org, key, now, (filing) => ({ ...filing, zotero: record }));
 }
 
 export function addCollection(org: Organization, collection: Collection): Organization {

@@ -10,6 +10,7 @@ dependencies = [
     "pathvalidate>=3.3.1",
     "pikepdf>=10.13.0.post1",
     "pydantic>=2.10",
+    "send2trash>=2.1.0",
     "tenacity>=9.1.4",
 ]
 
@@ -20,7 +21,9 @@ pdfbucket-mistral-ocr = "pdfbucket_extractors.mistral_ocr:app"
 
 [dependency-groups]
 dev = [
+    "bibtexparser>=2.0.1",
     "pytest>=8",
+    "types-send2trash>=2.1.0.20260408",
 ]
 
 [build-system]

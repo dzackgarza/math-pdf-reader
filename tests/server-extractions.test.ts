@@ -9,8 +9,9 @@ import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
-  registerExtractionRoutes,
-} from "../src/server/extractions";
+} from "../src/server/extractionContract";
+import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "../src/server/extractions";
+import { ApiErrorSchema } from "../src/server/libraryContract";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -30,7 +31,13 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
   form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
   form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
   form.set("title_hint", "Ten Lectures on Integral Lattices");
-  const captureApp = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const captureApp = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
   const captured = await captureApp.request(`${origin}/capture-bytes`, {
     method: "POST",
     body: form,
@@ -59,7 +66,13 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
 
 test("the shipped extraction plugins are listed with their accepted inputs", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-plugins-"));
-  const app = createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) });
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
 
   const response = await app.request(`${origin}/api/plugins/extractions`);
 
@@ -147,4 +160,11 @@ test("unknown items and unknown plugins are not found", async () => {
   });
 
   expect([missingItem.status, missingPlugin.status]).toEqual([404, 404]);
+  // The library API's error shape, which the inspector reports.
+  const kinds = await Promise.all(
+    [missingItem, missingPlugin].map(
+      async (response) => ApiErrorSchema.parse(await response.json()).error.kind,
+    ),
+  );
+  expect(kinds).toEqual(["unknown_item", "unknown_plugin"]);
 });

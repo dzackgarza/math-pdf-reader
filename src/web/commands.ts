@@ -11,6 +11,7 @@ export type AppCommandActions = {
   newCollection: () => void;
   saveSearch: () => void;
   openSelectedInReader: (() => void) | null;
+  sendSelectedToZotero: (() => void) | null;
   reloadLibrary: () => void;
   showAllColumns: () => void;
   resetColumns: () => void;
@@ -34,6 +35,17 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
             action: actions.openSelectedInReader,
           },
         ];
+  const send: Command[] =
+    actions.sendSelectedToZotero === null
+      ? []
+      : [
+          {
+            id: "send-zotero",
+            name: "Send selected PDF to Zotero",
+            category: "Library",
+            action: actions.sendSelectedToZotero,
+          },
+        ];
   return [
     goTo("go-library", "Library", "/"),
     goTo("go-inbox", "Inbox", "/inbox"),
@@ -43,6 +55,7 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
     goTo("go-saved", "Saved searches", "/organization/saved"),
     goTo("go-settings", "Settings", "/settings"),
     ...reader,
+    ...send,
     {
       id: "new-collection",
       name: "New collection",
