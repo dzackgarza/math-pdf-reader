@@ -33,3 +33,8 @@ export function topicName(tag: string): string {
 export function topicTag(name: string): string {
   return `${TOPIC_PREFIX}${name}`;
 }
+
+// A tag as the library shows it: a topic without its namespace, any other tag as written.
+export function tagLabel(tag: string): string {
+  return isTopic(tag) ? topicName(tag) : tag;
+}

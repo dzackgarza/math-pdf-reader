@@ -17,8 +17,8 @@ import {
   type SavedSearch,
   SEARCH_FIELDS,
 } from "../../server/libraryContract";
-import { isTopic, topicName } from "../format";
-import { itemsInView, tagCounts } from "../librarySelectors";
+import { isTopic, tagLabel } from "../format";
+import { itemsInView, tagCounts, viewName } from "../librarySelectors";
 import { entryView, ORGANIZATION_TABS, type OrganizationTab, organizationPath } from "../routes";
 import { SEARCH_FIELD_LABELS } from "../search";
 
@@ -118,7 +118,7 @@ function TagList({
               aria-hidden
               className={`h-4 w-4 shrink-0 ${tab === "topics" ? "text-topic" : "text-accent"}`}
             />
-            <span className="truncate">{isTopic(tag) ? topicName(tag) : tag}</span>
+            <span className="truncate">{tagLabel(tag)}</span>
             <Count value={count} />
           </Link>
         </li>
@@ -162,17 +162,52 @@ function SavedSearchList({ payload, entry }: { payload: LibraryPayload; entry: s
 const ACTION_CLASSES =
   "inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium hover:bg-surface";
 
+function CollectionActions({
+  collection,
+  actions,
+}: {
+  collection: Collection;
+  actions: OrganizationActions;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => actions.newSubcollection(collection)}
+        className={ACTION_CLASSES}
+      >
+        <FolderPlus className="h-4 w-4" /> New Subcollection
+      </button>
+      <button
+        type="button"
+        onClick={() => actions.renameCollection(collection)}
+        className={ACTION_CLASSES}
+      >
+        <Pencil className="h-4 w-4" /> Rename
+      </button>
+      <button
+        type="button"
+        onClick={() => actions.deleteCollection(collection)}
+        className={ACTION_CLASSES}
+      >
+        <Trash2 className="h-4 w-4" /> Delete
+      </button>
+    </>
+  );
+}
+
 function EntryHeader({
   payload,
   tab,
   entry,
   actions,
 }: Omit<OrganizationScreenProps, "table"> & { entry: string }) {
+  const view = entryView(tab, entry);
+  const count = itemsInView(payload, view).length;
   const collection = payload.collections.find((candidate) => candidate.id === entry);
-  const saved = payload.savedSearches.find((candidate) => candidate.id === entry);
-  const count = itemsInView(payload, entryView(tab, entry)).length;
   const parent = payload.collections.find((candidate) => candidate.id === collection?.parentId);
-  const name = collection?.name ?? saved?.name ?? (isTopic(entry) ? topicName(entry) : entry);
+  const saved = payload.savedSearches.find((candidate) => candidate.id === entry);
+  const summary = saved === undefined ? "" : ` · ${searchSummary(saved)}`;
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-y border-line bg-white px-5 py-3.5">
@@ -184,38 +219,14 @@ function EntryHeader({
               <ChevronRight aria-hidden className="h-4 w-4 text-faint" />
             </>
           )}
-          <span className="truncate">{name}</span>
+          <span className="truncate">{viewName(payload, view)}</span>
         </h2>
         <p className="text-sm text-muted">
           {count.toLocaleString()} {count === 1 ? "PDF" : "PDFs"}
-          {saved !== undefined && ` · ${searchSummary(saved)}`}
+          {summary}
         </p>
       </div>
-      {collection !== undefined && (
-        <>
-          <button
-            type="button"
-            onClick={() => actions.newSubcollection(collection)}
-            className={ACTION_CLASSES}
-          >
-            <FolderPlus className="h-4 w-4" /> New Subcollection
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.renameCollection(collection)}
-            className={ACTION_CLASSES}
-          >
-            <Pencil className="h-4 w-4" /> Rename
-          </button>
-          <button
-            type="button"
-            onClick={() => actions.deleteCollection(collection)}
-            className={ACTION_CLASSES}
-          >
-            <Trash2 className="h-4 w-4" /> Delete
-          </button>
-        </>
-      )}
+      {collection !== undefined && <CollectionActions collection={collection} actions={actions} />}
       {saved !== undefined && (
         <button
           type="button"

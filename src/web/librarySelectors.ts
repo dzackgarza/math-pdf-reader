@@ -5,7 +5,7 @@ import {
   collectionSubtree,
   type LibraryPayload,
 } from "../server/libraryContract";
-import { isTopic, topicName } from "./format";
+import { tagLabel } from "./format";
 import { filterItems } from "./search";
 
 export type LibraryView =
@@ -56,26 +56,23 @@ function savedSearch(payload: LibraryPayload, id: string) {
   return found;
 }
 
+const FIXED_VIEW_NAMES = { all: "Library", inbox: "Inbox", cache: "Offline Cache" } as const;
+
 export function viewName(payload: LibraryPayload, view: LibraryView): string {
-  switch (view.kind) {
-    case "all":
-      return "Library";
-    case "inbox":
-      return "Inbox";
-    case "cache":
-      return "Offline Cache";
-    case "collection": {
-      const found = payload.collections.find((collection) => collection.id === view.id);
-      if (found === undefined) {
-        throw new Error(`no collection has id ${view.id}`);
-      }
-      return found.name;
+  if (view.kind === "collection") {
+    const found = payload.collections.find((collection) => collection.id === view.id);
+    if (found === undefined) {
+      throw new Error(`no collection has id ${view.id}`);
     }
-    case "tag":
-      return isTopic(view.tag) ? topicName(view.tag) : view.tag;
-    case "saved":
-      return savedSearch(payload, view.id).name;
+    return found.name;
   }
+  if (view.kind === "tag") {
+    return tagLabel(view.tag);
+  }
+  if (view.kind === "saved") {
+    return savedSearch(payload, view.id).name;
+  }
+  return FIXED_VIEW_NAMES[view.kind];
 }
 
 export function visibleItems(

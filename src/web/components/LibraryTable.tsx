@@ -3,6 +3,7 @@ import { type Cell, flexRender, type Table } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, Eye, FileText, Inbox, RotateCcw } from "lucide-react";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { BucketItem } from "../../server/libraryContract";
+import { type ColumnKey, columnKey } from "../columnModel";
 import { fileSize, shortDate, sourceDomain } from "../format";
 import { orderedLeafColumns, reorderColumn, resetColumnLayout } from "../useLibraryTable";
 import { Chip, TagChip } from "./Chips";
@@ -31,53 +32,61 @@ function Overflow({ hidden }: { hidden: number }) {
   );
 }
 
-function renderCell(
-  cell: Cell<BucketItem, unknown>,
-  collectionNames: Map<string, string>,
-): ReactNode {
-  const item = cell.row.original;
-  switch (cell.column.id) {
-    case "title":
-      return (
-        <span className="flex min-w-0 items-center gap-2.5">
-          <FileText aria-hidden className="h-4 w-4 shrink-0 text-red-600" />
-          <span className="truncate font-medium text-ink" title={item.title}>
-            {item.title}
-          </span>
-        </span>
-      );
-    case "source":
-      return <span className="text-muted">{sourceDomain(item.url)}</span>;
-    case "dateAdded":
-      return <span className="text-muted">{shortDate(item.dateAdded)}</span>;
-    case "dateModified":
-      return <span className="text-muted">{shortDate(item.dateModified)}</span>;
-    case "tags":
-      return (
-        <span className="flex min-w-0 items-center gap-1 overflow-hidden">
-          {item.tags.slice(0, VISIBLE_CHIPS).map((tag) => (
-            <TagChip key={tag} tag={tag} />
-          ))}
-          <Overflow hidden={item.tags.length - VISIBLE_CHIPS} />
-        </span>
-      );
-    case "collections":
-      return (
-        <span className="flex min-w-0 items-center gap-1 overflow-hidden">
-          {item.collections.slice(0, VISIBLE_CHIPS).map((id) => (
-            <Chip key={id} label={collectionNames.get(id) ?? id} kind="collection" />
-          ))}
-          <Overflow hidden={item.collections.length - VISIBLE_CHIPS} />
-        </span>
-      );
-    case "sizeBytes":
-      return <span className="text-muted tabular-nums">{fileSize(item.file.sizeBytes)}</span>;
-    case "key":
-    case "pdfUrl":
-      return <span className="font-mono text-xs text-muted">{cell.getValue<string>()}</span>;
-    default:
-      return <span className="text-muted tabular-nums">{cell.getValue<string>()}</span>;
-  }
+function Chips({ children, hidden }: { children: ReactNode; hidden: number }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+      {children}
+      <Overflow hidden={hidden} />
+    </span>
+  );
+}
+
+function Muted({ children }: { children: ReactNode }) {
+  return <span className="text-muted tabular-nums">{children}</span>;
+}
+
+function Mono({ children }: { children: ReactNode }) {
+  return <span className="font-mono text-xs text-muted">{children}</span>;
+}
+
+// How each column draws an item.
+const CELL_RENDERERS: Record<
+  ColumnKey,
+  (item: BucketItem, names: Map<string, string>) => ReactNode
+> = {
+  title: (item) => (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <FileText aria-hidden className="h-4 w-4 shrink-0 text-red-600" />
+      <span className="truncate font-medium text-ink" title={item.title}>
+        {item.title}
+      </span>
+    </span>
+  ),
+  source: (item) => <Muted>{sourceDomain(item.url)}</Muted>,
+  dateAdded: (item) => <Muted>{shortDate(item.dateAdded)}</Muted>,
+  dateModified: (item) => <Muted>{shortDate(item.dateModified)}</Muted>,
+  tags: (item) => (
+    <Chips hidden={item.tags.length - VISIBLE_CHIPS}>
+      {item.tags.slice(0, VISIBLE_CHIPS).map((tag) => (
+        <TagChip key={tag} tag={tag} />
+      ))}
+    </Chips>
+  ),
+  collections: (item, names) => (
+    <Chips hidden={item.collections.length - VISIBLE_CHIPS}>
+      {item.collections.slice(0, VISIBLE_CHIPS).map((id) => (
+        <Chip key={id} label={names.get(id) ?? id} kind="collection" />
+      ))}
+    </Chips>
+  ),
+  sizeBytes: (item) => <Muted>{fileSize(item.file.sizeBytes)}</Muted>,
+  notes: (item) => <Muted>{item.notes.length}</Muted>,
+  key: (item) => <Mono>{item.id}</Mono>,
+  pdfUrl: (item) => <Mono>{item.provenance.pdf_url}</Mono>,
+};
+
+function renderCell(cell: Cell<BucketItem, unknown>, names: Map<string, string>): ReactNode {
+  return CELL_RENDERERS[columnKey(cell.column.id)](cell.row.original, names);
 }
 
 export default function LibraryTable({

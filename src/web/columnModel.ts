@@ -9,7 +9,7 @@ import type {
 } from "@tanstack/react-table";
 import { z } from "zod";
 import type { BucketItem } from "../server/libraryContract";
-import { isTopic, sourceDomain, topicName } from "./format";
+import { sourceDomain, tagLabel } from "./format";
 
 export const COLUMN_KEYS = [
   "title",
@@ -100,31 +100,19 @@ export function writeColumnLayout(layout: ColumnLayout): void {
   localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(layout));
 }
 
-// The text a column shows and sorts by.
-export function cellText(item: BucketItem, key: ColumnKey): string {
-  switch (key) {
-    case "title":
-      return item.title;
-    case "source":
-      return sourceDomain(item.url);
-    case "dateAdded":
-      return item.dateAdded;
-    case "tags":
-      return item.tags.map((tag) => (isTopic(tag) ? topicName(tag) : tag)).join(", ");
-    case "collections":
-      return String(item.collections.length);
-    case "sizeBytes":
-      return String(item.file.sizeBytes);
-    case "notes":
-      return String(item.notes.length);
-    case "dateModified":
-      return item.dateModified;
-    case "key":
-      return item.id;
-    case "pdfUrl":
-      return item.provenance.pdf_url;
-  }
-}
+// The text each column shows and sorts by.
+const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
+  title: (item) => item.title,
+  source: (item) => sourceDomain(item.url),
+  dateAdded: (item) => item.dateAdded,
+  tags: (item) => item.tags.map(tagLabel).join(", "),
+  collections: (item) => String(item.collections.length),
+  sizeBytes: (item) => String(item.file.sizeBytes),
+  notes: (item) => String(item.notes.length),
+  dateModified: (item) => item.dateModified,
+  key: (item) => item.id,
+  pdfUrl: (item) => item.provenance.pdf_url,
+};
 
 const NUMERIC_COLUMNS = new Set<string>(["sizeBytes", "notes", "collections"]);
 
@@ -146,7 +134,7 @@ declare module "@tanstack/react-table" {
 
 export const BUCKET_COLUMNS: ColumnDef<BucketItem>[] = DEFAULT_COLUMNS.map((column) => ({
   id: column.key,
-  accessorFn: (item: BucketItem) => cellText(item, column.key),
+  accessorFn: CELL_TEXT[column.key],
   header: column.label,
   enableHiding: column.key !== LOCKED_COLUMN_ID,
   sortingFn: compareRows,
@@ -154,3 +142,7 @@ export const BUCKET_COLUMNS: ColumnDef<BucketItem>[] = DEFAULT_COLUMNS.map((colu
   minSize: MIN_COLUMN_WIDTH,
   meta: { label: column.label },
 }));
+
+export function columnKey(id: string): ColumnKey {
+  return ColumnKeySchema.parse(id);
+}
