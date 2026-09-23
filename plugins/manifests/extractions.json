@@ -1,3 +1,39 @@
 {
-  "plugins": []
+  "plugins": [
+    {
+      "id": "mineru-flash",
+      "name": "MinerU Flash",
+      "command": ["bunx", "mineru-open-api@0.5.9", "flash-extract", "$pdf", "--language", "en", "-o", "$output/extraction.md"],
+      "accepted_inputs": [
+        {
+          "kind": "pdf",
+          "id": "pdf",
+          "label": "PDF up to 20 pages and 10 MB",
+          "limits": [
+            { "kind": "max_pages", "value": 20 },
+            { "kind": "max_bytes", "value": 10000000 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mineru-precise",
+      "name": "MinerU Precise",
+      "command": ["pdfbucket-mineru-precise", "$pdf", "$output"],
+      "accepted_inputs": [{ "kind": "pdf", "id": "pdf", "label": "PDF of any length", "limits": [] }]
+    },
+    {
+      "id": "mistral-ocr",
+      "name": "Mistral OCR",
+      "command": ["pdfbucket-mistral-ocr", "$pdf", "$output"],
+      "accepted_inputs": [
+        {
+          "kind": "pdf",
+          "id": "pdf",
+          "label": "PDF up to 50 MB",
+          "limits": [{ "kind": "max_bytes", "value": 50000000 }]
+        }
+      ]
+    }
+  ]
 }

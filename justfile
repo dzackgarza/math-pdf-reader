@@ -78,3 +78,14 @@ desktop-rust-checks:
 ci-setup-desktop:
     sudo apt-get update
     sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+# Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
+extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root=$(mktemp -d --suffix=-pdf-bucket-evidence)
+    key=$(basename "{{fixture}}" .pdf)
+    uv run --locked pdfbucket capture "$root" "{{fixture}}" "$key.pdf" \
+        "https://www.math.example.edu/~author/$key.pdf" "https://www.math.example.edu/~author/teaching.html" "$key" >/dev/null
+    echo "root: $root"
+    uv run --locked pdfbucket extract "$root" "$key" plugins/manifests/extractions.json "{{plugin}}"

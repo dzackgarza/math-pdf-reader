@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+\pagestyle{empty}
+\newcount\lecture
+\begin{document}
+\lecture=1
+\loop
+\section*{Lecture \the\lecture}
+The lattice $\mathbb{Z}^{\the\lecture}$ has determinant $1$ and $2 \cdot \the\lecture$ vectors of norm $1$.
+\newpage
+\advance\lecture by 1
+\ifnum\lecture<211
+\repeat
+\end{document}
