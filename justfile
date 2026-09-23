@@ -157,4 +157,4 @@ library-screenshots: fetch-pdfjs build-web
 # Export, wipe, import and rebuild a temporary store through the recipes above, then delete three
 # PDFs (one at a URL the fixture publisher has taken down) and rebuild again; prints the transcript.
 cache-evidence:
-    @bun tests/cache-evidence.ts
+    @bun run cache-evidence

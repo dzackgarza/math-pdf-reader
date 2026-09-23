@@ -74,12 +74,8 @@ def write_stored(path: Path, pdf_bytes: bytes, provenance: CaptureProvenance) ->
     partial.replace(path)
 
 
-def stored_result(path: Path, existing: bool) -> CaptureResult:
-    return CaptureResult(
-        item=read_stored_item(path),
-        stored_sha256=sha256(path.read_bytes()).hexdigest(),
-        existing=existing,
-    )
+def file_sha256(path: Path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
 
 
 def store_pdf(
@@ -96,7 +92,7 @@ def store_pdf(
     path, existing = destination(root, filename, original_sha256)
     if not existing:
         write_stored(path, pdf_bytes, provenance_for(request, captured_at, original_sha256))
-    return stored_result(path, existing)
+    return CaptureResult(item=read_stored_item(path), stored_sha256=file_sha256(path), existing=existing)
 
 
 def restore_pdf(root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProvenance) -> CaptureResult:
@@ -114,4 +110,4 @@ def restore_pdf(root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProve
     if observed != provenance.original_sha256:
         raise ChangedPdfError(key, provenance.original_sha256, observed)
     write_stored(path, pdf_bytes, provenance)
-    return stored_result(path, existing=False)
+    return CaptureResult(item=read_stored_item(path), stored_sha256=file_sha256(path), existing=False)
