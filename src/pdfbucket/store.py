@@ -27,9 +27,7 @@ class ChangedPdfError(ValueError):
     """Bytes offered for a stored item that do not hash to its recorded original SHA-256."""
 
     def __init__(self, key: str, expected: str, observed: str) -> None:
-        super().__init__(
-            f"{key}: the bytes hash to {observed}, not the recorded original {expected}"
-        )
+        super().__init__(f"{key}: the bytes hash to {observed}, not the recorded original {expected}")
 
 
 def key_stem(filename: str) -> str:
@@ -103,12 +101,8 @@ def store_pdf(
     original_sha256 = sha256(pdf_bytes).hexdigest()
     path, existing = destination(root, filename, original_sha256)
     if not existing:
-        write_stored(
-            path, pdf_bytes, provenance_for(request, captured_at, original_sha256)
-        )
-    return CaptureResult(
-        item=read_stored_item(path), stored_sha256=file_sha256(path), existing=existing
-    )
+        write_stored(path, pdf_bytes, provenance_for(request, captured_at, original_sha256))
+    return CaptureResult(item=read_stored_item(path), stored_sha256=file_sha256(path), existing=existing)
 
 
 class RemovedItem(BaseModel):
@@ -121,19 +115,13 @@ class RemovedItem(BaseModel):
 def remove_item(root: Path, key: str) -> RemovedItem:
     """Move the stored PDF and its extraction to the desktop trash; the PDF goes last."""
     pdf = pdf_path(root, key)
-    beside = [
-        path
-        for path in (root / f"{key}.md", root / f"{key}.extraction")
-        if path.exists()
-    ]
+    beside = [path for path in (root / f"{key}.md", root / f"{key}.extraction") if path.exists()]
     for path in [*beside, pdf]:
         send2trash(path)
     return RemovedItem(key=key, trashed=[path.name for path in [*beside, pdf]])
 
 
-def restore_pdf(
-    root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProvenance
-) -> CaptureResult:
+def restore_pdf(root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProvenance) -> CaptureResult:
     """Store re-downloaded bytes under KEY with the provenance recorded when they were captured.
 
     The bytes must be the originally captured ones: anything else is a changed PDF and is not
@@ -148,6 +136,4 @@ def restore_pdf(
     if observed != provenance.original_sha256:
         raise ChangedPdfError(key, provenance.original_sha256, observed)
     write_stored(path, pdf_bytes, provenance)
-    return CaptureResult(
-        item=read_stored_item(path), stored_sha256=file_sha256(path), existing=False
-    )
+    return CaptureResult(item=read_stored_item(path), stored_sha256=file_sha256(path), existing=False)
