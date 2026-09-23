@@ -30,34 +30,7 @@ build: fetch-pdfjs
 # and enable the systemd user units rendered for this checkout: the server at login, the window
 # with the graphical session, and the hourly index export. Starts the server and the window.
 provision: fetch-pdfjs
-    #!/usr/bin/env bash
-    set -euo pipefail
-    repo="{{justfile_directory()}}"
-    # The server unit loads the provider keys through direnv; a blocked .envrc fails here.
-    direnv exec "$repo" true
-    bun install --frozen-lockfile
-    uv sync --locked
-    bunx vite build --config src/web/vite.config.ts
-    (cd desktop && bunx @tauri-apps/cli build --no-bundle)
-    # The unit runs an installed copy, so later builds can rewrite the build tree while the window runs.
-    install -D -m 755 desktop/src-tauri/target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
-    units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-    origin=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
-    bun=$(which bun)
-    uv=$(which uv)
-    direnv=$(which direnv)
-    path="$(dirname "$bun"):$(dirname "$uv"):/usr/local/bin:/usr/bin"
-    mkdir -p "$units"
-    for template in systemd/*; do
-        sed -e "s|@REPO@|$repo|g" -e "s|@BUN@|$bun|g" -e "s|@DIRENV@|$direnv|g" \
-            -e "s|@ORIGIN@|$origin|g" -e "s|@PATH@|$path|g" "$template" > "$units/$(basename "$template")"
-    done
-    systemd-analyze --user verify "$units"/pdf-bucket.service "$units"/pdf-bucket-window.service \
-        "$units"/pdf-bucket-export.service "$units"/pdf-bucket-export.timer
-    systemctl --user daemon-reload
-    systemctl --user enable pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
-    systemctl --user restart pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
-    systemctl --user --no-pager status pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
+    @scripts/provision.sh
 
 # Write the index export ($XDG_DATA_HOME/pdf-bucket-export/index.json): every stored item's
 # provenance and filing, and the collections and saved searches. Refuses to drop an item whose
