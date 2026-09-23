@@ -1,5 +1,7 @@
 // What the window's filing controls do: each asks for what it needs (a name, a
 // confirmation), calls the library API, and moves to the result.
+
+import type { ExtractionOutcome } from "../server/extractionContract";
 import {
   type AdvancedSearchSettings,
   type BucketItem,
@@ -13,6 +15,7 @@ import type { ItemFilingActions } from "./components/InspectorPanel";
 import type { NameRequest } from "./components/NameDialog";
 import { organizationPath } from "./routes";
 import type { OrganizationActions } from "./screens/OrganizationScreen";
+import { runExtraction } from "./useExtractionPlugins";
 import { BucketRequestError, type Mutate } from "./useLibraryApi";
 
 export type ActionContext = {
@@ -188,4 +191,28 @@ export function removeFromBucket(context: ActionContext, item: BucketItem, onRem
         context.mutate(LibraryPayloadSchema, "DELETE", itemPath(item.id)).then(onRemoved),
       ),
   });
+}
+
+// An extraction run on an item: in progress, answered with its outcome, or refused by the
+// server before any plugin ran.
+export type ExtractionAttempt =
+  | { kind: "running"; pluginId: string }
+  | { kind: "finished"; outcome: ExtractionOutcome }
+  | { kind: "error"; message: string };
+
+export function extractWith(
+  context: ActionContext,
+  key: string,
+  pluginId: string,
+  onAttempt: (attempt: ExtractionAttempt) => void,
+): void {
+  onAttempt({ kind: "running", pluginId });
+  runExtraction(key, pluginId).then(
+    (outcome) => {
+      // A succeeded run placed files beside the PDF; the item's extraction is derived from them.
+      context.refresh();
+      onAttempt({ kind: "finished", outcome });
+    },
+    (error: Error) => onAttempt({ kind: "error", message: error.message }),
+  );
 }

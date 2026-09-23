@@ -11,6 +11,7 @@ import {
   ExtractionPluginsResponseSchema,
 } from "../src/server/extractionContract";
 import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "../src/server/extractions";
+import { ApiErrorSchema } from "../src/server/libraryContract";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -159,4 +160,11 @@ test("unknown items and unknown plugins are not found", async () => {
   });
 
   expect([missingItem.status, missingPlugin.status]).toEqual([404, 404]);
+  // The library API's error shape, which the inspector reports.
+  const kinds = await Promise.all(
+    [missingItem, missingPlugin].map(
+      async (response) => ApiErrorSchema.parse(await response.json()).error.kind,
+    ),
+  );
+  expect(kinds).toEqual(["unknown_item", "unknown_plugin"]);
 });

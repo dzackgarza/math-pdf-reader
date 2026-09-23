@@ -35,7 +35,7 @@ export class BucketRequestError extends Error {
   }
 }
 
-async function requestError(response: Response): Promise<BucketRequestError> {
+export async function requestError(response: Response): Promise<BucketRequestError> {
   const failure = FailureSchema.parse(await response.json());
   if (failure.error !== "store_command_failed") {
     return new BucketRequestError(failure.error.kind, failure.error.message, null);

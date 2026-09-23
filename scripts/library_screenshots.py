@@ -448,5 +448,78 @@ def send(out: Path) -> None:
             browser.close()
 
 
+def fixture_extractions(directory: Path) -> Path:
+    """A manifest of the committed fixture extractor in three modes: one that writes Markdown and
+    an artifact, one that fails with a message on stderr, one limited to five pages."""
+    extractor = str(REPO / "tests/fixtures/plugins/extractor.sh")
+
+    def plugin(mode: str, name: str, max_pages: int) -> dict[str, object]:
+        limits = [{"kind": "max_pages", "value": max_pages}]
+        return {
+            "id": mode,
+            "name": name,
+            "command": ["sh", extractor, mode, "$pdf", "$output"],
+            "accepted_inputs": [{"kind": "pdf", "id": "pdf", "label": f"PDF up to {max_pages} pages", "limits": limits}],
+        }
+
+    manifest = directory / "extractions.json"
+    plugins = [
+        plugin("record", "Fixture: writes files", 20),
+        plugin("fail", "Fixture: fails", 20),
+        plugin("markdown", "Fixture: 5 pages max", 5),
+    ]
+    manifest.write_text(json.dumps({"plugins": plugins}))
+    return manifest
+
+
+@app.command
+def extract(out: Path) -> None:
+    """Screenshot the inspector's extraction runs into OUT against the committed fixture extractor."""
+    out.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as stack:
+        scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-extract-")))
+        root = scratch / "bucket"
+        root.mkdir()
+        homepage = "https://www.math.example.edu/~author/"
+        capture_fixture(root, "lecture-notes.pdf", "lecture-notes", f"{homepage}lecture-notes.pdf", f"{homepage}teaching.html", "Lattices and Quadratic Forms")
+        capture_fixture(root, "ten-page-notes.pdf", "ten-page-notes", f"{homepage}ten-page-notes.pdf", f"{homepage}teaching.html", "Ten Lectures on Integral Lattices")
+        origin = serve(stack, root, closed_port_url(), fixture_extractions(scratch))
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(executable_path=system_chromium())
+            page = browser.new_page(viewport=VIEWPORT)
+            page.goto(origin)
+            details = page.get_by_role("complementary", name="Item details")
+            plugin = details.get_by_label("Extraction plugin")
+
+            page.get_by_role("row").filter(has_text="Lattices and Quadratic Forms").click()
+            details.get_by_role("button", name="Run").wait_for()
+            shoot(page, out, "extract-idle")
+
+            held: list[Route] = []
+            page.route("**/api/items/*/extractions/*", lambda route: held.append(route))
+            details.get_by_role("button", name="Run").click()
+            details.get_by_role("button", name="Running…").wait_for()
+            shoot(page, out, "extract-running")
+            for route in held:
+                route.continue_()
+            page.unroute("**/api/items/*/extractions/*")
+            details.get_by_text("artifacts/source.pdf").or_(details.get_by_text("source.pdf")).first.wait_for()
+            shoot(page, out, "extract-succeeded")
+
+            page.get_by_role("row").filter(has_text="Ten Lectures on Integral Lattices").click()
+            plugin.select_option("fail")
+            details.get_by_role("button", name="Run").click()
+            details.get_by_role("alert").wait_for()
+            shoot(page, out, "extract-failed")
+
+            plugin.select_option("markdown")
+            details.get_by_role("button", name="Run").click()
+            details.get_by_role("alert").filter(has_text="did not run").wait_for()
+            shoot(page, out, "extract-rejected")
+            browser.close()
+        print(json.dumps(sorted(path.name for path in root.iterdir())))
+
+
 if __name__ == "__main__":
     app()

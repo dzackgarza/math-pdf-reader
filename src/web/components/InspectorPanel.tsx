@@ -24,6 +24,7 @@ import type {
 import { dateTime, isTopic, shortDate, sourceDomain, topicName, topicTag } from "../format";
 import type { SendAttempt } from "../libraryActions";
 import { Chip, TagChip } from "./Chips";
+import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
 import { AddByName, AddToCollection } from "./FilingEditors";
 
 export type ItemFilingActions = {
@@ -45,6 +46,7 @@ type InspectorPanelProps = {
   knownTags: string[];
   filing: ItemFilingActions;
   send: ItemSendActions;
+  extraction: ItemExtractionActions;
   onOpenReader: () => void;
   onClose: () => void;
 };
@@ -172,6 +174,7 @@ function Details({
   collections,
   knownTags,
   filing,
+  extraction,
 }: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose">) {
   const { provenance } = item;
   const names = new Map(collections.map((collection) => [collection.id, collection.name]));
@@ -265,7 +268,10 @@ function Details({
           />
         </FilingRow>
         <FilingRow label="Extraction">
-          <ExtractionFiles extraction={item.extraction} />
+          <div className="w-full space-y-3">
+            <ExtractionFiles extraction={item.extraction} />
+            <ExtractionRunner {...extraction} />
+          </div>
         </FilingRow>
       </dl>
     </div>

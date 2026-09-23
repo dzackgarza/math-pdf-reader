@@ -106,3 +106,8 @@ library-screenshots: fetch-pdfjs build-web
 # against a two-item bucket whose Zotero is a closed port, so nothing reaches a real library.
 send-screenshots: fetch-pdfjs build-web
     @uv run --script scripts/library_screenshots.py send docs/m3
+
+# Screenshot the inspector's extraction runs (idle, running, succeeded, failed, rejected) into
+# docs/m4 against the committed fixture extractor, so no provider is called.
+extract-screenshots: fetch-pdfjs build-web
+    @uv run --script scripts/library_screenshots.py extract docs/m4

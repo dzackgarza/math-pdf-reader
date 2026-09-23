@@ -26,6 +26,8 @@ import TopBar from "./components/TopBar";
 import {
   type ActionContext,
   createCollection,
+  type ExtractionAttempt,
+  extractWith,
   filingActions,
   organizationActions,
   removeFromBucket,
@@ -39,6 +41,8 @@ import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import { defaultSearchSettings } from "./search";
 import { type StatusRead, useBucketStatus } from "./useBucketStatus";
+import { useExtractionPlugins } from "./useExtractionPlugins";
+import { useKeyedAttempts } from "./useKeyedAttempts";
 import { type LibraryApi, useLibraryApi } from "./useLibraryApi";
 import { resetColumnLayout, useLibraryTable } from "./useLibraryTable";
 
@@ -78,7 +82,9 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const [nameRequest, setNameRequest] = useState<NameRequest | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [sendAttempts, setSendAttempts] = useState<ReadonlyMap<string, SendAttempt>>(new Map());
+  const [sendAttempts, setSendAttempt] = useKeyedAttempts<SendAttempt>();
+  const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
+  const plugins = useExtractionPlugins();
   const palette = useRef<CommandPaletteHostHandle>(null);
 
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
@@ -107,17 +113,9 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
 
   const openReader = (key: string) => window.location.assign(readerUrl(key));
   const send = (key: string) =>
-    sendToZotero(context, key, (attempt) =>
-      setSendAttempts((attempts) => {
-        const next = new Map(attempts);
-        if (attempt === null) {
-          next.delete(key);
-        } else {
-          next.set(key, attempt);
-        }
-        return next;
-      }),
-    );
+    sendToZotero(context, key, (attempt) => setSendAttempt(key, attempt));
+  const extract = (key: string, pluginId: string) =>
+    extractWith(context, key, pluginId, (attempt) => setExtractionAttempt(key, attempt));
 
   const commands = createAppCommands({
     navigate,
@@ -196,6 +194,11 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
                 attempt: sendAttempts.get(selected.id),
                 onSend: () => send(selected.id),
                 onRemove: () => removeFromBucket(context, selected, () => setSelectedId(null)),
+              }}
+              extraction={{
+                plugins,
+                attempt: extractionAttempts.get(selected.id),
+                onRun: (pluginId) => extract(selected.id, pluginId),
               }}
               onOpenReader={() => openReader(selected.id)}
               onClose={() => setSelectedId(null)}
