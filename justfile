@@ -20,9 +20,11 @@ default:
 
 # Build every app into dist/: web bundle, Chrome and Firefox extensions (and the Firefox
 # package), desktop binary and its bundles.
+# NO_STRIP: linuxdeploy's bundled strip cannot read the `.relr.dyn` sections of current distro
+# libraries and fails the AppImage (tauri-apps/tauri#8929; Tauri's AppImage guide).
 build: fetch-pdfjs
     @bun run build
-    @cd desktop && bunx @tauri-apps/cli build
+    @cd desktop && NO_STRIP=true bunx @tauri-apps/cli build
 
 # Build what the running bucket needs (web bundle, PDF.js viewer, desktop binary), then install
 # and enable the systemd user units rendered for this checkout: the server at login, the window
@@ -37,6 +39,8 @@ provision: fetch-pdfjs
     uv sync --locked
     bunx vite build --config src/web/vite.config.ts
     (cd desktop && bunx @tauri-apps/cli build --no-bundle)
+    # The unit runs an installed copy, so later builds can rewrite the build tree while the window runs.
+    install -D -m 755 desktop/src-tauri/target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
     units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     origin=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
     bun=$(which bun)

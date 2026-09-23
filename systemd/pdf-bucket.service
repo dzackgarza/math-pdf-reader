@@ -11,6 +11,7 @@ StartLimitBurst=3
 Type=exec
 WorkingDirectory=@REPO@
 Environment=PATH=@PATH@
+Environment=NODE_ENV=production
 # direnv loads the repository's .envrc, which sources ~/.envrc: the extraction providers' keys.
 ExecStart=@DIRENV@ exec @REPO@ @BUN@ run src/server/index.ts
 Restart=on-failure

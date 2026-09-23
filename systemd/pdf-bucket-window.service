@@ -12,7 +12,7 @@ StartLimitBurst=3
 Type=exec
 # The window opens once the server answers; a server that never answers fails this unit.
 ExecStartPre=/usr/bin/curl --silent --show-error --fail --output /dev/null --retry 30 --retry-delay 1 --retry-connrefused @ORIGIN@/status
-ExecStart=@REPO@/desktop/src-tauri/target/release/pdf-bucket-desktop
+ExecStart=%h/.local/bin/pdf-bucket-desktop
 Restart=on-failure
 RestartSec=5
 

@@ -33,7 +33,7 @@ If the whole data root is lost, `just import-index` restores the filing into the
 | Unit | Starts | What it runs |
 | --- | --- | --- |
 | `pdf-bucket.service` | at login (`default.target`) | the server on the configured port, with the provider keys from `direnv` |
-| `pdf-bucket-window.service` | with the graphical session (`graphical-session.target`), after the server answers `/status` | the built desktop binary |
+| `pdf-bucket-window.service` | with the graphical session (`graphical-session.target`), after the server answers `/status` | the release desktop binary, installed at `~/.local/bin/pdf-bucket-desktop` |
 | `pdf-bucket-export.timer` | hourly | `just export-index` |
 
 A unit that fails to start is retried twice and then stays failed; `systemctl --user status pdf-bucket` and `journalctl --user -u pdf-bucket` show why.
