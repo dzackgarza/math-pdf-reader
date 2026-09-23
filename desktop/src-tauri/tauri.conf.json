@@ -8,12 +8,13 @@
     "frontendDist": "../src"
   },
   "app": {
-    "withGlobalTauri": false,
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "PDF Bucket",
         "width": 1400,
-        "height": 900
+        "height": 900,
+        "create": false
       }
     ],
     "security": {

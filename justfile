@@ -41,6 +41,10 @@ fetch-pdfjs:
 build-web:
     @bunx vite build --config src/web/vite.config.ts
 
+# Drive both built capture extensions (chromium and firefox on PATH) against the fixture site; screenshots land in $TMPDIR/pdf-bucket-capture-e2e.
+test-capture:
+    @bun test tests/capture-e2e.test.ts
+
 # Start the bucket server with hot reload on the configured host and port.
 serve: fetch-pdfjs build-web
     @bun run dev
@@ -74,10 +78,13 @@ desktop-rust-checks:
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _rustfmt
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _clippy
 
-# Install Tauri's Linux build inputs on the CI runner; the qc-ci job runs it as its setup_recipe.
-ci-setup-desktop:
+# Provision the CI runner: Tauri's Linux build inputs, and user namespaces for Chromium's
+# sandbox, which Ubuntu 24.04's AppArmor blocks (actions/runner-images#10443). The qc-ci job
+# runs this recipe as its setup_recipe.
+ci-setup:
     sudo apt-get update
     sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+    sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
 # Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
 extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
