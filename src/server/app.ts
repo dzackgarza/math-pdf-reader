@@ -3,6 +3,7 @@ import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
+import { BucketEvents } from "./events";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
 import { captureBytes, describeItem, StoreCommandError, storedPdfPath } from "./store";
@@ -27,6 +28,7 @@ async function isPdf(file: File): Promise<boolean> {
 
 export function createApp(config: AppConfig): Hono {
   const app = new Hono();
+  const events = new BucketEvents();
 
   app.onError((error, c) => {
     if (error instanceof StoreCommandError) {
@@ -60,8 +62,11 @@ export function createApp(config: AppConfig): Hono {
       pdf_url: new URL(pdfUrlPath(result.item.key), c.req.url).href,
       provenance: result.item.provenance,
     };
+    events.publishOpenReader({ reader_url: response.reader_url });
     return c.json(response);
   });
+
+  app.get("/api/events", (c) => events.stream(c));
 
   app.get("/pdf/:file{.+\\.pdf}", (c) => {
     const path = storedPdfPath(config.root, c.req.param("file").slice(0, -".pdf".length));

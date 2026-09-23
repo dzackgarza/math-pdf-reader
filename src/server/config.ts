@@ -21,6 +21,11 @@ export const AppConfigSchema = z.strictObject({
     version: z.string().regex(/^\d+\.\d+\.\d+$/),
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
   }),
+  // Sub-frames smaller than this keep the browser's own viewer (embedded previews).
+  capture: z.strictObject({
+    min_frame_width: z.number().int().positive(),
+    min_frame_height: z.number().int().positive(),
+  }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

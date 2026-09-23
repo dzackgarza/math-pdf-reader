@@ -3,14 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { STORE_COMMAND } from "./config";
-
-export const ProvenanceSchema = z.strictObject({
-  pdf_url: z.url(),
-  source_url: z.url(),
-  captured_at: z.iso.datetime({ offset: true }),
-  original_sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  title_hint: z.string().min(1),
-});
+import { ProvenanceSchema } from "./contract";
 
 const StoredItemSchema = z.strictObject({
   key: z.string().min(1),

@@ -12,6 +12,7 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "content-disposition": "^3.0.0",
     "hono": "^4.13.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -23,6 +24,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "linkedom": "^0.18.13",
+    "puppeteer-core": "^25.12.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "web-ext": "^10.5.0",
