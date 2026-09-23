@@ -89,19 +89,33 @@ export function pdfCaptureRules(capturePage: string, bucketOrigin: string): Rule
   return rules.map((rule, index) => ({ ...rule, id: index + 1, priority: rules.length - index }));
 }
 
-// Firefox: the same decision as the rules above, evaluated on the response headers.
+// Firefox: the same decision as the three redirect rules above, one predicate per rule,
+// evaluated on the response headers (values lower-cased; the media type without parameters).
+type PdfEvidence = {
+  url: string;
+  contentType: string | undefined;
+  disposition: string | undefined;
+};
+
+const OCTET_STREAM = "application/octet-stream";
+
+const pdfContentType = ({ contentType }: PdfEvidence) => contentType === "application/pdf";
+
+const pdfPathOctetStream = ({ url, contentType }: PdfEvidence) =>
+  contentType === OCTET_STREAM && /\.pdf\b/i.test(url);
+
+const pdfDisposition = ({ contentType, disposition }: PdfEvidence) =>
+  (contentType === undefined || contentType === OCTET_STREAM) &&
+  disposition !== undefined &&
+  /\.pdf(["']|$)/.test(disposition);
+
 export function isPdfResponse(url: string, headers: Browser.webRequest.HttpHeader[]): boolean {
   const header = (name: string) =>
     headers.find((candidate) => candidate.name.toLowerCase() === name)?.value?.toLowerCase();
-  const contentType = header("content-type")?.split(";", 1)[0]?.trim();
-  if (contentType === "application/pdf") {
-    return true;
-  }
-  const octetStreamOrAbsent =
-    contentType === undefined || contentType === "application/octet-stream";
-  if (contentType === "application/octet-stream" && /\.pdf\b/i.test(url)) {
-    return true;
-  }
-  const disposition = header("content-disposition");
-  return octetStreamOrAbsent && disposition !== undefined && /\.pdf(["']|$)/.test(disposition);
+  const evidence = {
+    url,
+    contentType: header("content-type")?.split(";", 1)[0]?.trim(),
+    disposition: header("content-disposition"),
+  };
+  return [pdfContentType, pdfPathOctetStream, pdfDisposition].some((rule) => rule(evidence));
 }
