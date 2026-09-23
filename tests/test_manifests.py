@@ -1,9 +1,8 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from pdfbucket_plugins.manifest import PluginManifest, load_manifest
+from pydantic import ValidationError
 
 MANIFESTS = Path(__file__).resolve().parents[1] / "plugins" / "manifests"
 
@@ -35,6 +34,4 @@ def test_manifest_rejects_a_plugin_with_an_undeclared_field() -> None:
 
 def test_manifest_rejects_a_plugin_without_a_command() -> None:
     with pytest.raises(ValidationError):
-        PluginManifest.model_validate(
-            {"plugins": [{"id": "doi", "name": "DOI Resolver", "command": [], "accepted_inputs": []}]}
-        )
+        PluginManifest.model_validate({"plugins": [{"id": "doi", "name": "DOI Resolver", "command": [], "accepted_inputs": []}]})

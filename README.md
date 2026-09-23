@@ -1,9 +1,7 @@
 # PDF Bucket
 
-A standalone desktop app that replaces reading PDFs in the browser. Browser extensions
-intercept PDF navigations in Chrome and Firefox and hand the PDF to the bucket, which stores
-it with embedded provenance, opens it in a PDF.js reader, and lets you file it, extract it,
-and send it to Zotero when it matters.
+A standalone desktop app that replaces reading PDFs in the browser.
+Browser extensions intercept PDF navigations in Chrome and Firefox and hand the PDF to the bucket, which stores it with embedded provenance, opens it in a PDF.js reader, and lets you file it, extract it, and send it to Zotero when it matters.
 
 ## Layout
 
