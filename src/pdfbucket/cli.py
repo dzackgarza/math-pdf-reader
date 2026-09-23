@@ -8,6 +8,8 @@ from pathlib import Path
 from cyclopts import App
 from pydantic import HttpUrl, TypeAdapter
 
+from pdfbucket.extraction import plugin_by_id, run_extraction
+from pdfbucket.manifest import load_manifest
 from pdfbucket.models import CaptureRequest, StoredItem
 from pdfbucket.provenance import read_stored_item
 from pdfbucket.store import pdf_path, store_pdf, stored_keys
@@ -34,3 +36,10 @@ def list_items(root: Path, *keys: str) -> None:
     """Print the stored items for KEYS, or for every PDF under ROOT, read from the PDFs alone."""
     items = [read_stored_item(pdf_path(root, key)) for key in keys or stored_keys(root)]
     print(TypeAdapter(list[StoredItem]).dump_json(items).decode())
+
+
+@app.command
+def extract(root: Path, key: str, manifest: Path, plugin_id: str) -> None:
+    """Run the extraction plugin PLUGIN_ID listed in MANIFEST on KEY under ROOT; print the outcome."""
+    plugin = plugin_by_id(load_manifest(manifest), plugin_id)
+    print(run_extraction(root, key, plugin).model_dump_json())

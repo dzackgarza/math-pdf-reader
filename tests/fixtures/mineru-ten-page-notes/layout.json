@@ -1,0 +1,1050 @@
+{
+  "pdf_info": [
+    {
+      "page_idx": 0,
+      "preproc_blocks": [
+        {
+          "bbox": [188, 162, 421, 179],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [
+            { "bbox": [190, 162, 420, 179], "spans": [{ "bbox": [190, 162, 420, 179], "type": "text", "content": "Ten Lectures on Integral Lattices", "score": 1.0 }] }
+          ],
+          "level": 1
+        },
+        {
+          "bbox": [267, 195, 342, 207],
+          "type": "title",
+          "angle": 0,
+          "index": 1,
+          "lines": [{ "bbox": [268, 195, 341, 208], "spans": [{ "bbox": [268, 195, 341, 208], "type": "text", "content": "Lecture Notes", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [132, 236, 215, 250],
+          "type": "title",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [132, 235, 213, 251], "spans": [{ "bbox": [132, 235, 213, 251], "type": "text", "content": "1 Lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 260, 478, 285],
+          "type": "text",
+          "angle": 0,
+          "index": 3,
+          "lines": [
+            {
+              "bbox": [132, 261, 477, 272],
+              "spans": [
+                { "bbox": [132, 261, 477, 272], "type": "text", "content": "Definition 1. A lattice is a free Z-module L of finite rank with a symmetric", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 272, 379, 284],
+              "spans": [
+                { "bbox": [133, 274, 201, 284], "type": "text", "content": "bilinear form b :", "score": 1.0 },
+                { "bbox": [204, 272, 254, 284], "type": "inline_equation", "content": "L \\times L \\to \\mathbb { Q }", "score": 0.636 },
+                { "bbox": [254, 274, 326, 284], "type": "text", "content": ". It is integral if", "score": 1.0 },
+                { "bbox": [326, 272, 379, 284], "type": "inline_equation", "content": "b ( L , L ) \\subseteq \\mathbb { Z } .", "score": 0.7426 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 4,
+          "lines": [{ "bbox": [302, 694, 308, 703], "spans": [{ "bbox": [302, 694, 308, 703], "type": "text", "content": "1", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [188, 162, 421, 179],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [
+            { "bbox": [190, 162, 420, 179], "spans": [{ "bbox": [190, 162, 420, 179], "type": "text", "content": "Ten Lectures on Integral Lattices", "score": 1.0 }] }
+          ],
+          "level": 1
+        },
+        {
+          "bbox": [267, 195, 342, 207],
+          "type": "title",
+          "angle": 0,
+          "index": 1,
+          "lines": [{ "bbox": [268, 195, 341, 208], "spans": [{ "bbox": [268, 195, 341, 208], "type": "text", "content": "Lecture Notes", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [132, 236, 215, 250],
+          "type": "title",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [132, 235, 213, 251], "spans": [{ "bbox": [132, 235, 213, 251], "type": "text", "content": "1 Lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 260, 478, 285],
+          "type": "text",
+          "angle": 0,
+          "index": 3,
+          "lines": [
+            {
+              "bbox": [132, 261, 477, 272],
+              "spans": [
+                { "bbox": [132, 261, 477, 272], "type": "text", "content": "Definition 1. A lattice is a free Z-module L of finite rank with a symmetric", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 272, 379, 284],
+              "spans": [
+                { "bbox": [133, 274, 201, 284], "type": "text", "content": "bilinear form b :", "score": 1.0 },
+                { "bbox": [204, 272, 254, 284], "type": "inline_equation", "content": "L \\times L \\to \\mathbb { Q }", "score": 0.636 },
+                { "bbox": [254, 274, 326, 284], "type": "text", "content": ". It is integral if", "score": 1.0 },
+                { "bbox": [326, 272, 379, 284], "type": "inline_equation", "content": "b ( L , L ) \\subseteq \\mathbb { Z } .", "score": 0.7426 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 1,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 122, 265, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [132, 123, 263, 137], "spans": [{ "bbox": [132, 123, 263, 137], "type": "text", "content": "2 Gram matrices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 147, 433, 159],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 148, 433, 159],
+              "spans": [
+                { "bbox": [133, 148, 180, 158], "type": "text", "content": "For a basis", "score": 1.0 },
+                { "bbox": [182, 149, 225, 158], "type": "inline_equation", "content": "e _ { 1 } , \\ldots , e _ { n }", "score": 0.9013 },
+                { "bbox": [228, 148, 334, 158], "type": "text", "content": "of L the Gram matrix is", "score": 1.0 },
+                { "bbox": [336, 148, 409, 159], "type": "inline_equation", "content": "G = ( b ( e _ { i } , e _ { j } ) ) _ { i , j }", "score": 0.9292 },
+                { "bbox": [409, 148, 433, 159], "type": "text", "content": ", and", "score": 1.0 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        },
+        {
+          "bbox": [271, 169, 337, 180],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [271, 169, 337, 180],
+              "spans": [
+                {
+                  "bbox": [271, 169, 337, 180],
+                  "type": "interline_equation",
+                  "content": "\\det L = \\det G.",
+                  "image_path": "a95a0c0cbea423158b82e9ca27dafccf31f91ce81bf3403fdb27fef9ec06cbd3.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 2
+        },
+        {
+          "bbox": [131, 190, 379, 203],
+          "type": "text",
+          "angle": 0,
+          "index": 3,
+          "lines": [
+            {
+              "bbox": [133, 190, 376, 203],
+              "spans": [
+                { "bbox": [133, 190, 223, 202], "type": "text", "content": "A change of basis by", "score": 1.0 },
+                { "bbox": [226, 190, 279, 202], "type": "inline_equation", "content": "P \\in \\operatorname { G L } _ { n } ( \\mathbb { Z } )", "score": 0.9276 },
+                { "bbox": [283, 191, 343, 203], "type": "text", "content": "replaces G by", "score": 1.0 },
+                { "bbox": [345, 190, 376, 201], "type": "inline_equation", "content": "P ^ { T } G P", "score": 0.9082 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 4,
+          "lines": [{ "bbox": [301, 694, 308, 703], "spans": [{ "bbox": [301, 694, 308, 703], "type": "text", "content": "2", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 122, 265, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [132, 123, 263, 137], "spans": [{ "bbox": [132, 123, 263, 137], "type": "text", "content": "2 Gram matrices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 147, 433, 159],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 148, 433, 159],
+              "spans": [
+                { "bbox": [133, 148, 180, 158], "type": "text", "content": "For a basis", "score": 1.0 },
+                { "bbox": [182, 149, 225, 158], "type": "inline_equation", "content": "e _ { 1 } , \\ldots , e _ { n }", "score": 0.9013 },
+                { "bbox": [228, 148, 334, 158], "type": "text", "content": "of L the Gram matrix is", "score": 1.0 },
+                { "bbox": [336, 148, 409, 159], "type": "inline_equation", "content": "G = ( b ( e _ { i } , e _ { j } ) ) _ { i , j }", "score": 0.9292 },
+                { "bbox": [409, 148, 433, 159], "type": "text", "content": ", and", "score": 1.0 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        },
+        {
+          "bbox": [271, 169, 337, 180],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [271, 169, 337, 180],
+              "spans": [
+                {
+                  "bbox": [271, 169, 337, 180],
+                  "type": "interline_equation",
+                  "content": "\\det L = \\det G.",
+                  "image_path": "a95a0c0cbea423158b82e9ca27dafccf31f91ce81bf3403fdb27fef9ec06cbd3.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 2
+        },
+        {
+          "bbox": [131, 190, 379, 203],
+          "type": "text",
+          "angle": 0,
+          "index": 3,
+          "lines": [
+            {
+              "bbox": [133, 190, 376, 203],
+              "spans": [
+                { "bbox": [133, 190, 223, 202], "type": "text", "content": "A change of basis by", "score": 1.0 },
+                { "bbox": [226, 190, 279, 202], "type": "inline_equation", "content": "P \\in \\operatorname { G L } _ { n } ( \\mathbb { Z } )", "score": 0.9276 },
+                { "bbox": [283, 191, 343, 203], "type": "text", "content": "replaces G by", "score": 1.0 },
+                { "bbox": [345, 190, 376, 201], "type": "inline_equation", "content": "P ^ { T } G P", "score": 0.9082 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 2,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 121, 248, 136],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [131, 121, 247, 137], "spans": [{ "bbox": [131, 121, 247, 137], "type": "text", "content": "3 Dual lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 146, 478, 171],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 158],
+              "spans": [
+                { "bbox": [133, 148, 215, 157], "type": "text", "content": "The dual lattice is", "score": 1.0 },
+                {
+                  "bbox": [218, 147, 365, 158],
+                  "type": "inline_equation",
+                  "content": "L ^ { \\vee } = \\{ x \\in L \\otimes \\mathbb { Q } : b ( x , L ) \\subseteq \\mathbb { Z } \\}",
+                  "score": 0.912
+                },
+                { "bbox": [365, 148, 477, 158], "type": "text", "content": ". For integral L we have", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [132, 158, 265, 171],
+              "spans": [
+                { "bbox": [132, 158, 166, 170], "type": "inline_equation", "content": "L \\subseteq L ^ { \\vee }", "score": 0.8277 },
+                { "bbox": [167, 159, 186, 170], "type": "text", "content": "and", "score": 1.0 },
+                { "bbox": [188, 158, 265, 171], "type": "inline_equation", "content": "[ L ^ { \\vee } : L ] = | \\operatorname* { d e i } L |", "score": 0.7332 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [301, 693, 308, 703], "spans": [{ "bbox": [301, 693, 308, 703], "type": "text", "content": "3", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 121, 248, 136],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [131, 121, 247, 137], "spans": [{ "bbox": [131, 121, 247, 137], "type": "text", "content": "3 Dual lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 146, 478, 171],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 158],
+              "spans": [
+                { "bbox": [133, 148, 215, 157], "type": "text", "content": "The dual lattice is", "score": 1.0 },
+                {
+                  "bbox": [218, 147, 365, 158],
+                  "type": "inline_equation",
+                  "content": "L ^ { \\vee } = \\{ x \\in L \\otimes \\mathbb { Q } : b ( x , L ) \\subseteq \\mathbb { Z } \\}",
+                  "score": 0.912
+                },
+                { "bbox": [365, 148, 477, 158], "type": "text", "content": ". For integral L we have", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [132, 158, 265, 171],
+              "spans": [
+                { "bbox": [132, 158, 166, 170], "type": "inline_equation", "content": "L \\subseteq L ^ { \\vee }", "score": 0.8277 },
+                { "bbox": [167, 159, 186, 170], "type": "text", "content": "and", "score": 1.0 },
+                { "bbox": [188, 158, 265, 171], "type": "inline_equation", "content": "[ L ^ { \\vee } : L ] = | \\operatorname* { d e i } L |", "score": 0.7332 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 3,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 121, 295, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [132, 123, 293, 137], "spans": [{ "bbox": [132, 123, 293, 137], "type": "text", "content": "4 Discriminant forms", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 147, 478, 170],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [132, 147, 477, 158],
+              "spans": [
+                { "bbox": [132, 147, 323, 158], "type": "text", "content": "For an even lattice the discriminant group", "score": 1.0 },
+                { "bbox": [326, 147, 381, 158], "type": "inline_equation", "content": "A _ { L } = L ^ { \\vee } / L", "score": 0.923 },
+                { "bbox": [384, 148, 477, 158], "type": "text", "content": "carries the quadratic", "score": 1.0 }
+              ]
+            },
+            { "bbox": [131, 158, 155, 169], "spans": [{ "bbox": [131, 158, 155, 169], "type": "text", "content": "form", "score": 1.0 }] }
+          ],
+          "merge_prev": false
+        },
+        {
+          "bbox": [240, 170, 368, 184],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [240, 170, 368, 184],
+              "spans": [
+                {
+                  "bbox": [240, 170, 368, 184],
+                  "type": "interline_equation",
+                  "content": "q _ {L} (x + L) = \\frac {1}{2} b (x, x) \\bmod \\mathbb {Z}.",
+                  "image_path": "6d60fca07ddacbe0d51a0adae5538191c44b82efd7a63e932178845776e908ec.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 2
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 309, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 3,
+          "lines": [{ "bbox": [301, 694, 308, 703], "spans": [{ "bbox": [301, 694, 308, 703], "type": "text", "content": "4", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 121, 295, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [132, 123, 293, 137], "spans": [{ "bbox": [132, 123, 293, 137], "type": "text", "content": "4 Discriminant forms", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 147, 478, 170],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [132, 147, 477, 158],
+              "spans": [
+                { "bbox": [132, 147, 323, 158], "type": "text", "content": "For an even lattice the discriminant group", "score": 1.0 },
+                { "bbox": [326, 147, 381, 158], "type": "inline_equation", "content": "A _ { L } = L ^ { \\vee } / L", "score": 0.923 },
+                { "bbox": [384, 148, 477, 158], "type": "text", "content": "carries the quadratic", "score": 1.0 }
+              ]
+            },
+            { "bbox": [131, 158, 155, 169], "spans": [{ "bbox": [131, 158, 155, 169], "type": "text", "content": "form", "score": 1.0 }] }
+          ],
+          "merge_prev": false
+        },
+        {
+          "bbox": [240, 170, 368, 184],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [240, 170, 368, 184],
+              "spans": [
+                {
+                  "bbox": [240, 170, 368, 184],
+                  "type": "interline_equation",
+                  "content": "q _ {L} (x + L) = \\frac {1}{2} b (x, x) \\bmod \\mathbb {Z}.",
+                  "image_path": "6d60fca07ddacbe0d51a0adae5538191c44b82efd7a63e932178845776e908ec.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 2
+        }
+      ]
+    },
+    {
+      "page_idx": 4,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 122, 249, 136],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [131, 121, 248, 137], "spans": [{ "bbox": [131, 121, 248, 137], "type": "text", "content": "5 Root lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 146, 478, 172],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 158],
+              "spans": [
+                { "bbox": [133, 148, 203, 158], "type": "text", "content": "The root lattice", "score": 1.0 },
+                { "bbox": [204, 148, 217, 158], "type": "inline_equation", "content": "A _ { n }", "score": 0.8411 },
+                {
+                  "bbox": [229, 147, 329, 158],
+                  "type": "inline_equation",
+                  "content": "\\textstyle \\left\\{ x \\in \\mathbb { Z } ^ { n + 1 } : \\sum _ { i } x _ { i } = 0 \\right\\}",
+                  "score": 0.9164
+                },
+                { "bbox": [330, 148, 373, 158], "type": "text", "content": ", with det", "score": 1.0 },
+                { "bbox": [374, 148, 422, 158], "type": "inline_equation", "content": "A _ { n } = n + 1", "score": 0.9093 },
+                { "bbox": [422, 148, 477, 158], "type": "text", "content": ". The lattice", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 158, 290, 171],
+              "spans": [
+                { "bbox": [133, 159, 146, 170], "type": "inline_equation", "content": "D _ { n }", "score": 0.8733 },
+                { "bbox": [147, 159, 158, 170], "type": "text", "content": "is", "score": 1.0 },
+                {
+                  "bbox": [159, 158, 290, 171],
+                  "type": "inline_equation",
+                  "content": "\\left\\{ x \\in \\mathbb { Z } ^ { n } : \\sum _ { i } x _ { i } \\equiv 0 { \\pmod { 2 } } \\right\\}",
+                  "score": 0.902
+                }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [302, 694, 308, 703], "spans": [{ "bbox": [302, 694, 308, 703], "type": "text", "content": "5", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 122, 249, 136],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [131, 121, 248, 137], "spans": [{ "bbox": [131, 121, 248, 137], "type": "text", "content": "5 Root lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 146, 478, 172],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 158],
+              "spans": [
+                { "bbox": [133, 148, 203, 158], "type": "text", "content": "The root lattice", "score": 1.0 },
+                { "bbox": [204, 148, 217, 158], "type": "inline_equation", "content": "A _ { n }", "score": 0.8411 },
+                {
+                  "bbox": [229, 147, 329, 158],
+                  "type": "inline_equation",
+                  "content": "\\textstyle \\left\\{ x \\in \\mathbb { Z } ^ { n + 1 } : \\sum _ { i } x _ { i } = 0 \\right\\}",
+                  "score": 0.9164
+                },
+                { "bbox": [330, 148, 373, 158], "type": "text", "content": ", with det", "score": 1.0 },
+                { "bbox": [374, 148, 422, 158], "type": "inline_equation", "content": "A _ { n } = n + 1", "score": 0.9093 },
+                { "bbox": [422, 148, 477, 158], "type": "text", "content": ". The lattice", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 158, 290, 171],
+              "spans": [
+                { "bbox": [133, 159, 146, 170], "type": "inline_equation", "content": "D _ { n }", "score": 0.8733 },
+                { "bbox": [147, 159, 158, 170], "type": "text", "content": "is", "score": 1.0 },
+                {
+                  "bbox": [159, 158, 290, 171],
+                  "type": "inline_equation",
+                  "content": "\\left\\{ x \\in \\mathbb { Z } ^ { n } : \\sum _ { i } x _ { i } \\equiv 0 { \\pmod { 2 } } \\right\\}",
+                  "score": 0.902
+                }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 5,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 121, 257, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [
+            {
+              "bbox": [131, 121, 255, 137],
+              "spans": [
+                { "bbox": [131, 121, 235, 137], "type": "text", "content": "6 The lattice", "score": 1.0 },
+                { "bbox": [239, 123, 255, 136], "type": "inline_equation", "content": "E _ { 8 }", "score": 0.818 }
+              ]
+            }
+          ],
+          "level": 2
+        },
+        {
+          "bbox": [130, 146, 478, 171],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 158],
+              "spans": [
+                { "bbox": [133, 148, 192, 158], "type": "text", "content": "Theorem 1.", "score": 1.0 },
+                {
+                  "bbox": [197, 147, 334, 158],
+                  "type": "inline_equation",
+                  "content": "{ \\cal E } _ { 8 } = D _ { 8 } \\cup ( D _ { 8 } + { \\textstyle \\frac { 1 } { 2 } } ( 1 , . . . , 1 ) )",
+                  "score": 0.9323
+                },
+                { "bbox": [339, 148, 477, 158], "type": "text", "content": "is the unique even unimodular", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 160, 368, 169],
+              "spans": [{ "bbox": [133, 160, 368, 169], "type": "text", "content": "positive definite lattice of rank 8, and it has 240 roots.", "score": 1.0 }]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [302, 694, 308, 703], "spans": [{ "bbox": [302, 694, 308, 703], "type": "text", "content": "6", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 121, 257, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [
+            {
+              "bbox": [131, 121, 255, 137],
+              "spans": [
+                { "bbox": [131, 121, 235, 137], "type": "text", "content": "6 The lattice", "score": 1.0 },
+                { "bbox": [239, 123, 255, 136], "type": "inline_equation", "content": "E _ { 8 }", "score": 0.818 }
+              ]
+            }
+          ],
+          "level": 2
+        },
+        {
+          "bbox": [130, 146, 478, 171],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 158],
+              "spans": [
+                { "bbox": [133, 148, 192, 158], "type": "text", "content": "Theorem 1.", "score": 1.0 },
+                {
+                  "bbox": [197, 147, 334, 158],
+                  "type": "inline_equation",
+                  "content": "{ \\cal E } _ { 8 } = D _ { 8 } \\cup ( D _ { 8 } + { \\textstyle \\frac { 1 } { 2 } } ( 1 , . . . , 1 ) )",
+                  "score": 0.9323
+                },
+                { "bbox": [339, 148, 477, 158], "type": "text", "content": "is the unique even unimodular", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 160, 368, 169],
+              "spans": [{ "bbox": [133, 160, 368, 169], "type": "text", "content": "positive definite lattice of rank 8, and it has 240 roots.", "score": 1.0 }]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 6,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 121, 245, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [131, 121, 243, 137], "spans": [{ "bbox": [131, 121, 243, 137], "type": "text", "content": "7 Theta series", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [238, 169, 370, 195],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [238, 169, 370, 195],
+              "spans": [
+                {
+                  "bbox": [238, 169, 370, 195],
+                  "type": "interline_equation",
+                  "content": "\\theta_ {E _ {8}} (q) = 1 + 2 4 0 \\sum_ {n \\geq 1} \\sigma_ {3} (n) q ^ {n}.",
+                  "image_path": "d7a46ee8ba6014cd6623a48cd9464519a8018c6f55ae278d0f8b9c9cfd7eed23.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 1
+        },
+        {
+          "bbox": [131, 146, 477, 159],
+          "type": "text",
+          "angle": 0,
+          "index": 2,
+          "lines": [
+            {
+              "bbox": [132, 146, 474, 159],
+              "spans": [
+                { "bbox": [132, 148, 335, 158], "type": "text", "content": "The theta series of a positive definite lattice is", "score": 1.0 },
+                {
+                  "bbox": [337, 146, 437, 159],
+                  "type": "inline_equation",
+                  "content": "\\begin{array} { r } { \\theta _ { L } ( q ) = \\sum _ { x \\in L } q ^ { b ( x , x ) / 2 } } \\end{array}",
+                  "score": 0.9375
+                },
+                { "bbox": [437, 148, 461, 158], "type": "text", "content": ". For", "score": 1.0 },
+                { "bbox": [461, 147, 474, 158], "type": "inline_equation", "content": "E _ { 8 }", "score": 0.8173 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 692, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 3,
+          "lines": [{ "bbox": [302, 694, 308, 704], "spans": [{ "bbox": [302, 694, 308, 704], "type": "text", "content": "7", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 121, 245, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [131, 121, 243, 137], "spans": [{ "bbox": [131, 121, 243, 137], "type": "text", "content": "7 Theta series", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [238, 169, 370, 195],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [238, 169, 370, 195],
+              "spans": [
+                {
+                  "bbox": [238, 169, 370, 195],
+                  "type": "interline_equation",
+                  "content": "\\theta_ {E _ {8}} (q) = 1 + 2 4 0 \\sum_ {n \\geq 1} \\sigma_ {3} (n) q ^ {n}.",
+                  "image_path": "d7a46ee8ba6014cd6623a48cd9464519a8018c6f55ae278d0f8b9c9cfd7eed23.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 1
+        },
+        {
+          "bbox": [131, 146, 477, 159],
+          "type": "text",
+          "angle": 0,
+          "index": 2,
+          "lines": [
+            {
+              "bbox": [132, 146, 474, 159],
+              "spans": [
+                { "bbox": [132, 148, 335, 158], "type": "text", "content": "The theta series of a positive definite lattice is", "score": 1.0 },
+                {
+                  "bbox": [337, 146, 437, 159],
+                  "type": "inline_equation",
+                  "content": "\\begin{array} { r } { \\theta _ { L } ( q ) = \\sum _ { x \\in L } q ^ { b ( x , x ) / 2 } } \\end{array}",
+                  "score": 0.9375
+                },
+                { "bbox": [437, 148, 461, 158], "type": "text", "content": ". For", "score": 1.0 },
+                { "bbox": [461, 147, 474, 158], "type": "inline_equation", "content": "E _ { 8 }", "score": 0.8173 }
+              ]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 7,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 122, 203, 136],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [130, 121, 202, 137], "spans": [{ "bbox": [130, 121, 202, 137], "type": "text", "content": "8 Genus", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 146, 478, 170],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 159],
+              "spans": [
+                { "bbox": [133, 148, 296, 158], "type": "text", "content": "Two lattices are in the same genus if", "score": 1.0 },
+                {
+                  "bbox": [298, 147, 377, 159],
+                  "type": "inline_equation",
+                  "content": "L \\otimes \\mathbb { Z } _ { p } \\cong M \\otimes \\mathbb { Z } _ { p }",
+                  "score": 0.9227
+                },
+                { "bbox": [380, 148, 477, 158], "type": "text", "content": "for every prime p and", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 158, 203, 169],
+              "spans": [{ "bbox": [133, 158, 203, 169], "type": "inline_equation", "content": "L \\otimes \\mathbb { R } \\cong M \\otimes \\mathbb { R }", "score": 0.9115 }]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 693, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [302, 694, 308, 703], "spans": [{ "bbox": [302, 694, 308, 703], "type": "text", "content": "8", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 122, 203, 136],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [130, 121, 202, 137], "spans": [{ "bbox": [130, 121, 202, 137], "type": "text", "content": "8 Genus", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 146, 478, 170],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 147, 477, 159],
+              "spans": [
+                { "bbox": [133, 148, 296, 158], "type": "text", "content": "Two lattices are in the same genus if", "score": 1.0 },
+                {
+                  "bbox": [298, 147, 377, 159],
+                  "type": "inline_equation",
+                  "content": "L \\otimes \\mathbb { Z } _ { p } \\cong M \\otimes \\mathbb { Z } _ { p }",
+                  "score": 0.9227
+                },
+                { "bbox": [380, 148, 477, 158], "type": "text", "content": "for every prime p and", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [133, 158, 203, 169],
+              "spans": [{ "bbox": [133, 158, 203, 169], "type": "inline_equation", "content": "L \\otimes \\mathbb { R } \\cong M \\otimes \\mathbb { R }", "score": 0.9115 }]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    },
+    {
+      "page_idx": 8,
+      "preproc_blocks": [
+        {
+          "bbox": [131, 121, 286, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [132, 122, 285, 137], "spans": [{ "bbox": [132, 122, 285, 137], "type": "text", "content": "9 The mass formula", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 147, 352, 159],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 148, 350, 158],
+              "spans": [{ "bbox": [133, 148, 350, 158], "type": "text", "content": "The Smith–Minkowski–Siegel mass formula states", "score": 1.0 }]
+            }
+          ],
+          "merge_prev": false
+        },
+        {
+          "bbox": [240, 168, 368, 198],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [240, 168, 368, 198],
+              "spans": [
+                {
+                  "bbox": [240, 168, 368, 198],
+                  "type": "interline_equation",
+                  "content": "\\sum_ {M \\in \\mathrm{gen} (L)} \\frac {1}{| \\mathrm{O} (M) |} = \\mathrm{mass} (L).",
+                  "image_path": "953c5490c0b4d7001d88eaa94310c255f9867fd6b62bcbe2e07058ad45f6083c.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 2
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [301, 692, 308, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 3,
+          "lines": [{ "bbox": [302, 694, 308, 703], "spans": [{ "bbox": [302, 694, 308, 703], "type": "text", "content": "9", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [131, 121, 286, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [132, 122, 285, 137], "spans": [{ "bbox": [132, 122, 285, 137], "type": "text", "content": "9 The mass formula", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [131, 147, 352, 159],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [133, 148, 350, 158],
+              "spans": [{ "bbox": [133, 148, 350, 158], "type": "text", "content": "The Smith–Minkowski–Siegel mass formula states", "score": 1.0 }]
+            }
+          ],
+          "merge_prev": false
+        },
+        {
+          "bbox": [240, 168, 368, 198],
+          "type": "interline_equation",
+          "angle": 0,
+          "lines": [
+            {
+              "bbox": [240, 168, 368, 198],
+              "spans": [
+                {
+                  "bbox": [240, 168, 368, 198],
+                  "type": "interline_equation",
+                  "content": "\\sum_ {M \\in \\mathrm{gen} (L)} \\frac {1}{| \\mathrm{O} (M) |} = \\mathrm{mass} (L).",
+                  "image_path": "953c5490c0b4d7001d88eaa94310c255f9867fd6b62bcbe2e07058ad45f6083c.jpg"
+                }
+              ]
+            }
+          ],
+          "index": 2
+        }
+      ]
+    },
+    {
+      "page_idx": 9,
+      "preproc_blocks": [
+        {
+          "bbox": [132, 121, 286, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [133, 122, 285, 137], "spans": [{ "bbox": [133, 122, 285, 137], "type": "text", "content": "10 Niemeier lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 147, 478, 171],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [132, 148, 477, 158],
+              "spans": [
+                { "bbox": [132, 148, 477, 158], "type": "text", "content": "There are exactly 24 even unimodular positive definite lattices of rank 24; the", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [132, 160, 320, 169],
+              "spans": [{ "bbox": [132, 160, 320, 169], "type": "text", "content": "Leech lattice is the only one without roots.", "score": 1.0 }]
+            }
+          ],
+          "merge_prev": false
+        }
+      ],
+      "discarded_blocks": [
+        {
+          "bbox": [299, 692, 311, 703],
+          "type": "page_number",
+          "angle": 0,
+          "index": 2,
+          "lines": [{ "bbox": [299, 693, 311, 704], "spans": [{ "bbox": [299, 693, 311, 704], "type": "text", "content": "10", "score": 1.0 }] }]
+        }
+      ],
+      "page_size": [595, 841],
+      "para_blocks": [
+        {
+          "bbox": [132, 121, 286, 137],
+          "type": "title",
+          "angle": 0,
+          "index": 0,
+          "lines": [{ "bbox": [133, 122, 285, 137], "spans": [{ "bbox": [133, 122, 285, 137], "type": "text", "content": "10 Niemeier lattices", "score": 1.0 }] }],
+          "level": 2
+        },
+        {
+          "bbox": [130, 147, 478, 171],
+          "type": "text",
+          "angle": 0,
+          "index": 1,
+          "lines": [
+            {
+              "bbox": [132, 148, 477, 158],
+              "spans": [
+                { "bbox": [132, 148, 477, 158], "type": "text", "content": "There are exactly 24 even unimodular positive definite lattices of rank 24; the", "score": 1.0 }
+              ]
+            },
+            {
+              "bbox": [132, 160, 320, 169],
+              "spans": [{ "bbox": [132, 160, 320, 169], "type": "text", "content": "Leech lattice is the only one without roots.", "score": 1.0 }]
+            }
+          ],
+          "merge_prev": false
+        }
+      ]
+    }
+  ],
+  "_backend": "hybrid",
+  "_effort": "medium",
+  "_ocr_enable": false,
+  "_version_name": "3.4.4"
+}

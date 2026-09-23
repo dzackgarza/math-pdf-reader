@@ -35,7 +35,7 @@ export class StoreCommandError extends Error {
   }
 }
 
-async function runStore(args: string[], stdin: Blob | "ignore"): Promise<string> {
+export async function runStore(args: string[], stdin: Blob | "ignore"): Promise<string> {
   const proc = Bun.spawn([...STORE_COMMAND, ...args], { stdin, stdout: "pipe", stderr: "pipe" });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),

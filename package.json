@@ -27,6 +27,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "wouter": "^3.11.0",
+    "xdg-basedir": "^5.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -3,6 +3,7 @@ import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
+import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "./extractions";
 import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
@@ -83,6 +84,8 @@ export function createApp(config: AppConfig): Hono {
       readerPage(found.item, found.organization.collections, new URL(c.req.url).origin),
     );
   });
+
+  registerExtractionRoutes(app, config.root, EXTRACTIONS_MANIFEST);
 
   app.use(
     "/pdfjs/*",
