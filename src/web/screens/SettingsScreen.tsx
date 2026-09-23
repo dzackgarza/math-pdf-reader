@@ -10,9 +10,9 @@ import {
   ShieldCheck,
   SquareTerminal,
 } from "lucide-react";
+import prettyBytes from "pretty-bytes";
 import type { ReactNode } from "react";
 import type { LibraryPayload } from "../../server/libraryContract";
-import { fileSize } from "../format";
 import type { BucketStatus, StatusRead } from "../useBucketStatus";
 
 function Section({
@@ -145,7 +145,7 @@ function Sections({ payload, status }: { payload: LibraryPayload; status: Bucket
         <Facts
           rows={[
             ["Library folder", <Mono key="r">{status.settings.root}</Mono>],
-            ["Stored", `${payload.items.length.toLocaleString()} PDFs (${fileSize(stored)})`],
+            ["Stored", `${payload.items.length.toLocaleString()} PDFs (${prettyBytes(stored)})`],
             [
               "Collections, tags and notes",
               <Mono key="o">{status.settings.organizationFile}</Mono>,
@@ -220,9 +220,7 @@ export default function SettingsScreen({
           <p className="text-sm text-muted">How PDF Bucket captures, stores and hands PDFs on.</p>
         </header>
         {read.kind === "checking" && (
-          <p role="status" className="text-sm text-muted">
-            Reading the bucket's status…
-          </p>
+          <output className="block text-sm text-muted">Reading the bucket's status…</output>
         )}
         {read.kind === "failed" && (
           <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">

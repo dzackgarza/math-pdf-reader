@@ -9,17 +9,10 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
 import type { BucketItem, Collection } from "../../server/libraryContract";
-import {
-  dateTime,
-  fileSize,
-  isTopic,
-  shortDate,
-  sourceDomain,
-  topicName,
-  topicTag,
-} from "../format";
+import { dateTime, isTopic, shortDate, sourceDomain, topicName, topicTag } from "../format";
 import { Chip, TagChip } from "./Chips";
 import { AddByName, AddToCollection } from "./FilingEditors";
 
@@ -148,7 +141,7 @@ function Details({
         </Fact>
         <Fact label="Cache status">
           <CheckCircle2 aria-hidden className="h-4 w-4 shrink-0 text-filed" />
-          Stored locally ({fileSize(item.file.sizeBytes)})
+          Stored locally ({prettyBytes(item.file.sizeBytes)})
         </Fact>
         <Fact label="SHA-256">
           <span className="font-mono text-xs" title={provenance.original_sha256}>

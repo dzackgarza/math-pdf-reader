@@ -69,7 +69,9 @@ export function AddByName({
       />
       <datalist id={listId}>
         {suggestions.map((suggestion) => (
-          <option key={suggestion} value={suggestion} />
+          <option key={suggestion} value={suggestion}>
+            {suggestion}
+          </option>
         ))}
       </datalist>
     </>

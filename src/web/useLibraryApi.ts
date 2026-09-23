@@ -89,7 +89,8 @@ export function useLibraryApi() {
     show(fetchLibrary());
   }, [show]);
 
-  useEffect(reload, [reload]);
+  // The first load starts from the initial loading state; later reloads pass through it again.
+  useEffect(() => show(fetchLibrary()), [show]);
 
   // Every mutation answers with the full payload or with the created entity; either way the
   // table shows the stored state afterwards, without passing through the loading screen.

@@ -1,10 +1,11 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { type Cell, flexRender, type Table } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, Eye, FileText, Inbox, RotateCcw } from "lucide-react";
+import prettyBytes from "pretty-bytes";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { BucketItem } from "../../server/libraryContract";
 import { type ColumnKey, columnKey } from "../columnModel";
-import { fileSize, shortDate, sourceDomain } from "../format";
+import { shortDate, sourceDomain } from "../format";
 import { orderedLeafColumns, reorderColumn, resetColumnLayout } from "../useLibraryTable";
 import { Chip, TagChip } from "./Chips";
 
@@ -79,7 +80,7 @@ const CELL_RENDERERS: Record<
       ))}
     </Chips>
   ),
-  sizeBytes: (item) => <Muted>{fileSize(item.file.sizeBytes)}</Muted>,
+  sizeBytes: (item) => <Muted>{prettyBytes(item.file.sizeBytes)}</Muted>,
   notes: (item) => <Muted>{item.notes.length}</Muted>,
   key: (item) => <Mono>{item.id}</Mono>,
   pdfUrl: (item) => <Mono>{item.provenance.pdf_url}</Mono>,
@@ -135,6 +136,9 @@ export default function LibraryTable({
                           {sorted === "desc" && <ChevronDown className="h-3.5 w-3.5" />}
                         </span>
                         <span
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Resize ${header.column.id}`}
                           onMouseDown={header.getResizeHandler()}
                           onClick={(event) => event.stopPropagation()}
                           className="absolute top-2 right-0 bottom-2 w-1 cursor-col-resize rounded bg-line opacity-0 hover:opacity-100"

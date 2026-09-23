@@ -110,7 +110,7 @@ function TagList({
 }) {
   const Icon = tab === "topics" ? Shapes : Tag;
   return (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-1">
+    <ul className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-1">
       {tags.map(([tag, count]) => (
         <li key={tag}>
           <Link href={organizationPath(tab, tag)} className={entryClasses(tag === entry)}>

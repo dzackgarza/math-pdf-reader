@@ -1,6 +1,6 @@
 import { HardDrive } from "lucide-react";
+import prettyBytes from "pretty-bytes";
 import type { LibraryPayload } from "../../server/libraryContract";
-import { fileSize } from "../format";
 import { itemsInView } from "../librarySelectors";
 import type { StatusRead } from "../useBucketStatus";
 
@@ -36,7 +36,7 @@ export default function StatusBar({
     <footer className="flex items-center gap-4 border-t border-line bg-surface px-5 py-2 text-xs text-muted">
       <span className="flex items-center gap-2">
         <HardDrive aria-hidden className="h-3.5 w-3.5" />
-        {payload.items.length.toLocaleString()} PDFs stored · {fileSize(stored)} ·{" "}
+        {payload.items.length.toLocaleString()} PDFs stored · {prettyBytes(stored)} ·{" "}
         {inbox.toLocaleString()} in inbox
       </span>
       <BucketState read={read} />

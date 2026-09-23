@@ -43,8 +43,6 @@ export function unfiled(capturedAt: string): ItemFiling {
   return { tags: [], collections: [], notes: [], modifiedAt: capturedAt };
 }
 
-// --- Pure transitions --------------------------------------------------------
-
 function fileItem(
   organization: Organization,
   key: string,
@@ -137,8 +135,6 @@ export function addSavedSearch(org: Organization, search: SavedSearch): Organiza
 export function deleteSavedSearch(org: Organization, id: string): Organization {
   return { ...org, savedSearches: org.savedSearches.filter((search) => search.id !== id) };
 }
-
-// --- Persistence ---------------------------------------------------------------
 
 // One store per bucket root. Writes are serialized and land by rename, so a reader never
 // sees a half-written file and a response is sent only after its change is on disk.

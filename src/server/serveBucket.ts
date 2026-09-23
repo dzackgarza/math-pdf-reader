@@ -15,4 +15,4 @@ const server = Bun.serve({
   port: 0,
   fetch: createApp({ root, version: "0.1.0", pdfjsDir: pdfjsDir(config) }).fetch,
 });
-console.log(server.url.origin);
+process.stdout.write(`${server.url.origin}\n`);
