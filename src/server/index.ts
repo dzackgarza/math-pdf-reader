@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "./app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "./config";
+import { CONFIG_PATH, dataRoot, loadAppConfig, pdfjsDir } from "./config";
 
 const VERSION = "0.1.0";
 
 const config = loadAppConfig(CONFIG_PATH);
-mkdirSync(config.root, { recursive: true });
+const root = dataRoot();
+mkdirSync(root, { recursive: true });
 const viewer = join(pdfjsDir(config), "web/viewer.html");
 if (!existsSync(viewer)) {
   throw new Error(`PDF.js viewer missing at ${viewer}; run \`just fetch-pdfjs\``);
@@ -17,5 +18,5 @@ export default {
   hostname: config.server.host,
   // Extraction requests stay open for minutes while a provider works; 0 disables the timeout.
   idleTimeout: 0,
-  fetch: createApp({ root: config.root, version: VERSION, pdfjsDir: pdfjsDir(config) }).fetch,
+  fetch: createApp({ root, version: VERSION, pdfjsDir: pdfjsDir(config) }).fetch,
 };
