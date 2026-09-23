@@ -1,0 +1,20 @@
+{
+  "name": "@pdf-bucket/server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "bun build --compile src/index.ts --outfile ../../dist/pdf-bucket-server",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "^4.13.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~6.0.2"
+  }
+}

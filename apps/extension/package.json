@@ -1,0 +1,23 @@
+{
+  "name": "@pdf-bucket/extension",
+  "description": "Intercepts PDF navigations in Chrome and Firefox and hands them to PDF Bucket.",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build && wxt build -b firefox",
+    "zip": "wxt zip && wxt zip -b firefox",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.5",
+    "web-ext": "^10.5.0",
+    "wxt": "^0.21.3"
+  }
+}

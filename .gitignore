@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.output/
+.wxt/
+target/
+gen/schemas/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log

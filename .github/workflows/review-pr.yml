@@ -1,0 +1,77 @@
+name: PR QC and Slop Review
+on:
+  pull_request: {}
+jobs:
+  qc-ci:
+    uses: dzackgarza/ai-review-ci/.github/workflows/_qc.yml@main
+    permissions:
+      contents: read
+      issues: read
+    with:
+      tier: test-ci
+      profile: 'bun-python'
+      infra_ref: 'main'
+  deterministic-diff:
+    uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    with:
+      gate: deterministic-diff
+      profile: 'bun-python'
+  delegation-conformance:
+    uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    with:
+      gate: delegation-conformance
+      profile: 'bun-python'
+  qc-doctor:
+    uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
+    permissions:
+      contents: read
+      actions: read
+      # Label-alignment check reads live labels via `gh label list`
+      # (GET /repos/{owner}/{repo}/labels), which requires Issues (read).
+      issues: read
+      pull-requests: read
+    with:
+      gate: qc-doctor
+      profile: 'bun-python'
+  pr-description-checklist:
+    uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      issues: read
+    with:
+      gate: pr-description-checklist
+      profile: 'bun-python'
+  thread-resolution:
+    needs:
+      - slop-review
+    uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      issues: read
+    with:
+      gate: thread-resolution
+      profile: 'bun-python'
+  slop-review:
+    uses: dzackgarza/automated-reviews/.github/workflows/_slop-review.yml@main
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+      pull-requests: write
+      issues: write
+    with:
+      scope: diff

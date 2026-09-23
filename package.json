@@ -1,0 +1,14 @@
+{
+  "name": "pdf-bucket",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter '@pdf-bucket/*' build",
+    "typecheck": "bun run --filter '@pdf-bucket/*' typecheck",
+    "test": "bun test"
+  }
+}
