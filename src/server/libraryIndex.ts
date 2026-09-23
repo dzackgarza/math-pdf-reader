@@ -1,40 +1,45 @@
 // The library index: every stored PDF under the root with its embedded provenance, its
-// size, and the extraction artifacts beside it. Derived from the files on every read;
+// size, and the extraction beside it. Derived from the files on every read;
 // provenance is re-read from a PDF only when that file is new or has changed.
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import type { Extraction } from "./libraryContract";
 import { listItems, type StoredItem } from "./store";
 
-export type Artifact = { id: string; title: string; path: string };
+type Artifact = Extract<Extraction, { status: "extracted" }>["markdown"];
 
 export type IndexedItem = {
   stored: StoredItem;
   path: string;
   sizeBytes: number;
-  artifacts: Artifact[];
+  extraction: Extraction;
 };
 
 type CachedRead = { signature: string; stored: StoredItem };
 
-// Extraction plugins write `<key>.md` and files under `<key>.extraction/` beside the PDF.
-async function artifactsFor(root: string, key: string, names: Set<string>): Promise<Artifact[]> {
-  const found: string[] = [];
-  if (names.has(`${key}.extraction`)) {
-    const inside = await readdir(join(root, `${key}.extraction`), {
-      recursive: true,
-      withFileTypes: true,
-    });
-    for (const entry of inside.filter((dirent) => dirent.isFile())) {
-      const relative = join(entry.parentPath, entry.name).slice(root.length + 1);
-      found.push(relative);
-    }
+async function artifact(path: string, name: string): Promise<Artifact> {
+  return { name, path, sizeBytes: (await stat(path)).size };
+}
+
+// The extraction beside a stored PDF. The runner moves `<key>.extraction/` into place first
+// and `<key>.md` last, so only the Markdown marks a complete extraction.
+async function extractionFor(root: string, key: string, names: Set<string>): Promise<Extraction> {
+  if (!names.has(`${key}.md`)) {
+    return { status: "none" };
   }
-  if (names.has(`${key}.md`)) {
-    found.push(`${key}.md`);
-  }
-  return found
-    .sort()
-    .map((id) => ({ id, title: id.slice(id.lastIndexOf("/") + 1), path: join(root, id) }));
+  const directory = join(root, `${key}.extraction`);
+  const inside = names.has(`${key}.extraction`)
+    ? await readdir(directory, { recursive: true, withFileTypes: true })
+    : [];
+  const files = inside
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name))
+    .sort();
+  return {
+    status: "extracted",
+    markdown: await artifact(join(root, `${key}.md`), `${key}.md`),
+    files: await Promise.all(files.map((path) => artifact(path, relative(directory, path)))),
+  };
 }
 
 export class LibraryIndex {
@@ -92,7 +97,7 @@ export class LibraryIndex {
         stored: this.cached(file.key),
         path: file.path,
         sizeBytes: file.sizeBytes,
-        artifacts: await artifactsFor(this.root, file.key, names),
+        extraction: await extractionFor(this.root, file.key, names),
       })),
     );
   }

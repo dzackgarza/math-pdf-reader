@@ -42,15 +42,28 @@ export const ItemNoteSchema = z.strictObject({
   dateModified: z.iso.datetime({ offset: true }),
 });
 
-// An extraction artifact beside the stored PDF; `id` is its path relative to the root.
-const AttachmentSchema = z.strictObject({
-  id: z.string().min(1),
-  title: z.string().min(1),
+// A file an extraction plugin left beside the stored PDF: `name` is the Markdown's file
+// name, or an artifact's path inside `<key>.extraction/`.
+const ArtifactSchema = z.strictObject({
+  name: z.string().min(1),
   path: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
 });
 
-// The library item: title, url, tags, collections, notes, attachments and dates carry the
-// same meaning as in a reference-manager item; provenance and file are the bucket's own.
+// An item's extraction, derived from the files beside its PDF and never stored elsewhere:
+// `<key>.md` is the Markdown and marks a complete extraction (the runner writes it last);
+// `<key>.extraction/` holds the further artifacts. No Markdown means no extraction.
+export const ExtractionSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("none") }),
+  z.strictObject({
+    status: z.literal("extracted"),
+    markdown: ArtifactSchema,
+    files: z.array(ArtifactSchema),
+  }),
+]);
+
+// The library item: title, url, tags, collections, notes and dates carry the same meaning
+// as in a reference-manager item; provenance, file and extraction are the bucket's own.
 export const BucketItemSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -58,11 +71,11 @@ export const BucketItemSchema = z.strictObject({
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),
-  attachments: z.array(AttachmentSchema),
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
   provenance: ProvenanceSchema,
   file: z.strictObject({ path: z.string().min(1), sizeBytes: z.number().int().nonnegative() }),
+  extraction: ExtractionSchema,
 });
 
 export const LibraryPayloadSchema = z.strictObject({
@@ -125,3 +138,4 @@ export type BucketItem = z.infer<typeof BucketItemSchema>;
 export type LibraryPayload = z.infer<typeof LibraryPayloadSchema>;
 export type ApiErrorKind = (typeof API_ERROR_KINDS)[number];
 export type Settings = z.infer<typeof SettingsSchema>;
+export type Extraction = z.infer<typeof ExtractionSchema>;

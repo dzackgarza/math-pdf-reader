@@ -41,7 +41,7 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
     tags: filing.tags,
     collections: filing.collections,
     notes: filing.notes,
-    attachments: indexed.artifacts,
+    extraction: indexed.extraction,
     dateAdded: provenance.captured_at,
     dateModified: filing.modifiedAt,
     provenance,

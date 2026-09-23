@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
-import type { BucketItem, Collection } from "../../server/libraryContract";
+import type { BucketItem, Collection, Extraction } from "../../server/libraryContract";
 import { dateTime, isTopic, shortDate, sourceDomain, topicName, topicTag } from "../format";
 import { Chip, TagChip } from "./Chips";
 import { AddByName, AddToCollection } from "./FilingEditors";
@@ -85,6 +85,31 @@ function ExternalLinkText({ url }: { url: string }) {
 // A hash is recognisable by its ends; the full value is one click away.
 function shortHash(hash: string): string {
   return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
+}
+
+function ArtifactRow({ name, path, sizeBytes }: { name: string; path: string; sizeBytes: number }) {
+  return (
+    <li className="flex items-center gap-2" title={path}>
+      <FileText aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted" />
+      <span className="min-w-0 truncate font-mono text-xs">{name}</span>
+      <span className="ml-auto shrink-0 text-xs text-muted">{prettyBytes(sizeBytes)}</span>
+    </li>
+  );
+}
+
+// The Markdown and the artifacts an extraction plugin left beside the PDF.
+function ExtractionFiles({ extraction }: { extraction: Extraction }) {
+  if (extraction.status === "none") {
+    return <span className="text-muted">None yet</span>;
+  }
+  return (
+    <ul className="w-full space-y-1">
+      <ArtifactRow {...extraction.markdown} />
+      {extraction.files.map((file) => (
+        <ArtifactRow key={file.name} {...file} />
+      ))}
+    </ul>
+  );
 }
 
 function FilingRow({ label, children }: { label: string; children: ReactNode }) {
@@ -190,23 +215,8 @@ function Details({
             onAdd={addTag}
           />
         </FilingRow>
-        <FilingRow label="Extractions">
-          {item.attachments.length === 0 ? (
-            <span className="text-muted">None yet</span>
-          ) : (
-            <ul className="w-full space-y-1">
-              {item.attachments.map((artifact) => (
-                <li
-                  key={artifact.id}
-                  className="flex items-center gap-2 truncate"
-                  title={artifact.path}
-                >
-                  <FileText aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted" />
-                  <span className="truncate font-mono text-xs">{artifact.id}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <FilingRow label="Extraction">
+          <ExtractionFiles extraction={item.extraction} />
         </FilingRow>
       </dl>
     </div>

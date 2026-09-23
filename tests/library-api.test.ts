@@ -4,6 +4,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -87,9 +88,6 @@ test("the library lists every stored PDF with the provenance read back from the 
   const bucket = emptyBucket();
   const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   const problems = await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
-  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Codes\n");
-  mkdirSync(join(bucket.root, "lattices.extraction"));
-  writeFileSync(join(bucket.root, "lattices.extraction/figure-1.png"), "png");
 
   const items = byId((await library(bucket)).items);
 
@@ -103,12 +101,7 @@ test("the library lists every stored PDF with the provenance read back from the 
     path: join(bucket.root, "lattices.pdf"),
     sizeBytes: statSync(join(bucket.root, "lattices.pdf")).size,
   });
-  expect(listed?.attachments.map((artifact) => artifact.id)).toEqual([
-    "lattices.extraction/figure-1.png",
-    "lattices.md",
-  ]);
   expect(items.get("problems")?.provenance).toEqual(problems.provenance);
-  expect(items.get("problems")?.attachments).toEqual([]);
 
   const copied = emptyBucket();
   copyFileSync(join(bucket.root, "lattices.pdf"), join(copied.root, "lattices.pdf"));
@@ -116,10 +109,50 @@ test("the library lists every stored PDF with the provenance read back from the 
   const fromFilesAlone = byId((await library(copied)).items);
   expect(fromFilesAlone.get("lattices")?.provenance).toEqual(lattices.provenance);
   expect(fromFilesAlone.get("problems")?.provenance).toEqual(problems.provenance);
+});
 
-  const later = await capture(bucket, lectureNotes, "-draft.pdf", "A later capture");
+test("a PDF captured after the library was first read appears on the next read", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  expect([...byId((await library(bucket)).items).keys()]).toEqual(["lattices"]);
+
+  const later = await capture(bucket, problemSet, "-draft.pdf", "A later capture");
+
   expect(later.key).toBe("-draft");
   expect(byId((await library(bucket)).items).get("-draft")?.provenance).toEqual(later.provenance);
+});
+
+test("an item's extraction is derived from the Markdown and the artifact directory beside its PDF", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const extraction = async () => byId((await library(bucket)).items).get("lattices")?.extraction;
+
+  expect(await extraction()).toEqual({ status: "none" });
+
+  // The runner moves artifacts first and the Markdown last; artifacts alone are no extraction.
+  mkdirSync(join(bucket.root, "lattices.extraction/pages"), { recursive: true });
+  writeFileSync(join(bucket.root, "lattices.extraction/content_list.json"), "[]");
+  writeFileSync(join(bucket.root, "lattices.extraction/pages/page-1.png"), "png bytes");
+  expect(await extraction()).toEqual({ status: "none" });
+
+  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Codes\n");
+  expect(await extraction()).toEqual({
+    status: "extracted",
+    markdown: { name: "lattices.md", path: join(bucket.root, "lattices.md"), sizeBytes: 21 },
+    files: [
+      {
+        name: "content_list.json",
+        path: join(bucket.root, "lattices.extraction/content_list.json"),
+        sizeBytes: 2,
+      },
+      {
+        name: "pages/page-1.png",
+        path: join(bucket.root, "lattices.extraction/pages/page-1.png"),
+        sizeBytes: 9,
+      },
+    ],
+  });
+  expect(readdirSync(bucket.root).filter((name) => name.endsWith(".json"))).toEqual([]);
 });
 
 test("filing survives a server restart, and deleting the filing leaves every item intact", async () => {
