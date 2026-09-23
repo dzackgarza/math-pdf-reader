@@ -9,7 +9,7 @@ from pydantic import TypeAdapter
 from pdfbucket.cli import app
 from pdfbucket.models import CaptureResult, StoredItem
 from pdfbucket.provenance import MissingProvenanceError
-from pdfbucket.store import UnknownKeyError, pdf_path
+from pdfbucket.store import ChangedPdfError, UnknownKeyError, pdf_path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 LECTURE_NOTES = FIXTURES / "lecture-notes.pdf"
@@ -115,3 +115,46 @@ def test_list_refuses_a_stored_pdf_without_provenance(capsys: pytest.CaptureFixt
 
     with pytest.raises(MissingProvenanceError):
         app(["list", str(tmp_path)], result_action="return_value")
+
+
+def run_restore(capsys: pytest.CaptureFixture[str], root: Path, pdf: Path, item: StoredItem) -> CaptureResult:
+    provenance = item.provenance
+    app(
+        [
+            "restore",
+            str(root),
+            str(pdf),
+            item.key,
+            str(provenance.pdf_url),
+            str(provenance.source_url),
+            provenance.captured_at.isoformat(),
+            provenance.original_sha256,
+            provenance.title_hint,
+        ],
+        result_action="return_value",
+    )
+    return CaptureResult.model_validate_json(capsys.readouterr().out)
+
+
+def test_restore_puts_the_original_bytes_back_under_the_same_key_with_the_recorded_provenance(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    captured = run_capture(capsys, tmp_path, LECTURE_NOTES, "1603.04246", "https://arxiv.org/pdf/1603.04246")
+    (tmp_path / "1603.04246.pdf").unlink()
+
+    restored = run_restore(capsys, tmp_path, LECTURE_NOTES, captured.item)
+
+    assert restored.item == captured.item
+    assert restored.existing is False
+    assert [p.name for p in tmp_path.iterdir()] == ["1603.04246.pdf"]
+    app(["describe", str(tmp_path), "1603.04246"], result_action="return_value")
+    assert StoredItem.model_validate_json(capsys.readouterr().out) == captured.item
+    with pikepdf.open(tmp_path / "1603.04246.pdf") as pdf:
+        assert len(pdf.pages) == 2
+
+
+def test_restore_refuses_bytes_that_are_not_the_recorded_original(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    captured = run_capture(capsys, tmp_path, LECTURE_NOTES, "notes.pdf", "https://example.org/notes.pdf")
+    (tmp_path / "notes.pdf").unlink()
+
+    with pytest.raises(ChangedPdfError):
+        run_restore(capsys, tmp_path, PROBLEM_SET, captured.item)
+    assert list(tmp_path.iterdir()) == []

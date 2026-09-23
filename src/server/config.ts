@@ -41,9 +41,19 @@ export function pdfjsDir(config: AppConfig): string {
 
 // Permanent data (stored PDFs, the library index) lives in the XDG data directory:
 // $XDG_DATA_HOME/pdf-bucket, which is ~/.local/share/pdf-bucket when XDG_DATA_HOME is unset.
-export function dataRoot(): string {
+function xdgDataHome(): string {
   if (xdgData === undefined) {
     throw new Error("no XDG data directory: neither XDG_DATA_HOME nor HOME is set");
   }
-  return join(xdgData, "pdf-bucket");
+  return xdgData;
+}
+
+export function dataRoot(): string {
+  return join(xdgDataHome(), "pdf-bucket");
+}
+
+// The index export is permanent user data too, kept beside the data root rather than in it,
+// so that wiping or losing the store leaves the export that rebuilds it.
+export function indexExportFile(): string {
+  return join(xdgDataHome(), "pdf-bucket-export", "index.json");
 }

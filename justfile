@@ -18,10 +18,55 @@ ai_review_ci_default_branch := "main"
 default:
     @just --list
 
-# Build every app: web bundle, both extension targets, desktop binary.
+# Build every app into dist/: web bundle, Chrome and Firefox extensions (and the Firefox
+# package), desktop binary and its bundles.
 build: fetch-pdfjs
     @bun run build
     @cd desktop && bunx @tauri-apps/cli build
+
+# Build what the running bucket needs (web bundle, PDF.js viewer, desktop binary), then install
+# and enable the systemd user units rendered for this checkout: the server at login, the window
+# with the graphical session, and the hourly index export. Starts the server and the window.
+provision: fetch-pdfjs
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo="{{justfile_directory()}}"
+    # The server unit loads the provider keys through direnv; a blocked .envrc fails here.
+    direnv exec "$repo" true
+    bun install --frozen-lockfile
+    uv sync --locked
+    bunx vite build --config src/web/vite.config.ts
+    (cd desktop && bunx @tauri-apps/cli build --no-bundle)
+    units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    origin=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
+    path="$(dirname "$(command -v bun)"):$(dirname "$(command -v uv)"):/usr/local/bin:/usr/bin"
+    mkdir -p "$units"
+    for template in systemd/*; do
+        sed -e "s|@REPO@|$repo|g" -e "s|@BUN@|$(command -v bun)|g" -e "s|@DIRENV@|$(command -v direnv)|g" \
+            -e "s|@ORIGIN@|$origin|g" -e "s|@PATH@|$path|g" "$template" > "$units/$(basename "$template")"
+    done
+    systemd-analyze --user verify "$units"/pdf-bucket.service "$units"/pdf-bucket-window.service \
+        "$units"/pdf-bucket-export.service "$units"/pdf-bucket-export.timer
+    systemctl --user daemon-reload
+    systemctl --user enable pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
+    systemctl --user restart pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
+    systemctl --user --no-pager status pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
+
+# Write the index export ($XDG_DATA_HOME/pdf-bucket-export/index.json): every stored item's
+# provenance and filing, and the collections and saved searches. Refuses to drop an item whose
+# PDF is missing.
+export-index:
+    @bun run src/server/indexCli.ts export
+
+# Restore the filing (collections, tags, notes, saved searches) from an index export into a data
+# root that has none.
+import-index file="":
+    @bun run src/server/indexCli.ts import {{file}}
+
+# Re-download every PDF the index export lists and the data root lacks, into the same key; prints
+# each item's outcome and fails when a URL is dead or now serves different bytes.
+rebuild-cache:
+    @bun run src/server/indexCli.ts rebuild
 
 # Unpack the pinned prebuilt PDF.js viewer release into vendor/ (version and hash in pdf-bucket.config.json).
 fetch-pdfjs:
@@ -101,3 +146,8 @@ extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
 # 1600x1000, WebKitGTK on a headless 1400x900 display, the desktop window size) and print the load timings.
 library-screenshots: fetch-pdfjs build-web
     @uv run --script scripts/library_screenshots.py docs/m2
+
+# Export, wipe, import and rebuild a temporary store through the recipes above, then delete three
+# PDFs (one at a URL the fixture publisher has taken down) and rebuild again; prints the transcript.
+cache-evidence:
+    @bun tests/cache-evidence.ts

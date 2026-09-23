@@ -1,0 +1,20 @@
+# Rendered and installed by `just provision`; @NAME@ placeholders are filled in there.
+[Unit]
+Description=PDF Bucket server on @ORIGIN@
+Documentation=file://@REPO@/docs/m5.md
+# A failing start is retried twice; then the unit stays failed, with the exit status and the
+# server's error in the journal, instead of restarting forever.
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=exec
+WorkingDirectory=@REPO@
+Environment=PATH=@PATH@
+# direnv loads the repository's .envrc, which sources ~/.envrc: the extraction providers' keys.
+ExecStart=@DIRENV@ exec @REPO@ @BUN@ run src/server/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
