@@ -72,6 +72,9 @@ export type Mutate = <T extends z.ZodType>(
   body?: object,
 ) => Promise<z.infer<T>>;
 
+// The library calls the window makes once the library has loaded.
+export type LibraryApi = { reload: () => void; refresh: () => void; mutate: Mutate };
+
 export function useLibraryApi() {
   const [state, setState] = useState<LibraryState>({ status: "loading" });
 

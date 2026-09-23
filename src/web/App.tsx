@@ -39,7 +39,7 @@ import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import { defaultSearchSettings } from "./search";
 import { type StatusRead, useBucketStatus } from "./useBucketStatus";
-import { type Mutate, useLibraryApi } from "./useLibraryApi";
+import { type LibraryApi, useLibraryApi } from "./useLibraryApi";
 import { resetColumnLayout, useLibraryTable } from "./useLibraryTable";
 
 function readerUrl(key: string): string {
@@ -65,21 +65,12 @@ type WorkspaceProps = {
   payload: LibraryPayload;
   read: StatusRead;
   screen: Screen;
-  mutate: Mutate;
-  reload: () => void;
-  refresh: () => void;
+  api: LibraryApi;
   initialLayout: ColumnLayout;
 };
 
-function Workspace({
-  payload,
-  read,
-  screen,
-  mutate,
-  reload,
-  refresh,
-  initialLayout,
-}: WorkspaceProps) {
+function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps) {
+  const { mutate, reload, refresh } = api;
   const [, navigate] = useLocation();
   const [search, setSearch] = useState<AdvancedSearchSettings>(defaultSearchSettings);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -254,7 +245,8 @@ function Workspace({
 }
 
 export default function App() {
-  const { state, reload, refresh, mutate } = useLibraryApi();
+  const { state, ...api } = useLibraryApi();
+  const { reload } = api;
   const read = useBucketStatus();
   const [location] = useLocation();
   const [layoutRead, setLayoutRead] = useState(readColumnLayout);
@@ -338,9 +330,7 @@ export default function App() {
       payload={state.payload}
       read={read}
       screen={screen}
-      mutate={mutate}
-      reload={reload}
-      refresh={refresh}
+      api={api}
       initialLayout={layoutRead.layout}
     />
   );
