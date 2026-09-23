@@ -13,7 +13,7 @@ import {
   SavedSearchSchema,
 } from "./libraryContract";
 
-const ItemFilingSchema = z.strictObject({
+export const ItemFilingSchema = z.strictObject({
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),

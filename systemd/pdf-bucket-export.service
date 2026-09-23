@@ -1,0 +1,10 @@
+# Rendered and installed by `just provision`; @NAME@ placeholders are filled in there.
+[Unit]
+Description=PDF Bucket index export
+Documentation=file://@REPO@/docs/m5.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+Environment=PATH=@PATH@
+ExecStart=@BUN@ run src/server/indexCli.ts export

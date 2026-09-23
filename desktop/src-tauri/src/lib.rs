@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use tauri::ipc::CapabilityBuilder;
-use tauri::{Manager, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 // The bucket origin has one owner, pdf-bucket.config.json; it is read at compile time.
 #[derive(Deserialize)]
@@ -38,9 +38,12 @@ pub fn run() -> tauri::Result<()> {
                 serde_json::to_string(&origin)?
             );
             // tauri.conf.json declares the window with `create: false`; it is built here so
-            // that it carries the follower script.
+            // that it loads the bucket origin, under `tauri dev` and as the built binary alike,
+            // and carries the follower script.
             for window in &app.config().app.windows {
-                WebviewWindowBuilder::from_config(app.handle(), window)?
+                let mut window = window.clone();
+                window.url = WebviewUrl::External(origin.parse()?);
+                WebviewWindowBuilder::from_config(app.handle(), &window)?
                     .initialization_script(follower.clone())
                     .build()?;
             }

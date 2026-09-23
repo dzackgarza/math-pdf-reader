@@ -18,6 +18,9 @@ export function extensionDefine(config: AppConfig): Record<string, string> {
 // blocking webRequest route for Firefox, which has no response-header rule condition.
 export default defineConfig({
   srcDir: "src/extension",
+  // `just build` lands both builds and the Firefox package beside the web bundle in dist/.
+  outDir: "dist",
+  zip: { zipSources: false },
   imports: false,
   vite: () => ({ define: extensionDefine(loadAppConfig(CONFIG_PATH)) }),
   manifest: ({ browser }) => ({
