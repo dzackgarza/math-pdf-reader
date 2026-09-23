@@ -5,7 +5,6 @@ import {
   Folder,
   Inbox,
   Library,
-  PaintBucket,
   Search,
   Settings,
   Shapes,
@@ -89,9 +88,7 @@ export default function Sidebar({ payload, read }: { payload: LibraryPayload; re
       className="flex h-full w-60 shrink-0 flex-col gap-6 overflow-y-auto border-r border-line bg-surface px-3 py-5"
     >
       <div className="flex items-center gap-3 px-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white">
-          <PaintBucket className="h-5 w-5" />
-        </span>
+        <img src="/favicon.svg" alt="" className="h-9 w-9" />
         <span>
           <span className="block text-base leading-tight font-bold">PDF Bucket</span>
           <span className="block text-xs text-muted">Capture · Preserve · Read</span>
