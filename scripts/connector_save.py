@@ -4,8 +4,8 @@
 # ///
 """Save a bucket reader page to Zotero with the unmodified Zotero Connector.
 
-Loads the Chromium build of the Connector installed in the user's Chromium profile into a
-throwaway Chromium profile, opens the reader page, and runs the Connector's own
+Unpacks the unmodified Chromium build of the Connector shipped in `tests/fixtures`, loads it
+into a throwaway Chromium profile, opens the reader page, and runs the Connector's own
 save-with-translator action (what its toolbar button runs once a translator has matched the
 page). Prints the Zotero item that appeared, read back through Zotero's local API, and the
 SHA-256 of its PDF attachment file. Writes a screenshot of the page with the Connector's
@@ -15,8 +15,8 @@ progress window.
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
+import zipfile
 import time
 from hashlib import sha256
 from pathlib import Path
@@ -27,7 +27,7 @@ from playwright.sync_api import sync_playwright
 
 app = App()
 ZOTERO_ITEMS = "http://127.0.0.1:23119/api/users/0/items"
-CONNECTOR_ID = "ekhagklcjbdpajgpjgmbionohlpdbjgc"
+CONNECTOR_ZIP = Path(__file__).resolve().parents[1] / "tests/fixtures/zotero-connector-5.0.215-chromium.zip"
 
 
 def zotero_json(path: str) -> list[dict[str, dict[str, str]]]:
@@ -41,11 +41,9 @@ def newest_top_item() -> dict[str, str]:
 
 @app.default
 def save(reader_url: str, screenshot: Path, chromium: Path = Path("/usr/bin/chromium")) -> None:
-    installed = sorted((Path.home() / ".config/chromium/Default/Extensions" / CONNECTOR_ID).iterdir())[-1]
     work = Path(tempfile.mkdtemp(prefix="connector-save-"))
     connector = work / "connector"
-    # Chromium refuses to load an unpacked extension that contains the Web Store's _metadata.
-    shutil.copytree(installed, connector, ignore=shutil.ignore_patterns("_metadata"))
+    zipfile.ZipFile(CONNECTOR_ZIP).extractall(connector)
     before = newest_top_item()["key"]
 
     with sync_playwright() as playwright:
