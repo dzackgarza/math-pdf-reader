@@ -37,7 +37,7 @@ If the whole data root is lost, `just import-index` restores the filing into the
 | `pdf-bucket-export.timer` | hourly | `just export-index` |
 
 A unit that fails to start is retried twice and then stays failed; `systemctl --user status pdf-bucket` and `journalctl --user -u pdf-bucket` show why.
-The window starts at login only when the session reaches `graphical-session.target`, which a compositor started through `uwsm` (or any session that activates that target) does.
+The window starts at login only when the session reaches `graphical-session.target`: a compositor started through `uwsm` does, and so does a session target bound to it, such as `hyprland-session.target` started from the compositor's startup (docs/m5.md shows the one used on the development workstation).
 
 ## Browser extensions
 
