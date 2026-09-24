@@ -2,6 +2,7 @@ mod process_config;
 
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use pdf_bucket::config::{app_config, BucketConfig};
 use pdf_bucket::contract::AppConfig;
@@ -10,6 +11,7 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use tauri::ipc::CapabilityBuilder;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
+use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 // Unhide, unminimize and focus the main window: the tray's Show item and a second launch.
@@ -138,7 +140,15 @@ pub fn run() -> tauri::Result<()> {
 
             // tauri.conf.json declares the window with `create: false`; it is built here so
             // that it carries the follower script. It opens on the app's own page, whose URL is
-            // where a failure report goes, and moves to the bucket once it serves.
+            // where a failure report goes, and goes on once that page has loaded: to the bucket,
+            // or to the page with the reason the bucket does not serve. A navigation made
+            // before the first load finishes can lose to that load.
+            let pending = Mutex::new(Some(match &started {
+                Ok(serving) => Ok(serving.origin.parse::<Url>()?),
+                Err(failure) => Err(failure.to_string()),
+            }));
+            let page = Arc::new(OnceLock::<Url>::new());
+            let loaded = Arc::clone(&page);
             let mut window_config = app
                 .config()
                 .app
@@ -147,25 +157,42 @@ pub fn run() -> tauri::Result<()> {
                 .expect("tauri.conf.json declares the main window")
                 .clone();
             window_config.url = WebviewUrl::App("index.html".into());
-            let window = WebviewWindowBuilder::from_config(app.handle(), &window_config)?
+            WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(follower)
+                .on_page_load(move |window, payload| {
+                    if payload.event() != PageLoadEvent::Finished {
+                        return;
+                    }
+                    let Some(destination) = pending.lock().expect("never poisoned").take() else {
+                        return;
+                    };
+                    let own_page = payload.url().clone();
+                    let target = match destination {
+                        Ok(origin) => origin,
+                        Err(report) => failure_page(&own_page, &report),
+                    };
+                    loaded
+                        .set(own_page)
+                        .expect("the app's own page loads first, once");
+                    window
+                        .navigate(target)
+                        .expect("the main window navigates from its own page");
+                })
                 .build()?;
-            let page = window.url()?;
-            match started {
-                Ok(serving) => {
-                    window.navigate(serving.origin.parse()?)?;
-                    let (handle, page) = (app.handle().clone(), page);
-                    // The server runs for the life of the process; if it ever stops, say why.
-                    tauri::async_runtime::spawn(async move {
-                        let report = match serving.task.await {
-                            Ok(Ok(())) => "The bucket's server stopped.".to_string(),
-                            Ok(Err(error)) => format!("The bucket's server stopped: {error}."),
-                            Err(error) => format!("The bucket's server failed: {error}."),
-                        };
-                        show_failure(&handle, &page, &report);
-                    });
-                }
-                Err(failure) => window.navigate(failure_page(&page, &failure.to_string()))?,
+            if let Ok(serving) = started {
+                let handle = app.handle().clone();
+                // The server runs for the life of the process; if it ever stops, say why.
+                tauri::async_runtime::spawn(async move {
+                    let report = match serving.task.await {
+                        Ok(Ok(())) => "The bucket's server stopped.".to_string(),
+                        Ok(Err(error)) => format!("The bucket's server stopped: {error}."),
+                        Err(error) => format!("The bucket's server failed: {error}."),
+                    };
+                    let own_page = page
+                        .get()
+                        .expect("the app's own page loaded before its server stopped");
+                    show_failure(&handle, own_page, &report);
+                });
             }
 
             // Linux tray icons (StatusNotifierItem through libayatana-appindicator) report no
