@@ -131,7 +131,12 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
   await capture(lectureNotes, "kept-url", at("/notes/kept-url.pdf"));
   await capture(problemSet, "moved", at("/notes/moved.pdf"));
   await capture(lectureNotes, "lost", at("/gone/lost.pdf"));
-  await recordMetadata(root, "kept-url", "Integral Lattices", "resolver", ["Maryna Viazovska"]);
+  await recordMetadata(root, "kept-url", "resolver", {
+    title: "Integral Lattices",
+    authors: ["Maryna Viazovska"],
+    year: 2017,
+    abstract: null,
+  });
   await request("POST", "/api/items/moved/mirrors", { url: at("/mirror/moved.pdf") });
   // The export is written after each change; wait for the one that holds the mirror.
   let exported = await readIndexExport(exportFile).catch(() => null);

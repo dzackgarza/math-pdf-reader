@@ -6,18 +6,25 @@ import { Cite } from "@citation-js/core";
 import { format } from "@citation-js/name";
 import "@citation-js/plugin-bibtex";
 import type { RetrieveMetadataOutcome } from "./libraryContract";
-import { recordMetadata, resolveItem } from "./store";
+import { type ResolvedMetadata, recordMetadata, resolveItem } from "./store";
 
 // citation-js parses the entry to CSL, which also turns the BibTeX's LaTeX into text and
 // splits `author` into CSL names (given and family, or one literal name).
-export function bibtexMetadata(bibtex: string): { title: string; authors: string[] } {
+export function bibtexMetadata(bibtex: string): ResolvedMetadata {
   const [entry] = new Cite(bibtex).data;
   const title = entry?.title?.trim();
   if (title === undefined || title === "") {
     throw new Error(`resolver BibTeX carries no title: ${bibtex.slice(0, 200)}`);
   }
   const authors = (entry?.author ?? []).map((name) => format(name));
-  return { title, authors };
+  const year = entry?.issued?.["date-parts"]?.[0]?.[0];
+  const abstract = entry?.abstract?.trim();
+  return {
+    title,
+    authors,
+    year: year === undefined ? null : Number(year),
+    abstract: abstract === undefined || abstract === "" ? null : abstract,
+  };
 }
 
 export async function retrieveMetadata(
@@ -37,8 +44,9 @@ export async function retrieveMetadata(
         message: `exit ${resolution.exit_code}: ${resolution.stderr.trim()}`,
       };
     case "resolved": {
-      const { title, authors } = bibtexMetadata(resolution.bibtex);
-      await recordMetadata(root, key, title, "resolver", authors);
+      const metadata = bibtexMetadata(resolution.bibtex);
+      const { title } = metadata;
+      await recordMetadata(root, key, "resolver", metadata);
       return {
         status: "resolved",
         pluginId: resolution.plugin_id,

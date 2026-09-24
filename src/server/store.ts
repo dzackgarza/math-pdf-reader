@@ -11,6 +11,8 @@ const StoredItemSchema = z.strictObject({
   provenance: ProvenanceSchema,
   title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
   authors: z.array(z.string().min(1)),
+  year: z.int().nullable(),
+  abstract: z.string().min(1).nullable(),
 });
 
 const CaptureResultSchema = z.strictObject({
@@ -123,17 +125,28 @@ export async function resolveItem(
   return ResolutionSchema.parse(JSON.parse(stdout));
 }
 
-// Records TEXT, from SOURCE, as the item's title and AUTHORS, in order, inside its stored PDF.
+// What a resolver gives an item: title, authors in order, year and abstract where known.
+export type ResolvedMetadata = {
+  title: string;
+  authors: string[];
+  year: number | null;
+  abstract: string | null;
+};
+
+// Records METADATA, its title from SOURCE, inside the item's stored PDF.
 export async function recordMetadata(
   root: string,
   key: string,
-  text: string,
   source: TitleSource,
-  authors: string[],
+  metadata: ResolvedMetadata,
 ): Promise<StoredItem> {
-  const options = authors.flatMap((author) => ["--author", author]);
-  const stdout = await runStore(["metadata", ...options, "--", root, key, text, source], "ignore");
-  return StoredItemSchema.parse(JSON.parse(stdout));
+  const options = [
+    ...metadata.authors.flatMap((author) => ["--author", author]),
+    ...(metadata.year === null ? [] : ["--year", String(metadata.year)]),
+    ...(metadata.abstract === null ? [] : ["--abstract", metadata.abstract]),
+  ];
+  const args = ["metadata", ...options, "--", root, key, metadata.title, source];
+  return StoredItemSchema.parse(JSON.parse(await runStore(args, "ignore")));
 }
 
 const ReplaceOutcomeSchema = z.discriminatedUnion("status", [

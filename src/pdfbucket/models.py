@@ -55,6 +55,9 @@ class StoredItem(BaseModel):
     provenance: CaptureProvenance
     title: ItemTitle
     authors: list[str]
+    # Recorded from a resolver; None when none gave them.
+    year: int | None
+    abstract: str | None
 
 
 class CaptureResult(BaseModel):

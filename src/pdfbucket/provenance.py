@@ -33,6 +33,10 @@ DOCINFO_KEYS = {
 TITLE_KEY = "/PDFBucketTitle"
 TITLE_SOURCE_KEY = "/PDFBucketTitleSource"
 AUTHORS_KEY = "/PDFBucketAuthors"
+# The publication year and the abstract a resolver gave; the abstract also goes into XMP
+# dc:description, the Dublin Core field for an abstract.
+YEAR_KEY = "/PDFBucketYear"
+ABSTRACT_KEY = "/PDFBucketAbstract"
 
 # `/Author` holds one text string; several names are joined with "; " (the arXiv and
 # ExifTool convention), which the fallback read splits again.
@@ -114,11 +118,16 @@ def read_stored_item(path: Path) -> StoredItem:
         provenance = CaptureProvenance.model_validate({field: docinfo[key] for field, key in DOCINFO_KEYS.items()})
         title = read_title(pdf, docinfo, path.stem, provenance.title_hint)
         authors = read_authors(pdf, docinfo)
-    return StoredItem(key=path.stem, provenance=provenance, title=title, authors=authors)
+    year = int(docinfo[YEAR_KEY]) if YEAR_KEY in docinfo else None
+    abstract = docinfo.get(ABSTRACT_KEY)
+    return StoredItem(key=path.stem, provenance=provenance, title=title, authors=authors, year=year, abstract=abstract)
 
 
-def embed_metadata(path: Path, title: ItemTitle, authors: list[str]) -> None:
-    """Record TITLE and AUTHORS in the stored PDF at PATH; the file is replaced only complete."""
+def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int | None, abstract: str | None) -> None:
+    """Record TITLE, AUTHORS, YEAR and ABSTRACT in the stored PDF at PATH; the file is replaced only complete.
+
+    A year or abstract of None removes one recorded before.
+    """
     partial = path.with_suffix(".partial")
     with pikepdf.open(path) as pdf:
         with pdf.open_metadata() as metadata:
@@ -126,10 +135,19 @@ def embed_metadata(path: Path, title: ItemTitle, authors: list[str]) -> None:
             metadata["dc:creator"] = authors
             metadata[f"{{{XMP_NAMESPACE}}}title"] = title.text
             metadata[f"{{{XMP_NAMESPACE}}}title-source"] = title.source
+            if abstract is not None:
+                metadata["dc:description"] = abstract
+            elif "dc:description" in metadata:
+                del metadata["dc:description"]
         pdf.docinfo["/Title"] = title.text
         pdf.docinfo["/Author"] = AUTHOR_SEPARATOR.join(authors)
         pdf.docinfo[TITLE_KEY] = title.text
         pdf.docinfo[TITLE_SOURCE_KEY] = title.source
         pdf.docinfo[AUTHORS_KEY] = json.dumps(authors, ensure_ascii=False)
+        for key, value in ((YEAR_KEY, year), (ABSTRACT_KEY, abstract)):
+            if value is not None:
+                pdf.docinfo[key] = str(value)
+            elif key in pdf.docinfo:
+                del pdf.docinfo[key]
         pdf.save(partial)
     partial.replace(path)

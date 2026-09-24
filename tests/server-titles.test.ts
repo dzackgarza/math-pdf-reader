@@ -154,6 +154,11 @@ test("an arXiv capture takes its title from the arXiv resolver, not from the lin
   );
   expect(captured.authors).toEqual(ARXIV_AUTHORS);
   expect(await citationAuthors(reread, "2609.21174v1")).toEqual(ARXIV_AUTHORS);
+  // The year from arXiv's BibTeX; the abstract from arXiv's API, which the BibTeX lacks.
+  expect(captured.year).toBe(2026);
+  expect(captured.abstract).toStartWith(
+    "This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices.",
+  );
 });
 
 test("a DOI capture takes the title from the resolved BibTeX, with its LaTeX turned into text", async () => {
@@ -179,6 +184,8 @@ test("a DOI capture takes the title from the resolved BibTeX, with its LaTeX tur
   ]);
   // The lecture notes name no author: this one comes from the DOI BibTeX alone.
   expect(captured.authors).toEqual(["Maryna Viazovska"]);
+  // The DOI BibTeX gives a year and no abstract.
+  expect([captured.year, captured.abstract]).toEqual([2017, null]);
 });
 
 test("with the resolver unreachable, a capture succeeds and falls back to the PDF's own title, then to the hint", async () => {

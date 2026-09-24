@@ -59,10 +59,10 @@ def describe(root: Path, key: str) -> None:
 
 
 @app.command
-def metadata(root: Path, key: str, text: str, source: TitleSource, *, author: tuple[str, ...] = ()) -> None:
-    """Record TEXT, from SOURCE, as KEY's title and each AUTHOR, in order, inside its stored PDF under ROOT; print the stored item."""
+def metadata(root: Path, key: str, text: str, source: TitleSource, *, author: tuple[str, ...] = (), year: int | None = None, abstract: str | None = None) -> None:
+    """Record TEXT, from SOURCE, as KEY's title, each AUTHOR in order, YEAR and ABSTRACT inside its stored PDF under ROOT; print the stored item."""
     path = pdf_path(root, key)
-    embed_metadata(path, ItemTitle(text=text, source=source), list(author))
+    embed_metadata(path, ItemTitle(text=text, source=source), list(author), year, abstract)
     print(read_stored_item(path).model_dump_json())
 
 

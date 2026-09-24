@@ -239,6 +239,9 @@ export const BucketItemSchema = z.strictObject({
   title: z.string().min(1),
   titleSource: TitleSourceSchema,
   authors: z.array(z.string().min(1)),
+  // From a resolver; null when none gave them.
+  year: z.int().nullable(),
+  abstract: z.string().min(1).nullable(),
   url: z.url(),
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),

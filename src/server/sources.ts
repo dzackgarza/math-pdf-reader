@@ -81,6 +81,8 @@ export type RecoverableItem = {
   provenance: StoredItem["provenance"];
   title: { text: string; source: TitleSource };
   authors: string[];
+  year: number | null;
+  abstract: string | null;
   mirrors: string[];
 };
 
@@ -105,7 +107,13 @@ export async function rebuildItem(
     }
     await restorePdf(root, key, fetched.bytes, provenance);
     if (item.title.source === "resolver") {
-      await recordMetadata(root, key, item.title.text, "resolver", item.authors);
+      const { authors, year, abstract } = item;
+      await recordMetadata(root, key, "resolver", {
+        title: item.title.text,
+        authors,
+        year,
+        abstract,
+      });
     }
     const stored = sha256(await Bun.file(join(root, `${key}.pdf`)).bytes());
     return { key, status: "restored", from: url, stored_sha256: stored };

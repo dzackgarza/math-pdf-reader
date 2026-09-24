@@ -30,6 +30,12 @@
       "live": "https://api.zbmath.org/v1/document/_search?search_string=an:0139.24606&results_per_page=1",
       "file": "zbmath-0139.24606.json",
       "content_type": "application/json"
+    },
+    {
+      "request": "/api/query?id_list=2609.21174v1",
+      "live": "https://arxiv.org/api/query?id_list=2609.21174v1 (redirects to export.arxiv.org)",
+      "file": "arxiv-api-2609.21174v1.atom",
+      "content_type": "application/atom+xml; charset=UTF-8"
     }
   ]
 }

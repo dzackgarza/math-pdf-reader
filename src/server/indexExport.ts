@@ -32,6 +32,8 @@ const ExportedItemSchema = z.strictObject({
   provenance: ProvenanceSchema,
   title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
   authors: z.array(z.string().min(1)),
+  year: z.int().nullable(),
+  abstract: z.string().min(1).nullable(),
   filing: ItemFilingSchema,
 });
 
@@ -95,11 +97,13 @@ export async function exportIndex(
     savedSearches: organization.savedSearches,
     activity: organization.activity,
     preferences: organization.preferences,
-    items: stored.map(({ key, provenance, title, authors }) => ({
+    items: stored.map(({ key, provenance, title, authors, year, abstract }) => ({
       key,
       provenance,
       title,
       authors,
+      year,
+      abstract,
       filing: organization.items[key] ?? unfiled(provenance.captured_at),
     })),
   };
@@ -224,6 +228,7 @@ export async function rebuildCache(
 }
 
 export function recoverable(item: ExportedItem): RecoverableItem {
-  const { key, provenance, title, authors, filing } = item;
-  return { key, provenance, title, authors, mirrors: filing.mirrors.map((mirror) => mirror.url) };
+  const { key, provenance, title, authors, year, abstract, filing } = item;
+  const mirrors = filing.mirrors.map((mirror) => mirror.url);
+  return { key, provenance, title, authors, year, abstract, mirrors };
 }

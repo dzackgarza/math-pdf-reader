@@ -58,6 +58,8 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
     title: indexed.stored.title.text,
     titleSource: indexed.stored.title.source,
     authors: indexed.stored.authors,
+    year: indexed.stored.year,
+    abstract: indexed.stored.abstract,
     url: provenance.source_url,
     tags: filing.tags,
     collections: filing.collections,

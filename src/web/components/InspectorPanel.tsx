@@ -404,8 +404,18 @@ export default function InspectorPanel(props: InspectorPanelProps) {
       <header className="flex items-start gap-2 px-4 pt-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-base leading-snug font-semibold text-ink">{item.title}</h2>
-          {item.authors.length > 0 && (
-            <p className="mt-0.5 text-sm text-ink/80">{item.authors.join(", ")}</p>
+          {(item.authors.length > 0 || item.year !== null) && (
+            <p className="mt-0.5 text-sm text-ink/80">
+              {[item.authors.join(", "), item.year]
+                .filter((part) => part !== null && part !== "")
+                .join(" · ")}
+            </p>
+          )}
+          {item.abstract !== null && (
+            <details className="mt-1.5 text-sm">
+              <summary className="cursor-pointer text-xs font-medium text-accent">Abstract</summary>
+              <p className="mt-1 max-h-48 overflow-y-auto text-ink/80">{item.abstract}</p>
+            </details>
           )}
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
             <a
