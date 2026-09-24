@@ -1,8 +1,7 @@
 // The documents the bucket keeps beside the stored PDFs: the filing (`organization.json`), the
 // reading sessions (`reading-sessions.json`), and the index export that can rebuild both.
-// Provenance never lives in these: deleting them leaves every stored PDF and its provenance.
+// None of them holds the only copy of provenance: deleting them leaves every stored PDF with its own.
 import { z } from "zod";
-import { ProvenanceSchema } from "./capture";
 import {
   ActivitySchema,
   CollectionSchema,
@@ -13,9 +12,9 @@ import {
   ReadingSessionSchema,
   SavedSearchSchema,
   SourceCheckSchema,
-  TitleSourceSchema,
   ZoteroRecordSchema,
 } from "./library";
+import { StoredItemSchema } from "./store";
 import { NonEmptySchema } from "./text";
 
 export const ItemFilingSchema = z.strictObject({
@@ -47,15 +46,8 @@ export const SessionsSchema = z.strictObject({
   sessions: z.array(ReadingSessionSchema),
 });
 
-export const ExportedItemSchema = z.strictObject({
-  key: NonEmptySchema,
-  provenance: ProvenanceSchema,
-  title: z.strictObject({ text: NonEmptySchema, source: TitleSourceSchema }),
-  authors: z.array(NonEmptySchema),
-  year: z.int().nullable(),
-  abstract: NonEmptySchema.nullable(),
-  filing: ItemFilingSchema,
-});
+// A stored item as the export holds it: what its PDF carries, and its filing.
+export const ExportedItemSchema = StoredItemSchema.extend({ filing: ItemFilingSchema });
 
 // Every stored item's embedded provenance with its filing, plus the collections and saved
 // searches, as one deterministic JSON document (items in key order).
