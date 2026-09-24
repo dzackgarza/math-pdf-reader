@@ -25,6 +25,7 @@ import {
   topicTag,
 } from "../format";
 import type { ItemSourceActions, SendAttempt } from "../libraryActions";
+import type { Related } from "../librarySelectors";
 import { Chip, TagChip } from "./Chips";
 import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
 import { FilingPicker } from "./FilingEditors";
@@ -45,6 +46,8 @@ export type ItemSendActions = {
 
 type InspectorPanelProps = {
   item: BucketItem;
+  related: Related[];
+  onSelectItem: (id: string) => void;
   collections: Collection[];
   knownTags: string[];
   filing: ItemFilingActions;
@@ -320,6 +323,55 @@ function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }
   );
 }
 
+// What each related item shares with this one; a click selects it.
+function RelatedList({
+  related,
+  collections,
+  onSelect,
+}: {
+  related: Related[];
+  collections: Collection[];
+  onSelect: (id: string) => void;
+}) {
+  if (related.length === 0) {
+    return (
+      <p className="px-4 py-6 text-sm text-muted">
+        No other PDF shares an author, collection, topic or tag.
+      </p>
+    );
+  }
+  const names = new Map(collections.map((collection) => [collection.id, collection.name]));
+  return (
+    <ul className="divide-y divide-line">
+      {related.map((entry) => (
+        <li key={entry.item.id}>
+          <button
+            type="button"
+            data-related-id={entry.item.id}
+            onClick={() => onSelect(entry.item.id)}
+            className="w-full px-4 py-2.5 text-left hover:bg-surface"
+          >
+            <span className="block truncate text-sm font-medium text-ink">{entry.item.title}</span>
+            <span className="mt-1 flex flex-wrap gap-1">
+              {entry.authors.map((author) => (
+                <span key={author} className="text-xs text-muted">
+                  {author}
+                </span>
+              ))}
+              {entry.collections.map((id) => (
+                <Chip key={id} label={names.get(id) ?? id} kind="collection" />
+              ))}
+              {entry.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} />
+              ))}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // A send that failed or was refused; a completed send takes the item out of the bucket.
 function SendNotice({ attempt }: { attempt: SendAttempt | undefined }) {
   if (attempt?.kind !== "refused" && attempt?.kind !== "failed") {
@@ -386,6 +438,9 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           <Tabs.Trigger value="notes" className={TAB_CLASSES}>
             Notes{item.notes.length > 0 && ` (${item.notes.length})`}
           </Tabs.Trigger>
+          <Tabs.Trigger value="related" className={TAB_CLASSES}>
+            Related ({props.related.length})
+          </Tabs.Trigger>
         </Tabs.List>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Tabs.Content value="details">
@@ -393,6 +448,13 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           </Tabs.Content>
           <Tabs.Content value="notes">
             <Notes item={item} filing={props.filing} />
+          </Tabs.Content>
+          <Tabs.Content value="related">
+            <RelatedList
+              related={props.related}
+              collections={props.collections}
+              onSelect={props.onSelectItem}
+            />
           </Tabs.Content>
         </div>
       </Tabs.Root>

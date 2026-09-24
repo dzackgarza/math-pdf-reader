@@ -499,6 +499,30 @@ describe("library window", () => {
     expect(added?.provenance.pdf_url).toBe(pathToFileURL(join(folder, "folder notes.pdf")).href);
   });
 
+  test("the Related tab lists the PDFs that share authors, collections, topics or tags with the selected one", async () => {
+    await openLibrary();
+    const org = await organization();
+    const filing = (key: string) => [
+      ...(org.items[key]?.collections ?? []),
+      ...(org.items[key]?.tags ?? []),
+    ];
+    const sharing = Object.keys(org.items).filter(
+      (key) => key !== "problems" && filing(key).some((entry) => filing("problems").includes(entry)),
+    );
+    expect(sharing.length).toBeGreaterThan(0);
+
+    await page.click(row("problems"));
+    await (await byRole("tab", `Related (${sharing.length})`)).click();
+    await shot("details-related");
+    const related = await page.$$eval("[data-related-id]", (entries) =>
+      entries.map((entry) => entry.getAttribute("data-related-id")),
+    );
+    expect([...related].sort()).toEqual([...sharing].sort());
+
+    await page.click(`[data-related-id="${sharing[0]}"]`);
+    await page.waitForSelector(`${row(sharing[0] ?? "")}[aria-selected="true"]`);
+  });
+
   test("the library at a narrow width", async () => {
     await openLibrary();
     await page.click(row("lattices"));

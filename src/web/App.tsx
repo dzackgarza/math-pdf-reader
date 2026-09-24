@@ -48,7 +48,12 @@ import {
   sendToZotero,
   sourceActions,
 } from "./libraryActions";
-import { type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
+import {
+  type LibraryView,
+  reconcileView,
+  relatedItems,
+  visibleItems,
+} from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
@@ -364,6 +369,8 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
             <InspectorPanel
               key={selected.id}
               item={selected}
+              related={relatedItems(payload, selected)}
+              onSelectItem={setSelectedId}
               collections={payload.collections}
               knownTags={knownTags}
               filing={filingActions(context, selected)}

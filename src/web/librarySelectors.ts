@@ -5,7 +5,7 @@ import {
   collectionSubtree,
   type LibraryPayload,
 } from "../server/libraryContract";
-import { tagLabel } from "./format";
+import { sourceDomain, tagLabel } from "./format";
 import { filterItems } from "./search";
 
 export type LibraryView =
@@ -144,4 +144,37 @@ export function tagCounts(items: BucketItem[]): [string, number][] {
     counts.set(tag, seen === undefined ? 1 : seen + 1);
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+// An item related to another, and what they share.
+export type Related = {
+  item: BucketItem;
+  authors: string[];
+  collections: string[];
+  tags: string[];
+  sameSource: boolean;
+};
+
+const shared = (left: string[], right: string[]) => left.filter((entry) => right.includes(entry));
+
+// The items sharing authors, collections, or topics and tags with ITEM, most shared first:
+// an author counts three, a collection two, a tag one; a shared source domain only orders
+// items that already share one of these, since it alone joins every paper from arXiv.
+export function relatedItems(payload: LibraryPayload, item: BucketItem): Related[] {
+  const score = (related: Related) =>
+    related.authors.length * 3 +
+    related.collections.length * 2 +
+    related.tags.length +
+    (related.sameSource ? 0.5 : 0);
+  return payload.items
+    .filter((other) => other.id !== item.id)
+    .map((other) => ({
+      item: other,
+      authors: shared(other.authors, item.authors),
+      collections: shared(other.collections, item.collections),
+      tags: shared(other.tags, item.tags),
+      sameSource: sourceDomain(other.url) === sourceDomain(item.url),
+    }))
+    .filter((related) => related.authors.length + related.collections.length + related.tags.length > 0)
+    .sort((a, b) => score(b) - score(a) || a.item.title.localeCompare(b.item.title));
 }
