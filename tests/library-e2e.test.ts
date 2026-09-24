@@ -287,7 +287,7 @@ describe("library window", () => {
     if (viewer === undefined || viewer === null) {
       throw new Error("the reader has no viewer frame");
     }
-    await viewer.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
+    await viewer.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount === 10");
     // Follows a link to a page, as an outline entry or an internal link in the PDF does, and
     // waits for the view update that records the position reached.
     const followLinkTo = async (pageNumber: number) => {
@@ -422,7 +422,7 @@ describe("library window", () => {
       if (frame === undefined || frame === null) {
         throw new Error("the reader has no viewer frame");
       }
-      await frame.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
+      await frame.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount === 10");
       return frame;
     };
     const viewer = await openReading();
@@ -453,7 +453,7 @@ describe("library window", () => {
     if (viewer === undefined || viewer === null) {
       throw new Error("the reader has no viewer frame");
     }
-    await viewer.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
+    await viewer.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount === 10");
     // Pages 1 and 2 are read for six seconds each; page 3 is passed through at once.
     for (const pageNumber of [1, 2]) {
       await viewer.evaluate(`PDFViewerApplication.page = ${pageNumber}`);
@@ -747,9 +747,9 @@ describe("library window", () => {
       published("/~author/mirror/problems.pdf"),
     );
     await page.keyboard.press("Enter");
-    await page.waitForSelector(
-      `${details} ::-p-text(${published("/~author/mirror/problems.pdf")})`,
-    );
+    // The mirror's link in the sources list; a text match would also find the URL still in the
+    // field it was typed into, before the server's answer adds the line.
+    await page.waitForSelector(`${details} li a[href="${published("/~author/mirror/problems.pdf")}"]`);
     await page.click(`${details} button[aria-label="Verify sources"]`);
     await page.waitForFunction(
       (selector) => document.querySelector(selector) === null,

@@ -211,10 +211,11 @@ function Details({
 
   return (
     <>
+      {/* A fixed height: the image loads after the panel draws, and must not push the fields down. */}
       <img
         src={thumbnailPath(item.id, 640)}
         alt="First page"
-        className="mx-4 mt-4 max-h-64 w-[calc(100%-2rem)] rounded border border-line bg-white object-cover object-top"
+        className="mx-4 mt-4 h-64 w-[calc(100%-2rem)] rounded border border-line bg-white object-cover object-top"
       />
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
         <Row label="Collections">
