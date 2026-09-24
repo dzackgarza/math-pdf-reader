@@ -1,42 +1,48 @@
 #!/usr/bin/env bash
-# Build the release window and the web bundle, install the window binary with its launcher entry
-# and icons, then render the systemd/ unit templates into the user unit directory and enable
-# them. Called by `just provision` from the repository root.
+# Build the web bundle and the release desktop app, install the app with its launcher entry,
+# icons and login autostart, and start it; the app starts the bucket server. Called by `just
+# provision` from the repository root.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo"
-# The server unit loads the provider keys through direnv; a blocked .envrc fails here.
+# The app loads the provider keys with `direnv export json`; a blocked .envrc fails here.
 direnv exec "$repo" true
 bun install --frozen-lockfile
 uv sync --locked
 bunx vite build --config src/web/vite.config.ts
 (cd desktop && bunx @tauri-apps/cli build --no-bundle)
-# The unit runs an installed copy, so later builds can rewrite the build tree while the window runs.
-install -D -m 755 desktop/src-tauri/target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
-# Launcher entry and its icon, named after the window's Wayland app_id (the binary name) so
-# that launchers and taskbars match the running window to them.
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
+units="$config/systemd/user"
+autostart_unit='app-pdf\x2dbucket\x2ddesktop@autostart.service'
+
+# A running app keeps the previous binary and its server; it quits here, and its server with it.
+if systemctl --user is-active --quiet "$autostart_unit"; then
+    systemctl --user stop "$autostart_unit"
+fi
+# An app started from the launcher runs outside systemd.
+if pgrep -x pdf-bucket-desk > /dev/null; then
+    killall --wait pdf-bucket-desk
+fi
+
+# The app runs an installed copy, so later builds can rewrite the build tree while it runs.
+install -D -m 755 desktop/src-tauri/target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
+# Launcher and autostart entry and the icon, named after the window's Wayland app_id (the binary
+# name) so that launchers and taskbars match the running window to them.
 for size in 32x32 128x128; do
     install -D -m 644 "desktop/src-tauri/icons/$size.png" "$data/icons/hicolor/$size/apps/pdf-bucket-desktop.png"
 done
-mkdir -p "$data/applications"
+mkdir -p "$data/applications" "$config/autostart"
 sed -e "s|@BIN@|$HOME/.local/bin/pdf-bucket-desktop|g" desktop/pdf-bucket-desktop.desktop \
     > "$data/applications/pdf-bucket-desktop.desktop"
 desktop-file-validate "$data/applications/pdf-bucket-desktop.desktop"
-units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-origin=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
-bun=$(which bun)
-uv=$(which uv)
-direnv=$(which direnv)
-path="$(dirname "$bun"):$(dirname "$uv"):/usr/local/bin:/usr/bin"
-mkdir -p "$units"
-for template in systemd/*; do
-    sed -e "s|@REPO@|$repo|g" -e "s|@BUN@|$bun|g" -e "s|@DIRENV@|$direnv|g" \
-        -e "s|@ORIGIN@|$origin|g" -e "s|@PATH@|$path|g" "$template" > "$units/$(basename "$template")"
-done
-systemd-analyze --user verify "$units"/pdf-bucket.service "$units"/pdf-bucket-window.service \
-    "$units"/pdf-bucket-export.service "$units"/pdf-bucket-export.timer
+install -m 644 "$data/applications/pdf-bucket-desktop.desktop" "$config/autostart/pdf-bucket-desktop.desktop"
+# Sessions that run XDG autostart start the entry by themselves. This Hyprland session starts
+# hyprland-session.target instead, and the drop-in makes that target start the entry's unit.
+install -D -m 644 desktop/autostart/hyprland-session.conf "$units/hyprland-session.target.d/pdf-bucket.conf"
+
 systemctl --user daemon-reload
-systemctl --user enable pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
-systemctl --user restart pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
-systemctl --user --no-pager status pdf-bucket.service pdf-bucket-window.service pdf-bucket-export.timer
+systemd-analyze --user verify "$autostart_unit"
+systemctl --user start "$autostart_unit"
+systemctl --user --no-pager status "$autostart_unit"

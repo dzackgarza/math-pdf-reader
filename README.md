@@ -10,9 +10,8 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 | `src/server` | Bun + Hono server: capture endpoint, PDF and reader URLs, library API, index export |
 | `src/web` | React library UI served by the server |
 | `src/extension` | WXT WebExtension, built for Chrome and Firefox |
-| `desktop/` | Tauri window that loads the server URL |
+| `desktop/` | Tauri app: the window, the tray, and the server it runs |
 | `src/pdfbucket` | Python package: provenance embedding, PDF store, plugin manifest contract, extraction and resolver runners |
-| `systemd/` | User unit templates that `just provision` renders and installs |
 | `plugins/manifests` | Shipped extraction and resolver plugin manifests |
 | `src/resolvers` | Resolver plugins: an identifier or URL on stdin, one BibTeX entry on stdout |
 | `tests/` | Bun tests (`*.test.ts`) and Python tests (`test_*.py`) |
@@ -22,33 +21,21 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 
 Stored PDFs and the filing (`organization.json`) live in `$XDG_DATA_HOME/pdf-bucket` (`~/.local/share/pdf-bucket` when `XDG_DATA_HOME` is unset).
 The index export lives beside it, in `$XDG_DATA_HOME/pdf-bucket-export/index.json`: every stored item's provenance and filing, and the collections and saved searches, in key order with a fixed field order, so two exports diff line by line.
-The provisioned timer rewrites it every hour; `just export-index` writes it on demand.
+The app rewrites it after every capture and filing change; `just export-index` writes it on demand.
 
 If PDFs are lost, `just rebuild-cache` downloads each one the export lists from its recorded PDF URL into the same key, and stores it only when it hashes to the recorded original SHA-256. It prints one outcome per item (`present`, `restored`, `dead` with the HTTP status or network error, `changed` with both hashes) and exits 1 when any item was not restored.
 If the whole data root is lost, `just import-index` restores the filing into the empty root first, then `just rebuild-cache` restores the PDFs.
 
-## Always on
+## Running
 
-`just provision` builds the web bundle, the PDF.js viewer and the desktop binary, then installs and enables three user units rendered for the checkout it runs in:
+PDF Bucket runs while its app runs, like Zotero: the app starts the bucket server, and **Quit PDF Bucket** in the tray stops both.
+Closing the window hides it to the tray; the bucket keeps capturing.
+Click the tray icon for **Show PDF Bucket** and **Quit PDF Bucket**. Starting PDF Bucket while it runs shows the running window.
+If the server stops or cannot start, the window shows why.
 
-| Unit | Starts | What it runs |
-| --- | --- | --- |
-| `pdf-bucket.service` | at login (`default.target`) | the server on the configured port, with the provider keys from `direnv` |
-| `pdf-bucket-window.service` | with the graphical session (`graphical-session.target`), after the server answers `/status` | the release desktop binary, installed at `~/.local/bin/pdf-bucket-desktop` |
-| `pdf-bucket-export.timer` | hourly | `just export-index` |
-
-A unit that fails to start is retried twice and then stays failed; `systemctl --user status pdf-bucket` and `journalctl --user -u pdf-bucket` show why.
-The window starts at login only when the session reaches `graphical-session.target`: a compositor started through `uwsm` does, and so does a session target bound to it, such as `hyprland-session.target` started from the compositor's startup (docs/m5.md shows the one used on the development workstation).
-
-### Window
-
-`just provision` also installs a launcher entry, **PDF Bucket** (`pdf-bucket-desktop.desktop`), and the app icon.
-The window has a tray icon.
-Closing the window hides it to the tray, and the bucket keeps running and follows captures.
-Click the tray icon to open its menu.
-**Show PDF Bucket** brings the window back and **Quit PDF Bucket** exits the process.
-A unit's window stays stopped after Quit until the next login or `systemctl --user start pdf-bucket-window`. Starting PDF Bucket from the launcher while it runs shows the running window instead of opening a second one.
-When the window has been quit, the launcher starts a new window process outside systemd.
+`just provision` builds the app, installs it at `~/.local/bin/pdf-bucket-desktop` with a launcher entry, an icon and a login autostart entry, and starts it.
+Desktop sessions that run XDG autostart start it at login.
+On Hyprland, the session target starts it: `just provision` adds a drop-in to `hyprland-session.target` (docs/m5.md).
 
 ### Hyprland
 
@@ -103,7 +90,7 @@ just                # list recipes
 just serve          # bucket server on the host and port in pdf-bucket.config.json
 just run            # desktop window (starts the server first)
 just build          # web bundle, both extension targets, desktop binary
-just provision      # build, then install and start the systemd user units
+just provision      # build, install and start the app
 just export-index   # write the index export
 just rebuild-cache  # re-download missing PDFs from the export
 just test-push      # full QC gate

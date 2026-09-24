@@ -26,10 +26,9 @@ build: fetch-pdfjs
     @bun run build
     @cd desktop && NO_STRIP=true bunx @tauri-apps/cli build
 
-# Build what the running bucket needs (web bundle, PDF.js viewer, desktop binary), install the
-# binary with its launcher entry (pdf-bucket-desktop.desktop) and icons, then install
-# and enable the systemd user units rendered for this checkout: the server at login, the window
-# with the graphical session, and the hourly index export. Starts the server and the window.
+# Build the web bundle, the PDF.js viewer and the release app; install the app with its launcher
+# and login autostart entry (pdf-bucket-desktop.desktop) and icons, and start it. The app runs
+# the bucket server from this checkout.
 provision: fetch-pdfjs
     @scripts/provision.sh
 
