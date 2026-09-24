@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["*.ts", "../src/server/*.ts", "../src/contract/*.ts"]
+  "include": ["*.ts", "../src/contract/*.ts"]
 }

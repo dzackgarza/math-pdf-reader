@@ -11,15 +11,12 @@ import {
   ImportUrlResponseSchema,
   LibraryPayloadSchema,
 } from "../src/contract/library";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 setDefaultTimeout(30_000);
 
 const config = loadAppConfig(CONFIG_PATH);
-const origin = `http://${config.server.host}:${config.server.port}`;
 const fixtures = join(import.meta.dir, "fixtures");
 const lectureNotes = new Uint8Array(readFileSync(join(fixtures, "lecture-notes.pdf")));
 const problemSet = new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf")));
@@ -55,30 +52,27 @@ const publisher = Bun.serve({
 afterAll(() => publisher.stop(true));
 const at = (path: string) => new URL(path, publisher.url).href;
 
-function bucket() {
+async function bucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-import-"));
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
   });
   const post = (path: string, body: object) =>
-    app.request(`${origin}${path}`, {
+    app.request(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
   const items = async () =>
-    LibraryPayloadSchema.parse(await (await app.request(`${origin}/api/library`)).json()).items;
+    LibraryPayloadSchema.parse(await (await app.request("/api/library")).json()).items;
   return { post, items };
 }
 
 test("Import URL stores a PDF URL as it is, and follows an abstract page's citation_pdf_url", async () => {
-  const { post, items } = bucket();
+  const { post, items } = await bucket();
 
   const direct = await post("/api/import-url", { url: at("/papers/lattices.pdf") });
   expect(direct.status).toBe(200);
@@ -115,7 +109,7 @@ test("Import URL stores a PDF URL as it is, and follows an abstract page's citat
 });
 
 test("Add Folder stores every PDF in the folder with file URLs as provenance, once", async () => {
-  const { post, items } = bucket();
+  const { post, items } = await bucket();
   const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-import-folder-"));
   copyFileSync(join(fixtures, "lecture-notes.pdf"), join(folder, "Lectures on Lattices.pdf"));
   copyFileSync(join(fixtures, "problem-set.pdf"), join(folder, "problem-set.pdf"));

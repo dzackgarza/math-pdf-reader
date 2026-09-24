@@ -25,9 +25,13 @@ pub async fn download(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
         let path = parsed
             .to_file_path()
             .map_err(|()| format!("{url} names no local file"))?;
-        return tokio::fs::read(&path)
-            .await
-            .map_err(|error| error.to_string());
+        return match tokio::fs::read(&path).await {
+            Ok(bytes) => Ok(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Err("no such file".to_string())
+            }
+            Err(error) => Err(error.to_string()),
+        };
     }
     let client = reqwest::Client::builder()
         .timeout(timeout)

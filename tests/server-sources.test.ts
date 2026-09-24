@@ -10,17 +10,13 @@ import {
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
 } from "../src/contract/library";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { readIndexExport } from "../src/server/indexExport";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
-import { recordMetadata } from "../src/server/store";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { readIndexExport, recordMetadata } from "./store";
 
 setDefaultTimeout(30_000);
 
 const config = loadAppConfig(CONFIG_PATH);
-const origin = `http://${config.server.host}:${config.server.port}`;
 const fixture = (name: string) =>
   new Uint8Array(readFileSync(join(import.meta.dir, "fixtures", name)));
 const lectureNotes = fixture("lecture-notes.pdf");
@@ -41,19 +37,17 @@ const publisher = Bun.serve({
 afterAll(() => publisher.stop(true));
 const at = (path: string) => new URL(path, publisher.url).href;
 
-function bucket(indexExport: string | null) {
+async function bucket(indexExport: string | null) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-sources-"));
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport,
+    ...(indexExport === null ? {} : { indexExport }),
   });
   const request = (method: string, path: string, body?: object) =>
-    app.request(`${origin}${path}`, {
+    app.request(path, {
       method,
       headers: body === undefined ? {} : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -64,7 +58,7 @@ function bucket(indexExport: string | null) {
     form.set("pdf_url", pdfUrl);
     form.set("source_url", at("/teaching.html"));
     form.set("title_hint", `Notes ${key}`);
-    const response = await app.request(`${origin}/capture-bytes`, { method: "POST", body: form });
+    const response = await app.request("/capture-bytes", { method: "POST", body: form });
     expect(response.status).toBe(200);
   };
   const library = async () =>
@@ -82,7 +76,7 @@ function bucket(indexExport: string | null) {
 test("Verify records whether the PDF URL and each mirror still serve the captured bytes", async () => {
   served.set("/notes/verified.pdf", lectureNotes);
   served.set("/mirror/verified.pdf", lectureNotes);
-  const { request, capture, item } = bucket(null);
+  const { request, capture, item } = await bucket(null);
   await capture(lectureNotes, "verified", at("/notes/verified.pdf"));
   expect((await item("verified")).sourceCheck).toEqual({ status: "unchecked" });
 
@@ -127,7 +121,7 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
   served.set("/notes/kept-url.pdf", lectureNotes);
   served.set("/mirror/moved.pdf", problemSet);
   const exportFile = join(mkdtempSync(join(tmpdir(), "pdf-bucket-sources-export-")), "index.json");
-  const { root, request, capture, library, item } = bucket(exportFile);
+  const { root, request, capture, library, item } = await bucket(exportFile);
   await capture(lectureNotes, "kept-url", at("/notes/kept-url.pdf"));
   await capture(problemSet, "moved", at("/notes/moved.pdf"));
   await capture(lectureNotes, "lost", at("/gone/lost.pdf"));
@@ -135,14 +129,13 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
     title: "Integral Lattices",
     authors: ["Maryna Viazovska"],
     year: 2017,
-    abstract: null,
   });
   await request("POST", "/api/items/moved/mirrors", { url: at("/mirror/moved.pdf") });
   // The export is written after each change; wait for the one that holds the mirror.
-  let exported = await readIndexExport(exportFile).catch(() => null);
+  let exported = readIndexExport(exportFile);
   while (exported?.items.find((entry) => entry.key === "moved")?.filing.mirrors.length !== 1) {
     await Bun.sleep(50);
-    exported = await readIndexExport(exportFile).catch(() => null);
+    exported = readIndexExport(exportFile);
   }
 
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-sources-away-"));

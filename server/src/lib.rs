@@ -38,7 +38,6 @@ pub struct Serving {
 /// Binds HOST:PORT (port 0 picks a free one) and serves the bucket on the current runtime. The
 /// port is bound before this returns, so a caller that loads the origin next finds it answering.
 pub async fn serve(config: BucketConfig, host: &str, port: u16) -> std::io::Result<Serving> {
-    tokio::fs::create_dir_all(&config.root).await?;
     let listener = TcpListener::bind((host, port)).await?;
     let origin = format!("http://{}", listener.local_addr()?);
     let router = app::router(AppState::new(config));

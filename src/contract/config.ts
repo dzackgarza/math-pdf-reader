@@ -37,3 +37,7 @@ export type AppConfig = z.infer<typeof AppConfigSchema>;
 export function loadAppConfig(configPath: string): AppConfig {
   return AppConfigSchema.parse(JSON.parse(readFileSync(configPath, "utf8")));
 }
+
+// The Python store package owns provenance embedding and the folder layout; the server runs
+// this command, and tests that set up a bucket below its HTTP API run it too.
+export const STORE_COMMAND = ["uv", "run", "--project", REPO_ROOT, "--locked", "pdfbucket"];

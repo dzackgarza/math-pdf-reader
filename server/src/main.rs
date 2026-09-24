@@ -1,8 +1,9 @@
 //! `pdf-bucket`: the bucket server without a window, and the index export's maintenance
 //! commands over the configured data root.
 //!
-//! - `serve <root> <zotero url> <extractions manifest> [--resolvers <manifest>] [--index-export
-//!   <file>]` serves any existing bucket root on a free port and prints its origin; the test
+//! - `serve <root> <zotero url> <extractions manifest> <resolvers manifest> [--index-export
+//!   <file>]` serves any bucket root on a free port, prints its origin and serves until its
+//!   standard input closes; the test
 //!   suites and evidence runs use it so that they never touch the configured bucket or its port.
 //! - `export-index`, `import-index` and `rebuild-cache` take an optional export file (default:
 //!   the configured one).
@@ -26,14 +27,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Serve an existing bucket root on a free port and print its origin.
+    /// Serve a bucket root on a free port and print its origin, until standard input closes.
     Serve {
         root: PathBuf,
         zotero_url: String,
         extractions_manifest: PathBuf,
-        /// The identifier resolvers (default: the checkout's manifest).
-        #[arg(long)]
-        resolvers: Option<PathBuf>,
+        resolvers_manifest: PathBuf,
         /// Rewrite this index export after every change.
         #[arg(long)]
         index_export: Option<PathBuf>,
@@ -63,7 +62,6 @@ fn configured_store() -> Store {
 
 /// Why a command stopped; `main` prints it and exits non-zero.
 enum Failure {
-    NotABucket(PathBuf),
     Io(std::io::Error),
     Server(tokio::task::JoinError),
     Bucket(AppError),
@@ -85,13 +83,6 @@ impl From<AppError> for Failure {
 impl std::fmt::Display for Failure {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotABucket(root) => {
-                write!(
-                    formatter,
-                    "{} is not an existing bucket root",
-                    root.display()
-                )
-            }
             Self::Io(error) => write!(formatter, "{error}"),
             Self::Server(error) => write!(formatter, "the server stopped: {error}"),
             Self::Bucket(error) => write!(formatter, "{error:?}"),
@@ -117,12 +108,9 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             root,
             zotero_url,
             extractions_manifest,
-            resolvers,
+            resolvers_manifest,
             index_export,
         } => {
-            if !root.is_dir() {
-                return Err(Failure::NotABucket(root));
-            }
             let app = config::app_config();
             let bucket = BucketConfig {
                 root,
@@ -131,17 +119,23 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 cache_dir: config::cache_root(),
                 zotero_url,
                 extractions_manifest,
-                resolvers_manifest: match resolvers {
-                    Some(manifest) => manifest,
-                    None => config::resolvers_manifest(),
-                },
+                resolvers_manifest,
                 index_export,
                 process_env: ProcessEnv::new(),
                 app: app.clone(),
             };
             let serving = pdf_bucket::serve(bucket, &app.server.host, 0).await?;
             println!("{}", serving.origin);
-            serving.task.await.map_err(Failure::Server)??;
+            // Serves until its standard input closes, so a test process that dies takes its
+            // servers with it.
+            let (mut stdin, mut sink) = (tokio::io::stdin(), tokio::io::sink());
+            let stdin_closed = tokio::io::copy(&mut stdin, &mut sink);
+            tokio::select! {
+                served = serving.task => served.map_err(Failure::Server)??,
+                closed = stdin_closed => {
+                    closed?;
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }
         Command::ExportIndex { file } => {

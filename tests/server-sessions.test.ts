@@ -5,28 +5,22 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReadingSessionSchema } from "../src/contract/library";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);
-const origin = `http://${config.server.host}:${config.server.port}`;
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 
-function bucket(root: string) {
-  const app = createApp({
+async function bucket(root: string) {
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
   });
   // A form goes as multipart, anything else as JSON.
   return (method: string, path: string, body?: object) =>
-    app.request(`${origin}${path}`, {
+    app.request(path, {
       method,
       headers:
         body === undefined || body instanceof FormData
@@ -38,7 +32,7 @@ function bucket(root: string) {
 
 test("a reading session is stored under its id, updated by later reports, and kept after the item leaves", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-sessions-"));
-  const request = bucket(root);
+  const request = await bucket(root);
   const form = new FormData();
   form.set("pdf", new File([readFileSync(lectureNotes)], "lattices.pdf"));
   form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
@@ -66,7 +60,7 @@ test("a reading session is stored under its id, updated by later reports, and ke
 
   const sessions = async () =>
     ReadingSessionSchema.array().parse(
-      await (await bucket(root)("GET", "/api/reading-sessions")).json(),
+      await (await (await bucket(root))("GET", "/api/reading-sessions")).json(),
     );
   expect(await sessions()).toEqual([
     {

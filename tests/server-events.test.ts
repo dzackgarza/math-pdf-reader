@@ -4,13 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);
-const origin = `http://${config.server.host}:${config.server.port}`;
 
 const OpenReaderSchema = z.strictObject({ reader_url: z.url() });
 
@@ -41,16 +38,13 @@ function openReaderEvents(response: Response) {
 
 test("every capture, new or existing, broadcasts its reader URL to event subscribers", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-events-"));
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
   });
-  const subscription = await app.request(`${origin}/api/events`);
+  const subscription = await app.request(`/api/events`);
   expect(subscription.headers.get("content-type")).toStartWith("text/event-stream");
   const events = openReaderEvents(subscription);
 
@@ -61,17 +55,17 @@ test("every capture, new or existing, broadcasts its reader URL to event subscri
     form.set("pdf_url", "https://www.math.example.edu/~author/problem-set.pdf");
     form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
     form.set("title_hint", "Problem set 3");
-    const response = await app.request(`${origin}/capture-bytes`, { method: "POST", body: form });
+    const response = await app.request(`/capture-bytes`, { method: "POST", body: form });
     return CaptureResponseSchema.parse(await response.json());
   };
 
   const first = await capture();
   expect(first.existing).toBe(false);
-  expect(await events.next()).toEqual({ reader_url: `${origin}/read/problem-set` });
+  expect(await events.next()).toEqual({ reader_url: `${app.origin}/read/problem-set` });
 
   const second = await capture();
   expect(second.existing).toBe(true);
-  expect(await events.next()).toEqual({ reader_url: `${origin}/read/problem-set` });
+  expect(await events.next()).toEqual({ reader_url: `${app.origin}/read/problem-set` });
 
   await events.close();
 });

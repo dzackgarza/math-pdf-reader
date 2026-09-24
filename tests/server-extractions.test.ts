@@ -3,19 +3,15 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Hono } from "hono";
 import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
 } from "../src/contract/extraction";
 import { ApiErrorSchema } from "../src/contract/library";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);
-const origin = `http://${config.server.host}:${config.server.port}`;
 const fixture = join(import.meta.dir, "fixtures/ten-page-notes.pdf");
 const extractor = join(import.meta.dir, "fixtures/plugins/extractor.sh");
 
@@ -23,30 +19,10 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-// A bucket root holding the 10-page fixture under key `lattices`, and extraction routes
-// over a manifest whose plugins are the fixture extractor in the given modes.
+// A bucket holding the 10-page fixture under key `lattices`, served over a manifest whose
+// plugins are the fixture extractor in the given modes.
 async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[]) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-extract-"));
-  const form = new FormData();
-  form.set("pdf", new File([readFileSync(fixture)], "lattices.pdf", { type: "application/pdf" }));
-  form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
-  form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
-  form.set("title_hint", "Ten Lectures on Integral Lattices");
-  const captureApp = createApp({
-    root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
-    zoteroUrl: config.zotero.url,
-    extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
-  });
-  const captured = await captureApp.request(`${origin}/capture-bytes`, {
-    method: "POST",
-    body: form,
-  });
-  expect(captured.status).toBe(200);
-
   const manifestPath = join(
     mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-")),
     "extractions.json",
@@ -62,24 +38,32 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
     })),
   };
   writeFileSync(manifestPath, JSON.stringify(manifest));
-  const app = new Hono();
-  registerExtractionRoutes(app, root, manifestPath);
+  const app = await serveBucket({
+    root,
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: manifestPath,
+    resolversManifest: RESOLVERS_MANIFEST,
+  });
+  const form = new FormData();
+  form.set("pdf", new File([readFileSync(fixture)], "lattices.pdf", { type: "application/pdf" }));
+  form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
+  form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
+  form.set("title_hint", "Ten Lectures on Integral Lattices");
+  const captured = await app.request("/capture-bytes", { method: "POST", body: form });
+  expect(captured.status).toBe(200);
   return { root, app };
 }
 
 test("the shipped extraction plugins are listed with their accepted inputs", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-plugins-"));
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
   });
 
-  const response = await app.request(`${origin}/api/plugins/extractions`);
+  const response = await app.request(`/api/plugins/extractions`);
 
   expect(response.status).toBe(200);
   const { plugins } = ExtractionPluginsResponseSchema.parse(await response.json());
@@ -104,7 +88,7 @@ test("the shipped extraction plugins are listed with their accepted inputs", asy
 test("a successful run answers with the placed artifacts and their hashes", async () => {
   const { root, app } = await bucketWithExtractors([{ mode: "record", maxPages: 20 }]);
 
-  const response = await app.request(`${origin}/api/items/lattices/extractions/record`, {
+  const response = await app.request(`/api/items/lattices/extractions/record`, {
     method: "POST",
   });
 
@@ -128,7 +112,7 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
     { mode: "markdown", maxPages: 5 },
   ]);
 
-  const failed = await app.request(`${origin}/api/items/lattices/extractions/fail`, {
+  const failed = await app.request(`/api/items/lattices/extractions/fail`, {
     method: "POST",
   });
   expect(failed.status).toBe(502);
@@ -140,7 +124,7 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
     stderr: "provider quota exhausted for this token\n",
   });
 
-  const rejected = await app.request(`${origin}/api/items/lattices/extractions/markdown`, {
+  const rejected = await app.request(`/api/items/lattices/extractions/markdown`, {
     method: "POST",
   });
   expect(rejected.status).toBe(422);
@@ -157,10 +141,10 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
 test("unknown items and unknown plugins are not found", async () => {
   const { app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
 
-  const missingItem = await app.request(`${origin}/api/items/missing/extractions/markdown`, {
+  const missingItem = await app.request(`/api/items/missing/extractions/markdown`, {
     method: "POST",
   });
-  const missingPlugin = await app.request(`${origin}/api/items/lattices/extractions/mistral`, {
+  const missingPlugin = await app.request(`/api/items/lattices/extractions/mistral`, {
     method: "POST",
   });
 

@@ -1,6 +1,6 @@
 // Browser end-to-end proof of capture (#6): both built extensions, driven by Puppeteer
 // (Chromium through --load-extension, Firefox through WebDriver BiDi webExtension.install),
-// against the fixture site and an in-process bucket over a temporary store.
+// against the fixture site and the bucket server over a temporary store.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
@@ -16,13 +16,11 @@ import puppeteer, {
 import { build } from "wxt";
 import { z } from "zod";
 import { pdfCaptureRules } from "../src/extension/interception";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
-import { listItems } from "../src/server/store";
 import { extensionDefine } from "../wxt.config";
 import { lectureNotes, problemSet, startFixtureSite } from "./fixture-site";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { listItems } from "./store";
 
 type Engine = "chrome" | "firefox";
 
@@ -47,27 +45,20 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function startBucket(port: number) {
+async function startBucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-store-"));
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
   });
-  const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
-  if (server.port === undefined) {
-    throw new Error("the bucket server did not bind a TCP port");
-  }
   return {
     root,
-    port: server.port,
-    origin: `http://127.0.0.1:${server.port}`,
+    port: Number(new URL(app.origin).port),
+    origin: app.origin,
     files: () => readdirSync(root).sort(),
-    stop: () => server.stop(true),
+    stop: app.stop,
   };
 }
 
@@ -183,7 +174,7 @@ async function urlBecomes(page: Page, url: string): Promise<void> {
 
 describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   const site = startFixtureSite();
-  let bucket: ReturnType<typeof startBucket>;
+  let bucket: Awaited<ReturnType<typeof startBucket>>;
   let browser: Browser;
   let extensionOrigin: string;
   let page: Page;
@@ -326,9 +317,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
-    const probe = startBucket(0);
-    probe.stop();
-    bucket = startBucket(probe.port);
+    bucket = await startBucket();
     ({ browser, extensionOrigin } = await launch(
       engine,
       await buildExtension(engine, bucket.port),
@@ -338,7 +327,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
   afterAll(async () => {
     await browser.close();
-    bucket.stop();
+    await bucket.stop();
     site.stop();
   });
 
@@ -493,7 +482,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const before = bucket.files();
     const pdfPath = "/notes/lecture-notes.pdf";
     const fetches = () => site.requests.filter((request) => request.path === pdfPath).length;
-    bucket.stop();
+    await bucket.stop();
 
     await followLink("/teaching.html");
     await captureState(page, "failed");

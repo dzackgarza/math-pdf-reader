@@ -19,16 +19,12 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
 import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { OrganizationStore } from "../src/server/organization";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { SCRATCH_DATA_HOME } from "./preload";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { readOrganization } from "./store";
 
 setDefaultTimeout(30_000);
 
-const config = loadAppConfig(CONFIG_PATH);
 const fixtures = join(import.meta.dir, "fixtures");
 const screenshots = join(tmpdir(), "pdf-bucket-library-e2e");
 const viewport = { width: 1400, height: 900 };
@@ -84,17 +80,14 @@ async function startBucket() {
   const probe = Bun.serve({ port: 0, fetch: () => new Response() });
   const zoteroUrl = probe.url.origin;
   probe.stop(true);
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    indexExport,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport,
   });
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch, idleTimeout: 0 });
-  const origin = server.url.origin;
+  const origin = app.origin;
   for (const [key, file, linkText] of CAPTURES) {
     const form = new FormData();
     form.set("pdf", new File([readFileSync(join(fixtures, file))], `${key}.pdf`));
@@ -106,7 +99,7 @@ async function startBucket() {
       throw new Error(`capture of ${key} failed: ${response.status} ${await response.text()}`);
     }
   }
-  return { root, origin, indexExport, stop: () => server.stop(true) };
+  return { root, origin, indexExport, stop: app.stop };
 }
 
 describe("library window", () => {
@@ -118,7 +111,7 @@ describe("library window", () => {
     await page.screenshot({ path: join(screenshots, `${name}.png`) });
   };
   // The filing as the server wrote it to disk.
-  const organization = () => new OrganizationStore(bucket.root).read();
+  const organization = async () => readOrganization(bucket.root);
   const row = (key: string) => `tr[data-item-id="${key}"]`;
   const rowKeys = () =>
     page.$$eval("tr[data-item-id]", (rows) => rows.map((tr) => tr.getAttribute("data-item-id")));
@@ -172,7 +165,7 @@ describe("library window", () => {
 
   afterAll(async () => {
     await browser.close();
-    bucket.stop();
+    await bucket.stop();
     publisher.stop(true);
   });
 
