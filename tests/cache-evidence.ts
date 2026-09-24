@@ -20,6 +20,7 @@ import { CONFIG_PATH, loadAppConfig, pdfjsDir, REPO_ROOT } from "../src/server/c
 import { CaptureResponseSchema } from "../src/server/contract";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { CollectionSchema } from "../src/server/libraryContract";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const fixtures = join(import.meta.dir, "fixtures");
 const papers: Record<string, string> = {
@@ -57,6 +58,7 @@ const app = createApp({
   pdfjsDir: pdfjsDir(config),
   zoteroUrl: config.zotero.url,
   extractionsManifest: EXTRACTIONS_MANIFEST,
+  resolversManifest: RESOLVERS_MANIFEST,
 });
 const api = (path: string, init?: RequestInit) => app.request(`http://bucket${path}`, init);
 

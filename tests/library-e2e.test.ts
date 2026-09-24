@@ -12,6 +12,7 @@ import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { OrganizationStore } from "../src/server/organization";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 setDefaultTimeout(30_000);
 
@@ -52,6 +53,7 @@ async function startBucket() {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch, idleTimeout: 0 });
   const origin = server.url.origin;

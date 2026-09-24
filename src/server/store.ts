@@ -4,10 +4,12 @@ import { basename, join } from "node:path";
 import { z } from "zod";
 import { STORE_COMMAND } from "./config";
 import { ProvenanceSchema } from "./contract";
+import { type TitleSource, TitleSourceSchema } from "./libraryContract";
 
 const StoredItemSchema = z.strictObject({
   key: z.string().min(1),
   provenance: ProvenanceSchema,
+  title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
 });
 
 const CaptureResultSchema = z.strictObject({
@@ -118,6 +120,17 @@ export async function resolveItem(
 ): Promise<Resolution> {
   const stdout = await runStore(["resolve", "--", root, key, manifest], "ignore");
   return ResolutionSchema.parse(JSON.parse(stdout));
+}
+
+// Records TEXT, from SOURCE, as the item's title inside its stored PDF.
+export async function recordTitle(
+  root: string,
+  key: string,
+  text: string,
+  source: TitleSource,
+): Promise<StoredItem> {
+  const stdout = await runStore(["title", "--", root, key, text, source], "ignore");
+  return StoredItemSchema.parse(JSON.parse(stdout));
 }
 
 // Moves the stored PDF and its extraction to the desktop trash.

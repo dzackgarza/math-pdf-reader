@@ -25,6 +25,7 @@ import {
   SavedSearchSchema,
   SettingsSchema,
 } from "../src/server/libraryContract";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -40,6 +41,7 @@ function open(root: string): Bucket {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }

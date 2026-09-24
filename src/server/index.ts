@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createApp } from "./app";
 import { CONFIG_PATH, dataRoot, loadAppConfig, pdfjsDir } from "./config";
 import { EXTRACTIONS_MANIFEST } from "./extractions";
+import { RESOLVERS_MANIFEST } from "./send";
 
 const VERSION = "0.1.0";
 
@@ -25,5 +26,6 @@ export default {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   }).fetch,
 };

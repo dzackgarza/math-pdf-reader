@@ -8,6 +8,7 @@ import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { CaptureResponseSchema } from "../src/server/contract";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -25,6 +26,7 @@ function bucket() {
       pdfjsDir: pdfjsDir(config),
       zoteroUrl: config.zotero.url,
       extractionsManifest: EXTRACTIONS_MANIFEST,
+      resolversManifest: RESOLVERS_MANIFEST,
     }),
   };
 }

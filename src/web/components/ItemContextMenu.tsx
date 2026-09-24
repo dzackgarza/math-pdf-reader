@@ -7,6 +7,7 @@ import type { BucketItem, Collection } from "../../server/libraryContract";
 export type ItemCommands = {
   open: () => void;
   openInBrowser: () => void;
+  retrieveMetadata: () => void;
   fileIn: (collectionId: string) => void;
   fileInNewCollection: () => void;
   addTag: () => void;
@@ -72,6 +73,7 @@ export default function ItemContextMenu({
       </Submenu>
       <Item onSelect={commands.addTag}>Add Tag…</Item>
       <ContextMenu.Separator className={SEPARATOR} />
+      <Item onSelect={commands.retrieveMetadata}>Retrieve Metadata</Item>
       <Item onSelect={commands.send}>Send to Zotero</Item>
       <Submenu label="Copy Link">
         <Item onSelect={() => commands.copy(item.provenance.source_url)}>Source Page</Item>

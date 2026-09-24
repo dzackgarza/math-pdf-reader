@@ -1,7 +1,9 @@
-"""Provenance embedded in the PDF: XMP properties plus document-information keys.
+"""Provenance and the item title embedded in the PDF: XMP properties plus document-information keys.
 
 The document-information dictionary is the read path; XMP carries the same values for
-tools that only read XMP.
+tools that only read XMP. A title the bucket settles on (from an identifier resolver) goes
+into the standard `/Title` and `dc:title`, so every PDF tool shows it, with its source beside
+it in the bucket's own keys; until then the title is read from what the file already holds.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from pathlib import Path
 
 import pikepdf
 
-from pdfbucket.models import CaptureProvenance, StoredItem
+from pdfbucket.models import CaptureProvenance, ItemTitle, StoredItem
 
 XMP_NAMESPACE = "https://github.com/dzackgarza/math-pdf-reader/ns/provenance/1.0/"
 
@@ -23,6 +25,11 @@ DOCINFO_KEYS = {
     "original_sha256": "/PDFBucketOriginalSHA256",
     "title_hint": "/PDFBucketTitleHint",
 }
+
+
+# The title the bucket recorded and where it came from.
+TITLE_KEY = "/PDFBucketTitle"
+TITLE_SOURCE_KEY = "/PDFBucketTitleSource"
 
 
 def provenance_values(provenance: CaptureProvenance) -> dict[str, str]:
@@ -50,14 +57,48 @@ class MissingProvenanceError(ValueError):
         super().__init__(f"{path} carries no embedded provenance for {', '.join(missing)}")
 
 
+def own_metadata_title(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> str | None:
+    """The title the PDF's producer wrote: `/Title`, else XMP `dc:title`; None when both are blank."""
+    if docinfo.get("/Title", "").strip():
+        return docinfo["/Title"].strip()
+    with pdf.open_metadata(set_pikepdf_as_editor=False) as xmp:
+        title = str(xmp.get("dc:title", "")).strip()
+    return title or None
+
+
+def read_title(pdf: pikepdf.Pdf, docinfo: dict[str, str], key: str, title_hint: str) -> ItemTitle:
+    """The recorded title; else, best first, the PDF's own metadata title, the capture's hint, the filename."""
+    if TITLE_KEY in docinfo:
+        return ItemTitle.model_validate({"text": docinfo[TITLE_KEY], "source": docinfo[TITLE_SOURCE_KEY]})
+    own = own_metadata_title(pdf, docinfo)
+    if own is not None:
+        return ItemTitle(text=own, source="pdf-metadata")
+    if title_hint.strip():
+        return ItemTitle(text=title_hint.strip(), source="capture-hint")
+    return ItemTitle(text=f"{key}.pdf", source="filename")
+
+
 def read_stored_item(path: Path) -> StoredItem:
     with pikepdf.open(path) as pdf:
         docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
-    missing = [field for field, key in DOCINFO_KEYS.items() if key not in docinfo]
-    if missing:
-        raise MissingProvenanceError(path, missing)
-    fields = {field: docinfo[key] for field, key in DOCINFO_KEYS.items()}
-    return StoredItem(
-        key=path.stem,
-        provenance=CaptureProvenance.model_validate(fields),
-    )
+        missing = [field for field, key in DOCINFO_KEYS.items() if key not in docinfo]
+        if missing:
+            raise MissingProvenanceError(path, missing)
+        provenance = CaptureProvenance.model_validate({field: docinfo[key] for field, key in DOCINFO_KEYS.items()})
+        title = read_title(pdf, docinfo, path.stem, provenance.title_hint)
+    return StoredItem(key=path.stem, provenance=provenance, title=title)
+
+
+def embed_title(path: Path, title: ItemTitle) -> None:
+    """Record TITLE in the stored PDF at PATH; the file is replaced only complete."""
+    partial = path.with_suffix(".partial")
+    with pikepdf.open(path) as pdf:
+        with pdf.open_metadata() as metadata:
+            metadata["dc:title"] = title.text
+            metadata[f"{{{XMP_NAMESPACE}}}title"] = title.text
+            metadata[f"{{{XMP_NAMESPACE}}}title-source"] = title.source
+        pdf.docinfo["/Title"] = title.text
+        pdf.docinfo[TITLE_KEY] = title.text
+        pdf.docinfo[TITLE_SOURCE_KEY] = title.source
+        pdf.save(partial)
+    partial.replace(path)

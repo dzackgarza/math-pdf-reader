@@ -9,6 +9,7 @@ import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
 import { captureBytes, StoreCommandError, storedPdfPath } from "./store";
+import { retrieveMetadata } from "./titles";
 import { ZoteroError, ZoteroWriteApi } from "./zotero";
 
 export type AppConfig = {
@@ -19,6 +20,8 @@ export type AppConfig = {
   zoteroUrl: string;
   // The extraction plugins the inspector lists and runs.
   extractionsManifest: string;
+  // The identifier resolvers that give captured items their titles.
+  resolversManifest: string;
 };
 
 const CaptureFormSchema = z.strictObject({
@@ -50,7 +53,12 @@ export function createApp(config: AppConfig): Hono {
     throw error;
   });
 
-  const library = registerLibraryRoutes(app, config.root, new ZoteroWriteApi(config.zoteroUrl));
+  const library = registerLibraryRoutes(
+    app,
+    config.root,
+    new ZoteroWriteApi(config.zoteroUrl),
+    config.resolversManifest,
+  );
 
   app.get("/status", async (c) => {
     const origin = new URL(c.req.url).origin;
@@ -66,6 +74,11 @@ export function createApp(config: AppConfig): Hono {
       return c.json({ error: "not_a_pdf" }, 400);
     }
     const result = await captureBytes(config.root, form.data);
+    // A new item takes its title from a resolver when one knows its identifier; a resolver
+    // that fails leaves the title the PDF itself gives, and the capture stands.
+    if (!result.existing) {
+      await retrieveMetadata(config.root, result.item.key, config.resolversManifest);
+    }
     const response: CaptureResponse = {
       key: result.item.key,
       existing: result.existing,

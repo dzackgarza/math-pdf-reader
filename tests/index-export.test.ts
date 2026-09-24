@@ -122,7 +122,7 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
     { key: "ten-page-notes", status: "present" },
   ]);
   // The restored files carry the provenance recorded at capture, unchanged.
-  expect(restored).toEqual(
+  expect(restored.map(({ key, provenance }) => ({ key, provenance }))).toEqual(
     exported.items
       .filter((item) => ["2401.00001", "lecture-notes", "ten-page-notes"].includes(item.key))
       .map(({ key, provenance }) => ({ key, provenance })),

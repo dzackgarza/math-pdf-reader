@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import { createApp } from "./app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "./config";
+import { RESOLVERS_MANIFEST } from "./send";
 
 const [root, zoteroUrl, extractionsManifest] = Bun.argv.slice(2);
 if (
@@ -29,6 +30,7 @@ const server = Bun.serve({
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest,
+    resolversManifest: RESOLVERS_MANIFEST,
   }).fetch,
 });
 process.stdout.write(`${server.url.origin}\n`);

@@ -7,6 +7,7 @@ import {
   type BucketItem,
   CollectionSchema,
   LibraryPayloadSchema,
+  RetrieveMetadataResponseSchema,
   SavedSearchSchema,
   SendResponseSchema,
 } from "../server/libraryContract";
@@ -72,6 +73,7 @@ export function filingActions(context: ActionContext, item: BucketItem): ItemFil
 
 // What the row context menu does to one item.
 export type ItemMenuActions = {
+  retrieveMetadata: () => void;
   fileIn: (collectionId: string) => void;
   fileInNewCollection: () => void;
   addTag: () => void;
@@ -84,6 +86,22 @@ export function itemMenuActions(
   onDeleted: () => void,
 ): ItemMenuActions {
   return {
+    // Zotero's "Retrieve Metadata": the title from an identifier resolver, else the PDF.
+    retrieveMetadata: () =>
+      run(
+        context,
+        context
+          .mutate(RetrieveMetadataResponseSchema, "POST", `${itemPath(item.id)}/metadata`)
+          .then(({ outcome }) => {
+            context.refresh();
+            if (outcome.status === "unidentified") {
+              context.report("No identifier found");
+            }
+            if (outcome.status === "failed") {
+              context.report(`${outcome.pluginId} on ${outcome.identifier}: ${outcome.message}`);
+            }
+          }),
+      ),
     fileIn: (collectionId) => run(context, fileIn(context, item, collectionId)),
     fileInNewCollection: () =>
       context.askName({

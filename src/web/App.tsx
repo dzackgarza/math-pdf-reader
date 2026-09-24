@@ -175,6 +175,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
           open: () => openReader(key),
           openInBrowser: () =>
             attempt(openInBrowser(new URL(readerUrl(key), window.location.origin).href)),
+          retrieveMetadata: actions.retrieveMetadata,
           fileIn: actions.fileIn,
           fileInNewCollection: actions.fileInNewCollection,
           addTag: actions.addTag,

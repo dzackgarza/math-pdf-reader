@@ -102,11 +102,18 @@ export const SendResponseSchema = z.strictObject({
   performed: z.array(z.enum(SEND_STEPS)),
 });
 
+// Where an item's title came from, best first: an identifier resolver, the PDF's own
+// metadata, the title the capture offered (link text, page title), the stored file's name.
+export const TITLE_SOURCES = ["resolver", "pdf-metadata", "capture-hint", "filename"] as const;
+
+export const TitleSourceSchema = z.enum(TITLE_SOURCES);
+
 // The library item: title, url, tags, collections, notes and dates carry the same meaning
 // as in a reference-manager item; provenance, file and extraction are the bucket's own.
 export const BucketItemSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string().min(1),
+  titleSource: TitleSourceSchema,
   url: z.url(),
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),
@@ -117,6 +124,30 @@ export const BucketItemSchema = z.strictObject({
   file: z.strictObject({ path: z.string().min(1), sizeBytes: z.number().int().nonnegative() }),
   extraction: ExtractionSchema,
   zotero: ZoteroStatusSchema,
+});
+
+// The outcome of "Retrieve metadata": the resolver that answered and the title it gave; no
+// identifier the resolvers know; or the resolver that failed, whose failure leaves the
+// item's title as it was.
+export const RetrieveMetadataOutcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("resolved"),
+    pluginId: z.string().min(1),
+    identifier: z.string().min(1),
+    title: z.string().min(1),
+  }),
+  z.strictObject({ status: z.literal("unidentified") }),
+  z.strictObject({
+    status: z.literal("failed"),
+    pluginId: z.string().min(1),
+    identifier: z.string().min(1),
+    message: z.string().min(1),
+  }),
+]);
+
+export const RetrieveMetadataResponseSchema = z.strictObject({
+  outcome: RetrieveMetadataOutcomeSchema,
+  item: BucketItemSchema,
 });
 
 export const LibraryPayloadSchema = z.strictObject({
@@ -190,3 +221,6 @@ export type SendSource = z.infer<typeof SendSourceSchema>;
 export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
 export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;
+export type TitleSource = z.infer<typeof TitleSourceSchema>;
+export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
+export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
