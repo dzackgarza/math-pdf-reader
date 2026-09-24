@@ -59,6 +59,7 @@ The rule sets `focus_on_activate` for the bucket window only.
 | `dist/chrome-mv3/` | Chrome and Chromium, Manifest V3 |
 | `dist/firefox-mv2/` | Firefox, Manifest V2 |
 | `dist/pdf-bucket-0.1.0-firefox.zip` | the same Firefox build as one installable package |
+| `dist/firefox-signed/pdf-bucket-0.1.0-firefox.xpi` | the Firefox build signed by addons.mozilla.org (`just sign-firefox`), which a release Firefox installs |
 
 The builds are unsigned.
 

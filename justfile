@@ -66,6 +66,22 @@ fetch-pdfjs:
 build-web:
     @bunx vite build --config src/web/vite.config.ts
 
+# Sign the Firefox build with addons.mozilla.org as an unlisted (self-distributed) add-on, so a
+# normal Firefox installs it; the signed .xpi lands in dist/firefox-signed. The build is
+# minified, so the committed source goes with it (AMO's source-code policy). AMO signs each
+# version once: raise `version` in package.json before signing a changed build. Credentials
+# are MOZILLA_JWT_ISSUER and MOZILLA_JWT_SECRET from the environment direnv loads here.
+sign-firefox:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bunx wxt build -b firefox
+    mkdir -p dist/firefox-signed
+    git archive --format=zip -o dist/firefox-signed/pdf-bucket-source.zip HEAD
+    signed=$(mktemp -d)
+    direnv exec . bash -c 'WEB_EXT_API_KEY="$MOZILLA_JWT_ISSUER" WEB_EXT_API_SECRET="$MOZILLA_JWT_SECRET" bunx web-ext sign --channel unlisted --source-dir dist/firefox-mv2 --artifacts-dir "$0" --upload-source-code dist/firefox-signed/pdf-bucket-source.zip' "$signed"
+    # web-ext names the file after a hash of the add-on id; the package keeps the version.
+    mv "$signed"/*.xpi "dist/firefox-signed/pdf-bucket-$(jq -r .version package.json)-firefox.xpi"
+
 # Drive both built capture extensions (chromium and firefox on PATH) against the fixture site; screenshots land in $TMPDIR/pdf-bucket-capture-e2e.
 test-capture:
     @bun test tests/capture-e2e.test.ts
