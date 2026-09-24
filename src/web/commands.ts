@@ -54,7 +54,7 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
         ];
   return [
     goTo("go-library", "Library", "/"),
-    goTo("go-unfiled", "Unfiled", "/unfiled"),
+    goTo("go-unfiled", "Library, Unfiled Only", "/unfiled"),
     goTo("go-collections", "Collections", "/organization/collections"),
     goTo("go-topics", "Topics", "/organization/topics"),
     goTo("go-tags", "Tags", "/organization/tags"),

@@ -38,7 +38,7 @@ import {
   saveSearch,
   sendToZotero,
 } from "./libraryActions";
-import { type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
+import { itemsInView, type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
@@ -228,7 +228,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">
-        <Sidebar onNewCollection={newCollection} />
+        <Sidebar pdfCount={payload.items.length} onNewCollection={newCollection} />
         <main className="flex min-w-0 flex-1 flex-col bg-white">
           {screen.kind !== "settings" && (
             <TopBar
@@ -237,6 +237,15 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               onChangeSearch={setSearch}
               onOpenFilters={() => setFiltersOpen(true)}
               onSaveSearch={saveCurrentSearch}
+              unfiled={
+                screen.kind === "library"
+                  ? {
+                      on: screen.view.kind === "unfiled",
+                      count: itemsInView(payload, { kind: "unfiled" }).length,
+                      onToggle: () => navigate(screen.view.kind === "unfiled" ? "/" : "/unfiled"),
+                    }
+                  : null
+              }
             />
           )}
           {screen.kind === "library" && tableElement}

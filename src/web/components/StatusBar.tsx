@@ -1,18 +1,7 @@
-import { FileText, HardDrive, Inbox, Radio } from "lucide-react";
+import { HardDrive, Radio } from "lucide-react";
 import prettyBytes from "pretty-bytes";
-import type { ReactNode } from "react";
 import type { LibraryPayload } from "../../server/libraryContract";
-import { itemsInView } from "../librarySelectors";
 import type { StatusRead } from "../useBucketStatus";
-
-function Count({ icon, value, title }: { icon: ReactNode; value: string; title: string }) {
-  return (
-    <span title={title} className="flex items-center gap-1.5 tabular-nums">
-      {icon}
-      {value}
-    </span>
-  );
-}
 
 // Whether browser captures can land: the one state worth a glance, detailed on hover.
 function CaptureIndicator({ read }: { read: StatusRead }) {
@@ -39,25 +28,12 @@ export default function StatusBar({
   read: StatusRead;
 }) {
   const stored = payload.items.reduce((total, item) => total + item.file.sizeBytes, 0);
-  const unfiled = itemsInView(payload, { kind: "unfiled" }).length;
-  const icon = "h-3.5 w-3.5";
   return (
     <footer className="flex h-6 shrink-0 items-center gap-4 border-t border-line bg-surface px-3 text-xs text-muted">
-      <Count
-        icon={<FileText aria-hidden className={icon} />}
-        value={payload.items.length.toLocaleString()}
-        title="PDFs"
-      />
-      <Count
-        icon={<HardDrive aria-hidden className={icon} />}
-        value={prettyBytes(stored)}
-        title="On disk"
-      />
-      <Count
-        icon={<Inbox aria-hidden className={icon} />}
-        value={unfiled.toLocaleString()}
-        title="Unfiled"
-      />
+      <span title="On disk" className="flex items-center gap-1.5 tabular-nums">
+        <HardDrive aria-hidden className="h-3.5 w-3.5" />
+        {prettyBytes(stored)}
+      </span>
       <CaptureIndicator read={read} />
     </footer>
   );

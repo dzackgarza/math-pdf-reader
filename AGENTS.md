@@ -100,7 +100,7 @@ to build from scratch.
 
 | Mockup | Element | Where it lives |
 | --- | --- | --- |
-| library (1) | Library / Inbox | bucket index views: Library and Unfiled (items in no collection, Zotero's term); the mockup's Offline Cache equals Library and is not a view |
+| library (1) | Library / Inbox | the Library view with its PDF count; Inbox is the library's Unfiled toggle (items in no collection, Zotero's term); the mockup's Offline Cache equals Library and is not a view |
 | library (1) | Collections, Tags, Saved Searches | `zotero-gui`'s sidebar and table, cribbed, over the bucket index; topics are a `topic:` tag namespace or saved searches |
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
 | library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256 | provenance embedded in the PDF; the inspector shows the source page link, date and size, and the row menu copies the links |

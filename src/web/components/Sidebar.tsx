@@ -1,10 +1,26 @@
-import { Folder, FolderPlus, Inbox, Library, Search, Settings, Shapes, Tag } from "lucide-react";
+import { Folder, FolderPlus, Library, Search, Settings, Shapes, Tag } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 
-function NavItem({ to, icon, label }: { to: string; icon: ReactNode; label: string }) {
+function NavItem({
+  to,
+  icon,
+  label,
+  count,
+  alsoAt = [],
+}: {
+  to: string;
+  icon: ReactNode;
+  label: string;
+  count?: number;
+  // Further paths this entry is the current page for, e.g. the library's Unfiled filter.
+  alsoAt?: string[];
+}) {
   const [location] = useLocation();
-  const active = location === to || (to !== "/" && location.startsWith(`${to}/`));
+  const active =
+    location === to ||
+    alsoAt.includes(location) ||
+    (to !== "/" && location.startsWith(`${to}/`));
   return (
     <Link
       href={to}
@@ -14,12 +30,23 @@ function NavItem({ to, icon, label }: { to: string; icon: ReactNode; label: stri
       }`}
     >
       <span className={`h-4 w-4 shrink-0 ${active ? "text-accent" : "text-muted"}`}>{icon}</span>
-      {label}
+      <span className="flex-1">{label}</span>
+      {count !== undefined && (
+        <span className="text-xs font-normal text-muted tabular-nums">
+          {count.toLocaleString()}
+        </span>
+      )}
     </Link>
   );
 }
 
-export default function Sidebar({ onNewCollection }: { onNewCollection: () => void }) {
+export default function Sidebar({
+  pdfCount,
+  onNewCollection,
+}: {
+  pdfCount: number;
+  onNewCollection: () => void;
+}) {
   const icon = "h-4 w-4";
   return (
     <nav
@@ -27,8 +54,13 @@ export default function Sidebar({ onNewCollection }: { onNewCollection: () => vo
       className="flex h-full w-52 shrink-0 flex-col gap-4 overflow-y-auto border-r border-line bg-surface px-2 py-3"
     >
       <div className="space-y-0.5">
-        <NavItem to="/" icon={<Library className={icon} />} label="Library" />
-        <NavItem to="/unfiled" icon={<Inbox className={icon} />} label="Unfiled" />
+        <NavItem
+          to="/"
+          icon={<Library className={icon} />}
+          label="Library"
+          count={pdfCount}
+          alsoAt={["/unfiled"]}
+        />
       </div>
 
       <div className="space-y-0.5">

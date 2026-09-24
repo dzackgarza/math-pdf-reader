@@ -1,4 +1,4 @@
-import { BookmarkPlus, Search, SlidersHorizontal } from "lucide-react";
+import { BookmarkPlus, Inbox, Search, SlidersHorizontal } from "lucide-react";
 import { forwardRef } from "react";
 import type { AdvancedSearchSettings } from "../../server/libraryContract";
 import { defaultSearchSettings } from "../search";
@@ -8,6 +8,8 @@ type TopBarProps = {
   onChangeSearch: (search: AdvancedSearchSettings) => void;
   onOpenFilters: () => void;
   onSaveSearch: () => void;
+  // The library's Unfiled filter (PDFs in no collection); null where the table is not the library.
+  unfiled: { on: boolean; count: number; onToggle: () => void } | null;
 };
 
 const ICON_BUTTON =
@@ -25,7 +27,7 @@ function filtersChanged(search: AdvancedSearchSettings): boolean {
 
 // The search field the window focuses on Ctrl+F; Escape clears it.
 const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
-  { search, onChangeSearch, onOpenFilters, onSaveSearch },
+  { search, onChangeSearch, onOpenFilters, onSaveSearch, unfiled },
   ref,
 ) {
   const searching = search.query.trim().length > 0;
@@ -61,6 +63,24 @@ const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
           <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent" />
         )}
       </button>
+      {unfiled !== null && (
+        <button
+          type="button"
+          aria-label="Unfiled"
+          aria-pressed={unfiled.on}
+          title={unfiled.on ? "Show the whole library" : "Show only PDFs in no collection"}
+          onClick={unfiled.onToggle}
+          className={`ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm ${
+            unfiled.on
+              ? "border-accent bg-accent-soft text-accent"
+              : "border-line text-muted hover:bg-surface hover:text-ink"
+          }`}
+        >
+          <Inbox aria-hidden className="h-4 w-4" />
+          <span>Unfiled</span>
+          <span className="text-xs tabular-nums">{unfiled.count.toLocaleString()}</span>
+        </button>
+      )}
       {searching && (
         <button
           type="button"
