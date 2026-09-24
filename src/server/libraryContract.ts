@@ -16,16 +16,102 @@ export const AdvancedSearchSettingsSchema = z.strictObject({
 
 const NameSchema = z.string().trim().min(1);
 
+// A collection: its name, its parent (a subcollection), a description, whether it is pinned
+// to the front of the collections, and whether its items stay in the bucket after a send to
+// Zotero (Keep offline).
 export const CollectionSchema = z.strictObject({
   id: z.string().min(1),
   name: NameSchema,
   parentId: z.string().min(1).optional(),
+  description: z.string(),
+  pinned: z.boolean(),
+  keepOffline: z.boolean(),
 });
 
+// A filing change that concerns a collection, for its recent activity: its creation, items
+// filed into it, items in it tagged, Keep offline switched.
+export const ActivitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("created"),
+    at: z.iso.datetime({ offset: true }),
+    collectionId: z.string().min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("filed"),
+    at: z.iso.datetime({ offset: true }),
+    collectionId: z.string().min(1),
+    count: z.int().min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("tagged"),
+    at: z.iso.datetime({ offset: true }),
+    collectionId: z.string().min(1),
+    count: z.int().min(1),
+    tags: z.array(z.string().min(1)).min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("keptOffline"),
+    at: z.iso.datetime({ offset: true }),
+    collectionId: z.string().min(1),
+    on: z.boolean(),
+  }),
+]);
+
+// One condition of a saved search (a smart collection). `text` is the filter bar's search;
+// the others test one field of the item.
+const TextRule = z.strictObject({
+  field: z.literal("text"),
+  operator: z.literal("matches"),
+  search: AdvancedSearchSettingsSchema,
+});
+const containsRule = <F extends string>(field: F) =>
+  z.strictObject({
+    field: z.literal(field),
+    operator: z.enum(["contains", "does not contain"]),
+    value: z.string().trim().min(1),
+  });
+const isRule = <F extends string>(field: F) =>
+  z.strictObject({
+    field: z.literal(field),
+    operator: z.enum(["is", "is not"]),
+    value: z.string().trim().min(1),
+  });
+export const READING_STATES = ["unread", "reading", "finished"] as const;
+export const RuleSchema = z.discriminatedUnion("field", [
+  TextRule,
+  containsRule("title"),
+  containsRule("author"),
+  isRule("tag"),
+  isRule("topic"),
+  // The value is a collection id; the rule holds for its subcollections too.
+  isRule("collection"),
+  // The value is a source domain, as the table's Source column shows it.
+  isRule("source"),
+  z.strictObject({
+    field: z.literal("added"),
+    operator: z.literal("within days"),
+    value: z.int().min(1),
+  }),
+  z.strictObject({
+    field: z.literal("reading"),
+    operator: z.enum(["is", "is not"]),
+    value: z.enum(READING_STATES),
+  }),
+  z.strictObject({
+    field: z.literal("status"),
+    operator: z.enum(["is", "is not"]),
+    value: z.enum(["cached", "offline"]),
+  }),
+]);
+
+export const RULE_FIELDS = RuleSchema.options.map((option) => option.shape.field.value);
+
+// A saved search: its rules, all of which or any of which an item must meet.
 export const SavedSearchSchema = z.strictObject({
   id: z.string().min(1),
   name: NameSchema,
-  search: AdvancedSearchSettingsSchema,
+  match: z.enum(["all", "any"]),
+  rules: z.array(RuleSchema).min(1),
 });
 
 // How far an item has been read: never opened, or the page the reader last showed out of the
@@ -132,10 +218,12 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
 ]);
 
 // The answer to a send: the Zotero item and the steps this send performed.
+// `kept`: the item stays in the bucket because a collection holding it keeps its items offline.
 export const SendResponseSchema = z.strictObject({
   itemKey: z.string().min(1),
   created: z.boolean(),
   performed: z.array(z.enum(SEND_STEPS)),
+  kept: z.boolean(),
 });
 
 // Where an item's title came from, best first: an identifier resolver, the PDF's own
@@ -205,6 +293,7 @@ export const LibraryPayloadSchema = z.strictObject({
   missing: z.array(MissingItemSchema),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
+  activity: z.array(ActivitySchema),
 });
 
 // What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
@@ -278,9 +367,22 @@ export const BulkCollectionsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
   add: z.array(z.string().min(1)).min(1),
 });
-export const NewCollectionRequestSchema = CollectionSchema.omit({ id: true });
-export const RenameCollectionRequestSchema = z.strictObject({ name: NameSchema });
+export const NewCollectionRequestSchema = z.strictObject({
+  name: NameSchema,
+  parentId: z.string().min(1).optional(),
+});
+// Any of a collection's own fields; the others stay as they are.
+export const CollectionUpdateRequestSchema = z
+  .strictObject({
+    name: NameSchema,
+    description: z.string(),
+    pinned: z.boolean(),
+    keepOffline: z.boolean(),
+  })
+  .partial()
+  .refine((update) => Object.keys(update).length > 0, "the update changes nothing");
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
+export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({ id: true });
 
 export const SettingsSchema = z.strictObject({
   root: z.string().min(1),
@@ -310,6 +412,10 @@ export const TOPIC_PREFIX = "topic:";
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type AdvancedSearchSettings = z.infer<typeof AdvancedSearchSettingsSchema>;
 export type Collection = z.infer<typeof CollectionSchema>;
+export type Rule = z.infer<typeof RuleSchema>;
+export type RuleField = Rule["field"];
+export type Activity = z.infer<typeof ActivitySchema>;
+export type CollectionUpdate = z.infer<typeof CollectionUpdateRequestSchema>;
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 export type ItemNote = z.infer<typeof ItemNoteSchema>;
 export type BucketItem = z.infer<typeof BucketItemSchema>;

@@ -507,7 +507,8 @@ describe("library window", () => {
       ...(org.items[key]?.tags ?? []),
     ];
     const sharing = Object.keys(org.items).filter(
-      (key) => key !== "problems" && filing(key).some((entry) => filing("problems").includes(entry)),
+      (key) =>
+        key !== "problems" && filing(key).some((entry) => filing("problems").includes(entry)),
     );
     expect(sharing.length).toBeGreaterThan(0);
 
@@ -521,6 +522,116 @@ describe("library window", () => {
 
     await page.click(`[data-related-id="${sharing[0]}"]`);
     await page.waitForSelector(`${row(sharing[0] ?? "")}[aria-selected="true"]`);
+  });
+
+  test("collection cards show counts and pins; a collection keeps a description, Keep offline and its activity; New Topic tags the chosen rows", async () => {
+    const cards = () =>
+      page.$$eval("[data-collection-id]", (entries) =>
+        entries.map((entry) => entry.getAttribute("data-collection-name")),
+      );
+    await page.goto(`${bucket.origin}/#/organization/collections`);
+    await page.waitForSelector("[data-collection-id]");
+    const org = await organization();
+    const forms = org.collections.find((collection) => collection.name === "Quadratic forms");
+    if (forms === undefined) {
+      throw new Error("no Quadratic forms collection");
+    }
+    const held = Object.values(org.items).filter((filing) => filing.collections.includes(forms.id));
+    const card = `[data-collection-id="${forms.id}"]`;
+    expect(await page.$eval(card, (entry) => entry.textContent)).toContain(`${held.length} PDFs`);
+    const unpinned = await cards();
+    await page.click(`${card} button[aria-label="Pin"]`);
+    await page.waitForSelector(`${card} button[aria-label="Unpin"]`);
+    expect((await cards())[0]).toBe("Quadratic forms");
+    expect(unpinned[0]).not.toBe("Quadratic forms");
+    await shot("collections-cards");
+
+    await page.click(card);
+    await page.waitForFunction(
+      (id) => location.hash === `#/organization/collections/${id}`,
+      {},
+      forms.id,
+    );
+    await page.click('button[aria-label="Edit description"]');
+    await page.type('[role="dialog"] input', "Genus theory and the Hasse–Minkowski theorem");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("::-p-text(Genus theory and the Hasse–Minkowski theorem)");
+    await page.click('button[role="switch"][aria-label="Keep offline"]');
+    await page.waitForSelector(
+      'button[role="switch"][aria-label="Keep offline"][aria-checked="true"]',
+    );
+    await page.waitForSelector("::-p-text(Kept offline)");
+
+    const chosen = Object.keys(org.items).find((key) =>
+      org.items[key]?.collections.includes(forms.id),
+    );
+    if (chosen === undefined) {
+      throw new Error("Quadratic forms holds no PDF");
+    }
+    await page.click(`${row(chosen)} input[type="checkbox"]`);
+    await page.click('button[aria-label="New Topic"]');
+    await page.type('[role="dialog"] input', "Genus theory");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(`${row(chosen)} ::-p-text(Genus theory)`);
+    await shot("collection-page");
+
+    const after = await organization();
+    const saved = after.collections.find((collection) => collection.id === forms.id);
+    expect([saved?.description, saved?.pinned, saved?.keepOffline]).toEqual([
+      "Genus theory and the Hasse–Minkowski theorem",
+      true,
+      true,
+    ]);
+    expect(after.items[chosen]?.tags).toContain("topic:Genus theory");
+    await page.click('button[aria-label="Clear selection"]');
+  });
+
+  test("a smart collection built from rules lists the PDFs meeting all of them, and after an edit any of them", async () => {
+    const payload = LibraryPayloadSchema.parse(
+      await (await fetch(`${bucket.origin}/api/library`)).json(),
+    );
+    const forms = payload.collections.find((collection) => collection.name === "Quadratic forms");
+    if (forms === undefined) {
+      throw new Error("no Quadratic forms collection");
+    }
+    const inForms = (item: BucketItem) => item.collections.includes(forms.id);
+    const unread = (item: BucketItem) => item.reading.status === "unread";
+    const keys = (keep: (item: BucketItem) => boolean) =>
+      payload.items
+        .filter(keep)
+        .map((item) => item.id)
+        .sort();
+    const both = keys((item) => inForms(item) && unread(item));
+    const either = keys((item) => inForms(item) || unread(item));
+    // The two readings must differ, or the edit would prove nothing.
+    expect(either.length).toBeGreaterThan(both.length);
+
+    await page.goto(`${bucket.origin}/#/organization/saved`);
+    await page.click('button[aria-label="Smart Collection"]');
+    await page.type('[role="dialog"] input[aria-label="Name"]', "Unread quadratic forms");
+    await page.select('[role="dialog"] select[aria-label="Rule 1 field"]', "collection");
+    await page.select('[role="dialog"] select[aria-label="Rule 1 value"]', forms.id);
+    await page.click('[role="dialog"] button[aria-label="Add rule"]');
+    await page.select('[role="dialog"] select[aria-label="Rule 2 field"]', "reading");
+    await page.select('[role="dialog"] select[aria-label="Rule 2 value"]', "unread");
+    await shot("dialog-smart-collection");
+    await page.click('[role="dialog"] button[type="submit"]');
+    await page.waitForFunction(() => location.hash.startsWith("#/organization/saved/"));
+    const rowsNow = async (count: number) => {
+      await page.waitForFunction(
+        (wanted) => document.querySelectorAll("tr[data-item-id]").length === wanted,
+        {},
+        count,
+      );
+      return (await rowKeys()).sort();
+    };
+    expect(await rowsNow(both.length)).toEqual(both);
+    await shot("smart-collection");
+
+    await page.click('button[aria-label="Edit rules"]');
+    await page.select('[role="dialog"] select[aria-label="Match"]', "any");
+    await page.click('[role="dialog"] button[type="submit"]');
+    expect(await rowsNow(either.length)).toEqual(either);
   });
 
   test("the library at a narrow width", async () => {

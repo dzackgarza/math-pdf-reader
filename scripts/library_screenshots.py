@@ -137,7 +137,7 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         origin,
         "POST",
         "/api/saved-searches",
-        {"name": "Flips and the MMP", "search": {"query": "flips", "matchCase": False, "matchType": "all", "searchFields": fields}},
+        {"name": "Flips and the MMP", "match": "all", "rules": [{"field": "text", "operator": "matches", "search": {"query": "flips", "matchCase": False, "matchType": "all", "searchFields": fields}}]},
     )
     call(
         origin,
@@ -145,7 +145,8 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         "/api/saved-searches",
         {
             "name": "Surveys and lectures",
-            "search": {"query": "survey lectures", "matchCase": False, "matchType": "any", "searchFields": fields},
+            "match": "all",
+            "rules": [{"field": "text", "operator": "matches", "search": {"query": "survey lectures", "matchCase": False, "matchType": "any", "searchFields": fields}}],
         },
     )
     return {

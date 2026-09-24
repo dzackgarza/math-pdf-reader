@@ -108,7 +108,7 @@ to build from scratch.
 | reader (2) | reader, outline, search in document, highlights, notes | PDF.js prebuilt viewer in an iframe; highlights saved into the PDF by `saveDocument()` |
 | reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width PDF.js; mirrors are later enrichment |
 | reader (2) | Rebuild from metadata | the cache-rebuild recipe |
-| collections (3) | Smart Collection rules, subcollections | saved searches; nested collections in the index |
+| collections (3) | Smart Collection rules, subcollections, collection cards, Keep offline, activity | rule-based saved searches; nested collections, description, pin, Keep offline and activity in the filing document |
 | settings (4) | Browser Capture | each extension's toolbar popup and options page; the library's status bar shows whether captures can land |
 | settings (4) | Zotero Integration | the local write API on port 23119; library target is Zotero's selected collection; no settings page section |
 | settings (4) | Provenance & Recovery, Server, Embedded Foundations | not in the app: they describe it instead of setting anything |

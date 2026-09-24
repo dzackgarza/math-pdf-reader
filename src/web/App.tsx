@@ -27,6 +27,9 @@ import MissingList from "./components/MissingList";
 import NameDialog, { type NameRequest } from "./components/NameDialog";
 import SelectionBar from "./components/SelectionBar";
 import Sidebar from "./components/Sidebar";
+import SmartCollectionDialog, {
+  type SmartCollectionDraft,
+} from "./components/SmartCollectionDialog";
 import StatusBar from "./components/StatusBar";
 import TopBar from "./components/TopBar";
 import { chooseFolder, openInBrowser, showInFolder } from "./desktop";
@@ -45,19 +48,16 @@ import {
   rebuildLost,
   type SendAttempt,
   saveSearch,
+  saveSmartCollection,
   sendToZotero,
   sourceActions,
 } from "./libraryActions";
-import {
-  type LibraryView,
-  reconcileView,
-  relatedItems,
-  visibleItems,
-} from "./librarySelectors";
+import { type LibraryView, reconcileView, relatedItems, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import { defaultSearchSettings } from "./search";
+import { newRule } from "./smartRules";
 import { type StatusRead, useBucketStatus } from "./useBucketStatus";
 import { useExtractionPlugins } from "./useExtractionPlugins";
 import { useKeyedAttempts } from "./useKeyedAttempts";
@@ -124,6 +124,12 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const [verifying, setVerifying] = useState<ReadonlySet<string>>(new Set());
   const [rebuilding, setRebuilding] = useState<ReadonlySet<string>>(new Set());
   const [layout, setLayout] = useLibraryLayout();
+  // The smart collection being edited: a new one (id null) or a saved search.
+  const [smartEditor, setSmartEditor] = useState<{
+    id: string | null;
+    title: string;
+    initial: SmartCollectionDraft;
+  } | null>(null);
   const toggleKey =
     (setter: typeof setVerifying, key: string) =>
     (on: boolean): void =>
@@ -353,7 +359,17 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               payload={payload}
               tab={screen.tab}
               entry={view === null || view.kind === "all" ? null : screen.entry}
-              actions={organizationActions(context)}
+              actions={organizationActions(context, selectedKeys, {
+                newSmartCollection: () =>
+                  setSmartEditor({
+                    id: null,
+                    title: "New smart collection",
+                    initial: { name: "", match: "all", rules: [newRule(payload, "collection")] },
+                  }),
+                editSmartCollection: ({ id, ...draft }) =>
+                  setSmartEditor({ id, title: `Edit “${draft.name}”`, initial: draft }),
+              })}
+              chosen={selectedKeys.length}
               table={
                 <>
                   {selectionBar}
@@ -410,6 +426,15 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       />
       {nameRequest !== null && (
         <NameDialog request={nameRequest} onClose={() => setNameRequest(null)} />
+      )}
+      {smartEditor !== null && (
+        <SmartCollectionDialog
+          payload={payload}
+          title={smartEditor.title}
+          initial={smartEditor.initial}
+          onSave={(draft) => saveSmartCollection(context, smartEditor.id, draft)}
+          onClose={() => setSmartEditor(null)}
+        />
       )}
       {confirmRequest !== null && (
         <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />

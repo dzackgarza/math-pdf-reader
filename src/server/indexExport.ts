@@ -9,6 +9,7 @@ import { Semaphore } from "async-mutex";
 import { z } from "zod";
 import { ProvenanceSchema } from "./contract";
 import {
+  ActivitySchema,
   CollectionSchema,
   type MissingItem,
   type RebuildOutcome,
@@ -37,6 +38,7 @@ export const IndexExportSchema = z.strictObject({
   version: z.literal(2),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
+  activity: z.array(ActivitySchema),
   items: z.array(ExportedItemSchema),
 });
 
@@ -89,6 +91,7 @@ export async function exportIndex(
     version: 2,
     collections: organization.collections,
     savedSearches: organization.savedSearches,
+    activity: organization.activity,
     items: stored.map(({ key, provenance, title, authors }) => ({
       key,
       provenance,
@@ -189,6 +192,7 @@ export async function importIndex(root: string, exportFile: string): Promise<Org
     version: 2,
     collections: index.collections,
     savedSearches: index.savedSearches,
+    activity: index.activity,
     items: Object.fromEntries(filed.map((item) => [item.key, item.filing])),
   }));
 }

@@ -394,6 +394,8 @@ const TAB_CLASSES =
 export default function InspectorPanel(props: InspectorPanelProps) {
   const { item, send, onOpenReader, onClose } = props;
   const sending = send.attempt?.kind === "sending";
+  // Sent with every step done: the item stays only because a collection keeps it offline.
+  const inZotero = item.zotero.status === "sent" && item.zotero.pending.length === 0;
   return (
     <aside
       aria-label="Item details"
@@ -471,7 +473,7 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           <button
             type="button"
             onClick={send.onSend}
-            disabled={sending}
+            disabled={sending || inZotero}
             className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-60"
           >
             {sending ? (
@@ -479,7 +481,7 @@ export default function InspectorPanel(props: InspectorPanelProps) {
             ) : (
               <Send className="h-4 w-4" />
             )}
-            Send to Zotero
+            {inZotero ? "In Zotero" : "Send to Zotero"}
           </button>
         </div>
       </footer>

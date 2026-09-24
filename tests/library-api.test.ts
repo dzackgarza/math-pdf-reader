@@ -22,6 +22,8 @@ import {
   CollectionSchema,
   ItemNoteSchema,
   LibraryPayloadSchema,
+  type Rule,
+  type SavedSearch,
   SavedSearchSchema,
   SettingsSchema,
 } from "../src/server/libraryContract";
@@ -185,8 +187,9 @@ test("filing survives a server restart, and deleting the filing leaves every ite
   });
   await send(bucket, "PUT", "/api/items/lattices/collections", { collections: [flips.id] });
   await send(bucket, "POST", "/api/items/lattices/notes", { note: "Section 3 proves the bound." });
-  await send(bucket, "POST", "/api/saved-searches", {
-    name: "Flips papers",
+  const flipsRule: Rule = {
+    field: "text",
+    operator: "matches",
     search: {
       query: "flip",
       matchCase: false,
@@ -200,6 +203,11 @@ test("filing survives a server restart, and deleting the filing leaves every ite
         key: false,
       },
     },
+  };
+  await send(bucket, "POST", "/api/saved-searches", {
+    name: "Flips papers",
+    match: "all",
+    rules: [flipsRule],
   });
 
   const restarted = await library(open(bucket.root));
@@ -210,9 +218,9 @@ test("filing survives a server restart, and deleting the filing leaves every ite
   expect(filed?.provenance).toEqual(lattices.provenance);
   expect(byId(restarted.items).get("problems")?.tags).toEqual([]);
   expect(restarted.collections).toEqual([birational, flips]);
-  expect(restarted.savedSearches.map((search) => [search.name, search.search.query])).toEqual([
-    ["Flips papers", "flip"],
-  ]);
+  expect(restarted.savedSearches.map(({ name, match, rules }) => ({ name, match, rules }))).toEqual(
+    [{ name: "Flips papers", match: "all", rules: [flipsRule] }],
+  );
 
   await bucket.request(`/api/collections/${birational.id}`, { method: "DELETE" });
   const pruned = await library(open(bucket.root));
@@ -277,19 +285,26 @@ test("renames, note deletions and saved-search deletions persist, and unknown id
     await (
       await send(bucket, "POST", "/api/saved-searches", {
         name: "Codes",
-        search: {
-          query: "codes",
-          matchCase: false,
-          matchType: "any",
-          searchFields: {
-            title: true,
-            source: false,
-            pdfUrl: false,
-            tags: false,
-            notes: false,
-            key: false,
+        match: "any",
+        rules: [
+          {
+            field: "text",
+            operator: "matches",
+            search: {
+              query: "codes",
+              matchCase: false,
+              matchType: "any",
+              searchFields: {
+                title: true,
+                source: false,
+                pdfUrl: false,
+                tags: false,
+                notes: false,
+                key: false,
+              },
+            },
           },
-        },
+        ],
       })
     ).json(),
   );
@@ -299,7 +314,7 @@ test("renames, note deletions and saved-search deletions persist, and unknown id
   await bucket.request(`/api/saved-searches/${saved.id}`, { method: "DELETE" });
 
   const restarted = await library(open(bucket.root));
-  expect(restarted.collections).toEqual([{ id: collection.id, name: "Lattices" }]);
+  expect(restarted.collections).toEqual([{ ...collection, name: "Lattices" }]);
   expect(byId(restarted.items).get("lattices")?.notes).toEqual([]);
   expect(restarted.savedSearches).toEqual([]);
 
@@ -440,4 +455,100 @@ test("bulk filing adds tags and collections to every chosen item, keeping what e
   });
   expect(unknownCollection.status).toBe(400);
   expect(byId((await library(bucket)).items).get("lattices")?.tags).not.toContain("x");
+});
+
+test("a collection's description, pin and Keep offline persist, and its activity records what happened to it", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
+  const forms = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Quadratic forms" })).json(),
+  );
+  expect([forms.description, forms.pinned, forms.keepOffline]).toEqual(["", false, false]);
+
+  await send(bucket, "PUT", "/api/items/lattices/collections", { collections: [forms.id] });
+  await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices", "problems"],
+    add: [forms.id],
+  });
+  await send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices", "problems"], add: ["MMP"] });
+  const updated = await send(bucket, "PATCH", `/api/collections/${forms.id}`, {
+    description: "Hasse–Minkowski and the genus",
+    pinned: true,
+    keepOffline: true,
+  });
+  expect(updated.status).toBe(200);
+  expect((await send(bucket, "PATCH", `/api/collections/${forms.id}`, {})).status).toBe(400);
+
+  const restarted = await library(open(bucket.root));
+  expect(restarted.collections).toEqual([
+    {
+      ...forms,
+      description: "Hasse–Minkowski and the genus",
+      pinned: true,
+      keepOffline: true,
+    },
+  ]);
+  expect(restarted.activity.map(({ at: _at, ...entry }) => entry)).toEqual([
+    { kind: "created", collectionId: forms.id },
+    { kind: "filed", collectionId: forms.id, count: 1 },
+    // lattices was in the collection already; only problems is new to it.
+    { kind: "filed", collectionId: forms.id, count: 1 },
+    { kind: "tagged", collectionId: forms.id, count: 2, tags: ["MMP"] },
+    { kind: "keptOffline", collectionId: forms.id, on: true },
+  ]);
+});
+
+test("a smart collection's rules are stored, edited and checked against the filing", async () => {
+  const bucket = emptyBucket();
+  const forms = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Quadratic forms" })).json(),
+  );
+  const rules: Rule[] = [
+    { field: "collection", operator: "is", value: forms.id },
+    { field: "reading", operator: "is", value: "unread" },
+    { field: "added", operator: "within days", value: 7 },
+  ];
+  const created = await send(bucket, "POST", "/api/saved-searches", {
+    name: "New in forms",
+    match: "all",
+    rules,
+  });
+  expect(created.status).toBe(200);
+  const smart = SavedSearchSchema.parse(await created.json());
+
+  const edited = await send(bucket, "PUT", `/api/saved-searches/${smart.id}`, {
+    name: "Forms, any",
+    match: "any",
+    rules: [...rules, { field: "author", operator: "contains", value: "Viazovska" }],
+  });
+  expect(edited.status).toBe(200);
+  const restarted = await library(open(bucket.root));
+  expect(restarted.savedSearches).toEqual([
+    {
+      id: smart.id,
+      name: "Forms, any",
+      match: "any",
+      rules: [...rules, { field: "author", operator: "contains", value: "Viazovska" }],
+    },
+  ] satisfies SavedSearch[]);
+
+  const unknownCollection = await send(bucket, "POST", "/api/saved-searches", {
+    name: "Nowhere",
+    match: "all",
+    rules: [{ field: "collection", operator: "is", value: "no-such-collection" }],
+  });
+  expect(await errorKind(unknownCollection)).toBe("unknown_collection");
+  const noRules = await send(bucket, "POST", "/api/saved-searches", {
+    name: "Empty",
+    match: "all",
+    rules: [],
+  });
+  expect(noRules.status).toBe(400);
+  const unknownSearch = await send(bucket, "PUT", "/api/saved-searches/nope", {
+    name: "X",
+    match: "all",
+    rules,
+  });
+  expect(unknownSearch.status).toBe(404);
 });

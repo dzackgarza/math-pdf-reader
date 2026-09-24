@@ -6,7 +6,9 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type {
+  Activity,
   Collection,
+  CollectionUpdate,
   ItemNote,
   Reading,
   SavedSearch,
@@ -14,6 +16,7 @@ import type {
   ZoteroRecord,
 } from "./libraryContract";
 import {
+  ActivitySchema,
   CollectionSchema,
   collectionSubtree,
   ItemNoteSchema,
@@ -42,7 +45,11 @@ const OrganizationSchema = z.strictObject({
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
   items: z.record(z.string().min(1), ItemFilingSchema),
+  // Filing changes per collection, oldest first, the latest ACTIVITY_KEPT of them.
+  activity: z.array(ActivitySchema),
 });
+
+const ACTIVITY_KEPT = 500;
 
 export type ItemFiling = z.infer<typeof ItemFilingSchema>;
 export type Organization = z.infer<typeof OrganizationSchema>;
@@ -53,7 +60,7 @@ export function organizationFile(root: string): string {
 
 // The organization of a bucket nobody has filed anything in yet.
 function emptyOrganization(): Organization {
-  return { version: 2, collections: [], savedSearches: [], items: {} };
+  return { version: 2, collections: [], savedSearches: [], items: {}, activity: [] };
 }
 
 export function unfiled(capturedAt: string): ItemFiling {
@@ -209,13 +216,32 @@ export function addCollection(org: Organization, collection: Collection): Organi
   return { ...org, collections: [...org.collections, collection] };
 }
 
-export function renameCollection(org: Organization, id: string, name: string): Organization {
+export function updateCollection(
+  org: Organization,
+  id: string,
+  update: CollectionUpdate,
+): Organization {
   return {
     ...org,
     collections: org.collections.map((collection) =>
-      collection.id === id ? { ...collection, name } : collection,
+      collection.id === id ? { ...collection, ...update } : collection,
     ),
   };
+}
+
+export function logActivity(org: Organization, entries: Activity[]): Organization {
+  return { ...org, activity: [...org.activity, ...entries].slice(-ACTIVITY_KEPT) };
+}
+
+// The collections holding any of KEYS, with how many of KEYS each holds.
+export function collectionsHolding(org: Organization, keys: string[]): Map<string, number> {
+  const held = new Map<string, number>();
+  for (const key of keys) {
+    for (const id of org.items[key]?.collections ?? []) {
+      held.set(id, (held.get(id) ?? 0) + 1);
+    }
+  }
+  return held;
 }
 
 // Deleting a collection deletes its subcollections and takes every item out of them.
@@ -239,6 +265,13 @@ export function deleteCollection(org: Organization, id: string, now: string): Or
 
 export function addSavedSearch(org: Organization, search: SavedSearch): Organization {
   return { ...org, savedSearches: [...org.savedSearches, search] };
+}
+
+export function replaceSavedSearch(org: Organization, search: SavedSearch): Organization {
+  return {
+    ...org,
+    savedSearches: org.savedSearches.map((saved) => (saved.id === search.id ? search : saved)),
+  };
 }
 
 export function deleteSavedSearch(org: Organization, id: string): Organization {

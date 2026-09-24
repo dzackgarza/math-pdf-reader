@@ -4,18 +4,21 @@ import type { z } from "zod";
 import { CONFIG_PATH, loadAppConfig } from "./config";
 import type { IndexExporter } from "./indexExport";
 import {
+  type Activity,
   type ApiErrorKind,
   type BucketItem,
   BulkCollectionsRequestSchema,
   BulkTagsRequestSchema,
   CollectionsRequestSchema,
+  CollectionUpdateRequestSchema,
   type LibraryPayload,
   NewCollectionRequestSchema,
   NewSavedSearchRequestSchema,
   NoteRequestSchema,
   ReadingRequestSchema,
-  RenameCollectionRequestSchema,
   type RetrieveMetadataResponse,
+  type Rule,
+  SavedSearchUpdateRequestSchema,
   type Settings,
   TagsRequestSchema,
 } from "./libraryContract";
@@ -24,18 +27,21 @@ import {
   addCollection,
   addNote,
   addSavedSearch,
+  collectionsHolding,
   deleteCollection,
   deleteNote,
   deleteSavedSearch,
   fileMany,
+  logActivity,
   type Organization,
   OrganizationStore,
   organizationFile,
-  renameCollection,
+  replaceSavedSearch,
   setCollections,
   setReading,
   setTags,
   unfiled,
+  updateCollection,
 } from "./organization";
 import { sendRoutes, zoteroStatus } from "./send";
 import { sourceRoutes } from "./sourceRoutes";
@@ -75,6 +81,33 @@ export type Library = {
   // Items left the bucket on purpose: the index export drops them.
   removed(keys: string[]): void;
 };
+
+// Activity for filing KEYS into COLLECTIONS: per collection, the keys new to it.
+function filedInto(
+  org: Organization,
+  keys: string[],
+  collections: string[],
+  at: string,
+): Activity[] {
+  return collections.flatMap((collectionId) => {
+    const count = keys.filter((key) => !org.items[key]?.collections.includes(collectionId)).length;
+    return count === 0 ? [] : [{ kind: "filed" as const, at, collectionId, count }];
+  });
+}
+
+// Activity for TAGS newly added to KEYS, once per collection that holds any of them.
+function taggedIn(org: Organization, keys: string[], tags: string[], at: string): Activity[] {
+  if (tags.length === 0) {
+    return [];
+  }
+  return [...collectionsHolding(org, keys)].map(([collectionId, count]) => ({
+    kind: "tagged",
+    at,
+    collectionId,
+    count,
+    tags,
+  }));
+}
 
 export function apiError(c: Context, status: 400 | 404 | 409, kind: ApiErrorKind, message: string) {
   return c.json({ error: { kind, message } }, status);
@@ -117,6 +150,7 @@ export class LibraryState {
       missing: (await this.missing(indexed)).map(({ shown }) => shown),
       collections: organization.collections,
       savedSearches: organization.savedSearches,
+      activity: organization.activity,
     };
   }
 
@@ -217,7 +251,11 @@ function itemRoutes(app: Hono, state: LibraryState, root: string, resolversManif
     if (!(await state.isStored(key))) {
       return unknownItem(c, key);
     }
-    return state.change(c, (org) => setTags(org, key, body.data.tags, now()));
+    return state.change(c, (org) => {
+      const at = now();
+      const added = body.data.tags.filter((tag) => !org.items[key]?.tags.includes(tag));
+      return logActivity(setTags(org, key, body.data.tags, at), taggedIn(org, [key], added, at));
+    });
   });
 
   app.put("/api/items/:key/collections", async (c) => {
@@ -234,7 +272,11 @@ function itemRoutes(app: Hono, state: LibraryState, root: string, resolversManif
     if (unknown.length > 0) {
       return apiError(c, 400, "unknown_collection", `no collection has id ${unknown.join(", ")}`);
     }
-    return state.change(c, (org) => setCollections(org, key, body.data.collections, now()));
+    return state.change(c, (org) => {
+      const at = now();
+      const filed = setCollections(org, key, body.data.collections, at);
+      return logActivity(filed, filedInto(org, [key], body.data.collections, at));
+    });
   });
 
   app.post("/api/items/:key/notes", async (c) => {
@@ -277,7 +319,11 @@ function bulkRoutes(app: Hono, state: LibraryState) {
       return apiError(c, 404, "unknown_item", `no stored PDF has key ${unknown.join(", ")}`);
     }
     const additions = { tags: body.data.add, collections: [] };
-    return state.change(c, (org) => fileMany(org, body.data.keys, additions, now()));
+    return state.change(c, (org) => {
+      const at = now();
+      const tagged = fileMany(org, body.data.keys, additions, at);
+      return logActivity(tagged, taggedIn(org, body.data.keys, body.data.add, at));
+    });
   });
 
   app.post("/api/bulk/collections", async (c) => {
@@ -295,7 +341,11 @@ function bulkRoutes(app: Hono, state: LibraryState) {
       return apiError(c, 400, "unknown_collection", `no collection has id ${missing.join(", ")}`);
     }
     const additions = { tags: [], collections: body.data.add };
-    return state.change(c, (org) => fileMany(org, body.data.keys, additions, now()));
+    return state.change(c, (org) => {
+      const at = now();
+      const filed = fileMany(org, body.data.keys, additions, at);
+      return logActivity(filed, filedInto(org, body.data.keys, body.data.add, at));
+    });
   });
 }
 
@@ -309,21 +359,38 @@ function collectionRoutes(app: Hono, state: LibraryState) {
     if (parentId !== undefined && !(await state.collectionIds()).has(parentId)) {
       return apiError(c, 400, "unknown_collection", `no collection has id ${parentId}`);
     }
-    const collection = { ...body.data, id: crypto.randomUUID() };
-    await state.organizations.update((org) => addCollection(org, collection));
+    const collection = {
+      ...body.data,
+      id: crypto.randomUUID(),
+      description: "",
+      pinned: false,
+      keepOffline: false,
+    };
+    const created: Activity = { kind: "created", at: now(), collectionId: collection.id };
+    await state.organizations.update((org) =>
+      logActivity(addCollection(org, collection), [created]),
+    );
     return c.json(collection);
   });
 
   app.patch("/api/collections/:id", async (c) => {
     const id = c.req.param("id");
-    const body = await parseBody(c, RenameCollectionRequestSchema);
+    const body = await parseBody(c, CollectionUpdateRequestSchema);
     if (!body.success) {
       return invalid(c, body.error);
     }
     if (!(await state.collectionIds()).has(id)) {
       return unknownCollection(c, id);
     }
-    return state.change(c, (org) => renameCollection(org, id, body.data.name));
+    return state.change(c, (org) => {
+      const before = org.collections.find((collection) => collection.id === id);
+      const { keepOffline } = body.data;
+      const switched =
+        keepOffline === undefined || keepOffline === before?.keepOffline
+          ? []
+          : [{ kind: "keptOffline" as const, at: now(), collectionId: id, on: keepOffline }];
+      return logActivity(updateCollection(org, id, body.data), switched);
+    });
   });
 
   app.delete("/api/collections/:id", async (c) => {
@@ -336,14 +403,43 @@ function collectionRoutes(app: Hono, state: LibraryState) {
 }
 
 function savedSearchRoutes(app: Hono, state: LibraryState) {
+  // The collection ids that collection rules name and the filing does not hold.
+  const unknownRuleCollections = async (rules: Rule[]) => {
+    const known = await state.collectionIds();
+    return rules.flatMap((rule) =>
+      rule.field === "collection" && !known.has(rule.value) ? [rule.value] : [],
+    );
+  };
+
   app.post("/api/saved-searches", async (c) => {
     const body = await parseBody(c, NewSavedSearchRequestSchema);
     if (!body.success) {
       return invalid(c, body.error);
     }
+    const unknown = await unknownRuleCollections(body.data.rules);
+    if (unknown.length > 0) {
+      return apiError(c, 400, "unknown_collection", `no collection has id ${unknown.join(", ")}`);
+    }
     const search = { ...body.data, id: crypto.randomUUID() };
     await state.organizations.update((org) => addSavedSearch(org, search));
     return c.json(search);
+  });
+
+  app.put("/api/saved-searches/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await parseBody(c, SavedSearchUpdateRequestSchema);
+    if (!body.success) {
+      return invalid(c, body.error);
+    }
+    const saved = (await state.organizations.read()).savedSearches;
+    if (!saved.some((search) => search.id === id)) {
+      return apiError(c, 404, "unknown_saved_search", `no saved search has id ${id}`);
+    }
+    const unknown = await unknownRuleCollections(body.data.rules);
+    if (unknown.length > 0) {
+      return apiError(c, 400, "unknown_collection", `no collection has id ${unknown.join(", ")}`);
+    }
+    return state.change(c, (org) => replaceSavedSearch(org, { ...body.data, id }));
   });
 
   app.delete("/api/saved-searches/:id", async (c) => {

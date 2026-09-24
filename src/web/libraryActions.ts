@@ -5,18 +5,22 @@ import type { ExtractionOutcome } from "../server/extractionContract";
 import {
   type AdvancedSearchSettings,
   type BucketItem,
+  type Collection,
   CollectionSchema,
+  type CollectionUpdate,
   FolderImportResponseSchema,
   ImportUrlResponseSchema,
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
   RetrieveMetadataResponseSchema,
+  type SavedSearch,
   SavedSearchSchema,
   SendResponseSchema,
 } from "../server/libraryContract";
 import type { ConfirmRequest } from "./components/ConfirmDialog";
 import type { ItemFilingActions } from "./components/InspectorPanel";
 import type { NameRequest } from "./components/NameDialog";
+import { topicTag } from "./format";
 import { organizationPath } from "./routes";
 import type { OrganizationActions } from "./screens/OrganizationScreen";
 import { runExtraction } from "./useExtractionPlugins";
@@ -311,7 +315,11 @@ export function saveSearch(
       run(
         context,
         context
-          .mutate(SavedSearchSchema, "POST", "/api/saved-searches", { name, search })
+          .mutate(SavedSearchSchema, "POST", "/api/saved-searches", {
+            name,
+            match: "all",
+            rules: [{ field: "text", operator: "matches", search }],
+          })
           .then((saved) => {
             onSaved();
             context.navigate(organizationPath("saved", saved.id));
@@ -337,8 +345,75 @@ function deleteAndLeave(
   });
 }
 
-export function organizationActions(context: ActionContext): OrganizationActions {
+// Saves a smart collection: a new one (ID null) or the one with ID; a new one opens.
+export function saveSmartCollection(
+  context: ActionContext,
+  id: string | null,
+  draft: Omit<SavedSearch, "id">,
+): void {
+  if (id !== null) {
+    run(
+      context,
+      context.mutate(
+        LibraryPayloadSchema,
+        "PUT",
+        `/api/saved-searches/${encodeURIComponent(id)}`,
+        draft,
+      ),
+    );
+    return;
+  }
+  run(
+    context,
+    context
+      .mutate(SavedSearchSchema, "POST", "/api/saved-searches", draft)
+      .then((saved) => context.navigate(organizationPath("saved", saved.id))),
+  );
+}
+
+export function organizationActions(
+  context: ActionContext,
+  chosen: string[],
+  smart: Pick<OrganizationActions, "newSmartCollection" | "editSmartCollection">,
+): OrganizationActions {
+  const updateCollection = (collection: Collection, update: CollectionUpdate) =>
+    run(
+      context,
+      context.mutate(
+        LibraryPayloadSchema,
+        "PATCH",
+        `/api/collections/${encodeURIComponent(collection.id)}`,
+        update,
+      ),
+    );
   return {
+    newCollection: () => createCollection(context),
+    updateCollection,
+    editDescription: (collection) =>
+      context.askName({
+        title: `Description of “${collection.name}”`,
+        label: "Description",
+        submitLabel: "Save",
+        initialName: collection.description,
+        onSubmit: (description) => updateCollection(collection, { description }),
+      }),
+    newTopic: () =>
+      context.askName({
+        title: `New topic for ${chosen.length} PDFs`,
+        label: "Topic",
+        submitLabel: "Add",
+        initialName: "",
+        onSubmit: (name) =>
+          run(
+            context,
+            context.mutate(LibraryPayloadSchema, "POST", "/api/bulk/tags", {
+              keys: chosen,
+              add: [topicTag(name)],
+            }),
+          ),
+      }),
+    bulkTag: bulkActions(context, chosen).tag,
+    ...smart,
     newSubcollection: (parent) => createCollection(context, parent.id),
     renameCollection: (collection) =>
       context.askName({

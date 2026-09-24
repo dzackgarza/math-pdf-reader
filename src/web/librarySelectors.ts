@@ -4,8 +4,11 @@ import {
   type BucketItem,
   collectionSubtree,
   type LibraryPayload,
+  type READING_STATES,
+  type Rule,
+  type SavedSearch,
 } from "../server/libraryContract";
-import { sourceDomain, tagLabel } from "./format";
+import { sourceDomain, tagLabel, topicTag } from "./format";
 import { filterItems } from "./search";
 
 export type LibraryView =
@@ -67,8 +70,64 @@ export function itemsInView(payload: LibraryPayload, view: LibraryView): BucketI
     case "tag":
       return payload.items.filter((item) => item.tags.includes(view.tag));
     case "saved":
-      return filterItems(payload.items, savedSearch(payload, view.id).search);
+      return itemsMatching(payload, savedSearch(payload, view.id));
   }
+}
+
+// Reading as a rule names it: never opened, opened and not on the last page, on the last page.
+function readingState(item: BucketItem): (typeof READING_STATES)[number] {
+  if (item.reading.status === "unread") {
+    return "unread";
+  }
+  return item.reading.page === item.reading.pages ? "finished" : "reading";
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The ids of the items one rule holds for.
+function ruleMatches(payload: LibraryPayload, rule: Rule): Set<string> {
+  if (rule.field === "text") {
+    return new Set(filterItems(payload.items, rule.search).map((item) => item.id));
+  }
+  const holds = (item: BucketItem): boolean => {
+    const lower = (text: string) => text.toLocaleLowerCase();
+    switch (rule.field) {
+      case "title":
+        return lower(item.title).includes(lower(rule.value)) === (rule.operator === "contains");
+      case "author":
+        return (
+          item.authors.some((author) => lower(author).includes(lower(rule.value))) ===
+          (rule.operator === "contains")
+        );
+      case "tag":
+        return item.tags.includes(rule.value) === (rule.operator === "is");
+      case "topic":
+        return item.tags.includes(topicTag(rule.value)) === (rule.operator === "is");
+      case "collection": {
+        const subtree = collectionSubtree(payload.collections, rule.value);
+        return item.collections.some((id) => subtree.has(id)) === (rule.operator === "is");
+      }
+      case "source":
+        return (sourceDomain(item.url) === rule.value) === (rule.operator === "is");
+      case "added":
+        return Date.parse(item.dateAdded) >= Date.now() - rule.value * DAY_MS;
+      case "reading":
+        return (readingState(item) === rule.value) === (rule.operator === "is");
+      case "status":
+        return (availability(item) === rule.value) === (rule.operator === "is");
+    }
+  };
+  return new Set(payload.items.filter(holds).map((item) => item.id));
+}
+
+// The items a saved search holds: those meeting all of its rules, or any of them.
+export function itemsMatching(payload: LibraryPayload, search: SavedSearch): BucketItem[] {
+  const matches = search.rules.map((rule) => ruleMatches(payload, rule));
+  const meets =
+    search.match === "all"
+      ? (id: string) => matches.every((ids) => ids.has(id))
+      : (id: string) => matches.some((ids) => ids.has(id));
+  return payload.items.filter((item) => meets(item.id));
 }
 
 function savedSearch(payload: LibraryPayload, id: string) {
@@ -175,6 +234,8 @@ export function relatedItems(payload: LibraryPayload, item: BucketItem): Related
       tags: shared(other.tags, item.tags),
       sameSource: sourceDomain(other.url) === sourceDomain(item.url),
     }))
-    .filter((related) => related.authors.length + related.collections.length + related.tags.length > 0)
+    .filter(
+      (related) => related.authors.length + related.collections.length + related.tags.length > 0,
+    )
     .sort((a, b) => score(b) - score(a) || a.item.title.localeCompare(b.item.title));
 }

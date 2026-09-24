@@ -1,6 +1,8 @@
 // The send action: create the bucket item in Zotero, set its URL and access date, attach the
 // stored PDF and the extraction Markdown, and record the Zotero key in the filing document
-// after each step. Once every step is done the item leaves the bucket: Zotero holds it now.
+// after each step. Once every step is done the item leaves the bucket, since Zotero holds it
+// now, unless a collection holding it (or holding a collection that holds it) keeps its items
+// offline.
 // Deleting an item moves its PDF to the desktop trash and drops its filing.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -9,18 +11,19 @@ import type { Context, Hono } from "hono";
 import { arxivId } from "../resolvers/arxivId";
 import { REPO_ROOT } from "./config";
 import type { Library, LibraryState } from "./library";
-import type {
-  ApiErrorKind,
-  Extraction,
-  SendResponse,
-  SendSource,
-  SendStep,
-  SendStepDone,
-  ZoteroRecord,
-  ZoteroStatus,
+import {
+  type ApiErrorKind,
+  collectionSubtree,
+  type Extraction,
+  type SendResponse,
+  type SendSource,
+  type SendStep,
+  type SendStepDone,
+  type ZoteroRecord,
+  type ZoteroStatus,
 } from "./libraryContract";
 import type { IndexedItem } from "./libraryIndex";
-import { removeItem, setZoteroRecord } from "./organization";
+import { type Organization, removeItem, setZoteroRecord } from "./organization";
 import { type Resolution, removeStored, resolveItem } from "./store";
 import type { ZoteroWriteApi } from "./zotero";
 
@@ -54,6 +57,16 @@ export function zoteroStatus(
     return { status: "unsent" };
   }
   return { status: "sent", record, pending: pendingSteps(record, extraction) };
+}
+
+// Whether a Keep offline collection holds the item, directly or through a subcollection.
+export function keptOffline(org: Organization, key: string): boolean {
+  const filed = new Set(org.items[key]?.collections ?? []);
+  return org.collections
+    .filter((collection) => collection.keepOffline)
+    .some((collection) =>
+      [...collectionSubtree(org.collections, collection.id)].some((id) => filed.has(id)),
+    );
 }
 
 function apiError(c: Context, status: 404 | 409 | 502, kind: ApiErrorKind, message: string) {
@@ -177,11 +190,15 @@ export function sendRoutes(
         await save(key, record);
         performed.push(step);
       }
-      await remove(key);
+      const kept = keptOffline(await state.organizations.read(), key);
+      if (!kept) {
+        await remove(key);
+      }
       const response: SendResponse = {
         itemKey: record.itemKey,
         created: existing === undefined,
         performed,
+        kept,
       };
       return c.json(response);
     }),

@@ -1,5 +1,12 @@
 // Display forms shared by the table, the inspector and the palette.
-import { type Reading, type SourceCheck, TOPIC_PREFIX } from "../server/libraryContract";
+import {
+  type Activity,
+  type Reading,
+  type Rule,
+  type RuleField,
+  type SourceCheck,
+  TOPIC_PREFIX,
+} from "../server/libraryContract";
 
 // Authors as a table cell shows them, after Zotero's Creator column: one surname, two joined
 // with "&", three or more as the first surname and "et al.". A surname is taken as the name's
@@ -27,6 +34,63 @@ export function sourceCheckText(check: SourceCheck): string {
 // The item's first page as a PNG, WIDTH pixels wide.
 export function thumbnailPath(key: string, width: number): string {
   return `/api/items/${encodeURIComponent(key)}/thumbnail?width=${width}`;
+}
+
+export const RULE_FIELD_LABELS: Record<RuleField, string> = {
+  text: "Text",
+  title: "Title",
+  author: "Author",
+  tag: "Tag",
+  topic: "Topic",
+  collection: "Collection",
+  source: "Source",
+  added: "Added",
+  reading: "Read",
+  status: "Status",
+};
+
+const RULE_VALUE_LABELS: Record<"unread" | "reading" | "finished" | "cached" | "offline", string> =
+  {
+    unread: "Unread",
+    reading: "being read",
+    finished: "finished",
+    cached: "Cached",
+    offline: "Offline",
+  };
+
+// A rule as a smart collection's summary says it; COLLECTION_NAMES names collection ids.
+export function ruleText(rule: Rule, collectionNames: Map<string, string>): string {
+  switch (rule.field) {
+    case "text":
+      return `Text matches “${rule.search.query}”`;
+    case "added":
+      return `Added in the last ${rule.value} days`;
+    case "collection":
+      return `Collection ${rule.operator} ${collectionNames.get(rule.value) ?? rule.value}`;
+    case "reading":
+    case "status":
+      return `${RULE_FIELD_LABELS[rule.field]} ${rule.operator} ${RULE_VALUE_LABELS[rule.value]}`;
+    default:
+      return `${RULE_FIELD_LABELS[rule.field]} ${rule.operator} “${rule.value}”`;
+  }
+}
+
+export function pdfCount(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "PDF" : "PDFs"}`;
+}
+
+// A collection's activity entry as its Recent activity list says it.
+export function activityText(activity: Activity): string {
+  switch (activity.kind) {
+    case "created":
+      return "Created the collection";
+    case "filed":
+      return `Added ${pdfCount(activity.count)}`;
+    case "tagged":
+      return `Tagged ${pdfCount(activity.count)} with ${activity.tags.map(tagLabel).join(", ")}`;
+    case "keptOffline":
+      return activity.on ? "Kept offline" : "No longer kept offline";
+  }
 }
 
 export function sourceDomain(url: string): string {

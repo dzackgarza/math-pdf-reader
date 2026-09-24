@@ -27,6 +27,8 @@ import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { captureBytes, listItems } from "../src/server/store";
 
 const config = loadAppConfig(CONFIG_PATH);
+// A collection's own fields as a new one has them.
+const PLAIN = { description: "", pinned: false, keepOffline: false };
 
 // Every capture and restore runs the Python store in its own process.
 setDefaultTimeout(30_000);
@@ -167,7 +169,8 @@ test("an export imported into an empty store and rebuilt there exports byte for 
   const organizations = new OrganizationStore(original);
   const filedAt = "2026-09-24T10:15:00.000Z";
   await organizations.update((org) =>
-    addCollection(addCollection(org, { id: "forms", name: "Quadratic forms" }), {
+    addCollection(addCollection(org, { ...PLAIN, id: "forms", name: "Quadratic forms" }), {
+      ...PLAIN,
       id: "even",
       name: "Even lattices",
       parentId: "forms",
@@ -190,19 +193,26 @@ test("an export imported into an empty store and rebuilt there exports byte for 
     addSavedSearch(org, {
       id: "search-1",
       name: "Lattice topics",
-      search: {
-        query: "lattices",
-        matchCase: false,
-        matchType: "any",
-        searchFields: {
-          title: true,
-          source: false,
-          pdfUrl: false,
-          tags: true,
-          notes: false,
-          key: false,
+      match: "all",
+      rules: [
+        {
+          field: "text",
+          operator: "matches",
+          search: {
+            query: "lattices",
+            matchCase: false,
+            matchType: "any",
+            searchFields: {
+              title: true,
+              source: false,
+              pdfUrl: false,
+              tags: true,
+              notes: false,
+              key: false,
+            },
+          },
         },
-      },
+      ],
     }),
   );
   const exportFile = join(temporaryDirectory("export"), "index.json");
