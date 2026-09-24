@@ -381,7 +381,7 @@ def record_sent(root: Path, key: str) -> None:
         "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
     }
     filing = {"tags": [], "collections": [], "notes": [], "reading": {"status": "unread"}, "sourceCheck": {"status": "unchecked"}, "mirrors": [], "modifiedAt": record["sentAt"], "zotero": record}
-    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}}
+    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}, "activity": []}
     (root / "organization.json").write_text(json.dumps(organization))
 
 

@@ -459,7 +459,11 @@ describe("library window", () => {
       await page.waitForSelector(`${row(key)} ::-p-text(survey)`);
     }
     await page.click('button[aria-label="File selected"]');
+    const filed = page.waitForResponse((response) =>
+      response.url().endsWith("/api/bulk/collections"),
+    );
     await (await menuItem("Quadratic forms")).click();
+    expect((await filed).status()).toBe(200);
     await page.waitForFunction(() => document.querySelector('[role="menu"]') === null);
 
     const org = await organization();

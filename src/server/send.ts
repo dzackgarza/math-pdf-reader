@@ -85,11 +85,12 @@ export function sendRoutes(
   // One send or removal at a time, so two clicks never create two Zotero items.
   const sends = new Mutex();
 
+  // The export hears of the removal first, so the export that the filing write starts drops
+  // the item instead of refusing to lose it.
   const remove = async (key: string) => {
-    await removeStored(root, key);
-    const organization = await state.organizations.update((org) => removeItem(org, key));
     library.removed([key]);
-    return organization;
+    await removeStored(root, key);
+    return state.organizations.update((org) => removeItem(org, key));
   };
 
   const save = (key: string, record: ZoteroRecord) =>

@@ -163,9 +163,14 @@ export class IndexExporter {
       this.pending = false;
       const dropping = new Set(this.removed);
       await exportIndex(this.root, this.exportFile, dropping).then(
-        () => {
+        (exported) => {
+          // A key leaves the removed set once an export has dropped it; one still stored
+          // (announced before its PDF went) stays until the export after its removal.
+          const listed = new Set(exported.items.map((item) => item.key));
           for (const key of dropping) {
-            this.removed.delete(key);
+            if (!listed.has(key)) {
+              this.removed.delete(key);
+            }
           }
         },
         (error: Error) => {
