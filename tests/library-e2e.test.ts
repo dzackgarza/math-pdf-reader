@@ -53,6 +53,7 @@ async function startBucket() {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: null,
     resolversManifest: RESOLVERS_MANIFEST,
   });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch, idleTimeout: 0 });

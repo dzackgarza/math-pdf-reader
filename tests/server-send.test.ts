@@ -40,6 +40,7 @@ function emptyBucket(): Bucket {
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: null,
   });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }

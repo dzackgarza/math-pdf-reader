@@ -56,6 +56,7 @@ function startBucket(port: number) {
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: null,
   });
   const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
   if (server.port === undefined) {

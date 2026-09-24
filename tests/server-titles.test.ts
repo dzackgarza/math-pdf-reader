@@ -84,6 +84,7 @@ function bucket(root: string, resolversManifest: string) {
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest,
+    indexExport: null,
   });
 }
 

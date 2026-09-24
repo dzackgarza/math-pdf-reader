@@ -27,6 +27,7 @@ function bucket() {
       zoteroUrl: config.zotero.url,
       extractionsManifest: EXTRACTIONS_MANIFEST,
       resolversManifest: RESOLVERS_MANIFEST,
+      indexExport: null,
     }),
   };
 }

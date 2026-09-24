@@ -31,6 +31,7 @@ const server = Bun.serve({
     zoteroUrl,
     extractionsManifest,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: null,
   }).fetch,
 });
 process.stdout.write(`${server.url.origin}\n`);

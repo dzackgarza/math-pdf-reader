@@ -59,6 +59,7 @@ const app = createApp({
   zoteroUrl: config.zotero.url,
   extractionsManifest: EXTRACTIONS_MANIFEST,
   resolversManifest: RESOLVERS_MANIFEST,
+  indexExport: null,
 });
 const api = (path: string, init?: RequestInit) => app.request(`http://bucket${path}`, init);
 

@@ -2,6 +2,7 @@
 import type { Context, Hono } from "hono";
 import type { z } from "zod";
 import { CONFIG_PATH, loadAppConfig } from "./config";
+import type { IndexExporter } from "./indexExport";
 import {
   type ApiErrorKind,
   type BucketItem,
@@ -58,6 +59,10 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
 export type Library = {
   payload(): Promise<LibraryPayload>;
   item(key: string): Promise<{ item: BucketItem; organization: Organization } | null>;
+  // A PDF was stored: the index export is rewritten.
+  stored(): void;
+  // Items left the bucket on purpose: the index export drops them.
+  removed(keys: string[]): void;
 };
 
 function apiError(c: Context, status: 400 | 404, kind: ApiErrorKind, message: string) {
@@ -85,9 +90,13 @@ export class LibraryState {
   readonly index: LibraryIndex;
   readonly organizations: OrganizationStore;
 
-  constructor(root: string) {
+  constructor(
+    root: string,
+    readonly exporter: IndexExporter | null,
+  ) {
     this.index = new LibraryIndex(root);
     this.organizations = new OrganizationStore(root);
+    this.organizations.onWrite(() => exporter?.changed());
   }
 
   async payloadOf(organization: Organization): Promise<LibraryPayload> {
@@ -256,9 +265,15 @@ export function registerLibraryRoutes(
   root: string,
   zotero: ZoteroWriteApi,
   resolversManifest: string,
+  exporter: IndexExporter | null,
 ): Library {
-  const state = new LibraryState(root);
+  const state = new LibraryState(root, exporter);
   const library: Library = {
+    stored: () => exporter?.changed(),
+    removed: (keys) => {
+      exporter?.forget(keys);
+      exporter?.changed();
+    },
     payload: async () => state.payloadOf(await state.organizations.read()),
     item: async (key) => {
       const indexed = await state.indexed(key);
@@ -282,6 +297,6 @@ export function registerLibraryRoutes(
   itemRoutes(app, state, root, resolversManifest);
   collectionRoutes(app, state);
   savedSearchRoutes(app, state);
-  sendRoutes(app, state, root, zotero);
+  sendRoutes(app, state, root, zotero, library);
   return library;
 }

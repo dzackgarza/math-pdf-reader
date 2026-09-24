@@ -8,7 +8,7 @@ import { Mutex } from "async-mutex";
 import type { Context, Hono } from "hono";
 import { arxivId } from "../resolvers/arxivId";
 import { REPO_ROOT } from "./config";
-import type { LibraryState } from "./library";
+import type { Library, LibraryState } from "./library";
 import type {
   ApiErrorKind,
   Extraction,
@@ -62,13 +62,21 @@ function apiError(c: Context, status: 404 | 409 | 502, kind: ApiErrorKind, messa
 
 type ResolverFailure = Extract<Resolution, { status: "failed" }>;
 
-export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero: ZoteroWriteApi) {
+export function sendRoutes(
+  app: Hono,
+  state: LibraryState,
+  root: string,
+  zotero: ZoteroWriteApi,
+  library: Library,
+) {
   // One send or removal at a time, so two clicks never create two Zotero items.
   const sends = new Mutex();
 
   const remove = async (key: string) => {
     await removeStored(root, key);
-    return state.organizations.update((org) => removeItem(org, key));
+    const organization = await state.organizations.update((org) => removeItem(org, key));
+    library.removed([key]);
+    return organization;
   };
 
   const save = (key: string, record: ZoteroRecord) =>

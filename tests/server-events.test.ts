@@ -48,6 +48,7 @@ test("every capture, new or existing, broadcasts its reader URL to event subscri
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: null,
   });
   const subscription = await app.request(`${origin}/api/events`);
   expect(subscription.headers.get("content-type")).toStartWith("text/event-stream");

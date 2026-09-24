@@ -19,6 +19,7 @@ test("status reports a ready storage contract for an existing writable root", as
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: null,
   });
 
   const response = await app.request(`${origin}/status`);
@@ -45,6 +46,7 @@ test("status reports a missing root as not ready without creating it", async () 
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: null,
   });
 
   const response = await app.request(`${origin}/status`);

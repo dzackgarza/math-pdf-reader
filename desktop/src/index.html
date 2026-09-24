@@ -3,8 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <title>PDF Bucket</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 2rem;
+      }
+      h1 {
+        margin: 0 0 1rem;
+        font-size: 1.2rem;
+        color: #a33a2c;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 0.85rem;
+      }
+    </style>
   </head>
   <body>
-    <p>PDF Bucket window placeholder. The window loads the bucket server URL.</p>
+    <!-- The window shows this page while the server starts; the app puts the server's failure
+         report in the fragment when it stops. -->
+    <main id="failure" hidden>
+      <h1>The server is not running</h1>
+      <pre id="report"></pre>
+    </main>
+    <script>
+      const render = () => {
+        const report = decodeURIComponent(location.hash.slice(1));
+        document.getElementById("failure").hidden = report === "";
+        document.getElementById("report").textContent = report;
+      };
+      window.addEventListener("hashchange", render);
+      render();
+    </script>
   </body>
 </html>

@@ -3,12 +3,17 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONFIG_PATH, loadAppConfig } from "../src/server/config";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import {
   exportIndex,
   FilingExistsError,
+  type IndexExport,
   importIndex,
   PdfsMissingError,
+  readIndexExport,
   rebuildCache,
 } from "../src/server/indexExport";
 import {
@@ -92,7 +97,7 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
   await capture(root, tenPageNotes, "ten-page-notes.pdf", at("/teaching/ten-page-notes.pdf"));
   await capture(root, longNotes, "long-notes.pdf", at("/gone/long-notes.pdf"));
   await capture(root, lectureNotes, "revised.pdf", at("/revised/notes.pdf"));
-  const exported = await exportIndex(root, exportFile);
+  const exported = await exportIndex(root, exportFile, new Set());
   for (const key of ["lecture-notes", "2401.00001", "long-notes", "revised"]) {
     unlinkSync(join(root, `${key}.pdf`));
   }
@@ -191,7 +196,7 @@ test("an export imported into an empty store and rebuilt there exports byte for 
     }),
   );
   const exportFile = join(temporaryDirectory("export"), "index.json");
-  await exportIndex(original, exportFile);
+  await exportIndex(original, exportFile, new Set());
 
   const restoredRoot = join(temporaryDirectory("restored"), "pdf-bucket");
   const imported = await importIndex(restoredRoot, exportFile);
@@ -203,7 +208,7 @@ test("an export imported into an empty store and rebuilt there exports byte for 
     ["ten-page-notes", "restored"],
   ]);
   const reexportFile = join(temporaryDirectory("reexport"), "index.json");
-  await exportIndex(restoredRoot, reexportFile);
+  await exportIndex(restoredRoot, reexportFile, new Set());
 
   expect(readFileSync(reexportFile, "utf8")).toBe(readFileSync(exportFile, "utf8"));
 });
@@ -216,12 +221,12 @@ test("an export never drops an item whose PDF is missing, and import never overw
   await new OrganizationStore(root).update((org) =>
     setTags(org, "2401.00001", ["topic:packing"], "2026-09-24T10:15:00.000Z"),
   );
-  await exportIndex(root, exportFile);
+  await exportIndex(root, exportFile, new Set());
   const before = readFileSync(exportFile, "utf8");
   unlinkSync(join(root, "lecture-notes.pdf"));
 
   const [reexport, reimport] = await Promise.allSettled([
-    exportIndex(root, exportFile),
+    exportIndex(root, exportFile, new Set()),
     importIndex(root, exportFile),
   ]);
 
@@ -229,4 +234,59 @@ test("an export never drops an item whose PDF is missing, and import never overw
   expect(reexport).toMatchObject({ reason: { keys: ["lecture-notes"] } });
   expect(readFileSync(exportFile, "utf8")).toBe(before);
   expect(reimport).toEqual({ status: "rejected", reason: expect.any(FilingExistsError) });
+});
+
+test("the running server rewrites the index export after a capture, a filing change and a delete", async () => {
+  const root = temporaryDirectory("server");
+  const exportFile = join(temporaryDirectory("server-export"), "index.json");
+  const app = createApp({
+    root,
+    version: "0.1.0",
+    pdfjsDir: pdfjsDir(config),
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: exportFile,
+  });
+  // The export lands after the response; its content, not its timing, is the claim.
+  const exported = async (done: (index: IndexExport) => boolean) => {
+    while (!existsSync(exportFile) || !done(await readIndexExport(exportFile))) {
+      await Bun.sleep(50);
+    }
+    return readIndexExport(exportFile);
+  };
+
+  const form = new FormData();
+  form.set("pdf", new File([lectureNotes], "lecture-notes.pdf", { type: "application/pdf" }));
+  form.set("pdf_url", at("/notes/lecture-notes.pdf"));
+  form.set("source_url", at("/teaching.html"));
+  form.set("title_hint", "Lecture notes on lattices");
+  const captured = await app.request("/capture-bytes", { method: "POST", body: form });
+  expect(captured.status).toBe(200);
+  const afterCapture = await exported((index) => index.items.length === 1);
+  expect(afterCapture.items[0]?.key).toBe("lecture-notes");
+  expect(afterCapture.items[0]?.provenance.original_sha256).toBe(sha256(lectureNotes));
+
+  const tagged = await app.request("/api/items/lecture-notes/tags", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tags: ["lattices", "topic:quadratic forms"] }),
+  });
+  expect(tagged.status).toBe(200);
+  const afterTagging = await exported((index) => index.items[0]?.filing.tags.length === 2);
+  expect(afterTagging.items[0]?.filing.tags).toEqual(["lattices", "topic:quadratic forms"]);
+
+  // The delete trashes the PDF through send2trash, which uses $XDG_DATA_HOME/Trash for a file
+  // on the home filesystem; a scratch one keeps the fixture out of the user's trash.
+  const userData = process.env.XDG_DATA_HOME;
+  process.env.XDG_DATA_HOME = temporaryDirectory("server-data");
+  const deleted = await app.request("/api/items/lecture-notes", { method: "DELETE" });
+  if (userData === undefined) {
+    delete process.env.XDG_DATA_HOME;
+  } else {
+    process.env.XDG_DATA_HOME = userData;
+  }
+  expect(deleted.status).toBe(200);
+  const afterDelete = await exported((index) => index.items.length === 0);
+  expect(afterDelete.items).toEqual([]);
 });
