@@ -200,9 +200,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     openSelectedInBrowser:
       selected === undefined ? null : () => attempt(openInBrowser(readerHref(selected.id))),
     showSelectedInFolder:
-      selected === undefined || reveal === null
-        ? null
-        : () => attempt(reveal(selected.file.path)),
+      selected === undefined || reveal === null ? null : () => attempt(reveal(selected.file.path)),
     sendSelectedToZotero: selected === undefined ? null : () => send(selected.id),
     reloadLibrary: reload,
     showAllColumns: () => table.toggleAllColumnsVisible(true),
