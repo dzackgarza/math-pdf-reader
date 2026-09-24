@@ -181,7 +181,7 @@ async fn import_url(
             AppError::api(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 ApiErrorErrorKind::NoPdfAtUrl,
-                failure,
+                failure.to_string(),
             )
         })?;
     let result = store(&state, &upload).await?;

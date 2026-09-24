@@ -6,12 +6,14 @@
 //!   suites and evidence runs use it so that they never touch the configured bucket or its port.
 //! - `export-index`, `import-index` and `rebuild-cache` take an optional export file (default:
 //!   the configured one).
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use pdf_bucket::config::{self, BucketConfig, ProcessEnv};
 use pdf_bucket::contract::RebuildOutcome;
+use pdf_bucket::error::AppError;
 use pdf_bucket::export::{export_index, import_index, rebuild_cache};
 use pdf_bucket::store::Store;
 
@@ -59,10 +61,58 @@ fn configured_store() -> Store {
     )
 }
 
+/// Why a command stopped; `main` prints it and exits non-zero.
+enum Failure {
+    NotABucket(PathBuf),
+    Io(std::io::Error),
+    Server(tokio::task::JoinError),
+    Bucket(AppError),
+    Json(serde_json::Error),
+}
+
+impl From<std::io::Error> for Failure {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<AppError> for Failure {
+    fn from(error: AppError) -> Self {
+        Self::Bucket(error)
+    }
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotABucket(root) => {
+                write!(
+                    formatter,
+                    "{} is not an existing bucket root",
+                    root.display()
+                )
+            }
+            Self::Io(error) => write!(formatter, "{error}"),
+            Self::Server(error) => write!(formatter, "the server stopped: {error}"),
+            Self::Bucket(error) => write!(formatter, "{error:?}"),
+            Self::Json(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<ExitCode, String> {
-    let fail = |error: pdf_bucket::error::AppError| format!("{error:?}");
-    match Cli::parse().command {
+async fn main() -> ExitCode {
+    match run(Cli::parse().command).await {
+        Ok(code) => code,
+        Err(failure) => {
+            eprintln!("pdf-bucket: {failure}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run(command: Command) -> Result<ExitCode, Failure> {
+    match command {
         Command::Serve {
             root,
             zotero_url,
@@ -71,7 +121,7 @@ async fn main() -> Result<ExitCode, String> {
             index_export,
         } => {
             if !root.is_dir() {
-                return Err(format!("{} is not an existing bucket root", root.display()));
+                return Err(Failure::NotABucket(root));
             }
             let app = config::app_config();
             let bucket = BucketConfig {
@@ -89,30 +139,20 @@ async fn main() -> Result<ExitCode, String> {
                 process_env: ProcessEnv::new(),
                 app: app.clone(),
             };
-            let serving = pdf_bucket::serve(bucket, &app.server.host, 0)
-                .await
-                .map_err(|error| error.to_string())?;
+            let serving = pdf_bucket::serve(bucket, &app.server.host, 0).await?;
             println!("{}", serving.origin);
-            serving
-                .task
-                .await
-                .map_err(|error| error.to_string())?
-                .map_err(|error| error.to_string())?;
+            serving.task.await.map_err(Failure::Server)??;
             Ok(ExitCode::SUCCESS)
         }
         Command::ExportIndex { file } => {
             let file = export_file(file);
-            let index = export_index(&configured_store(), &file, &Default::default())
-                .await
-                .map_err(fail)?;
+            let index = export_index(&configured_store(), &file, &BTreeSet::new()).await?;
             println!("exported {} items to {}", index.items.len(), file.display());
             Ok(ExitCode::SUCCESS)
         }
         Command::ImportIndex { file } => {
             let root = config::data_root();
-            let organization = import_index(&root, &export_file(file))
-                .await
-                .map_err(fail)?;
+            let organization = import_index(&root, &export_file(file)).await?;
             println!(
                 "imported the filing of {} items into {}",
                 organization.items.len(),
@@ -122,12 +162,11 @@ async fn main() -> Result<ExitCode, String> {
         }
         Command::RebuildCache { file } => {
             let settings = config::app_config().rebuild;
-            let outcomes = rebuild_cache(&configured_store(), &export_file(file), &settings)
-                .await
-                .map_err(fail)?;
+            let outcomes =
+                rebuild_cache(&configured_store(), &export_file(file), &settings).await?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&outcomes).map_err(|error| error.to_string())?
+                serde_json::to_string_pretty(&outcomes).map_err(Failure::Json)?
             );
             let unrestored = outcomes
                 .iter()

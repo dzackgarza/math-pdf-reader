@@ -2,6 +2,7 @@
 //! Highwire `citation_pdf_url` tag, as arXiv, journals and the bucket's own reader pages do),
 //! and from a folder on this computer.
 use std::cell::RefCell;
+use std::fmt;
 use std::path::Path;
 use std::time::Duration;
 
@@ -29,40 +30,81 @@ fn url_filename(url: &Url) -> String {
     percent_decode_str(segment).decode_utf8_lossy().into_owned()
 }
 
+/// Why a URL gave no PDF to store; its text is the message Import URL shows.
+#[derive(Debug)]
+pub enum NoPdf {
+    BadUrl {
+        url: String,
+        reason: url::ParseError,
+    },
+    Unreachable {
+        url: Url,
+        reason: reqwest::Error,
+    },
+    Status {
+        url: Url,
+        status: u16,
+    },
+    Unparsable {
+        url: Url,
+        reason: lol_html::errors::RewritingError,
+    },
+    NoCitationPdfUrl {
+        url: Url,
+    },
+    NotPdf {
+        url: Url,
+    },
+}
+
+impl fmt::Display for NoPdf {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BadUrl { url, reason } => write!(formatter, "{url}: {reason}"),
+            Self::Unreachable { url, reason } => write!(formatter, "{url}: {reason}"),
+            Self::Status { url, status } => write!(formatter, "{url}: HTTP {status}"),
+            Self::Unparsable { url, reason } => write!(formatter, "{url}: {reason}"),
+            Self::NoCitationPdfUrl { url } => {
+                write!(formatter, "{url} names no PDF (no citation_pdf_url)")
+            }
+            Self::NotPdf { url } => write!(formatter, "{url} serves no PDF"),
+        }
+    }
+}
+
 enum Answer {
     Page(String),
     Bytes(Vec<u8>),
 }
 
-async fn get(url: &Url, settings: &AppConfigRebuild) -> Result<Answer, String> {
+async fn get(url: &Url, settings: &AppConfigRebuild) -> Result<Answer, NoPdf> {
+    let unreachable = |reason| NoPdf::Unreachable {
+        url: url.clone(),
+        reason,
+    };
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(settings.download_timeout_seconds.get()))
         .build()
-        .map_err(|error| format!("{url}: {error}"))?;
-    let response = client
-        .get(url.clone())
-        .send()
-        .await
-        .map_err(|error| format!("{url}: {error}"))?;
+        .map_err(unreachable)?;
+    let response = client.get(url.clone()).send().await.map_err(unreachable)?;
     if !response.status().is_success() {
-        return Err(format!("{url}: HTTP {}", response.status().as_u16()));
+        return Err(NoPdf::Status {
+            url: url.clone(),
+            status: response.status().as_u16(),
+        });
     }
     let html = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .is_some_and(|value| String::from_utf8_lossy(value.as_bytes()).contains("text/html"));
     if html {
-        return response
-            .text()
-            .await
-            .map(Answer::Page)
-            .map_err(|error| format!("{url}: {error}"));
+        return response.text().await.map(Answer::Page).map_err(unreachable);
     }
     response
         .bytes()
         .await
         .map(|body| Answer::Bytes(body.to_vec()))
-        .map_err(|error| format!("{url}: {error}"))
+        .map_err(unreachable)
 }
 
 #[derive(Default)]
@@ -74,7 +116,7 @@ struct PageTags {
 
 // The Highwire tags and <title> of a page, read with lol_html (Cloudflare's HTMLRewriter, the
 // engine behind Bun's).
-fn page_tags(html: &str) -> Result<PageTags, String> {
+fn page_tags(url: &Url, html: &str) -> Result<PageTags, NoPdf> {
     let tags = RefCell::new(PageTags::default());
     rewrite_str(
         html,
@@ -96,13 +138,19 @@ fn page_tags(html: &str) -> Result<PageTags, String> {
                 Ok(())
             })),
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|reason| NoPdf::Unparsable {
+        url: url.clone(),
+        reason,
+    })?;
     Ok(tags.into_inner())
 }
 
 /// The PDF at URL, or on the page at URL; a failure says why there is none.
-pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild) -> Result<Upload, String> {
-    let page_url = Url::parse(url).map_err(|error| format!("{url}: {error}"))?;
+pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild) -> Result<Upload, NoPdf> {
+    let page_url = Url::parse(url).map_err(|reason| NoPdf::BadUrl {
+        url: url.to_string(),
+        reason,
+    })?;
     let html = match get(&page_url, settings).await? {
         Answer::Bytes(bytes) if is_pdf(&bytes) => {
             let name = url_filename(&page_url);
@@ -114,19 +162,22 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild) -> Result<Uploa
                 title_hint: name,
             });
         }
-        Answer::Bytes(_) => return Err(format!("{url} serves no PDF")),
+        Answer::Bytes(_) => return Err(NoPdf::NotPdf { url: page_url }),
         Answer::Page(html) => html,
     };
-    let tags = page_tags(&html)?;
+    let tags = page_tags(&page_url, &html)?;
     if tags.pdf_url.is_empty() {
-        return Err(format!("{url} names no PDF (no citation_pdf_url)"));
+        return Err(NoPdf::NoCitationPdfUrl { url: page_url });
     }
     let pdf_url = page_url
         .join(&tags.pdf_url)
-        .map_err(|error| format!("{}: {error}", tags.pdf_url))?;
+        .map_err(|reason| NoPdf::BadUrl {
+            url: tags.pdf_url.clone(),
+            reason,
+        })?;
     let bytes = match get(&pdf_url, settings).await? {
         Answer::Bytes(bytes) if is_pdf(&bytes) => bytes,
-        _ => return Err(format!("{pdf_url} serves no PDF")),
+        _ => return Err(NoPdf::NotPdf { url: pdf_url }),
     };
     // The page's citation title, else its <title>, else the PDF's file name.
     let named = [tags.citation_title.trim(), tags.title.trim()]
