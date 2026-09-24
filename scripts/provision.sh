@@ -21,9 +21,10 @@ autostart_unit='app-pdf\x2dbucket\x2ddesktop@autostart.service'
 if systemctl --user is-active --quiet "$autostart_unit"; then
     systemctl --user stop "$autostart_unit"
 fi
-# An app started from the launcher runs outside systemd.
+# An app started from the launcher or a terminal runs outside systemd. pgrep matches the kernel's
+# 15-character process name; killall needs the full name to match a longer one.
 if pgrep -x pdf-bucket-desk > /dev/null; then
-    killall --wait pdf-bucket-desk
+    killall --wait pdf-bucket-desktop
 fi
 
 # The app runs an installed copy, so later builds can rewrite the build tree while it runs.
