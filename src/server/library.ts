@@ -11,6 +11,7 @@ import {
   NewCollectionRequestSchema,
   NewSavedSearchRequestSchema,
   NoteRequestSchema,
+  ReadingRequestSchema,
   RenameCollectionRequestSchema,
   type RetrieveMetadataResponse,
   type Settings,
@@ -29,6 +30,7 @@ import {
   organizationFile,
   renameCollection,
   setCollections,
+  setReading,
   setTags,
   unfiled,
 } from "./organization";
@@ -49,6 +51,7 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
     tags: filing.tags,
     collections: filing.collections,
     notes: filing.notes,
+    reading: filing.reading,
     extraction: indexed.extraction,
     zotero: zoteroStatus(filing.zotero, indexed.extraction),
     dateAdded: provenance.captured_at,
@@ -172,6 +175,21 @@ function itemRoutes(app: Hono, state: LibraryState, root: string, resolversManif
       throw new Error(`${key} left the store while its PDF was replaced`);
     }
     return c.json(bucketItem(indexed, await state.organizations.read()));
+  });
+
+  app.put("/api/items/:key/reading", async (c) => {
+    const key = c.req.param("key");
+    const body = await parseBody(c, ReadingRequestSchema);
+    if (!body.success) {
+      return invalid(c, body.error);
+    }
+    const indexed = await state.indexed(key);
+    if (indexed === undefined) {
+      return unknownItem(c, key);
+    }
+    const reading = { status: "viewed" as const, ...body.data, viewedAt: now() };
+    const capturedAt = indexed.stored.provenance.captured_at;
+    return state.change(c, (org) => setReading(org, key, capturedAt, reading));
   });
 
   app.put("/api/items/:key/tags", async (c) => {

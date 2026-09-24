@@ -379,8 +379,8 @@ def record_sent(root: Path, key: str) -> None:
         "source": {"kind": "resolver", "pluginId": "arxiv", "identifier": "https://arxiv.org/abs/2609.21174v1"},
         "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
     }
-    filing = {"tags": [], "collections": [], "notes": [], "modifiedAt": record["sentAt"], "zotero": record}
-    organization = {"version": 1, "collections": [], "savedSearches": [], "items": {key: filing}}
+    filing = {"tags": [], "collections": [], "notes": [], "reading": {"status": "unread"}, "modifiedAt": record["sentAt"], "zotero": record}
+    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}}
     (root / "organization.json").write_text(json.dumps(organization))
 
 

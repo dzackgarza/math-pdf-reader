@@ -364,3 +364,21 @@ test("a PDF saved from the reader replaces the stored file only while it keeps t
   expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
   expect((await put("missing", annotated)).status).toBe(404);
 });
+
+test("the reader's last viewed page is recorded per item without counting as a filing change", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const before = byId((await library(bucket)).items).get("lattices");
+  expect(before?.reading).toEqual({ status: "unread" });
+
+  const viewed = await send(bucket, "PUT", "/api/items/lattices/reading", { page: 2, pages: 2 });
+  expect(viewed.status).toBe(200);
+  const after = byId((await library(open(bucket.root))).items).get("lattices");
+  expect(after?.reading).toMatchObject({ status: "viewed", page: 2, pages: 2 });
+  expect(after?.dateModified).toBe(before?.dateModified ?? "");
+
+  const beyond = await send(bucket, "PUT", "/api/items/lattices/reading", { page: 3, pages: 2 });
+  expect(beyond.status).toBe(400);
+  const unknown = await send(bucket, "PUT", "/api/items/missing/reading", { page: 1, pages: 2 });
+  expect(unknown.status).toBe(404);
+});

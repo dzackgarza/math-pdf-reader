@@ -14,8 +14,13 @@ export function readerUrlPath(key: string): string {
   return `/read/${encodeURIComponent(key)}`;
 }
 
-function savePath(key: string): string {
-  return `/api/items/${encodeURIComponent(key)}/pdf`;
+function itemApiPath(key: string): string {
+  return `/api/items/${encodeURIComponent(key)}`;
+}
+
+// The view the reader opens at when its address names none: the page last viewed.
+function resumeHash(item: BucketItem): string {
+  return item.reading.status === "viewed" ? `#page=${item.reading.page}` : "";
 }
 
 // Lucide icons (lucide.dev, ISC): library-big, arrow-left, arrow-right, link.
@@ -71,7 +76,11 @@ document.addEventListener("webviewerloaded", (event) => {
 // they never leave the document. Every view change (page, zoom, scroll) replaces the address's
 // fragment with PDF.js's own open parameters. The fragment the page was opened with goes to the
 // viewer as a same-document replace, which PDF.js's hashchange handler applies (as the initial
-// view if the document is still loading) and which adds no history entry.
+// view if the document is still loading) and which adds no history entry. An address without
+// a fragment opens at the page last viewed.
+//
+// Reading: a second after the page changes, the page and the page count go to
+// /api/items/<key>/reading, which records them as the item's last viewed page.
 //
 // Saving: the annotation storage reports its first change after each save (onSetModified,
 // wrapped so PDF.js's own callback still runs); a short pause later, PDFDocumentProxy.saveDocument
@@ -87,7 +96,8 @@ if (libraryView !== null) {
   document.getElementById("library").href = "/" + libraryView;
 }
 const saveStatus = document.getElementById("save-status");
-const savePath = document.body.dataset.savePath;
+const itemPath = document.body.dataset.itemPath;
+const openAt = location.hash === "" ? document.body.dataset.resumeHash : location.hash;
 const copy = document.getElementById("copy-link");
 copy.addEventListener("click", async () => {
   await navigator.clipboard.writeText(location.href);
@@ -96,8 +106,8 @@ copy.addEventListener("click", async () => {
 });
 frame.addEventListener("load", async () => {
   const inner = frame.contentWindow.location;
-  if (location.hash !== "" && inner.hash !== location.hash) {
-    inner.replace(inner.pathname + inner.search + location.hash);
+  if (openAt !== "" && inner.hash !== openAt) {
+    inner.replace(inner.pathname + inner.search + openAt);
   }
   const viewer = frame.contentWindow.PDFViewerApplication;
   await viewer.initializedPromise;
@@ -117,9 +127,30 @@ frame.addEventListener("load", async () => {
   frame.contentWindow.addEventListener("keydown", navigate);
   backButton.addEventListener("click", () => history.back());
   forwardButton.addEventListener("click", () => history.forward());
+  let recordedPage = null;
+  let pendingRecord = null;
+  const recordReading = () => {
+    const reading = { page: viewer.page, pages: viewer.pagesCount };
+    if (reading.page === recordedPage) {
+      return;
+    }
+    recordedPage = reading.page;
+    fetch(itemPath + "/reading", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reading),
+    }).then(async (response) => {
+      if (!response.ok) {
+        saveStatus.textContent = "Page not recorded: " + (await response.json()).error.message;
+        saveStatus.dataset.failed = "";
+      }
+    });
+  };
   viewer.eventBus.on("updateviewarea", ({ location: view }) => {
     window.history.replaceState(window.history.state, "", view.pdfOpenParams);
     showBounds();
+    clearTimeout(pendingRecord);
+    pendingRecord = setTimeout(recordReading, 1000);
   });
   frame.contentWindow.addEventListener("popstate", showBounds);
 
@@ -128,7 +159,7 @@ frame.addEventListener("load", async () => {
   const save = async () => {
     saveStatus.textContent = "Saving…";
     const bytes = await viewer.pdfDocument.saveDocument();
-    const response = await fetch(savePath, {
+    const response = await fetch(itemPath + "/pdf", {
       method: "PUT",
       headers: { "Content-Type": "application/pdf" },
       body: bytes,
@@ -217,7 +248,7 @@ export function readerPage(item: BucketItem, origin: string) {
       iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
     </style>
   </head>
-  <body data-save-path="${savePath(item.id)}">
+  <body data-item-path="${itemApiPath(item.id)}" data-resume-hash="${resumeHash(item)}">
     <header>
       <a id="library" href="/" aria-label="Library" title="Library">${LIBRARY}<span>Library</span></a>
       <button id="back" type="button" aria-label="Back" title="Back (Alt+←)" disabled>${BACK}</button>

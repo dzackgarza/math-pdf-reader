@@ -28,6 +28,22 @@ export const SavedSearchSchema = z.strictObject({
   search: AdvancedSearchSettingsSchema,
 });
 
+// How far an item has been read: never opened, or the page the reader last showed out of the
+// document's page count.
+export const ReadingSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("unread") }),
+  z.strictObject({
+    status: z.literal("viewed"),
+    page: z.int().min(1),
+    pages: z.int().min(1),
+    viewedAt: z.iso.datetime({ offset: true }),
+  }),
+]);
+
+export const ReadingRequestSchema = z
+  .strictObject({ page: z.int().min(1), pages: z.int().min(1) })
+  .refine((reading) => reading.page <= reading.pages, "page lies beyond the page count");
+
 export const ItemNoteSchema = z.strictObject({
   id: z.string().min(1),
   note: z.string().trim().min(1),
@@ -119,6 +135,7 @@ export const BucketItemSchema = z.strictObject({
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),
+  reading: ReadingSchema,
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
   provenance: ProvenanceSchema,
@@ -224,6 +241,7 @@ export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
 export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;
 export type TitleSource = z.infer<typeof TitleSourceSchema>;
+export type Reading = z.infer<typeof ReadingSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
 

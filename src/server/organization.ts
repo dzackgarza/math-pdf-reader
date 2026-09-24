@@ -5,11 +5,12 @@ import { existsSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { Collection, ItemNote, SavedSearch, ZoteroRecord } from "./libraryContract";
+import type { Collection, ItemNote, Reading, SavedSearch, ZoteroRecord } from "./libraryContract";
 import {
   CollectionSchema,
   collectionSubtree,
   ItemNoteSchema,
+  ReadingSchema,
   SavedSearchSchema,
   ZoteroRecordSchema,
 } from "./libraryContract";
@@ -18,13 +19,14 @@ export const ItemFilingSchema = z.strictObject({
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),
+  reading: ReadingSchema,
   modifiedAt: z.iso.datetime({ offset: true }),
   // Present once a send has created the item in Zotero.
   zotero: ZoteroRecordSchema.optional(),
 });
 
 const OrganizationSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(2),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
   items: z.record(z.string().min(1), ItemFilingSchema),
@@ -39,11 +41,17 @@ export function organizationFile(root: string): string {
 
 // The organization of a bucket nobody has filed anything in yet.
 function emptyOrganization(): Organization {
-  return { version: 1, collections: [], savedSearches: [], items: {} };
+  return { version: 2, collections: [], savedSearches: [], items: {} };
 }
 
 export function unfiled(capturedAt: string): ItemFiling {
-  return { tags: [], collections: [], notes: [], modifiedAt: capturedAt };
+  return {
+    tags: [],
+    collections: [],
+    notes: [],
+    reading: { status: "unread" },
+    modifiedAt: capturedAt,
+  };
 }
 
 function fileItem(
@@ -106,6 +114,18 @@ export function setZoteroRecord(
   now: string,
 ): Organization {
   return fileItem(org, key, now, (filing) => ({ ...filing, zotero: record }));
+}
+
+// Where the reader was: not a filing change, so the item's modification time stays (an item
+// never filed keeps its capture time, as `unfiled` gives it).
+export function setReading(
+  org: Organization,
+  key: string,
+  capturedAt: string,
+  reading: Reading,
+): Organization {
+  const filing = org.items[key] ?? unfiled(capturedAt);
+  return { ...org, items: { ...org.items, [key]: { ...filing, reading } } };
 }
 
 // The item left the bucket (deleted, or sent to Zotero): its filing goes with it.

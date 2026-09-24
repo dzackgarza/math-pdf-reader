@@ -335,6 +335,38 @@ describe("library window", () => {
     expect(contents).toContain(note);
   });
 
+  test("the reader records the last viewed page, the library shows it out of the page count, and the reader reopens there", async () => {
+    const openReading = async () => {
+      await page.goto(`${bucket.origin}/read/reading`);
+      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
+      if (frame === undefined || frame === null) {
+        throw new Error("the reader has no viewer frame");
+      }
+      await frame.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
+      return frame;
+    };
+    const viewer = await openReading();
+    const recorded = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/reading/reading") &&
+        response.request().postData() === JSON.stringify({ page: 4, pages: 10 }),
+    );
+    await viewer.evaluate("PDFViewerApplication.page = 4");
+    expect((await recorded).status()).toBe(200);
+
+    await openLibrary();
+    expect(await page.$eval(`${row("reading")} [data-reading]`, (cell) => cell.textContent)).toBe(
+      "4 / 10",
+    );
+    expect(await page.$eval(`${row("lattices")} [data-reading]`, (cell) => cell.textContent)).toBe(
+      "Unread",
+    );
+    await shot("library-reading");
+
+    const reopened = await openReading();
+    await reopened.waitForFunction("PDFViewerApplication.page === 4");
+  });
+
   test("the library at a narrow width", async () => {
     await openLibrary();
     await page.click(row("lattices"));

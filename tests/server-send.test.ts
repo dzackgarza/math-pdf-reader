@@ -66,8 +66,15 @@ const SENT: ZoteroRecord = {
 };
 
 function recordSent(bucket: Bucket, key: string): void {
-  const filing = { tags: [], collections: [], notes: [], modifiedAt: SENT.sentAt, zotero: SENT };
-  const organization = { version: 1, collections: [], savedSearches: [], items: { [key]: filing } };
+  const filing = {
+    tags: [],
+    collections: [],
+    notes: [],
+    reading: { status: "unread" },
+    modifiedAt: SENT.sentAt,
+    zotero: SENT,
+  };
+  const organization = { version: 2, collections: [], savedSearches: [], items: { [key]: filing } };
   writeFileSync(join(bucket.root, "organization.json"), JSON.stringify(organization));
 }
 

@@ -26,7 +26,7 @@ const ExportedItemSchema = z.strictObject({
 });
 
 export const IndexExportSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(2),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
   items: z.array(ExportedItemSchema),
@@ -92,7 +92,7 @@ export async function exportIndex(
   }
   const organization = await new OrganizationStore(root).read();
   const index: IndexExport = {
-    version: 1,
+    version: 2,
     collections: organization.collections,
     savedSearches: organization.savedSearches,
     items: stored.map(({ key, provenance }) => ({
@@ -167,7 +167,7 @@ export async function importIndex(root: string, exportFile: string): Promise<Org
     ({ provenance, filing }) => !Bun.deepEquals(filing, unfiled(provenance.captured_at)),
   );
   return new OrganizationStore(root).update(() => ({
-    version: 1,
+    version: 2,
     collections: index.collections,
     savedSearches: index.savedSearches,
     items: Object.fromEntries(filed.map((item) => [item.key, item.filing])),

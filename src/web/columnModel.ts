@@ -14,6 +14,7 @@ import { authorList, sourceDomain, tagLabel } from "./format";
 export const COLUMN_KEYS = [
   "title",
   "authors",
+  "reading",
   "source",
   "dateAdded",
   "tags",
@@ -32,6 +33,7 @@ type ColumnDefinition = { key: ColumnKey; label: string; visible: boolean; width
 const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { key: "title", label: "Title", visible: true, width: 380 },
   { key: "authors", label: "Authors", visible: true, width: 200 },
+  { key: "reading", label: "Read", visible: true, width: 100 },
   { key: "source", label: "Source", visible: true, width: 170 },
   { key: "dateAdded", label: "Added", visible: true, width: 130 },
   { key: "tags", label: "Tags", visible: true, width: 260 },
@@ -106,6 +108,9 @@ export function writeColumnLayout(layout: ColumnLayout): void {
 const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   title: (item) => item.title,
   authors: (item) => authorList(item.authors),
+  // Sorts by the fraction read; an unread item before any opened one.
+  reading: (item) =>
+    String(item.reading.status === "viewed" ? item.reading.page / item.reading.pages : -1),
   source: (item) => sourceDomain(item.url),
   dateAdded: (item) => item.dateAdded,
   tags: (item) => item.tags.map(tagLabel).join(", "),
@@ -117,7 +122,7 @@ const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   pdfUrl: (item) => item.provenance.pdf_url,
 };
 
-const NUMERIC_COLUMNS = new Set<string>(["sizeBytes", "notes", "collections"]);
+const NUMERIC_COLUMNS = new Set<string>(["sizeBytes", "notes", "collections", "reading"]);
 
 function compareRows(left: Row<BucketItem>, right: Row<BucketItem>, columnId: string): number {
   const a = left.getValue<string>(columnId);

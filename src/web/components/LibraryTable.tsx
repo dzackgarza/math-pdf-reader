@@ -5,7 +5,7 @@ import prettyBytes from "pretty-bytes";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { BucketItem } from "../../server/libraryContract";
 import { type ColumnKey, columnKey } from "../columnModel";
-import { authorList, shortDate, sourceDomain } from "../format";
+import { authorList, readingText, shortDate, sourceDomain } from "../format";
 import { orderedLeafColumns, reorderColumn, resetColumnLayout } from "../useLibraryTable";
 import { Chip, TagChip } from "./Chips";
 
@@ -68,6 +68,11 @@ const CELL_RENDERERS: Record<
   authors: (item) => (
     <span className="truncate text-muted" title={item.authors.join("; ")}>
       {authorList(item.authors)}
+    </span>
+  ),
+  reading: (item) => (
+    <span data-reading className="text-muted tabular-nums">
+      {readingText(item.reading)}
     </span>
   ),
   source: (item) => <Muted>{sourceDomain(item.url)}</Muted>,
