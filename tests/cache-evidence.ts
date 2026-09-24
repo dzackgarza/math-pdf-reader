@@ -19,8 +19,8 @@ import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir, REPO_ROOT } from "../src/server/config";
 import { CaptureResponseSchema } from "../src/server/contract";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { CollectionSchema } from "../src/server/libraryContract";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const fixtures = join(import.meta.dir, "fixtures");
 const papers: Record<string, string> = {

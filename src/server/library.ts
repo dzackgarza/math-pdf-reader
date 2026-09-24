@@ -8,10 +8,10 @@ import {
   CollectionsRequestSchema,
   type LibraryPayload,
   NewCollectionRequestSchema,
-  type RetrieveMetadataResponse,
   NewSavedSearchRequestSchema,
   NoteRequestSchema,
   RenameCollectionRequestSchema,
+  type RetrieveMetadataResponse,
   type Settings,
   TagsRequestSchema,
 } from "./libraryContract";

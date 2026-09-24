@@ -8,13 +8,13 @@ import { join } from "node:path";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
   type ZoteroRecord,
 } from "../src/server/libraryContract";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;

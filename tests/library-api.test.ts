@@ -18,7 +18,6 @@ import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { type CaptureResponse, CaptureResponseSchema } from "../src/server/contract";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -28,6 +27,7 @@ import {
   SavedSearchSchema,
   SettingsSchema,
 } from "../src/server/libraryContract";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;

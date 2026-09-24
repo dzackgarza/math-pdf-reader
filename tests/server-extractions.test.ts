@@ -11,8 +11,8 @@ import {
   ExtractionPluginsResponseSchema,
 } from "../src/server/extractionContract";
 import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "../src/server/extractions";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { ApiErrorSchema } from "../src/server/libraryContract";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
