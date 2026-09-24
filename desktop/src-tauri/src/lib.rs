@@ -87,6 +87,7 @@ pub fn run() -> tauri::Result<()> {
             show_main_window(app).expect("the main window accepts show and focus");
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         // Closing the window hides it; the process, its event stream and the tray icon stay, and
         // the tray's Quit item exits. Pattern: Tauri's `CloseRequested` + `prevent_close`.
         .on_window_event(|window, event| {
@@ -109,7 +110,9 @@ pub fn run() -> tauri::Result<()> {
                     .permission("core:window:allow-unminimize")
                     // The library's Open in Browser and Show in Folder (@tauri-apps/plugin-opener):
                     // http(s) URLs in the default browser, files in the file manager.
-                    .permission("opener:default"),
+                    .permission("opener:default")
+                    // Add Folder's Browse button: the system folder chooser.
+                    .permission("dialog:allow-open"),
             )?;
             // The file is one function expression statement; binding it in a block keeps the
             // call valid whatever the statement's terminator.

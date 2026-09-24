@@ -6,6 +6,8 @@ import {
   type AdvancedSearchSettings,
   type BucketItem,
   CollectionSchema,
+  FolderImportResponseSchema,
+  ImportUrlResponseSchema,
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
   RetrieveMetadataResponseSchema,
@@ -29,6 +31,8 @@ export type ActionContext = {
   confirm: (request: ConfirmRequest) => void;
   // A failed call leaves the library as the server holds it; this says why.
   report: (message: string) => void;
+  // What a call that succeeded did, when the library does not show it by itself.
+  notify: (message: string) => void;
 };
 
 function run<T>(context: ActionContext, action: Promise<T>): void {
@@ -233,6 +237,48 @@ export function bulkActions(context: ActionContext, keys: string[]): BulkActions
           ),
       }),
   };
+}
+
+// Import URL and Add Folder: each asks for its one line, stores what it finds, and shows the
+// new item (for a folder, reports how many PDFs were new).
+export function importUrl(context: ActionContext, onImported: (key: string) => void): void {
+  context.askName({
+    title: "Import URL",
+    label: "A PDF URL, or a page that links its PDF (arXiv, a journal)",
+    submitLabel: "Import",
+    initialName: "",
+    onSubmit: (url) =>
+      run(
+        context,
+        context
+          .mutate(ImportUrlResponseSchema, "POST", "/api/import-url", { url })
+          .then(({ key }) => onImported(key)),
+      ),
+  });
+}
+
+export function addFolder(
+  context: ActionContext,
+  browse: (() => Promise<string | null>) | null,
+): void {
+  context.askName({
+    title: "Add Folder",
+    label: "Every PDF directly in this folder",
+    submitLabel: "Add",
+    initialName: "",
+    ...(browse === null ? {} : { browse }),
+    onSubmit: (path) =>
+      run(
+        context,
+        context
+          .mutate(FolderImportResponseSchema, "POST", "/api/import-folder", { path })
+          .then(({ stored, existing }) =>
+            context.notify(
+              `Added ${stored.length} ${stored.length === 1 ? "PDF" : "PDFs"}; ${existing.length} already in the library`,
+            ),
+          ),
+      ),
+  });
 }
 
 export function createCollection(context: ActionContext, parentId?: string): void {

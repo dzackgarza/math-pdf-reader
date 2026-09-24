@@ -7,9 +7,12 @@ export type NameRequest = {
   submitLabel: string;
   initialName: string;
   onSubmit: (name: string) => void;
+  // Fills the field from a chooser (a folder path); absent where there is no chooser.
+  browse?: () => Promise<string | null>;
 };
 
-// Asks for one name: a new collection, a subcollection, a rename, a saved search.
+// Asks for one line of text: a name (collection, subcollection, rename, saved search, tag),
+// a URL to import, or a folder path.
 export default function NameDialog({
   request,
   onClose,
@@ -18,6 +21,7 @@ export default function NameDialog({
   onClose: () => void;
 }) {
   const [name, setName] = useState(request.initialName);
+  const [browseError, setBrowseError] = useState<string | null>(null);
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
@@ -37,12 +41,33 @@ export default function NameDialog({
           >
             <label className="block text-sm">
               <span className="mb-1.5 block text-muted">{request.label}</span>
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-lg border border-line px-3 py-2 outline-none focus:border-accent"
-              />
+              <span className="flex gap-2">
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-line px-3 py-2 outline-none focus:border-accent"
+                />
+                {request.browse !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      request.browse?.().then(
+                        (chosen) => chosen !== null && setName(chosen),
+                        (error: Error) => setBrowseError(error.message),
+                      );
+                    }}
+                    className="rounded-lg border border-line px-3 py-2 font-medium hover:bg-surface"
+                  >
+                    Browse…
+                  </button>
+                )}
+              </span>
             </label>
+            {browseError !== null && (
+              <p role="alert" className="text-sm text-red-700">
+                {browseError}
+              </p>
+            )}
             <div className="flex justify-end gap-2 text-sm">
               <Dialog.Close className="rounded-lg border border-line px-3.5 py-2 font-medium hover:bg-surface">
                 Cancel

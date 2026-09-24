@@ -2,7 +2,9 @@
 // captured bytes (the recorded original SHA-256), and rebuilding a PDF the store has lost from
 // the first of those URLs that does.
 
+import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AppConfig } from "./config";
 import type { RebuildOutcome, SourceCheck, TitleSource } from "./libraryContract";
 import { recordMetadata, restorePdf, type StoredItem, storedPdfPath } from "./store";
@@ -11,8 +13,14 @@ export type DownloadSettings = AppConfig["rebuild"];
 
 type Download = { bytes: Uint8Array<ArrayBuffer> } | { failure: string };
 
-// The one boundary where a network rejection becomes a dead-URL outcome.
+// The one boundary where a network rejection becomes a dead-URL outcome. A `file:` URL (a PDF
+// added from a folder) is read from disk: Bun's fetch answers 200 with no body for a file that
+// does not exist.
 async function download(url: string, timeoutSeconds: number): Promise<Download> {
+  if (new URL(url).protocol === "file:") {
+    const path = fileURLToPath(url);
+    return existsSync(path) ? { bytes: await Bun.file(path).bytes() } : { failure: "no such file" };
+  }
   const signal = AbortSignal.timeout(timeoutSeconds * 1000);
   const response = await fetch(url, { signal }).then(
     (answer) => answer,

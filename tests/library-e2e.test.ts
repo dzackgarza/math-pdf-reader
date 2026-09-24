@@ -3,9 +3,18 @@
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
@@ -462,6 +471,32 @@ describe("library window", () => {
     expect(org.items.reading?.tags ?? []).not.toContain("survey");
     await page.click('button[aria-label="Clear selection"]');
     await page.waitForFunction(() => !document.body.textContent?.includes("selected"));
+  });
+
+  test("Import URL and Add Folder in the toolbar add PDFs to the library", async () => {
+    served.set(
+      "/~author/imported.pdf",
+      new Uint8Array(readFileSync(join(fixtures, "long-notes.pdf"))),
+    );
+    await openLibrary();
+    await page.click('button[aria-label="Import URL"]');
+    await page.type('[role="dialog"] input', published("/~author/imported.pdf"));
+    await shot("dialog-import-url");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(row("imported"));
+
+    const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-folder-"));
+    copyFileSync(join(fixtures, "problem-set.pdf"), join(folder, "folder notes.pdf"));
+    await page.click('button[aria-label="Add Folder"]');
+    await page.type('[role="dialog"] input', folder);
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(row("folder notes"));
+    await shot("library-imported");
+    const payload = LibraryPayloadSchema.parse(
+      await (await fetch(`${bucket.origin}/api/library`)).json(),
+    );
+    const added = payload.items.find((item) => item.id === "folder notes");
+    expect(added?.provenance.pdf_url).toBe(pathToFileURL(join(folder, "folder notes.pdf")).href);
   });
 
   test("the library at a narrow width", async () => {

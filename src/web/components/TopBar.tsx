@@ -1,4 +1,4 @@
-import { BookmarkPlus, Search, SlidersHorizontal } from "lucide-react";
+import { BookmarkPlus, FolderInput, Link2, Search, SlidersHorizontal } from "lucide-react";
 import { forwardRef } from "react";
 import type { AdvancedSearchSettings } from "../../server/libraryContract";
 import { defaultSearchSettings } from "../search";
@@ -8,7 +8,12 @@ type TopBarProps = {
   onChangeSearch: (search: AdvancedSearchSettings) => void;
   onOpenFilters: () => void;
   onSaveSearch: () => void;
+  onImportUrl: () => void;
+  onAddFolder: () => void;
 };
+
+const TEXT_BUTTON =
+  "inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-sm font-medium text-ink hover:bg-surface";
 
 const ICON_BUTTON =
   "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-ink";
@@ -25,7 +30,7 @@ function filtersChanged(search: AdvancedSearchSettings): boolean {
 
 // The search field the window focuses on Ctrl+F; Escape clears it.
 const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
-  { search, onChangeSearch, onOpenFilters, onSaveSearch },
+  { search, onChangeSearch, onOpenFilters, onSaveSearch, onImportUrl, onAddFolder },
   ref,
 ) {
   const searching = search.query.trim().length > 0;
@@ -72,6 +77,14 @@ const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
           <BookmarkPlus className="h-4 w-4" />
         </button>
       )}
+      <div className="ml-auto flex items-center gap-1.5">
+        <button type="button" aria-label="Import URL" onClick={onImportUrl} className={TEXT_BUTTON}>
+          <Link2 className="h-4 w-4" /> Import URL
+        </button>
+        <button type="button" aria-label="Add Folder" onClick={onAddFolder} className={TEXT_BUTTON}>
+          <FolderInput className="h-4 w-4" /> Add Folder
+        </button>
+      </div>
     </div>
   );
 });

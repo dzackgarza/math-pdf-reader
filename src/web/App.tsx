@@ -1,4 +1,4 @@
-import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, LoaderCircle, RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import {
@@ -29,15 +29,17 @@ import SelectionBar from "./components/SelectionBar";
 import Sidebar from "./components/Sidebar";
 import StatusBar from "./components/StatusBar";
 import TopBar from "./components/TopBar";
-import { openInBrowser, showInFolder } from "./desktop";
+import { chooseFolder, openInBrowser, showInFolder } from "./desktop";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import {
   type ActionContext,
+  addFolder,
   bulkActions,
   createCollection,
   type ExtractionAttempt,
   extractWith,
   filingActions,
+  importUrl,
   itemMenuActions,
   organizationActions,
   rebuildLost,
@@ -75,6 +77,9 @@ function useLibraryLayout(): [LibraryLayout, (layout: LibraryLayout) => void] {
   return [layout, choose];
 }
 
+// A message at the window's corner: why a call failed, or what a call did.
+type Toast = { kind: "failure" | "notice"; message: string };
+
 function FullScreen({ children }: { children: ReactNode }) {
   return <div className="flex h-full items-center justify-center bg-surface p-6">{children}</div>;
 }
@@ -106,7 +111,8 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [nameRequest, setNameRequest] = useState<NameRequest | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const report = (message: string) => setToast({ kind: "failure", message });
   const [sendAttempts, setSendAttempt] = useKeyedAttempts<SendAttempt>();
   const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
   // Keys whose sources are being verified, and lost PDFs being rebuilt.
@@ -156,7 +162,8 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     navigate,
     askName: setNameRequest,
     confirm: setConfirmRequest,
-    report: setToast,
+    report,
+    notify: (message) => setToast({ kind: "notice", message }),
   };
   const newCollection = () => createCollection(context);
   const saveCurrentSearch = () =>
@@ -171,7 +178,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const attempt = (action: Promise<void>): void => {
     action.then(
       () => undefined,
-      (error: Error) => setToast(error.message),
+      (error: Error) => report(error.message),
     );
   };
 
@@ -310,6 +317,8 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               onChangeSearch={setSearch}
               onOpenFilters={() => setFiltersOpen(true)}
               onSaveSearch={saveCurrentSearch}
+              onImportUrl={() => importUrl(context, setSelectedId)}
+              onAddFolder={() => addFolder(context, chooseFolder())}
             />
           )}
           {screen.kind === "library" && (
@@ -348,7 +357,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               }
             />
           )}
-          {screen.kind === "settings" && <SettingsScreen read={read} onError={setToast} />}
+          {screen.kind === "settings" && <SettingsScreen read={read} onError={report} />}
         </main>
         {selected !== undefined && screen.kind !== "settings" && (
           <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:top-0 max-xl:bottom-6 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
@@ -400,11 +409,15 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       )}
       {toast !== null && (
         <div
-          role="alert"
+          role={toast.kind === "failure" ? "alert" : "status"}
           className="fixed right-5 bottom-12 z-50 flex max-w-md items-start gap-2 rounded-lg bg-ink px-4 py-3 text-sm text-white shadow-xl"
         >
-          <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-          <span className="flex-1">{toast}</span>
+          {toast.kind === "failure" ? (
+            <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+          ) : (
+            <CheckCircle2 aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-green-300" />
+          )}
+          <span className="flex-1">{toast.message}</span>
           <button
             type="button"
             onClick={() => setToast(null)}

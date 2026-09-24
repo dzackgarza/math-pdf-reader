@@ -230,6 +230,20 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+// Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF.
+export const ImportUrlRequestSchema = z.strictObject({ url: HttpUrlSchema });
+export const ImportUrlResponseSchema = z.strictObject({
+  key: z.string().min(1),
+  existing: z.boolean(),
+});
+
+// Add Folder: every PDF directly inside the folder; the keys newly stored and those already held.
+export const FolderImportRequestSchema = z.strictObject({ path: z.string().min(1) });
+export const FolderImportResponseSchema = z.strictObject({
+  stored: z.array(z.string().min(1)),
+  existing: z.array(z.string().min(1)),
+});
+
 export const API_ERROR_KINDS = [
   "invalid_request",
   "unknown_item",
@@ -240,6 +254,8 @@ export const API_ERROR_KINDS = [
   "unknown_plugin",
   "already_sent",
   "provenance_mismatch",
+  "no_pdf_at_url",
+  "not_a_folder",
   "resolver_failed",
   "zotero_failed",
 ] as const;
@@ -313,6 +329,8 @@ export type SourceCheck = z.infer<typeof SourceCheckSchema>;
 export type Mirror = z.infer<typeof MirrorSchema>;
 export type MissingItem = z.infer<typeof MissingItemSchema>;
 export type RebuildOutcome = z.infer<typeof RebuildOutcomeSchema>;
+export type ImportUrlResponse = z.infer<typeof ImportUrlResponseSchema>;
+export type FolderImportResponse = z.infer<typeof FolderImportResponseSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
 
