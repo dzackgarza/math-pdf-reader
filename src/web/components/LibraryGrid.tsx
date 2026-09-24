@@ -44,45 +44,47 @@ export default function LibraryGrid({
     <ContextMenu.Root onOpenChange={(open) => !open && setMenuItem(null)}>
       <ContextMenu.Trigger asChild>
         <ul className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 overflow-auto p-4">
-          {rows.map((row) => ({ row, item: row.original })).map(({ row, item }) => (
-            <li
-              key={item.id}
-              data-card-id={item.id}
-              aria-selected={item.id === selectedItemId}
-              onClick={() => onSelectItem(item.id)}
-              onDoubleClick={() => onOpenItem(item.id)}
-              onContextMenu={() => {
-                onSelectItem(item.id);
-                setMenuItem(item.id);
-              }}
-              className={`relative flex cursor-default flex-col gap-2 rounded-lg border p-2 ${
-                item.id === selectedItemId
-                  ? "border-accent bg-accent-soft"
-                  : "border-line bg-white hover:bg-surface"
-              }`}
-            >
-              <input
-                type="checkbox"
-                aria-label={`Select ${item.title}`}
-                checked={row.getIsSelected()}
-                onChange={row.getToggleSelectedHandler()}
-                onClick={(event) => event.stopPropagation()}
-                onDoubleClick={(event) => event.stopPropagation()}
-                className="absolute top-3 left-3 accent-accent"
-              />
-              <img
-                src={thumbnailPath(item.id, 320)}
-                alt=""
-                loading="lazy"
-                className="aspect-[3/4] w-full rounded border border-line bg-white object-cover object-top"
-              />
-              <p className="line-clamp-2 text-sm font-medium text-ink" title={item.title}>
-                {item.title}
-              </p>
-              <p className="truncate text-xs text-muted">{authorList(item.authors)}</p>
-              <Progress item={item} />
-            </li>
-          ))}
+          {rows
+            .map((row) => ({ row, item: row.original }))
+            .map(({ row, item }) => (
+              <li
+                key={item.id}
+                data-card-id={item.id}
+                aria-selected={item.id === selectedItemId}
+                onClick={() => onSelectItem(item.id)}
+                onDoubleClick={() => onOpenItem(item.id)}
+                onContextMenu={() => {
+                  onSelectItem(item.id);
+                  setMenuItem(item.id);
+                }}
+                className={`relative flex cursor-default flex-col gap-2 rounded-lg border p-2 ${
+                  item.id === selectedItemId
+                    ? "border-accent bg-accent-soft"
+                    : "border-line bg-white hover:bg-surface"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${item.title}`}
+                  checked={row.getIsSelected()}
+                  onChange={row.getToggleSelectedHandler()}
+                  onClick={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  className="absolute top-3 left-3 accent-accent"
+                />
+                <img
+                  src={thumbnailPath(item.id, 320)}
+                  alt=""
+                  loading="lazy"
+                  className="aspect-[3/4] w-full rounded border border-line bg-white object-cover object-top"
+                />
+                <p className="line-clamp-2 text-sm font-medium text-ink" title={item.title}>
+                  {item.title}
+                </p>
+                <p className="truncate text-xs text-muted">{authorList(item.authors)}</p>
+                <Progress item={item} />
+              </li>
+            ))}
         </ul>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>{menuItem !== null && rowMenu(menuItem)}</ContextMenu.Portal>

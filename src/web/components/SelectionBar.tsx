@@ -15,8 +15,7 @@ type SelectionBarProps = {
 
 const BUTTON =
   "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium hover:bg-white/60";
-const MENU_ITEM =
-  "cursor-default rounded px-2.5 py-1.5 outline-none data-[highlighted]:bg-surface";
+const MENU_ITEM = "cursor-default rounded px-2.5 py-1.5 outline-none data-[highlighted]:bg-surface";
 
 export default function SelectionBar({
   count,
