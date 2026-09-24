@@ -19,6 +19,7 @@ const pdfs: Record<string, Pdf> = {
   // arXiv serves `/pdf/<id>` without a `.pdf` suffix.
   "/pdf/2401.00001": inline(problemSet),
   "/notes/lecture-notes.pdf": inline(lectureNotes),
+  "/notes/survey.pdf": inline(problemSet),
   "/download?id=problem-set": {
     bytes: problemSet,
     headers: {
@@ -39,6 +40,10 @@ const pages: Record<string, { title: string; body: string }> = {
   "/teaching.html": {
     title: "Teaching",
     body: '<a id="pdf" href="/notes/lecture-notes.pdf">Lecture notes on lattices</a>',
+  },
+  "/reading-list.html": {
+    title: "Reading list",
+    body: '<a id="pdf" href="/notes/survey.pdf" target="_blank">A survey of lattices</a>',
   },
   "/downloads.html": {
     title: "Downloads",

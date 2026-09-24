@@ -75,6 +75,8 @@ The rule sets `focus_on_activate` for the bucket window only.
 
 The builds are unsigned.
 
+A PDF link opens in the desktop window. The browser tab goes back to the page you clicked the link on, or closes when it was opened only for the PDF. If PDF Bucket cannot save the PDF, the tab stays with the error and a link that opens the PDF in the browser.
+
 Once installed, the extension has a toolbar button.
 Its badge shows the state: `ON` means the bucket answers and PDF links go to it, `OFF` means capture is switched off in this browser, and `!` means the bucket is not reachable or cannot store PDFs.
 Click the button to see the bucket's address, version and data folder, switch capture on or off for this browser, and see the last capture.
