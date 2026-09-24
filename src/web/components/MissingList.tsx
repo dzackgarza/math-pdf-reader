@@ -11,9 +11,16 @@ type MissingListProps = {
   onRebuildAll: () => void;
 };
 
-export default function MissingList({ missing, rebuilding, onRebuild, onRebuildAll }: MissingListProps) {
+export default function MissingList({
+  missing,
+  rebuilding,
+  onRebuild,
+  onRebuildAll,
+}: MissingListProps) {
   if (missing.length === 0) {
-    return <p className="px-6 py-20 text-center text-sm text-muted">Every PDF is in the library.</p>;
+    return (
+      <p className="px-6 py-20 text-center text-sm text-muted">Every PDF is in the library.</p>
+    );
   }
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -28,7 +35,11 @@ export default function MissingList({ missing, rebuilding, onRebuild, onRebuildA
       </div>
       <ul className="divide-y divide-line border-y border-line">
         {missing.map((item) => (
-          <li key={item.key} data-missing-key={item.key} className="flex items-center gap-4 px-4 py-2.5 text-sm">
+          <li
+            key={item.key}
+            data-missing-key={item.key}
+            className="flex items-center gap-4 px-4 py-2.5 text-sm"
+          >
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium text-ink">{item.title}</p>
               <p className="truncate text-xs text-muted" title={item.provenance.pdf_url}>
@@ -37,7 +48,9 @@ export default function MissingList({ missing, rebuilding, onRebuild, onRebuildA
                   ` and ${item.mirrors.length} mirror${item.mirrors.length === 1 ? "" : "s"}`}
               </p>
             </div>
-            <span className="shrink-0 text-xs text-muted">{shortDate(item.provenance.captured_at)}</span>
+            <span className="shrink-0 text-xs text-muted">
+              {shortDate(item.provenance.captured_at)}
+            </span>
             <button
               type="button"
               aria-label="Rebuild"

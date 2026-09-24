@@ -151,7 +151,12 @@ export function addMirror(org: Organization, key: string, url: string, now: stri
   }));
 }
 
-export function removeMirror(org: Organization, key: string, url: string, now: string): Organization {
+export function removeMirror(
+  org: Organization,
+  key: string,
+  url: string,
+  now: string,
+): Organization {
   return fileItem(org, key, now, (filing) => ({
     ...filing,
     mirrors: filing.mirrors.filter((mirror) => mirror.url !== url),

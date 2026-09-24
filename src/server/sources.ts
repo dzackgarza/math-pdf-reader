@@ -1,8 +1,9 @@
 // Where a stored PDF came from, checked again: whether its PDF URL and mirrors still serve the
 // captured bytes (the recorded original SHA-256), and rebuilding a PDF the store has lost from
 // the first of those URLs that does.
-import type { AppConfig } from "./config";
+
 import { join } from "node:path";
+import type { AppConfig } from "./config";
 import type { RebuildOutcome, SourceCheck, TitleSource } from "./libraryContract";
 import { recordMetadata, restorePdf, type StoredItem, storedPdfPath } from "./store";
 

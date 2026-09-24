@@ -119,7 +119,9 @@ export class LibraryState {
 
   // The items the index export holds whose PDF is gone; none without an export.
   async missing(indexed?: IndexedItem[]) {
-    const stored = new Set((indexed ?? (await this.index.items())).map((entry) => entry.stored.key));
+    const stored = new Set(
+      (indexed ?? (await this.index.items())).map((entry) => entry.stored.key),
+    );
     return this.exporter === null ? [] : this.exporter.missing(stored);
   }
 

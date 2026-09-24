@@ -152,11 +152,15 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
   ]);
 
   const rebuild = async (key: string) =>
-    RebuildOutcomeSchema.parse(
-      await (await request("POST", `/api/items/${key}/rebuild`)).json(),
-    );
-  expect(await rebuild("kept-url")).toMatchObject({ status: "restored", from: at("/notes/kept-url.pdf") });
-  expect(await rebuild("moved")).toMatchObject({ status: "restored", from: at("/mirror/moved.pdf") });
+    RebuildOutcomeSchema.parse(await (await request("POST", `/api/items/${key}/rebuild`)).json());
+  expect(await rebuild("kept-url")).toMatchObject({
+    status: "restored",
+    from: at("/notes/kept-url.pdf"),
+  });
+  expect(await rebuild("moved")).toMatchObject({
+    status: "restored",
+    from: at("/mirror/moved.pdf"),
+  });
   expect(await rebuild("lost")).toMatchObject({ status: "unrestored" });
 
   const restored = await item("kept-url");

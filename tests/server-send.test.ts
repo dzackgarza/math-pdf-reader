@@ -14,8 +14,8 @@ import {
   LibraryPayloadSchema,
   type ZoteroRecord,
 } from "../src/server/libraryContract";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { unfiled } from "../src/server/organization";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;

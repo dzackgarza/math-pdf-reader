@@ -65,7 +65,10 @@ const published = (path: string) => new URL(path, publisher.url).href;
 
 async function startBucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-"));
-  const indexExport = join(mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")), "index.json");
+  const indexExport = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")),
+    "index.json",
+  );
   // A port nothing listens on, so a send reaches for Zotero and fails instead of writing.
   const probe = Bun.serve({ port: 0, fetch: () => new Response() });
   const zoteroUrl = probe.url.origin;
@@ -421,11 +424,19 @@ describe("library window", () => {
     expect(await rowKeys()).toEqual(["problems"]);
     await shot("details-offline");
 
-    served.set("/~author/mirror/problems.pdf", new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf"))));
+    served.set(
+      "/~author/mirror/problems.pdf",
+      new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf"))),
+    );
     await page.click(row("problems"));
-    await page.type(`${details} input[aria-label="Mirror URL"]`, published("/~author/mirror/problems.pdf"));
+    await page.type(
+      `${details} input[aria-label="Mirror URL"]`,
+      published("/~author/mirror/problems.pdf"),
+    );
     await page.keyboard.press("Enter");
-    await page.waitForSelector(`${details} ::-p-text(${published("/~author/mirror/problems.pdf")})`);
+    await page.waitForSelector(
+      `${details} ::-p-text(${published("/~author/mirror/problems.pdf")})`,
+    );
     await page.click(`${details} button[aria-label="Verify sources"]`);
     await page.waitForFunction(
       (selector) => document.querySelector(selector) === null,
@@ -455,7 +466,9 @@ describe("library window", () => {
     await page.waitForSelector('[data-missing-key="lattices"]');
     await shot("library-needs-refetch");
     await page.click('[data-missing-key="lattices"] button[aria-label="Rebuild"]');
-    await page.waitForFunction(() => document.querySelector('[data-missing-key="lattices"]') === null);
+    await page.waitForFunction(
+      () => document.querySelector('[data-missing-key="lattices"]') === null,
+    );
 
     await openLibrary();
     expect(await rowKeys()).toContain("lattices");

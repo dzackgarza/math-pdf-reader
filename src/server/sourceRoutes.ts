@@ -97,7 +97,9 @@ export function sourceRoutes(
 
   app.post("/api/rebuild", async (c) => {
     const keys = (await state.missing()).map(({ item }) => item.key);
-    const outcomes = await Promise.all(keys.map((key) => downloads.runExclusive(() => rebuild(key))));
+    const outcomes = await Promise.all(
+      keys.map((key) => downloads.runExclusive(() => rebuild(key))),
+    );
     return c.json(outcomes);
   });
 }

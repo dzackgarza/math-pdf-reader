@@ -56,7 +56,10 @@ function StatusBadge({ item }: { item: BucketItem }) {
         offline ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
       }`}
     >
-      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${offline ? "bg-red-600" : "bg-green-600"}`} />
+      <span
+        aria-hidden
+        className={`h-1.5 w-1.5 rounded-full ${offline ? "bg-red-600" : "bg-green-600"}`}
+      />
       <span data-status>{offline ? "Offline" : "Cached"}</span>
     </span>
   );

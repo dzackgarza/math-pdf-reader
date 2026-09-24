@@ -43,7 +43,6 @@ export const IndexExportSchema = z.strictObject({
 export type IndexExport = z.infer<typeof IndexExportSchema>;
 export type ExportedItem = z.infer<typeof ExportedItemSchema>;
 
-
 // The previous export lists items the store no longer holds. Writing a new export would drop
 // the only record that can bring them back.
 export class PdfsMissingError extends Error {
@@ -120,7 +119,9 @@ export class IndexExporter {
 
   // The items the last export holds whose PDF is not among STORED and that were not removed
   // on purpose: the ones Rebuild can bring back.
-  async missing(stored: ReadonlySet<string>): Promise<{ item: ExportedItem; shown: MissingItem }[]> {
+  async missing(
+    stored: ReadonlySet<string>,
+  ): Promise<{ item: ExportedItem; shown: MissingItem }[]> {
     if (!existsSync(this.exportFile)) {
       return [];
     }

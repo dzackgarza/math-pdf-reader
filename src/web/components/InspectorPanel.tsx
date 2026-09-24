@@ -13,12 +13,7 @@ import {
 } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
-import type {
-  BucketItem,
-  Collection,
-  Extraction,
-  SourceCheck,
-} from "../../server/libraryContract";
+import type { BucketItem, Collection, Extraction, SourceCheck } from "../../server/libraryContract";
 import {
   dateTime,
   isTopic,
@@ -87,7 +82,10 @@ function ExtractionFiles({ extraction }: { extraction: Extraction }) {
 const CHECK_MARKS: Record<SourceCheck["status"], { icon: ReactNode; label: string }> = {
   unchecked: { icon: <CircleDashed className="h-3.5 w-3.5 text-faint" />, label: "Not verified" },
   accessible: { icon: <Check className="h-3.5 w-3.5 text-green-600" />, label: "Serves the PDF" },
-  changed: { icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />, label: "Serves other bytes" },
+  changed: {
+    icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />,
+    label: "Serves other bytes",
+  },
   dead: { icon: <X className="h-3.5 w-3.5 text-red-600" />, label: "Serves nothing" },
 };
 
@@ -168,7 +166,10 @@ function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelP
         disabled={sources.verifying}
         className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-surface disabled:opacity-60"
       >
-        <RefreshCw aria-hidden className={`h-3.5 w-3.5 ${sources.verifying ? "animate-spin" : ""}`} />
+        <RefreshCw
+          aria-hidden
+          className={`h-3.5 w-3.5 ${sources.verifying ? "animate-spin" : ""}`}
+        />
         Verify
       </button>
     </div>
