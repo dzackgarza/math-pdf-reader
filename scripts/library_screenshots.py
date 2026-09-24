@@ -309,7 +309,7 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     driver = webdriver.WebKitGTK(options=options, service=service)
     wait = WebDriverWait(driver, 30)
     driver.get(origins["seeded"])
-    cell = f"//tbody/tr[contains(., {json.dumps(filed['title'])})]/td[1]"
+    cell = f"//tbody/tr[contains(., {json.dumps(filed['title'])})]/td[@data-column='title']"
     row = wait.until(expected_conditions.element_to_be_clickable((By.XPATH, cell)))
     row.click()
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
