@@ -16,8 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { CaptureResponseSchema } from "../src/contract/capture";
-import { CollectionSchema } from "../src/contract/library";
 import { CONFIG_PATH, loadAppConfig, REPO_ROOT } from "../src/contract/config";
+import { CollectionSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const fixtures = join(import.meta.dir, "fixtures");

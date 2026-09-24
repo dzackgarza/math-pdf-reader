@@ -15,11 +15,11 @@ import puppeteer, {
 } from "puppeteer-core";
 import { build } from "wxt";
 import { z } from "zod";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { extensionDefine } from "../wxt.config";
-import { lectureNotes, problemSet, startFixtureSite } from "./fixture-site";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { lectureNotes, problemSet, startFixtureSite } from "./fixture-site";
 import { listItems } from "./store";
 
 type Engine = "chrome" | "firefox";

@@ -80,7 +80,10 @@ export function readOrganization(root: string): Organization {
 
 export function writeOrganization(root: string, organization: Organization): void {
   mkdirSync(root, { recursive: true });
-  writeFileSync(organizationFile(root), `${JSON.stringify(OrganizationSchema.parse(organization))}\n`);
+  writeFileSync(
+    organizationFile(root),
+    `${JSON.stringify(OrganizationSchema.parse(organization))}\n`,
+  );
 }
 
 // The index export, or null while the server has not written one yet.

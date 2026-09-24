@@ -5,13 +5,13 @@ import { copyFileSync, mkdtempSync, readFileSync, renameSync, writeFileSync } fr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   FolderImportResponseSchema,
   ImportUrlResponseSchema,
   LibraryPayloadSchema,
 } from "../src/contract/library";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 setDefaultTimeout(30_000);

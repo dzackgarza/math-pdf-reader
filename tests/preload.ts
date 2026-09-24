@@ -13,11 +13,14 @@ process.env.XDG_CACHE_HOME = mkdtempSync(join(tmpdir(), "pdf-bucket-test-cache-"
 
 // The suites drive the app's server over HTTP through `pdf-bucket serve` (tests/bucket.ts);
 // cargo rebuilds it only when its sources changed.
-const built = Bun.spawnSync(["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"], {
-  cwd: REPO_ROOT,
-  stdout: "inherit",
-  stderr: "inherit",
-});
+const built = Bun.spawnSync(
+  ["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"],
+  {
+    cwd: REPO_ROOT,
+    stdout: "inherit",
+    stderr: "inherit",
+  },
+);
 if (built.exitCode !== 0) {
   throw new Error(`cargo could not build the pdf-bucket server (exit ${built.exitCode})`);
 }

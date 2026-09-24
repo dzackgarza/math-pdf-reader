@@ -4,13 +4,13 @@ import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
 } from "../src/contract/library";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 import { readIndexExport, recordMetadata } from "./store";
 

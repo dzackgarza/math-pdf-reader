@@ -12,7 +12,7 @@ use regex::Regex;
 use crate::contract::AppConfig;
 
 /// The checkout the binary was built from.
-pub const CHECKOUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+pub const CHECKOUT: &str = env!("PDF_BUCKET_CHECKOUT");
 
 const CONFIG_JSON: &str = include_str!("../../pdf-bucket.config.json");
 

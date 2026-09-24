@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CaptureResponse, CaptureResponseSchema } from "../src/contract/capture";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -24,7 +25,6 @@ import {
   SavedSearchSchema,
   SettingsSchema,
 } from "../src/contract/library";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);

@@ -3,12 +3,12 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
 } from "../src/contract/extraction";
 import { ApiErrorSchema } from "../src/contract/library";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);

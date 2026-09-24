@@ -10,7 +10,12 @@ use schemars::schema::{InstanceType, RootSchema, SchemaObject, SingleOrVec};
 use typify::{TypeSpace, TypeSpaceImpl, TypeSpaceSettings};
 
 fn main() {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    // The checkout this crate lies in, as config::CHECKOUT names it at run time.
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .expect("the crate lies in a checkout");
+    println!("cargo:rustc-env=PDF_BUCKET_CHECKOUT={}", repo.display());
     println!("cargo:rerun-if-changed=../src/contract");
     println!("cargo:rerun-if-changed=../scripts/contract-schema.ts");
     let output = Command::new("bun")

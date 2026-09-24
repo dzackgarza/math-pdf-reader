@@ -4,8 +4,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ReadingSessionSchema } from "../src/contract/library";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { ReadingSessionSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);

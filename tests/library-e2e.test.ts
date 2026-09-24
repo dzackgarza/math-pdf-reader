@@ -19,8 +19,8 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
 import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
-import { SCRATCH_DATA_HOME } from "./preload";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { SCRATCH_DATA_HOME } from "./preload";
 import { readOrganization } from "./store";
 
 setDefaultTimeout(30_000);

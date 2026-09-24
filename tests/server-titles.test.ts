@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { z } from "zod";
-import { LibraryPayloadSchema, RetrieveMetadataResponseSchema } from "../src/contract/library";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { LibraryPayloadSchema, RetrieveMetadataResponseSchema } from "../src/contract/library";
 import { type Bucket, EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -96,9 +96,7 @@ async function capture(
 }
 
 async function item(app: Bucket, key: string) {
-  const payload = LibraryPayloadSchema.parse(
-    await (await app.request("/api/library")).json(),
-  );
+  const payload = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
   const found = payload.items.find((candidate) => candidate.id === key);
   if (found === undefined) {
     throw new Error(`the library lists no item ${key}`);
@@ -274,7 +272,5 @@ test("Retrieve metadata on an item with no identifier reports it unidentified; a
     "Lecture notes on lattices",
     "capture-hint",
   ]);
-  expect(
-    (await app.request(`/api/items/missing/metadata`, { method: "POST" })).status,
-  ).toBe(404);
+  expect((await app.request(`/api/items/missing/metadata`, { method: "POST" })).status).toBe(404);
 });
