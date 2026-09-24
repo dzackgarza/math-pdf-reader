@@ -106,7 +106,10 @@ pub fn run() -> tauri::Result<()> {
                     .window("main")
                     .permission("core:window:allow-show")
                     .permission("core:window:allow-set-focus")
-                    .permission("core:window:allow-unminimize"),
+                    .permission("core:window:allow-unminimize")
+                    // The library's Open in Browser and Show in Folder (@tauri-apps/plugin-opener):
+                    // http(s) URLs in the default browser, files in the file manager.
+                    .permission("opener:default"),
             )?;
             // The file is one function expression statement; binding it in a block keeps the
             // call valid whatever the statement's terminator.

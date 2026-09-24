@@ -42,7 +42,7 @@ export default function StatusBar({
   const unfiled = itemsInView(payload, { kind: "unfiled" }).length;
   const icon = "h-3.5 w-3.5";
   return (
-    <footer className="flex items-center gap-4 border-t border-line bg-surface px-3 py-1 text-xs text-muted">
+    <footer className="flex h-6 shrink-0 items-center gap-4 border-t border-line bg-surface px-3 text-xs text-muted">
       <Count
         icon={<FileText aria-hidden className={icon} />}
         value={payload.items.length.toLocaleString()}

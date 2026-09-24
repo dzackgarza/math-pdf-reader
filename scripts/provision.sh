@@ -43,6 +43,8 @@ install -m 644 "$data/applications/pdf-bucket-desktop.desktop" "$config/autostar
 install -D -m 644 desktop/autostart/hyprland-session.conf "$units/hyprland-session.target.d/pdf-bucket.conf"
 
 systemctl --user daemon-reload
-systemd-analyze --user verify "$autostart_unit"
+# systemd-xdg-autostart-generator makes the unit from the autostart entry at daemon-reload;
+# `systemd-analyze verify` does not search the generator directories, `systemctl cat` does.
+systemctl --user cat "$autostart_unit" > /dev/null
 systemctl --user start "$autostart_unit"
 systemctl --user --no-pager status "$autostart_unit"

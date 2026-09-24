@@ -11,6 +11,8 @@ export type AppCommandActions = {
   newCollection: () => void;
   saveSearch: () => void;
   openSelectedInReader: (() => void) | null;
+  openSelectedInBrowser: (() => void) | null;
+  showSelectedInFolder: (() => void) | null;
   sendSelectedToZotero: (() => void) | null;
   reloadLibrary: () => void;
   showAllColumns: () => void;
@@ -35,6 +37,10 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
             action: actions.openSelectedInReader,
           },
         ];
+  // A command on the selected PDF, present only while one is selected (and, for Show in
+  // Folder, only where a file manager is reachable).
+  const onSelected = (id: string, name: string, action: (() => void) | null): Command[] =>
+    action === null ? [] : [{ id, name, category: "Library", action }];
   const send: Command[] =
     actions.sendSelectedToZotero === null
       ? []
@@ -55,6 +61,8 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
     goTo("go-saved", "Saved Searches", "/organization/saved"),
     goTo("go-settings", "Settings", "/settings"),
     ...reader,
+    ...onSelected("open-browser", "Open Selected PDF in Browser", actions.openSelectedInBrowser),
+    ...onSelected("show-folder", "Show Selected PDF in Folder", actions.showSelectedInFolder),
     ...send,
     {
       id: "new-collection",

@@ -116,6 +116,8 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     saveSearch(context, search, () => setSearch(defaultSearchSettings()));
 
   const openReader = (key: string) => window.location.assign(readerUrl(key));
+  const readerHref = (key: string) => new URL(readerUrl(key), window.location.origin).href;
+  const reveal = showInFolder();
   const itemById = (key: string) => payload.items.find((item) => item.id === key);
   const deselect = () => setSelectedId(null);
   // Runs an action outside the page; a failure shows as a toast.
@@ -166,15 +168,13 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       return null;
     }
     const actions = itemMenuActions(context, item, deselect);
-    const reveal = showInFolder();
     return (
       <ItemContextMenu
         item={item}
         collections={payload.collections}
         commands={{
           open: () => openReader(key),
-          openInBrowser: () =>
-            attempt(openInBrowser(new URL(readerUrl(key), window.location.origin).href)),
+          openInBrowser: () => attempt(openInBrowser(readerHref(key))),
           retrieveMetadata: actions.retrieveMetadata,
           fileIn: actions.fileIn,
           fileInNewCollection: actions.fileInNewCollection,
@@ -197,6 +197,12 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     newCollection,
     saveSearch: saveCurrentSearch,
     openSelectedInReader: selected === undefined ? null : () => openReader(selected.id),
+    openSelectedInBrowser:
+      selected === undefined ? null : () => attempt(openInBrowser(readerHref(selected.id))),
+    showSelectedInFolder:
+      selected === undefined || reveal === null
+        ? null
+        : () => attempt(reveal(selected.file.path)),
     sendSelectedToZotero: selected === undefined ? null : () => send(selected.id),
     reloadLibrary: reload,
     showAllColumns: () => table.toggleAllColumnsVisible(true),
@@ -248,7 +254,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
           {screen.kind === "settings" && <SettingsScreen read={read} onError={setToast} />}
         </main>
         {selected !== undefined && screen.kind !== "settings" && (
-          <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
+          <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:top-0 max-xl:bottom-6 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
             <InspectorPanel
               key={selected.id}
               item={selected}
