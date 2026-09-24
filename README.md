@@ -40,6 +40,16 @@ If the whole data root is lost, `just import-index` restores the filing into the
 A unit that fails to start is retried twice and then stays failed; `systemctl --user status pdf-bucket` and `journalctl --user -u pdf-bucket` show why.
 The window starts at login only when the session reaches `graphical-session.target`: a compositor started through `uwsm` does, and so does a session target bound to it, such as `hyprland-session.target` started from the compositor's startup (docs/m5.md shows the one used on the development workstation).
 
+### Hyprland
+
+After a capture the window asks for focus. By default Hyprland only marks it urgent. To bring the window to the front on the reader page, load the shipped window rule from the Hyprland Lua config (for example `~/.config/hypr/confs/windowrules.lua`):
+
+```lua
+dofile("<checkout>/desktop/hyprland/pdf-bucket.lua")
+```
+
+The rule sets `focus_on_activate` for the bucket window only. `docs/m1.md` records the events with and without it.
+
 ## Browser extensions
 
 `just build` (or `bun run build` for the extensions alone) writes:
