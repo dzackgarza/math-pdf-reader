@@ -295,9 +295,49 @@ describe("library window", () => {
     await shot("library-narrow");
     await page.setViewport(viewport);
     await shot("library");
-    const views = await page.$$eval("nav a", (links) =>
-      links.map((link) => link.textContent?.trim()),
+  });
+
+  test("the Library entry counts the PDFs; the Unfiled toggle narrows the library to PDFs in no collection and back", async () => {
+    await openLibrary();
+    const payload = (await (await fetch(`${bucket.origin}/api/library`)).json()) as {
+      items: { id: string; collections: string[] }[];
+    };
+    const all = payload.items.map((item) => item.id).sort();
+    const unfiled = payload.items
+      .filter((item) => item.collections.length === 0)
+      .map((item) => item.id)
+      .sort();
+    expect(unfiled.length).toBeGreaterThan(0);
+    expect(unfiled.length).toBeLessThan(all.length);
+    const sortedRows = async () => (await rowKeys()).sort();
+    const toggle = 'button[aria-label="Unfiled"]';
+
+    const library = await page.$eval("nav a", (link) => link.textContent?.trim());
+    expect(library).toBe(`Library${all.length}`);
+    expect(await sortedRows()).toEqual(all);
+    expect(await page.$eval(toggle, (button) => button.textContent?.trim())).toBe(
+      `Unfiled${unfiled.length}`,
     );
-    expect(views.slice(0, 2)).toEqual(["Library", "Unfiled"]);
+
+    await page.click(toggle);
+    await page.waitForFunction(() => location.hash === "#/unfiled");
+    await page.waitForFunction(
+      (count) => document.querySelectorAll("tr[data-item-id]").length === count,
+      {},
+      unfiled.length,
+    );
+    await shot("library-unfiled");
+    expect(await sortedRows()).toEqual(unfiled);
+    expect(await page.$eval(toggle, (button) => button.getAttribute("aria-pressed"))).toBe("true");
+    expect(await page.$eval("nav a", (link) => link.getAttribute("aria-current"))).toBe("page");
+
+    await page.click(toggle);
+    await page.waitForFunction(
+      (count) => document.querySelectorAll("tr[data-item-id]").length === count,
+      {},
+      all.length,
+    );
+    expect(await sortedRows()).toEqual(all);
+    expect(await page.$eval(toggle, (button) => button.getAttribute("aria-pressed"))).toBe("false");
   });
 });
