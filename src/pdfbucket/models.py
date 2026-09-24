@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, HttpUrl
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl
 
 
 class CaptureRequest(BaseModel):
@@ -27,6 +28,18 @@ class CaptureProvenance(BaseModel):
     title_hint: str
 
 
+# Where an item's title came from, best first: an identifier resolver, the PDF's own metadata,
+# the title the capture offered (link text, page title), the stored file's name.
+type TitleSource = Literal["resolver", "pdf-metadata", "capture-hint", "filename"]
+
+
+class ItemTitle(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    text: str = Field(min_length=1)
+    source: TitleSource
+
+
 class StoredItem(BaseModel):
     """A stored PDF as read back from the file alone."""
 
@@ -34,6 +47,7 @@ class StoredItem(BaseModel):
 
     key: str
     provenance: CaptureProvenance
+    title: ItemTitle
 
 
 class CaptureResult(BaseModel):

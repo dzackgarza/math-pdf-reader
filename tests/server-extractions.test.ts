@@ -11,6 +11,7 @@ import {
   ExtractionPluginsResponseSchema,
 } from "../src/server/extractionContract";
 import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "../src/server/extractions";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { ApiErrorSchema } from "../src/server/libraryContract";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -37,6 +38,7 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
   const captured = await captureApp.request(`${origin}/capture-bytes`, {
     method: "POST",
@@ -72,6 +74,7 @@ test("the shipped extraction plugins are listed with their accepted inputs", asy
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
 
   const response = await app.request(`${origin}/api/plugins/extractions`);

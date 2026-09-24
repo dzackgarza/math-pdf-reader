@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -17,6 +18,7 @@ test("status reports a ready storage contract for an existing writable root", as
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
 
   const response = await app.request(`${origin}/status`);
@@ -42,6 +44,7 @@ test("status reports a missing root as not ready without creating it", async () 
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
 
   const response = await app.request(`${origin}/status`);

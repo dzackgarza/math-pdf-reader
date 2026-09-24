@@ -8,6 +8,7 @@ import {
   CollectionsRequestSchema,
   type LibraryPayload,
   NewCollectionRequestSchema,
+  type RetrieveMetadataResponse,
   NewSavedSearchRequestSchema,
   NoteRequestSchema,
   RenameCollectionRequestSchema,
@@ -31,6 +32,7 @@ import {
   unfiled,
 } from "./organization";
 import { sendRoutes, zoteroStatus } from "./send";
+import { retrieveMetadata } from "./titles";
 import type { ZoteroWriteApi } from "./zotero";
 
 export function bucketItem(indexed: IndexedItem, organization: Organization): BucketItem {
@@ -38,7 +40,8 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
   const filing = organization.items[key] ?? unfiled(provenance.captured_at);
   return {
     id: key,
-    title: provenance.title_hint,
+    title: indexed.stored.title.text,
+    titleSource: indexed.stored.title.source,
     url: provenance.source_url,
     tags: filing.tags,
     collections: filing.collections,
@@ -115,9 +118,28 @@ export class LibraryState {
   }
 }
 
-function itemRoutes(app: Hono, state: LibraryState) {
+function itemRoutes(app: Hono, state: LibraryState, root: string, resolversManifest: string) {
   const unknownItem = (c: Context, key: string) =>
     apiError(c, 404, "unknown_item", `no stored PDF has key ${key}`);
+
+  // "Retrieve metadata": run the identifier resolvers again and answer with the item as it
+  // now stands; a resolver that fails leaves the title as it was.
+  app.post("/api/items/:key/metadata", async (c) => {
+    const key = c.req.param("key");
+    if (!(await state.isStored(key))) {
+      return unknownItem(c, key);
+    }
+    const outcome = await retrieveMetadata(root, key, resolversManifest);
+    const indexed = await state.indexed(key);
+    if (indexed === undefined) {
+      throw new Error(`${key} left the store while its metadata was retrieved`);
+    }
+    const response: RetrieveMetadataResponse = {
+      outcome,
+      item: bucketItem(indexed, await state.organizations.read()),
+    };
+    return c.json(response);
+  });
 
   app.put("/api/items/:key/tags", async (c) => {
     const key = c.req.param("key");
@@ -229,7 +251,12 @@ function savedSearchRoutes(app: Hono, state: LibraryState) {
   });
 }
 
-export function registerLibraryRoutes(app: Hono, root: string, zotero: ZoteroWriteApi): Library {
+export function registerLibraryRoutes(
+  app: Hono,
+  root: string,
+  zotero: ZoteroWriteApi,
+  resolversManifest: string,
+): Library {
   const state = new LibraryState(root);
   const library: Library = {
     payload: async () => state.payloadOf(await state.organizations.read()),
@@ -252,7 +279,7 @@ export function registerLibraryRoutes(app: Hono, root: string, zotero: ZoteroWri
     };
     return c.json(settings);
   });
-  itemRoutes(app, state);
+  itemRoutes(app, state, root, resolversManifest);
   collectionRoutes(app, state);
   savedSearchRoutes(app, state);
   sendRoutes(app, state, root, zotero);

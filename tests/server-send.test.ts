@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -38,6 +39,7 @@ function emptyBucket(): Bucket {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
   });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }

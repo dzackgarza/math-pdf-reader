@@ -25,8 +25,15 @@ export function upstream(path: string): URL {
   return new URL(path, base);
 }
 
+// A capture waits for its resolver, so an upstream that stops answering fails the resolver
+// instead of holding the capture open (AbortSignal.timeout rejects the fetch with a TimeoutError).
+const UPSTREAM_TIMEOUT_MS = 20_000;
+
 export async function fetchOk(url: URL, accept: string): Promise<Response> {
-  const response = await fetch(url, { headers: { Accept: accept } });
+  const response = await fetch(url, {
+    headers: { Accept: accept },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
   invariant(response.ok, `${url.href} answered HTTP ${response.status}`);
   return response;
 }

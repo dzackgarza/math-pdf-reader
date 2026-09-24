@@ -34,7 +34,7 @@ function link(url: string) {
 
 export function readerPage(item: BucketItem, collections: Collection[], origin: string) {
   const { provenance } = item;
-  const title = provenance.title_hint;
+  const { title } = item;
   const viewer = `/pdfjs/web/viewer.html?file=${encodeURIComponent(pdfUrlPath(item.id))}`;
   const topics = item.tags
     .filter((tag) => tag.startsWith(TOPIC_PREFIX))
