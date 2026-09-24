@@ -6,7 +6,13 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import puppeteer, { type Browser, type Frame, type Page } from "puppeteer-core";
+import puppeteer, {
+  type Browser,
+  type Frame,
+  type Page,
+  ProtocolError,
+  type Target,
+} from "puppeteer-core";
 import { build } from "wxt";
 import { z } from "zod";
 import { pdfCaptureRules } from "../src/extension/interception";
@@ -133,6 +139,35 @@ async function launch(engine: Engine, extension: string): Promise<Launched> {
   return { browser, extensionOrigin: `moz-extension://${FIREFOX_EXTENSION_UUID}` };
 }
 
+// The bucket announces every capture, new or existing, on the event stream the desktop
+// window follows. Subscribing resolves once the bucket has registered the subscriber, so an
+// announcement cannot be missed by a capture started afterwards.
+async function subscribeToCaptures(bucketOrigin: string) {
+  const response = await fetch(`${bucketOrigin}/api/events`);
+  if (response.body === null) {
+    throw new Error("the bucket's event stream has no body");
+  }
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  return {
+    // The reader URL of the next announced capture.
+    async next(): Promise<string> {
+      let received = "";
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          throw new Error("the bucket's event stream ended before a capture was announced");
+        }
+        received += chunk.value;
+        const announced = /event: open-reader\ndata: (.+)\n/.exec(received)?.[1];
+        if (announced !== undefined) {
+          await reader.cancel();
+          return z.object({ reader_url: z.url() }).parse(JSON.parse(announced)).reader_url;
+        }
+      }
+    },
+  };
+}
+
 async function captureState(frame: Frame | Page, state: "stored" | "failed"): Promise<void> {
   await frame.waitForSelector(`main#capture[data-state="${state}"]`);
 }
@@ -184,6 +219,53 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       return;
     }
     await page.click("a#pdf");
+  };
+
+  // After a successful capture in the tab the link was followed in, the tab is back on the
+  // linking page. The location is read in the document: the tab passes through the capture
+  // page, where Firefox reports no navigation.
+  const captureInPlace = async (pagePath: string) => {
+    const captures = await subscribeToCaptures(bucket.origin);
+    await followLink(pagePath);
+    const readerUrl = await captures.next();
+    await page.waitForFunction(`location.href === ${JSON.stringify(`${site.origin}${pagePath}`)}`);
+    return readerUrl;
+  };
+  // The tab a target=_blank link opens.
+  const openedTab = () =>
+    new Promise<Page>((resolve) => {
+      const opened = (target: Target) => {
+        if (target.type() !== "page") {
+          return;
+        }
+        browser.off("targetcreated", opened);
+        void target.page().then((tab) => {
+          if (tab === null) {
+            throw new Error("the tab the link opened has no page");
+          }
+          resolve(tab);
+        });
+      };
+      browser.on("targetcreated", opened);
+    });
+  // Whether a tab is gone. Chrome reports the closed tab (`isClosed()`); its Page keeps the
+  // frame Chromium swapped out for the extension page, so nothing can be evaluated there even
+  // while the tab is open. Firefox's WebDriver BiDi loses track of a tab that navigated into a
+  // moz-extension document, so `isClosed()` stays false after it closes; the browser itself
+  // then refuses to evaluate in it.
+  const tabGone = async (tab: Page) => {
+    if (engine === "chrome" || tab.isClosed()) {
+      return tab.isClosed();
+    }
+    return tab.evaluate("1").then(
+      () => false,
+      (error: unknown) => {
+        if (error instanceof ProtocolError) {
+          return true;
+        }
+        throw error;
+      },
+    );
   };
 
   // The toolbar popup, opened as a tab: the extension's status page. WebDriver BiDi cannot
@@ -259,10 +341,10 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     site.stop();
   });
 
-  test("an arXiv /pdf/ URL without .pdf is captured with the linking page and link text", async () => {
-    await followLink("/abs/2401.00001");
-    await captureState(page, "stored");
+  test("an arXiv /pdf/ URL without .pdf is captured with the linking page and link text, and the tab returns to that page", async () => {
+    const readerUrl = await captureInPlace("/abs/2401.00001");
 
+    expect(readerUrl).toBe(`${bucket.origin}/read/2401.00001`);
     expect(bucket.files()).toEqual(["2401.00001.pdf"]);
     const stored = await provenance("2401.00001");
     expect(stored.pdf_url).toBe(`${site.origin}/pdf/2401.00001`);
@@ -307,31 +389,41 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(checked).toBe(false);
     await flipCaptureSwitch();
     await badgeBecomes("ON");
-    await followLink("/abs/2401.00001");
-    await captureState(page, "stored");
+    expect(await captureInPlace("/abs/2401.00001")).toBe(`${bucket.origin}/read/2401.00001`);
+  });
+
+  test("a PDF link that opens a new tab is captured, and that tab closes", async () => {
+    await page.goto(`${site.origin}/reading-list.html`);
+    const captures = await subscribeToCaptures(bucket.origin);
+    const opened = openedTab();
+    await page.click("a#pdf");
+    const tab = await opened;
+    expect(await captures.next()).toBe(`${bucket.origin}/read/survey`);
+    while (!(await tabGone(tab))) {
+      await Bun.sleep(50);
+    }
+
+    expect(page.url()).toBe(`${site.origin}/reading-list.html`);
+    const stored = await provenance("survey");
+    expect(stored.source_url).toBe(`${site.origin}/reading-list.html`);
+    expect(stored.title_hint).toBe("A survey of lattices");
   });
 
   test("a .pdf URL is captured once; navigating to it again opens the existing item", async () => {
-    await followLink("/teaching.html");
-    await captureState(page, "stored");
-    await shotCapturePage("stored");
+    expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
     const stored = await provenance("lecture-notes");
     expect(stored.source_url).toBe(`${site.origin}/teaching.html`);
     expect(stored.title_hint).toBe("Lecture notes on lattices");
     expect(stored.original_sha256).toBe(sha256(lectureNotes));
     const storedBytes = sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")));
 
-    await followLink("/teaching.html");
-    await captureState(page, "stored");
-    await shotCapturePage("existing");
-    expect(bucket.files()).toEqual(["2401.00001.pdf", "lecture-notes.pdf"]);
+    expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
+    expect(bucket.files()).toEqual(["2401.00001.pdf", "lecture-notes.pdf", "survey.pdf"]);
     expect(sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")))).toBe(storedBytes);
   });
 
   test("a Content-Disposition download is captured under its declared filename", async () => {
-    await followLink("/downloads.html");
-    await captureState(page, "stored");
-
+    expect(await captureInPlace("/downloads.html")).toBe(`${bucket.origin}/read/problem-set`);
     expect(bucket.files()).toContain("problem-set.pdf");
     const stored = await provenance("problem-set");
     expect(stored.pdf_url).toBe(`${site.origin}/download?id=problem-set`);
@@ -426,5 +518,17 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     expect(await text("#bucket-origin")).toBe(bucket.origin);
     expect(await badge()).toBe("!");
+  });
+
+  test("with the bucket stopped, a PDF link that opens a new tab keeps that tab with the failure", async () => {
+    await page.goto(`${site.origin}/reading-list.html`);
+    const opened = openedTab();
+    await page.click("a#pdf");
+    const tab = await opened;
+    await captureState(tab, "failed");
+    await Bun.sleep(SETTLE_MS);
+
+    expect(await tabGone(tab)).toBe(false);
+    await tab.close();
   });
 });

@@ -23,6 +23,8 @@ export const RuntimeMessageSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({ type: z.literal("capture"), pdf_url: HttpUrlSchema }),
   z.strictObject({ type: z.literal("exempt"), pdf_url: HttpUrlSchema }),
+  // The capture page's tab was opened for the PDF alone and the capture succeeded.
+  z.strictObject({ type: z.literal("close-tab") }),
 ]);
 
 export type RuntimeMessage = z.infer<typeof RuntimeMessageSchema>;

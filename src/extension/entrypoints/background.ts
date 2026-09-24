@@ -1,7 +1,7 @@
 // Capture background: registers PDF interception for this browser while the capture switch is
-// on, records link origins, captures PDFs for the capture page, hands (tab, URL) pairs back
-// to the browser's own viewer when the capture page asks, and keeps the toolbar badge in step
-// with the bucket and the switch.
+// on, records link origins, captures PDFs for the capture page, closes a tab opened only for a
+// captured PDF, hands (tab, URL) pairs back to the browser's own viewer when the capture page
+// asks, and keeps the toolbar badge in step with the bucket and the switch.
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
 import { bucketBuild } from "../bucket-config";
@@ -41,6 +41,9 @@ export default defineBackground(() => {
         return capture(message.pdf_url);
       case "exempt":
         await (await interception).exempt(tabId, message.pdf_url);
+        return null;
+      case "close-tab":
+        await browser.tabs.remove(tabId);
         return null;
     }
   }
