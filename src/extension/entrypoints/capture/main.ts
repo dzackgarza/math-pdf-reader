@@ -4,9 +4,9 @@
 // or closes when it was opened for the PDF alone; a frame keeps one line naming the item.
 // A failure stays on screen with a way to open the PDF in the browser instead.
 import { browser } from "wxt/browser";
+import type { CaptureResponse } from "../../../server/contract";
 import { bucketBuild } from "../../bucket-config";
 import { pdfUrlFromCaptureQuery } from "../../interception";
-import type { CaptureResponse } from "../../../server/contract";
 import { type CaptureOutcome, CaptureOutcomeSchema, type RuntimeMessage } from "../../messages";
 
 function element(id: string): HTMLElement {
@@ -53,13 +53,15 @@ async function leaveTab(): Promise<void> {
 }
 
 function renderStoredInFrame(response: CaptureResponse): void {
-  element("heading").replaceChildren(
-    link(response.reader_url, response.provenance.title_hint),
-  );
-  element("heading").querySelector("a")?.setAttribute("target", "_blank");
+  const reader = link(response.reader_url, response.provenance.title_hint);
+  reader.target = "_blank";
+  element("heading").replaceChildren(reader);
 }
 
-function renderFailure(pdfUrl: URL, error: Extract<CaptureOutcome, { kind: "failed" }>["error"]): void {
+function renderFailure(
+  pdfUrl: URL,
+  error: Extract<CaptureOutcome, { kind: "failed" }>["error"],
+): void {
   document.title = "Not saved · PDF Bucket";
   element("heading").textContent = "Not saved";
   element("details").replaceChildren(
