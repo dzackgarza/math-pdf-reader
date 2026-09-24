@@ -43,9 +43,11 @@ The window starts at login only when the session reaches `graphical-session.targ
 ### Window
 
 `just provision` also installs a launcher entry, **PDF Bucket** (`pdf-bucket-desktop.desktop`), and the app icon.
-The window has a tray icon. Closing the window hides it to the tray, and the bucket keeps running and follows captures.
-Click the tray icon to open its menu. **Show PDF Bucket** brings the window back and **Quit PDF Bucket** exits the process. A unit's window stays stopped after Quit until the next login or `systemctl --user start pdf-bucket-window`.
-Starting PDF Bucket from the launcher while it runs shows the running window instead of opening a second one.
+The window has a tray icon.
+Closing the window hides it to the tray, and the bucket keeps running and follows captures.
+Click the tray icon to open its menu.
+**Show PDF Bucket** brings the window back and **Quit PDF Bucket** exits the process.
+A unit's window stays stopped after Quit until the next login or `systemctl --user start pdf-bucket-window`. Starting PDF Bucket from the launcher while it runs shows the running window instead of opening a second one.
 When the window has been quit, the launcher starts a new window process outside systemd.
 
 ### Hyprland
