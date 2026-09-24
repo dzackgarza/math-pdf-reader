@@ -40,6 +40,14 @@ If the whole data root is lost, `just import-index` restores the filing into the
 A unit that fails to start is retried twice and then stays failed; `systemctl --user status pdf-bucket` and `journalctl --user -u pdf-bucket` show why.
 The window starts at login only when the session reaches `graphical-session.target`: a compositor started through `uwsm` does, and so does a session target bound to it, such as `hyprland-session.target` started from the compositor's startup (docs/m5.md shows the one used on the development workstation).
 
+### Window
+
+`just provision` also installs a launcher entry, **PDF Bucket** (`pdf-bucket-desktop.desktop`), and the app icon.
+The window has a tray icon. Closing the window hides it to the tray, and the bucket keeps running and follows captures.
+Click the tray icon to open its menu. **Show PDF Bucket** brings the window back and **Quit PDF Bucket** exits the process. A unit's window stays stopped after Quit until the next login or `systemctl --user start pdf-bucket-window`.
+Starting PDF Bucket from the launcher while it runs shows the running window instead of opening a second one.
+When the window has been quit, the launcher starts a new window process outside systemd.
+
 ### Hyprland
 
 After a capture the window asks for focus.
