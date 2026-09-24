@@ -1,4 +1,5 @@
-// The capture contract a capture client (the browser extension) shares with the server.
+// The contract a capture client (the browser extension) shares with the server: the capture
+// response and the status report.
 // The extension bundles this module, so it imports nothing server-side.
 import { z } from "zod";
 
@@ -20,3 +21,18 @@ export const CaptureResponseSchema = z.strictObject({
 });
 
 export type CaptureResponse = z.infer<typeof CaptureResponseSchema>;
+
+export const SERVICE_NAME = "pdf-bucket";
+
+// `GET /status`: the capture extension and the library read it to tell whether the bucket is
+// up and able to store captures.
+export const ServerStatusSchema = z.strictObject({
+  backend_url: z.url(),
+  root: z.string().min(1),
+  service: z.strictObject({ name: z.literal(SERVICE_NAME), version: z.string().min(1) }),
+  storage: z.strictObject({ root_exists: z.boolean(), root_writable: z.boolean() }),
+  capabilities: z.strictObject({ capture: z.boolean() }),
+  ready: z.boolean(),
+});
+
+export type ServerStatus = z.infer<typeof ServerStatusSchema>;

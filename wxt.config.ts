@@ -27,8 +27,10 @@ export default defineConfig({
     name: "PDF Bucket",
     permissions:
       browser === "firefox"
-        ? ["webRequest", "webRequestBlocking", "storage"]
-        : ["declarativeNetRequestWithHostAccess", "storage"],
+        ? ["webRequest", "webRequestBlocking", "storage", "alarms"]
+        : ["declarativeNetRequestWithHostAccess", "storage", "alarms"],
+    // The toolbar popup doubles as the options page, which holds the capture switch.
+    options_ui: { page: "popup.html", open_in_tab: false },
     host_permissions: ["<all_urls>"],
     web_accessible_resources: [{ resources: ["capture.html"], matches: ["<all_urls>"] }],
     ...(browser === "firefox"

@@ -1,26 +1,4 @@
-:root {
-  color-scheme: light dark;
-  --ink: #1d232b;
-  --muted: #5b6573;
-  --paper: #f6f4ef;
-  --card: #ffffff;
-  --rule: #d9d4c9;
-  --accent: #2f5d8a;
-  --danger: #a33a2c;
-  font-family: system-ui, sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #e7e3da;
-    --muted: #a7adb6;
-    --paper: #16191d;
-    --card: #1f242a;
-    --rule: #343b44;
-    --accent: #8db8e3;
-    --danger: #ef8b7c;
-  }
-}
+@import "../../theme.css";
 
 body {
   box-sizing: border-box;

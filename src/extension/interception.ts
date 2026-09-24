@@ -109,7 +109,10 @@ const pdfDisposition = ({ contentType, disposition }: PdfEvidence) =>
   disposition !== undefined &&
   /\.pdf(["']|$)/.test(disposition);
 
-export function isPdfResponse(url: string, headers: Browser.webRequest.HttpHeader[]): boolean {
+// The name and value of a response header, the part of either browser's header type read here.
+type ResponseHeader = { name: string; value?: string | undefined };
+
+export function isPdfResponse(url: string, headers: ResponseHeader[]): boolean {
   const header = (name: string) =>
     headers.find((candidate) => candidate.name.toLowerCase() === name)?.value?.toLowerCase();
   const evidence = {

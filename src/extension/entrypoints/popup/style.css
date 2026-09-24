@@ -1,0 +1,136 @@
+@import "../../theme.css";
+
+body {
+  box-sizing: border-box;
+  min-width: 22rem;
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+main {
+  box-sizing: border-box;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+
+section {
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+section:first-of-type {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+.brand {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+h1::before {
+  content: "";
+  flex: none;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+#connection[data-state="ready"] h1::before {
+  background: var(--ok);
+}
+
+#connection[data-state="not-ready"] h1::before,
+#connection[data-state="unreachable"] h1::before {
+  background: var(--danger);
+}
+
+#connection[data-state="not-ready"] h1,
+#connection[data-state="unreachable"] h1 {
+  color: var(--danger);
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+code {
+  font-size: 0.85em;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switch input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.hint {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+}
+
+#last-capture p {
+  margin: 0;
+}
+
+#last-capture .failed {
+  color: var(--danger);
+}
+
+.actions {
+  margin: 0.25rem 0 0;
+}
+
+a {
+  color: var(--accent);
+}

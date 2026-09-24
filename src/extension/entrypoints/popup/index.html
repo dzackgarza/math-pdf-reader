@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Bucket</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <p class="brand">PDF Bucket</p>
+      <section id="connection" data-state="checking" aria-live="polite">
+        <h1 id="connection-heading">Checking the bucket…</h1>
+        <dl id="connection-details"></dl>
+      </section>
+      <section>
+        <label class="switch">
+          <input type="checkbox" id="capture-enabled" disabled />
+          <span id="capture-label">Capture PDF links</span>
+        </label>
+        <p class="hint" id="capture-hint"></p>
+      </section>
+      <section>
+        <h2>Last capture</h2>
+        <div id="last-capture"></div>
+      </section>
+      <p class="actions"><a id="open-library" target="_blank" rel="noopener">Open the library</a></p>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

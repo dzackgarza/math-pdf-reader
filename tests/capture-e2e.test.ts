@@ -75,7 +75,13 @@ async function buildExtension(engine: Engine, bucketPort: number): Promise<strin
   return join(outDir, engine === "chrome" ? "chrome-mv3" : "firefox-mv2");
 }
 
-async function launch(engine: Engine, extension: string): Promise<Browser> {
+// Firefox gives each installed extension a random internal UUID for its moz-extension://
+// origin; this pref pins it so the suite can open the extension's own pages.
+const FIREFOX_EXTENSION_UUID = "5d1c2a8e-3f47-4b6e-9a0d-7c41e2b9f613";
+
+type Launched = { browser: Browser; extensionOrigin: string };
+
+async function launch(engine: Engine, extension: string): Promise<Launched> {
   if (engine === "chrome") {
     const browser = await puppeteer.launch({
       browser: "chrome",
@@ -104,7 +110,9 @@ async function launch(engine: Engine, extension: string): Promise<Browser> {
     while ((await registered()) < pdfCaptureRules("", "").length) {
       await Bun.sleep(50);
     }
-    return browser;
+    // `URL.origin` is "null" for the non-special chrome-extension: scheme.
+    const workerUrl = new URL(target.url());
+    return { browser, extensionOrigin: `${workerUrl.protocol}//${workerUrl.host}` };
   }
   const browser = await puppeteer.launch({
     browser: "firefox",
@@ -113,9 +121,14 @@ async function launch(engine: Engine, extension: string): Promise<Browser> {
     defaultViewport: viewport,
     // The capture page is a moz-extension (privileged) document; BiDi scripts it only then.
     args: ["-remote-allow-system-access"],
+    extraPrefsFirefox: {
+      "extensions.webextensions.uuids": JSON.stringify({
+        "pdf-bucket@dzackgarza.com": FIREFOX_EXTENSION_UUID,
+      }),
+    },
   });
   await browser.installExtension(extension);
-  return browser;
+  return { browser, extensionOrigin: `moz-extension://${FIREFOX_EXTENSION_UUID}` };
 }
 
 async function captureState(frame: Frame | Page, state: "stored" | "failed"): Promise<void> {
@@ -134,6 +147,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   const site = startFixtureSite();
   let bucket: ReturnType<typeof startBucket>;
   let browser: Browser;
+  let extensionOrigin: string;
   let page: Page;
 
   const shot = async (name: string) => {
@@ -170,6 +184,58 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await page.click("a#pdf");
   };
 
+  // The toolbar popup, opened as a tab: the extension's status page. WebDriver BiDi cannot
+  // navigate a Firefox tab into a moz-extension document, and after a page script does it,
+  // Puppeteer's recorded URL stays stale while the document itself stays scriptable. So in
+  // Firefox a page script goes to the web-accessible capture page (given no PDF URL, it
+  // captures nothing), then within the extension's origin, and the document's own
+  // location is polled.
+  const documentUrl = async () => z.string().parse(await page.evaluate("location.href"));
+  const scriptNavigate = async (url: string) => {
+    await page.evaluate(`location.assign(${JSON.stringify(url)})`);
+    while ((await documentUrl()) !== url) {
+      await Bun.sleep(50);
+    }
+  };
+  const openStatus = async (state: "ready" | "unreachable") => {
+    const status = `${extensionOrigin}/popup.html`;
+    if (engine === "chrome") {
+      await page.goto(status);
+    } else {
+      if (!(await documentUrl()).startsWith(extensionOrigin)) {
+        await scriptNavigate(`${extensionOrigin}/capture.html`);
+      }
+      await scriptNavigate(status);
+    }
+    await page.waitForSelector(`#connection[data-state="${state}"]`);
+  };
+  // Firefox refuses synthesized input in privileged (moz-extension) documents; a DOM click
+  // flips the checkbox and fires its change event in both browsers.
+  const flipCaptureSwitch = async () => {
+    await page.$eval("#capture-enabled", (box) => {
+      if (box instanceof HTMLInputElement) {
+        box.click();
+      }
+    });
+  };
+  const text = async (selector: string) =>
+    z.string().parse(await page.$eval(selector, (node) => node.textContent));
+  const badge = async () =>
+    z
+      .string()
+      .parse(
+        await page.evaluate(
+          engine === "chrome"
+            ? "chrome.action.getBadgeText({})"
+            : "browser.browserAction.getBadgeText({})",
+        ),
+      );
+  const badgeBecomes = async (expected: string) => {
+    while ((await badge()) !== expected) {
+      await Bun.sleep(50);
+    }
+  };
+
   const provenance = async (key: string) => (await listItems(bucket.root, [key]))[0]?.provenance;
   const served = () => site.requests.map((request) => `${request.method} ${request.path}`);
 
@@ -178,7 +244,10 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const probe = startBucket(0);
     probe.stop();
     bucket = startBucket(probe.port);
-    browser = await launch(engine, await buildExtension(engine, bucket.port));
+    ({ browser, extensionOrigin } = await launch(
+      engine,
+      await buildExtension(engine, bucket.port),
+    ));
     page = await browser.newPage();
   }, 60_000);
 
@@ -198,6 +267,46 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(stored.source_url).toBe(`${site.origin}/abs/2401.00001`);
     expect(stored.title_hint).toBe("Sphere packing in dimension 8 (PDF)");
     expect(stored.original_sha256).toBe(sha256(problemSet));
+  });
+
+  test("the status page shows the connected bucket and the last capture, and the badge says ON", async () => {
+    await openStatus("ready");
+    await shotCapturePage("status-ready");
+
+    expect(await text("#bucket-origin")).toBe(bucket.origin);
+    expect(await text("#bucket-version")).toBe("0.1.0");
+    expect(await text("#bucket-root")).toBe(bucket.root);
+    expect(await text("#last-capture a")).toBe("Sphere packing in dimension 8 (PDF)");
+    expect(await page.$eval("#last-capture a", (link) => link.getAttribute("href"))).toBe(
+      `${bucket.origin}/read/2401.00001`,
+    );
+    expect(await badge()).toBe("ON");
+  });
+
+  test("with capture turned off a PDF link opens in the browser; turned back on, it is captured", async () => {
+    await openStatus("ready");
+    await flipCaptureSwitch();
+    await badgeBecomes("OFF");
+    await shotCapturePage("status-off");
+
+    // An intercepted navigation would end on the capture page, not on the PDF's own URL.
+    const pdfUrl = `${site.origin}/pdf/2401.00001`;
+    const fetches = () => site.requests.filter((request) => request.path === "/pdf/2401.00001");
+    const before = fetches().length;
+    await followLink("/abs/2401.00001");
+    await Bun.sleep(SETTLE_MS);
+    expect(page.url()).toBe(pdfUrl);
+    expect(fetches().length).toBe(before + 1);
+
+    await openStatus("ready");
+    const checked = await page.$eval("#capture-enabled", (box) =>
+      box instanceof HTMLInputElement ? box.checked : null,
+    );
+    expect(checked).toBe(false);
+    await flipCaptureSwitch();
+    await badgeBecomes("ON");
+    await followLink("/abs/2401.00001");
+    await captureState(page, "stored");
   });
 
   test("a .pdf URL is captured once; navigating to it again opens the existing item", async () => {
@@ -307,5 +416,13 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     // One native load; an intercepted load would add the capture page's own fetch.
     expect(fetches()).toBe(beforeNativeOpen + 1);
     expect(bucket.files()).toEqual(before);
+  });
+
+  test("with the bucket stopped, the status page says it is unreachable and the badge shows !", async () => {
+    await openStatus("unreachable");
+    await shotCapturePage("status-unreachable");
+
+    expect(await text("#bucket-origin")).toBe(bucket.origin);
+    expect(await badge()).toBe("!");
   });
 });

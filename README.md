@@ -75,6 +75,11 @@ The rule sets `focus_on_activate` for the bucket window only.
 
 The builds are unsigned.
 
+Once installed, the extension has a toolbar button.
+Its badge shows the state: `ON` means the bucket answers and PDF links go to it, `OFF` means capture is switched off in this browser, and `!` means the bucket is not reachable or cannot store PDFs.
+Click the button to see the bucket's address, version and data folder, switch capture on or off for this browser, and see the last capture.
+The same page is the extension's options page.
+
 **Chrome or Chromium:** open `chrome://extensions`, turn on Developer mode, press **Load unpacked** and choose `dist/chrome-mv3`. The extension stays installed across restarts; after a rebuild press its reload button.
 
 **Firefox.** Release Firefox installs only signed extensions permanently.
