@@ -246,24 +246,46 @@ describe("library window", () => {
     await page.waitForFunction(() => location.hash === "#/unfiled");
   });
 
-  test("the reader goes back to the library, keeps the view in its address, and restores it", async () => {
-    await openLibrary();
+  test("reader back and forward walk the positions visited in the PDF and stay in it; Library returns to the view the PDF was opened from", async () => {
+    await page.goto(`${bucket.origin}/#/unfiled`);
+    await page.waitForSelector(row("reading"));
     await page.click(row("reading"), { count: 2 });
     await page.waitForFunction(() => location.pathname === "/read/reading");
     const viewer = await (await page.waitForSelector("iframe"))?.contentFrame();
     if (viewer === undefined || viewer === null) {
       throw new Error("the reader has no viewer frame");
     }
-    await viewer.waitForFunction(
-      "window.PDFViewerApplication?.pdfDocument !== undefined && window.PDFViewerApplication.pdfDocument !== null",
-    );
-    await viewer.evaluate("PDFViewerApplication.page = 7");
-    await page.waitForFunction(() => location.hash.includes("page=7"));
+    await viewer.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
+    // Follows a link to a page, as an outline entry or an internal link in the PDF does.
+    const followLinkTo = async (pageNumber: number) => {
+      await viewer.evaluate(`PDFViewerApplication.pdfLinkService.goToPage(${pageNumber})`);
+      await viewer.waitForFunction(`PDFViewerApplication.page === ${pageNumber}`);
+    };
+    await followLinkTo(7);
+    await followLinkTo(3);
     await shot("reader");
+
+    const back = 'button[aria-label="Back"]';
+    const forward = 'button[aria-label="Forward"]';
+    await page.click(back);
+    await viewer.waitForFunction("PDFViewerApplication.page === 7");
+    await page.click(back);
+    await viewer.waitForFunction("PDFViewerApplication.page === 1");
+    expect(await page.$eval(back, (button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    await page.keyboard.down("Alt");
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.up("Alt");
+    expect(new URL(page.url()).pathname).toBe("/read/reading");
+    expect(await viewer.evaluate("PDFViewerApplication.page")).toBe(1);
+    await page.click(forward);
+    await viewer.waitForFunction("PDFViewerApplication.page === 7");
+    await page.waitForFunction(() => location.hash.includes("page=7"));
     const address = page.url();
 
-    await page.click('button[aria-label="Back"]');
+    await page.click('a[aria-label="Library"]');
     await page.waitForSelector(row("reading"));
+    expect(new URL(page.url()).hash).toBe("#/unfiled");
+
     await page.goto(address);
     const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
     if (reopened === undefined || reopened === null) {
