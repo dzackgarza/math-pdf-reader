@@ -152,3 +152,4 @@ for (const [path, name] of Object.entries(papers)) {
   process.stdout.write(`fixture ${name} ${sha256(join(fixtures, name))}\n\n`);
 }
 publisher.stop(true);
+await app.stop();

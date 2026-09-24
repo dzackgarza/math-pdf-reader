@@ -1,6 +1,7 @@
 //! Where a stored PDF came from, checked again: whether its PDF URL and mirrors still serve the
 //! captured bytes (the recorded original SHA-256), and rebuilding a PDF the store has lost from
 //! the first of those URLs that does.
+use std::fmt;
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -17,35 +18,50 @@ pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+/// Why a URL served no bytes; its text is the detail a dead source check records.
+pub enum Dead {
+    BadUrl(url::ParseError),
+    NotLocal,
+    NoSuchFile,
+    Unreadable(std::io::Error),
+    Unreachable(reqwest::Error),
+    Status(u16),
+}
+
+impl fmt::Display for Dead {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BadUrl(error) => write!(formatter, "{error}"),
+            Self::NotLocal => formatter.write_str("names no local file"),
+            Self::NoSuchFile => formatter.write_str("no such file"),
+            Self::Unreadable(error) => write!(formatter, "{error}"),
+            Self::Unreachable(error) => write!(formatter, "{error}"),
+            Self::Status(status) => write!(formatter, "HTTP {status}"),
+        }
+    }
+}
+
 /// The one boundary where a network failure becomes a dead-URL outcome. A `file:` URL (a PDF
 /// added from a folder) is read from disk.
-pub async fn download(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
-    let parsed = Url::parse(url).map_err(|error| error.to_string())?;
+pub async fn download(url: &str, timeout: Duration) -> Result<Vec<u8>, Dead> {
+    let parsed = Url::parse(url).map_err(Dead::BadUrl)?;
     if parsed.scheme() == "file" {
-        let path = parsed
-            .to_file_path()
-            .map_err(|()| format!("{url} names no local file"))?;
+        let path = parsed.to_file_path().map_err(|()| Dead::NotLocal)?;
         return match tokio::fs::read(&path).await {
             Ok(bytes) => Ok(bytes),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Err("no such file".to_string())
-            }
-            Err(error) => Err(error.to_string()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(Dead::NoSuchFile),
+            Err(error) => Err(Dead::Unreadable(error)),
         };
     }
     let client = reqwest::Client::builder()
         .timeout(timeout)
         .build()
-        .map_err(|error| error.to_string())?;
-    let response = client
-        .get(parsed)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?;
+        .map_err(Dead::Unreachable)?;
+    let response = client.get(parsed).send().await.map_err(Dead::Unreachable)?;
     if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status().as_u16()));
+        return Err(Dead::Status(response.status().as_u16()));
     }
-    let body = response.bytes().await.map_err(|error| error.to_string())?;
+    let body = response.bytes().await.map_err(Dead::Unreachable)?;
     Ok(body.to_vec())
 }
 
@@ -58,7 +74,7 @@ enum Fetched {
 async fn fetch_original(url: &str, original_sha256: &str, settings: &AppConfigRebuild) -> Fetched {
     let timeout = Duration::from_secs(settings.download_timeout_seconds.get());
     match download(url, timeout).await {
-        Err(failure) => Fetched::Dead(failure),
+        Err(failure) => Fetched::Dead(failure.to_string()),
         Ok(bytes) => {
             let observed = sha256(&bytes);
             if observed == original_sha256 {
