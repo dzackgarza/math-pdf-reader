@@ -24,6 +24,7 @@ import LibraryBar, { type LibraryLayout } from "./components/LibraryBar";
 import LibraryGrid from "./components/LibraryGrid";
 import LibraryTable from "./components/LibraryTable";
 import MissingList from "./components/MissingList";
+import SelectionBar from "./components/SelectionBar";
 import NameDialog, { type NameRequest } from "./components/NameDialog";
 import Sidebar from "./components/Sidebar";
 import StatusBar from "./components/StatusBar";
@@ -32,6 +33,7 @@ import { openInBrowser, showInFolder } from "./desktop";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import {
   type ActionContext,
+  bulkActions,
   createCollection,
   type ExtractionAttempt,
   extractWith,
@@ -262,6 +264,18 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       onClearSearch={() => setSearch(defaultSearchSettings())}
     />
   );
+  const selectedKeys = table.getSelectedRowModel().rows.map((row) => row.id);
+  const bulk = bulkActions(context, selectedKeys);
+  const selectionBar = selectedKeys.length > 0 && (
+    <SelectionBar
+      count={selectedKeys.length}
+      collections={payload.collections}
+      onTag={bulk.tag}
+      onFile={bulk.file}
+      onFileInNew={bulk.fileInNew}
+      onClear={() => table.resetRowSelection()}
+    />
+  );
   const tableElement = (
     <LibraryTable
       table={table}
@@ -308,6 +322,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               onLayout={setLayout}
             />
           )}
+          {screen.kind === "library" && screen.view.kind !== "missing" && selectionBar}
           {screen.kind === "library" &&
             screen.view.kind !== "missing" &&
             (layout === "grid" ? gridElement : tableElement)}
@@ -325,7 +340,12 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               tab={screen.tab}
               entry={view === null || view.kind === "all" ? null : screen.entry}
               actions={organizationActions(context)}
-              table={tableElement}
+              table={
+                <>
+                  {selectionBar}
+                  {tableElement}
+                </>
+              }
             />
           )}
           {screen.kind === "settings" && <SettingsScreen read={read} onError={setToast} />}

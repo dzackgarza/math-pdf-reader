@@ -403,3 +403,41 @@ test("an item's first page is served as a PNG of the requested width", async () 
   expect((await bucket.request("/api/items/missing/thumbnail?width=160")).status).toBe(404);
   expect((await bucket.request("/api/items/lattices/thumbnail?width=0")).status).toBe(400);
 });
+
+test("bulk filing adds tags and collections to every chosen item, keeping what each already had", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
+  await send(bucket, "PUT", "/api/items/lattices/tags", { tags: ["codes"] });
+  const forms = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Quadratic forms" })).json(),
+  );
+
+  const tagged = await send(bucket, "POST", "/api/bulk/tags", {
+    keys: ["lattices", "problems"],
+    add: ["survey", "topic:lattices"],
+  });
+  expect(tagged.status).toBe(200);
+  const filed = await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices", "problems"],
+    add: [forms.id],
+  });
+  expect(filed.status).toBe(200);
+  const items = byId((await library(open(bucket.root))).items);
+  expect(items.get("lattices")?.tags).toEqual(["codes", "survey", "topic:lattices"]);
+  expect(items.get("problems")?.tags).toEqual(["survey", "topic:lattices"]);
+  expect(items.get("lattices")?.collections).toEqual([forms.id]);
+  expect(items.get("problems")?.collections).toEqual([forms.id]);
+
+  const unknownItem = await send(bucket, "POST", "/api/bulk/tags", {
+    keys: ["lattices", "missing"],
+    add: ["x"],
+  });
+  expect(unknownItem.status).toBe(404);
+  const unknownCollection = await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices"],
+    add: ["no-such-collection"],
+  });
+  expect(unknownCollection.status).toBe(400);
+  expect(byId((await library(bucket)).items).get("lattices")?.tags).not.toContain("x");
+});

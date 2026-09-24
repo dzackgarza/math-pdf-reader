@@ -148,6 +148,20 @@ export default function LibraryTable({
             <thead className="sticky top-0 z-10 bg-white shadow-[inset_0_-1px_0_var(--color-line)]">
               {table.getHeaderGroups().map((group) => (
                 <tr key={group.id}>
+                  <th className="w-10 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={table.getIsAllRowsSelected()}
+                      ref={(input) => {
+                        if (input !== null) {
+                          input.indeterminate = table.getIsSomeRowsSelected();
+                        }
+                      }}
+                      onChange={table.getToggleAllRowsSelectedHandler()}
+                      className="accent-accent"
+                    />
+                  </th>
                   {group.headers.map((header) => {
                     const sorted = header.column.getIsSorted();
                     return (
@@ -192,7 +206,7 @@ export default function LibraryTable({
                 {rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={table.getVisibleLeafColumns().length}
+                      colSpan={table.getVisibleLeafColumns().length + 1}
                       className="px-6 py-20 text-center"
                     >
                       <Inbox aria-hidden className="mx-auto mb-3 h-9 w-9 text-faint" />
@@ -217,6 +231,17 @@ export default function LibraryTable({
                           selected ? "bg-accent-soft" : "bg-white hover:bg-surface"
                         }`}
                       >
+                        <td className="w-10 px-3 py-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${row.original.title}`}
+                            checked={row.getIsSelected()}
+                            onChange={row.getToggleSelectedHandler()}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            className="accent-accent"
+                          />
+                        </td>
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}

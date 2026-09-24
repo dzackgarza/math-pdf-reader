@@ -6,6 +6,8 @@ import type { IndexExporter } from "./indexExport";
 import {
   type ApiErrorKind,
   type BucketItem,
+  BulkCollectionsRequestSchema,
+  BulkTagsRequestSchema,
   CollectionsRequestSchema,
   type LibraryPayload,
   NewCollectionRequestSchema,
@@ -25,6 +27,7 @@ import {
   deleteCollection,
   deleteNote,
   deleteSavedSearch,
+  fileMany,
   type Organization,
   OrganizationStore,
   organizationFile,
@@ -258,6 +261,44 @@ function itemRoutes(app: Hono, state: LibraryState, root: string, resolversManif
   });
 }
 
+function bulkRoutes(app: Hono, state: LibraryState) {
+  const unstored = async (keys: string[]) => {
+    const stored = new Set((await state.index.items()).map((indexed) => indexed.stored.key));
+    return keys.filter((key) => !stored.has(key));
+  };
+
+  app.post("/api/bulk/tags", async (c) => {
+    const body = await parseBody(c, BulkTagsRequestSchema);
+    if (!body.success) {
+      return invalid(c, body.error);
+    }
+    const unknown = await unstored(body.data.keys);
+    if (unknown.length > 0) {
+      return apiError(c, 404, "unknown_item", `no stored PDF has key ${unknown.join(", ")}`);
+    }
+    const additions = { tags: body.data.add, collections: [] };
+    return state.change(c, (org) => fileMany(org, body.data.keys, additions, now()));
+  });
+
+  app.post("/api/bulk/collections", async (c) => {
+    const body = await parseBody(c, BulkCollectionsRequestSchema);
+    if (!body.success) {
+      return invalid(c, body.error);
+    }
+    const unknown = await unstored(body.data.keys);
+    if (unknown.length > 0) {
+      return apiError(c, 404, "unknown_item", `no stored PDF has key ${unknown.join(", ")}`);
+    }
+    const known = await state.collectionIds();
+    const missing = body.data.add.filter((id) => !known.has(id));
+    if (missing.length > 0) {
+      return apiError(c, 400, "unknown_collection", `no collection has id ${missing.join(", ")}`);
+    }
+    const additions = { tags: [], collections: body.data.add };
+    return state.change(c, (org) => fileMany(org, body.data.keys, additions, now()));
+  });
+}
+
 function collectionRoutes(app: Hono, state: LibraryState) {
   app.post("/api/collections", async (c) => {
     const body = await parseBody(c, NewCollectionRequestSchema);
@@ -351,6 +392,7 @@ export function registerLibraryRoutes(
   });
   itemRoutes(app, state, root, resolversManifest);
   collectionRoutes(app, state);
+  bulkRoutes(app, state);
   savedSearchRoutes(app, state);
   sendRoutes(app, state, root, zotero, library);
   sourceRoutes(app, state, root, loadAppConfig(CONFIG_PATH).rebuild, library);

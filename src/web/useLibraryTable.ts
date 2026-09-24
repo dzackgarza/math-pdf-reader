@@ -6,6 +6,7 @@ import {
   type ColumnSizingState,
   getCoreRowModel,
   getSortedRowModel,
+  type RowSelectionState,
   type SortingState,
   type Table,
   type Updater,
@@ -36,6 +37,7 @@ export function useLibraryTable(
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(initialLayout.columnOrder);
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(initialLayout.columnSizing);
   const [sorting, setSorting] = useState<SortingState>([{ id: "dateAdded", desc: true }]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
 
   useEffect(() => {
     writeColumnLayout({ columnVisibility, columnOrder, columnSizing });
@@ -44,7 +46,9 @@ export function useLibraryTable(
   return useReactTable<BucketItem>({
     data: items,
     columns: BUCKET_COLUMNS,
-    state: { columnVisibility, columnOrder, columnSizing, sorting },
+    state: { columnVisibility, columnOrder, columnSizing, sorting, rowSelection },
+    enableRowSelection: true,
+    onRowSelectionChange: setRowSelection,
     onColumnVisibilityChange: (updater) =>
       setColumnVisibility((previous) => ({
         ...applyUpdater(updater, previous),

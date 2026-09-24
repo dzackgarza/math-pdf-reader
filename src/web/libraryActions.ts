@@ -193,6 +193,48 @@ export function itemMenuActions(
   };
 }
 
+// What the selection bar does to the chosen items.
+export type BulkActions = {
+  tag: () => void;
+  file: (collectionId: string) => void;
+  fileInNew: () => void;
+};
+
+export function bulkActions(context: ActionContext, keys: string[]): BulkActions {
+  const file = (collectionId: string) =>
+    context.mutate(LibraryPayloadSchema, "POST", "/api/bulk/collections", {
+      keys,
+      add: [collectionId],
+    });
+  return {
+    tag: () =>
+      context.askName({
+        title: `Add a tag to ${keys.length} PDFs`,
+        label: "Name",
+        submitLabel: "Add",
+        initialName: "",
+        onSubmit: (name) =>
+          run(
+            context,
+            context.mutate(LibraryPayloadSchema, "POST", "/api/bulk/tags", { keys, add: [name] }),
+          ),
+      }),
+    file: (collectionId) => run(context, file(collectionId)),
+    fileInNew: () =>
+      context.askName({
+        title: "New collection",
+        label: "Name",
+        submitLabel: "Create",
+        initialName: "",
+        onSubmit: (name) =>
+          run(
+            context,
+            newCollection(context, name).then((collection) => file(collection.id)),
+          ),
+      }),
+  };
+}
+
 export function createCollection(context: ActionContext, parentId?: string): void {
   context.askName({
     title: parentId === undefined ? "New collection" : "New subcollection",

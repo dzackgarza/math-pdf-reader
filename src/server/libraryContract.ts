@@ -252,6 +252,16 @@ export const ApiErrorSchema = z.strictObject({
 export const TagsRequestSchema = z.strictObject({ tags: z.array(z.string().trim().min(1)) });
 export const CollectionsRequestSchema = z.strictObject({ collections: z.array(z.string().min(1)) });
 export const NoteRequestSchema = z.strictObject({ note: z.string().trim().min(1) });
+// Tags or collections added to every item listed, each keeping what it had.
+const BulkKeysSchema = z.array(z.string().min(1)).min(1);
+export const BulkTagsRequestSchema = z.strictObject({
+  keys: BulkKeysSchema,
+  add: z.array(z.string().trim().min(1)).min(1),
+});
+export const BulkCollectionsRequestSchema = z.strictObject({
+  keys: BulkKeysSchema,
+  add: z.array(z.string().min(1)).min(1),
+});
 export const NewCollectionRequestSchema = CollectionSchema.omit({ id: true });
 export const RenameCollectionRequestSchema = z.strictObject({ name: NameSchema });
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });

@@ -36,15 +36,15 @@ export default function LibraryGrid({
   empty,
 }: LibraryGridProps) {
   const [menuItem, setMenuItem] = useState<string | null>(null);
-  const items = table.getRowModel().rows.map((row) => row.original);
-  if (items.length === 0) {
+  const rows = table.getRowModel().rows;
+  if (rows.length === 0) {
     return <div className="min-h-0 flex-1 px-6 py-20 text-center">{empty}</div>;
   }
   return (
     <ContextMenu.Root onOpenChange={(open) => !open && setMenuItem(null)}>
       <ContextMenu.Trigger asChild>
         <ul className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 overflow-auto p-4">
-          {items.map((item) => (
+          {rows.map((row) => ({ row, item: row.original })).map(({ row, item }) => (
             <li
               key={item.id}
               data-card-id={item.id}
@@ -55,12 +55,21 @@ export default function LibraryGrid({
                 onSelectItem(item.id);
                 setMenuItem(item.id);
               }}
-              className={`flex cursor-default flex-col gap-2 rounded-lg border p-2 ${
+              className={`relative flex cursor-default flex-col gap-2 rounded-lg border p-2 ${
                 item.id === selectedItemId
                   ? "border-accent bg-accent-soft"
                   : "border-line bg-white hover:bg-surface"
               }`}
             >
+              <input
+                type="checkbox"
+                aria-label={`Select ${item.title}`}
+                checked={row.getIsSelected()}
+                onChange={row.getToggleSelectedHandler()}
+                onClick={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => event.stopPropagation()}
+                className="absolute top-3 left-3 accent-accent"
+              />
               <img
                 src={thumbnailPath(item.id, 320)}
                 alt=""

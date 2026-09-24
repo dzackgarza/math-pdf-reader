@@ -90,6 +90,24 @@ export function setTags(org: Organization, key: string, tags: string[], now: str
   return fileItem(org, key, now, (filing) => ({ ...filing, tags: normalizedTags(tags) }));
 }
 
+// Adds TAGS and COLLECTIONS to each of KEYS, after what each item already has.
+export function fileMany(
+  org: Organization,
+  keys: string[],
+  additions: { tags: string[]; collections: string[] },
+  now: string,
+): Organization {
+  return keys.reduce(
+    (current, key) =>
+      fileItem(current, key, now, (filing) => ({
+        ...filing,
+        tags: normalizedTags([...filing.tags, ...additions.tags]),
+        collections: [...new Set([...filing.collections, ...additions.collections])],
+      })),
+    org,
+  );
+}
+
 export function setCollections(
   org: Organization,
   key: string,

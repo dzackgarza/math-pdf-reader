@@ -434,6 +434,36 @@ describe("library window", () => {
     await page.waitForSelector(row("reading"));
   });
 
+  test("rows chosen with their checkboxes are tagged and filed together", async () => {
+    await openLibrary();
+    const chosen = ["problems", "lattices"];
+    for (const key of chosen) {
+      await page.click(`${row(key)} input[type="checkbox"]`);
+    }
+    await page.waitForSelector("::-p-text(2 selected)");
+    await shot("library-selection");
+
+    await page.click('button[aria-label="Tag selected"]');
+    await page.type('[role="dialog"] input', "survey");
+    await page.keyboard.press("Enter");
+    for (const key of chosen) {
+      await page.waitForSelector(`${row(key)} ::-p-text(survey)`);
+    }
+    await page.click('button[aria-label="File selected"]');
+    await (await menuItem("Quadratic forms")).click();
+    await page.waitForFunction(() => document.querySelector('[role="menu"]') === null);
+
+    const org = await organization();
+    const forms = org.collections.find((collection) => collection.name === "Quadratic forms");
+    for (const key of chosen) {
+      expect(org.items[key]?.tags).toContain("survey");
+      expect(org.items[key]?.collections).toContain(forms?.id ?? "");
+    }
+    expect(org.items.reading?.tags ?? []).not.toContain("survey");
+    await page.click('button[aria-label="Clear selection"]');
+    await page.waitForFunction(() => !document.body.textContent?.includes("selected"));
+  });
+
   test("the library at a narrow width", async () => {
     await openLibrary();
     await page.click(row("lattices"));
