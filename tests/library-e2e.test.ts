@@ -389,8 +389,16 @@ describe("library window", () => {
         .sort();
     const all = keysWhere(() => true);
     const filters = [
-      { name: "Unfiled", hash: "#/unfiled", keys: keysWhere((item) => item.collections.length === 0) },
-      { name: "Unread", hash: "#/unread", keys: keysWhere((item) => item.reading.status === "unread") },
+      {
+        name: "Unfiled",
+        hash: "#/unfiled",
+        keys: keysWhere((item) => item.collections.length === 0),
+      },
+      {
+        name: "Unread",
+        hash: "#/unread",
+        keys: keysWhere((item) => item.reading.status === "unread"),
+      },
     ];
     const sortedRows = async () => (await rowKeys()).sort();
     const rowCount = (count: number) =>

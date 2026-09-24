@@ -4,12 +4,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Table } from "@tanstack/react-table";
 import { ArrowDownUp, Check } from "lucide-react";
 import type { BucketItem, LibraryPayload } from "../../server/libraryContract";
-import {
-  itemsInView,
-  type LibraryView,
-  QUICK_FILTERS,
-  quickFilterName,
-} from "../librarySelectors";
+import { itemsInView, type LibraryView, QUICK_FILTERS, quickFilterName } from "../librarySelectors";
 
 type LibraryBarProps = {
   payload: LibraryPayload;
@@ -25,7 +20,7 @@ function SortMenu({ table }: { table: Table<BucketItem> }) {
   const [sorted] = table.getState().sorting;
   const columns = table.getAllLeafColumns();
   const current = columns.find((column) => column.id === sorted?.id);
-  const direction = sorted?.desc === true ? "descending" : "ascending";
+  const direction = sorted?.desc ? "descending" : "ascending";
   const sortBy = (id: string, desc: boolean) => table.setSorting([{ id, desc }]);
   return (
     <DropdownMenu.Root>
@@ -45,7 +40,7 @@ function SortMenu({ table }: { table: Table<BucketItem> }) {
         >
           <DropdownMenu.RadioGroup
             value={sorted?.id ?? ""}
-            onValueChange={(id) => sortBy(id, sorted?.desc === true)}
+            onValueChange={(id) => sortBy(id, sorted?.desc)}
           >
             {columns.map((column) => (
               <DropdownMenu.RadioItem key={column.id} value={column.id} className={MENU_ITEM}>
@@ -94,7 +89,9 @@ export default function LibraryBar({ payload, view, navigate, table }: LibraryBa
             aria-pressed={on}
             onClick={() => navigate(on ? "/" : filter.path)}
             className={`inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm ${
-              on ? "bg-accent-soft font-medium text-accent" : "text-muted hover:bg-surface hover:text-ink"
+              on
+                ? "bg-accent-soft font-medium text-accent"
+                : "text-muted hover:bg-surface hover:text-ink"
             }`}
           >
             <span>{name}</span>
