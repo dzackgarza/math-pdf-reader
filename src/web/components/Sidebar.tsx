@@ -18,9 +18,7 @@ function NavItem({
 }) {
   const [location] = useLocation();
   const active =
-    location === to ||
-    alsoAt.includes(location) ||
-    (to !== "/" && location.startsWith(`${to}/`));
+    location === to || alsoAt.includes(location) || (to !== "/" && location.startsWith(`${to}/`));
   return (
     <Link
       href={to}
