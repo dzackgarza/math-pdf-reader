@@ -185,7 +185,7 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page = browser.new_page(viewport=VIEWPORT)
 
         page.goto(origins["empty"])
-        page.get_by_text("No PDFs in the bucket yet").wait_for()
+        page.get_by_text("No PDFs yet").wait_for()
         shoot(page, out, "library-empty")
 
         page.goto(origins["broken"])
@@ -219,7 +219,7 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         shoot(page, out, "inspector-notes")
         page.get_by_role("tab", name="Details").click()
 
-        search = page.get_by_role("searchbox", name="Search your PDFs")
+        search = page.get_by_role("searchbox", name="Search")
         started = time.perf_counter()
         search.fill("flips mmp")
         page.wait_for_function("document.querySelectorAll('tbody tr').length < 1000")
@@ -234,12 +234,12 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
 
         details = page.get_by_role("complementary", name="Item details")
         details.get_by_role("button", name="Add tag").click()
-        details.get_by_role("combobox", name="Add tag").fill("reread")
+        page.get_by_role("combobox", name="Tag").fill("reread")
         page.keyboard.press("Enter")
         details.get_by_role("button", name="Remove reread").wait_for()
         shoot(page, out, "inspector-tag-added")
 
-        page.get_by_role("button", name="New Collection").click()
+        page.get_by_role("button", name="New collection").click()
         page.get_by_role("dialog").get_by_role("textbox").fill("Reading Group")
         shoot(page, out, "dialog-new-collection")
         page.get_by_role("dialog").get_by_role("button", name="Create").click()
@@ -248,12 +248,12 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.goto(origins["seeded"])
         page.get_by_role("row").nth(1).wait_for()
 
-        page.keyboard.press("Control+k")
-        page.get_by_placeholder("Search PDFs, or type > for commands").fill("cone conjecture")
+        page.keyboard.press("Control+p")
+        page.get_by_placeholder("Go to PDF").fill("cone conjecture")
         shoot(page, out, "palette-items")
         page.keyboard.press("Escape")
         page.keyboard.press("Control+Shift+P")
-        page.get_by_placeholder("Run a command").wait_for()
+        page.get_by_placeholder("Command").wait_for()
         shoot(page, out, "palette-commands")
         page.keyboard.press("Escape")
 
@@ -271,10 +271,8 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         shoot(page, out, "organization-saved")
 
         page.goto(f"{origins['seeded']}/#/settings")
-        page.get_by_role("heading", name="Embedded Foundations").wait_for()
+        page.get_by_text("Library folder").wait_for()
         shoot(page, out, "settings")
-        page.get_by_role("heading", name="Embedded Foundations").scroll_into_view_if_needed()
-        shoot(page, out, "settings-foundations")
 
         page.goto(f"{origins['seeded']}/read/{quote(filed['reader'])}")
         page.frame_locator("iframe").locator(".page canvas").first.wait_for()
@@ -424,7 +422,7 @@ def send(out: Path) -> None:
             held: list[Route] = []
             page.route("**/api/items/*/zotero", lambda route: held.append(route))
             details.get_by_role("button", name="Send to Zotero").click()
-            details.get_by_role("button", name="Sending to Zotero…").wait_for()
+            details.get_by_role("button", name="Send to Zotero", disabled=True).wait_for()
             shoot(page, out, "send-sending")
             for route in held:
                 route.continue_()
@@ -433,18 +431,11 @@ def send(out: Path) -> None:
             shoot(page, out, "send-failed")
 
             page.get_by_role("row").filter(has_text="On The Cyclicity").click()
-            details.get_by_role("button", name="Remove from bucket").wait_for()
-            shoot(page, out, "send-sent")
-
             page.keyboard.press("Control+Shift+P")
-            page.get_by_placeholder("Run a command").fill("Send selected")
+            page.get_by_placeholder("Command").fill("Send Selected")
             page.keyboard.press("Enter")
             details.get_by_role("alert").wait_for()
             shoot(page, out, "send-refused")
-
-            details.get_by_role("button", name="Remove from bucket").click()
-            page.get_by_role("alertdialog").wait_for()
-            shoot(page, out, "send-remove-confirm")
             browser.close()
 
 
@@ -493,13 +484,13 @@ def extract(out: Path) -> None:
             plugin = details.get_by_label("Extraction plugin")
 
             page.get_by_role("row").filter(has_text="Lattices and Quadratic Forms").click()
-            details.get_by_role("button", name="Run").wait_for()
+            details.get_by_role("button", name="Run extraction").wait_for()
             shoot(page, out, "extract-idle")
 
             held: list[Route] = []
             page.route("**/api/items/*/extractions/*", lambda route: held.append(route))
-            details.get_by_role("button", name="Run").click()
-            details.get_by_role("button", name="Running…").wait_for()
+            details.get_by_role("button", name="Run extraction").click()
+            details.get_by_role("button", name="Run extraction", disabled=True).wait_for()
             shoot(page, out, "extract-running")
             for route in held:
                 route.continue_()
@@ -509,12 +500,12 @@ def extract(out: Path) -> None:
 
             page.get_by_role("row").filter(has_text="Ten Lectures on Integral Lattices").click()
             plugin.select_option("fail")
-            details.get_by_role("button", name="Run").click()
+            details.get_by_role("button", name="Run extraction").click()
             details.get_by_role("alert").wait_for()
             shoot(page, out, "extract-failed")
 
             plugin.select_option("markdown")
-            details.get_by_role("button", name="Run").click()
+            details.get_by_role("button", name="Run extraction").click()
             details.get_by_role("alert").filter(has_text="did not run").wait_for()
             shoot(page, out, "extract-rejected")
             browser.close()

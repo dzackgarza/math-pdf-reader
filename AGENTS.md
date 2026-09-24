@@ -100,18 +100,18 @@ to build from scratch.
 
 | Mockup | Element | Where it lives |
 | --- | --- | --- |
-| library (1) | Library / Inbox / Offline Cache | bucket index views; every stored item is cached by construction |
+| library (1) | Library / Inbox | bucket index views: Library and Unfiled (items in no collection, Zotero's term); the mockup's Offline Cache equals Library and is not a view |
 | library (1) | Collections, Tags, Saved Searches | `zotero-gui`'s sidebar and table, cribbed, over the bucket index; topics are a `topic:` tag namespace or saved searches |
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
-| library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256 | provenance embedded in the PDF, shown by the reused inspector |
+| library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256 | provenance embedded in the PDF; the inspector shows the source page link, date and size, and the row menu copies the links |
 | library (1) | Send to Zotero | the send action: resolver plugins to BibTeX, then `import_bibtex` and `attach_bytes` on the local write API; or open the reader URL in a browser and press the Zotero Connector |
 | reader (2) | reader, outline, search in document, highlights, notes | PDF.js prebuilt viewer in an iframe; highlights saved into the PDF by `saveDocument()` |
-| reader (2) | Provenance panel, mirror URLs | embedded provenance; mirrors are later enrichment |
+| reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width PDF.js; mirrors are later enrichment |
 | reader (2) | Rebuild from metadata | the cache-rebuild recipe |
 | collections (3) | Smart Collection rules, subcollections | saved searches; nested collections in the index |
-| settings (4) | Browser Capture | extension options page |
-| settings (4) | Zotero Integration | the local write API on port 23119; library target is Zotero's selected collection |
-| settings (4) | Embedded Foundations | PDF.js (reader), WXT extension (capture), subprocess plugins (extraction, resolvers), Zotero Connector and local write API (Zotero bridge), Tauri (window) |
+| settings (4) | Browser Capture | each extension's toolbar popup and options page; the library's status bar shows whether captures can land |
+| settings (4) | Zotero Integration | the local write API on port 23119; library target is Zotero's selected collection; no settings page section |
+| settings (4) | Provenance & Recovery, Server, Embedded Foundations | not in the app: they describe it instead of setting anything |
 
 When a mockup and a reused component disagree on a label, keep the component's label in
 code and note the mockup term once in the plan's Decision Log.
