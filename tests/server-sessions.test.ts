@@ -29,7 +29,9 @@ function bucket(root: string) {
     app.request(`${origin}${path}`, {
       method,
       headers:
-        body === undefined || body instanceof FormData ? {} : { "Content-Type": "application/json" },
+        body === undefined || body instanceof FormData
+          ? {}
+          : { "Content-Type": "application/json" },
       body: body === undefined || body instanceof FormData ? body : JSON.stringify(body),
     });
 }
@@ -80,7 +82,11 @@ test("a reading session is stored under its id, updated by later reports, and ke
   ]);
 
   // A page under five seconds was scrolled past, not read; an unknown item has no session.
-  const glance = { ...report, id: "9b7f0c2f-3d2e-4e6f-8a11-2b3c4d5e6f70", pages: [{ page: 3, seconds: 2 }] };
+  const glance = {
+    ...report,
+    id: "9b7f0c2f-3d2e-4e6f-8a11-2b3c4d5e6f70",
+    pages: [{ page: 3, seconds: 2 }],
+  };
   expect((await request("POST", "/api/reading-sessions", glance)).status).toBe(400);
   const unknown = { ...report, id: "9b7f0c2f-3d2e-4e6f-8a11-2b3c4d5e6f71", key: "missing" };
   expect((await request("POST", "/api/reading-sessions", unknown)).status).toBe(404);

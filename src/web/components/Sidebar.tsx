@@ -1,13 +1,4 @@
-import {
-  Folder,
-  FolderPlus,
-  History,
-  Library,
-  Search,
-  Settings,
-  Shapes,
-  Tag,
-} from "lucide-react";
+import { Folder, FolderPlus, History, Library, Search, Settings, Shapes, Tag } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { QUICK_FILTERS } from "../librarySelectors";

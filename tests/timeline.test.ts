@@ -32,10 +32,16 @@ function session(
 
 test("reopenings of one PDF within half an hour form one entry; a later reading is its own", () => {
   const sessions = [
-    session("packing", "2026-09-25T09:00:00Z", "2026-09-25T09:20:00Z", [[1, 300], [2, 600]]),
+    session("packing", "2026-09-25T09:00:00Z", "2026-09-25T09:20:00Z", [
+      [1, 300],
+      [2, 600],
+    ]),
     // A glance at another paper between the two readings.
     session("lattices", "2026-09-25T09:22:00Z", "2026-09-25T09:25:00Z", [[4, 120]]),
-    session("packing", "2026-09-25T09:40:00Z", "2026-09-25T10:00:00Z", [[2, 60], [5, 900]]),
+    session("packing", "2026-09-25T09:40:00Z", "2026-09-25T10:00:00Z", [
+      [2, 60],
+      [5, 900],
+    ]),
     session("packing", "2026-09-25T13:00:00Z", "2026-09-25T13:10:00Z", [[9, 400]]),
   ];
 
