@@ -413,6 +413,11 @@ describe("library window", () => {
     };
     const note = `Checked the Hasse–Minkowski step ${Date.now()}`;
     const viewer = await openViewer();
+    // PDF.js builds its annotation editor once the first page and the document's permissions
+    // have loaded, after the page count is known; until then no editor mode can be selected.
+    await viewer.waitForFunction(
+      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
+    );
     // PDF.js's free-text tool, as its toolbar button selects it; a click on the page places a
     // note there.
     await viewer.evaluate(
