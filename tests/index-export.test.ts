@@ -276,16 +276,7 @@ test("the running server rewrites the index export after a capture, a filing cha
   const afterTagging = await exported((index) => index.items[0]?.filing.tags.length === 2);
   expect(afterTagging.items[0]?.filing.tags).toEqual(["lattices", "topic:quadratic forms"]);
 
-  // The delete trashes the PDF through send2trash, which uses $XDG_DATA_HOME/Trash for a file
-  // on the home filesystem; a scratch one keeps the fixture out of the user's trash.
-  const userData = process.env.XDG_DATA_HOME;
-  process.env.XDG_DATA_HOME = temporaryDirectory("server-data");
   const deleted = await app.request("/api/items/lecture-notes", { method: "DELETE" });
-  if (userData === undefined) {
-    delete process.env.XDG_DATA_HOME;
-  } else {
-    process.env.XDG_DATA_HOME = userData;
-  }
   expect(deleted.status).toBe(200);
   const afterDelete = await exported((index) => index.items.length === 0);
   expect(afterDelete.items).toEqual([]);

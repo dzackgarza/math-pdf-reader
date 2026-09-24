@@ -13,6 +13,7 @@ import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { OrganizationStore } from "../src/server/organization";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { SCRATCH_DATA_HOME } from "./preload";
 
 setDefaultTimeout(30_000);
 
@@ -72,11 +73,6 @@ async function startBucket() {
   return { root, origin, stop: () => server.stop(true) };
 }
 
-// The store trashes deleted PDFs with send2trash, into $XDG_DATA_HOME/Trash when the PDF is on
-// the home filesystem; a scratch XDG_DATA_HOME keeps the suite out of the user's own trash.
-const scratchData = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-data-"));
-const userData = process.env.XDG_DATA_HOME;
-
 describe("library window", () => {
   let bucket: Awaited<ReturnType<typeof startBucket>>;
   let browser: Browser;
@@ -117,7 +113,6 @@ describe("library window", () => {
   };
 
   beforeAll(async () => {
-    process.env.XDG_DATA_HOME = scratchData;
     mkdirSync(screenshots, { recursive: true });
     // The app serves the bundle in dist/web; build it from the current source.
     await build({
@@ -137,11 +132,6 @@ describe("library window", () => {
   afterAll(async () => {
     await browser.close();
     bucket.stop();
-    if (userData === undefined) {
-      delete process.env.XDG_DATA_HOME;
-    } else {
-      process.env.XDG_DATA_HOME = userData;
-    }
   });
 
   test("typing a new collection name in the details files the item into that new collection", async () => {
@@ -205,7 +195,7 @@ describe("library window", () => {
 
     expect(await rowKeys()).not.toContain("notes");
     expect(existsSync(pdf)).toBe(false);
-    const trash = join(scratchData, "Trash", "files");
+    const trash = join(SCRATCH_DATA_HOME, "Trash", "files");
     const trashed = readdirSync(trash)
       .filter((name) => name.startsWith("notes"))
       .map((name) => sha256(readFileSync(join(trash, name))));
@@ -256,10 +246,11 @@ describe("library window", () => {
       throw new Error("the reader has no viewer frame");
     }
     await viewer.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
-    // Follows a link to a page, as an outline entry or an internal link in the PDF does.
+    // Follows a link to a page, as an outline entry or an internal link in the PDF does, and
+    // waits for the view update that records the position reached.
     const followLinkTo = async (pageNumber: number) => {
       await viewer.evaluate(`PDFViewerApplication.pdfLinkService.goToPage(${pageNumber})`);
-      await viewer.waitForFunction(`PDFViewerApplication.page === ${pageNumber}`);
+      await page.waitForFunction((n) => location.hash.startsWith(`#page=${n}&`), {}, pageNumber);
     };
     await followLinkTo(7);
     await followLinkTo(3);
