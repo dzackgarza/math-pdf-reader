@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
@@ -24,6 +23,7 @@ import {
   setCollections,
   setTags,
 } from "../src/server/organization";
+import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { captureBytes, listItems } from "../src/server/store";
 
 const config = loadAppConfig(CONFIG_PATH);
