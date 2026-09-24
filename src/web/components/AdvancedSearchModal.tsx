@@ -31,10 +31,10 @@ export default function AdvancedSearchModal({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/20" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed top-1/2 left-1/2 z-50 w-[28rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-line bg-white shadow-2xl outline-none"
+          className="fixed top-1/2 left-1/2 z-50 w-[28rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-line bg-panel shadow-2xl outline-none"
         >
           <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
             <Dialog.Title className="flex items-center gap-2 text-base font-semibold">
@@ -66,7 +66,7 @@ export default function AdvancedSearchModal({
                     onClick={() => onChange({ ...settings, matchType: type.value })}
                     className={`rounded-md px-3 py-1 ${
                       settings.matchType === type.value
-                        ? "bg-white font-medium shadow-sm"
+                        ? "bg-panel font-medium shadow-sm"
                         : "text-muted"
                     }`}
                   >

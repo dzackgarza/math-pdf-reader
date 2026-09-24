@@ -317,8 +317,16 @@ export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
   }),
 });
 
-// How the app behaves: whether the reader opens a PDF with its outline showing.
-export const PreferencesSchema = z.strictObject({ outlineOnOpen: z.boolean() });
+// The colours of the library and the reader: the system's light or dark setting, or one of
+// the two always.
+export const THEMES = ["system", "light", "dark"] as const;
+export const ThemeSchema = z.enum(THEMES);
+
+// How the app behaves: whether the reader opens a PDF with its outline showing, and the theme.
+export const PreferencesSchema = z.strictObject({
+  outlineOnOpen: z.boolean(),
+  theme: ThemeSchema,
+});
 
 export const LibraryPayloadSchema = z.strictObject({
   items: z.array(BucketItemSchema),
@@ -449,6 +457,7 @@ export type Rule = z.infer<typeof RuleSchema>;
 export type RuleField = Rule["field"];
 export type Activity = z.infer<typeof ActivitySchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
+export type Theme = z.infer<typeof ThemeSchema>;
 export type ReadingSession = z.infer<typeof ReadingSessionSchema>;
 export type CollectionUpdate = z.infer<typeof CollectionUpdateRequestSchema>;
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;

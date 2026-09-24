@@ -30,7 +30,7 @@ export default function CollectionCards({ payload, entry, onPin }: CollectionCar
             data-collection-id={collection.id}
             data-collection-name={collection.name}
             className={`relative rounded-xl border p-3.5 ${
-              selected ? "border-accent bg-accent-soft/40" : "border-line bg-white hover:bg-surface"
+              selected ? "border-accent bg-accent-soft/40" : "border-line bg-panel hover:bg-surface"
             }`}
           >
             <Link href={organizationPath("collections", collection.id)} className="block">
@@ -65,7 +65,7 @@ export default function CollectionCards({ payload, entry, onPin }: CollectionCar
               title={collection.pinned ? "Unpin" : "Pin to the front"}
               aria-pressed={collection.pinned}
               onClick={() => onPin(collection, !collection.pinned)}
-              className={`absolute top-3 right-3 rounded p-1 hover:bg-white ${
+              className={`absolute top-3 right-3 rounded p-1 hover:bg-panel ${
                 collection.pinned ? "text-accent" : "text-faint hover:text-ink"
               }`}
             >

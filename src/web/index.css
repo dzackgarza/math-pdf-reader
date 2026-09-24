@@ -7,28 +7,52 @@
   themes: false;
 }
 
+/* The theme preference sets data-theme on <html>: "system" follows the system's light or dark
+   setting, "light" and "dark" fix one. Each token is a light-dark() pair, which the root's
+   color-scheme resolves; native controls and scrollbars follow the same color-scheme. */
 :root {
-  --color-base-100: #ffffff;
+  color-scheme: light dark;
+  --color-base-100: var(--color-panel);
   --color-base-300: var(--color-line);
   --border: 1px;
   --radius-box: 0.5rem;
   --radius-selector: 0.5rem;
 }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
 @import "@fontsource-variable/inter";
 
 @theme {
   --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
-  --color-ink: #101828;
-  --color-muted: #667085;
-  --color-faint: #98a2b3;
-  --color-line: #e6e8ec;
-  --color-surface: #f7f8fa;
-  --color-accent: #2563eb;
-  --color-accent-soft: #eef4ff;
-  --color-topic: #6d28d9;
-  --color-topic-soft: #f3efff;
-  --color-filed: #067647;
-  --color-filed-soft: #ecfdf3;
+  --color-ink: light-dark(#101828, #e4e7ec);
+  --color-muted: light-dark(#667085, #98a2b3);
+  --color-faint: light-dark(#98a2b3, #667085);
+  --color-line: light-dark(#e6e8ec, #2c3441);
+  --color-surface: light-dark(#f7f8fa, #0f141b);
+  /* Raised surfaces: panels, menus, dialogs, the table header. */
+  --color-panel: light-dark(#ffffff, #171d26);
+  --color-accent: light-dark(#2563eb, #3b82f6);
+  --color-accent-soft: light-dark(#eef4ff, #1a2a45);
+  --color-topic: light-dark(#6d28d9, #a78bfa);
+  --color-topic-soft: light-dark(#f3efff, #2a2145);
+  --color-filed: light-dark(#067647, #4ade80);
+  --color-filed-soft: light-dark(#ecfdf3, #0f2e1f);
+  --color-ok: light-dark(#15803d, #4ade80);
+  --color-ok-soft: light-dark(#f0fdf4, #0f2e1f);
+  --color-warning: light-dark(#b45309, #fbbf24);
+  --color-warning-soft: light-dark(#fffbeb, #33270f);
+  --color-danger: light-dark(#b91c1c, #f87171);
+  --color-danger-soft: light-dark(#fef2f2, #3a1618);
+  /* Notes are yellow paper; the hover is the note's darker edge. */
+  --color-note: light-dark(#fffbeb, #2e2a1a);
+  --color-note-hover: light-dark(#fef3c7, #3d3822);
+  /* The toast stays dark in both schemes, a step above the dark surface. */
+  --color-toast: light-dark(#101828, #2c3441);
+  --color-scrim: light-dark(rgb(16 24 40 / 0.2), rgb(0 0 0 / 0.55));
 }
 
 html,

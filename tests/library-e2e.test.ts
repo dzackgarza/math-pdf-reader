@@ -369,6 +369,45 @@ describe("library window", () => {
     await page.waitForSelector(`${toggle}[aria-checked="false"]`);
   });
 
+  test("the theme follows a dark system setting until Settings chooses Light, in the library and the reader", async () => {
+    // Background colours: the library's surface token (index.css) and PDF.js's --body-bg-color.
+    const LIBRARY = { light: "rgb(247, 248, 250)", dark: "rgb(15, 20, 27)" };
+    const VIEWER = { light: "rgb(212, 212, 215)", dark: "rgb(42, 42, 46)" };
+    const themeSelect = 'select[aria-label="Theme"]';
+    const libraryBackground = async () => {
+      await page.goto(`${bucket.origin}/#/settings`);
+      await page.waitForSelector(themeSelect);
+      return page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    };
+    const viewerBackground = async () => {
+      await page.goto(`${bucket.origin}/read/lattices`);
+      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
+      if (frame === undefined || frame === null) {
+        throw new Error("the reader has no viewer frame");
+      }
+      await frame.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
+      return frame.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    };
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+
+    expect(await libraryBackground()).toBe(LIBRARY.dark);
+    expect(await viewerBackground()).toBe(VIEWER.dark);
+    await shot("reader-dark");
+
+    await libraryBackground();
+    await page.select(themeSelect, "light");
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
+      LIBRARY.light,
+    );
+    expect(await viewerBackground()).toBe(VIEWER.light);
+    expect(await libraryBackground()).toBe(LIBRARY.light);
+
+    await page.select(themeSelect, "system");
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "system");
+    await page.emulateMediaFeatures();
+  });
+
   test("a text note written on a page in the reader is saved into the PDF and is there after a reload", async () => {
     const openViewer = async () => {
       await page.goto(`${bucket.origin}/read/problems`);

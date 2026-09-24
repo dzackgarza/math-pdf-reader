@@ -9,6 +9,7 @@ import {
   LIBRARY_VIEW_KEY,
   MIN_PAGE_SECONDS,
   type Preferences,
+  type Theme,
 } from "./libraryContract";
 
 export function pdfUrlPath(key: string): string {
@@ -48,9 +49,10 @@ const LINK = ICON(
 // creates PDFHistory only when not embedded). The frame is this page's whole document, so the
 // viewer is told it is not embedded, and external links keep leaving through the top window, as
 // they do for an embedded viewer. PDF.js's comment tool, off by default, is turned on beside
-// its highlight, text, ink and image tools. The sidebar opens as the preferences say, never
-// as the PDF's /PageMode asks (sidebarViewOnLoad set to a view overrides the page mode and
-// PDF.js's remembered sidebar). The viewer's event bus exists once its
+// its highlight, text, ink and image tools. The viewer takes the theme preference
+// (viewerCssTheme). The sidebar opens as the preferences say, never as the PDF's /PageMode
+// asks (sidebarViewOnLoad set to a view overrides the page mode and PDF.js's remembered
+// sidebar). The viewer's event bus exists once its
 // initializedPromise settles, which happens before it opens the PDF, so a listener added then
 // cannot miss \`documentloaded\`. PDF.js refuses to unload while the document holds any
 // annotation (onBeforeUnload with _hasChanges), since it expects a download to keep them; here
@@ -74,6 +76,7 @@ document.addEventListener("webviewerloaded", (event) => {
   options.set("externalLinkTarget", LinkTarget.TOP);
   options.set("enableComment", true);
   options.set("sidebarViewOnLoad", Number(document.documentElement.dataset.sidebarViewOnLoad));
+  options.set("viewerCssTheme", Number(document.documentElement.dataset.viewerCssTheme));
   app.initializedPromise.then(() => app.eventBus.on("documentloaded", documentLoaded, { once: true }));
 });
 `);
@@ -305,12 +308,20 @@ frame.addEventListener("load", async () => {
 const SIDEBAR_NONE = 0;
 const SIDEBAR_OUTLINE = 2;
 
+// PDF.js's viewerCssTheme values (web/app_options.js): automatic, light, dark.
+const VIEWER_CSS_THEME: Record<Theme, number> = { system: 0, light: 1, dark: 2 };
+
 export function readerPage(item: BucketItem, origin: string, preferences: Preferences) {
   const sidebarView = preferences.outlineOnOpen ? SIDEBAR_OUTLINE : SIDEBAR_NONE;
   const { provenance } = item;
   const viewer = `/pdfjs/web/viewer.html?file=${encodeURIComponent(pdfUrlPath(item.id))}`;
   return html`<!doctype html>
-<html lang="en" data-sidebar-view-on-load="${sidebarView}">
+<html
+  lang="en"
+  data-theme="${preferences.theme}"
+  data-sidebar-view-on-load="${sidebarView}"
+  data-viewer-css-theme="${VIEWER_CSS_THEME[preferences.theme]}"
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -321,16 +332,23 @@ export function readerPage(item: BucketItem, origin: string, preferences: Prefer
     <meta name="citation_abstract_html_url" content="${provenance.source_url}" />
     <script>${BEFORE_VIEWER}</script>
     <style>
+      /* The page's colour scheme is the theme preference's; light-dark() picks each colour. */
       :root {
-        --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --surface: #f8f9fb; --accent: #2563eb;
+        color-scheme: light dark;
+        --ink: light-dark(#111827, #e4e7ec); --muted: light-dark(#6b7280, #98a2b3);
+        --line: light-dark(#e5e7eb, #2c3441); --surface: light-dark(#f8f9fb, #0f141b);
+        --panel: light-dark(#ffffff, #171d26); --accent: light-dark(#2563eb, #3b82f6);
+        --danger: light-dark(#b91c1c, #f87171);
         font-family: Inter, "Segoe UI", system-ui, sans-serif; color: var(--ink);
       }
+      :root[data-theme="light"] { color-scheme: light; }
+      :root[data-theme="dark"] { color-scheme: dark; }
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; }
       body { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--surface); }
       header {
         display: flex; align-items: center; gap: 0.25rem; min-width: 0;
-        padding: 0.25rem 0.5rem; background: #fff; border-bottom: 1px solid var(--line);
+        padding: 0.25rem 0.5rem; background: var(--panel); border-bottom: 1px solid var(--line);
       }
       button, #library {
         display: inline-flex; align-items: center; justify-content: center; flex: none;
@@ -347,12 +365,12 @@ export function readerPage(item: BucketItem, origin: string, preferences: Prefer
       button:disabled { opacity: 0.35; cursor: default; }
       #copy-link[data-copied] { color: var(--accent); }
       #save-status { flex: none; font-size: 0.75rem; color: var(--muted); }
-      #save-status[data-failed] { color: #b91c1c; }
+      #save-status[data-failed] { color: var(--danger); }
       h1 {
         flex: 1; min-width: 0; margin: 0 0.5rem; overflow: hidden;
         font-size: 0.875rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis;
       }
-      iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+      iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--surface); }
     </style>
   </head>
   <body

@@ -85,12 +85,12 @@ function ExtractionFiles({ extraction }: { extraction: Extraction }) {
 
 const CHECK_MARKS: Record<SourceCheck["status"], { icon: ReactNode; label: string }> = {
   unchecked: { icon: <CircleDashed className="h-3.5 w-3.5 text-faint" />, label: "Not verified" },
-  accessible: { icon: <Check className="h-3.5 w-3.5 text-green-600" />, label: "Serves the PDF" },
+  accessible: { icon: <Check className="h-3.5 w-3.5 text-ok" />, label: "Serves the PDF" },
   changed: {
-    icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />,
+    icon: <AlertTriangle className="h-3.5 w-3.5 text-warning" />,
     label: "Serves other bytes",
   },
-  dead: { icon: <X className="h-3.5 w-3.5 text-red-600" />, label: "Serves nothing" },
+  dead: { icon: <X className="h-3.5 w-3.5 text-danger" />, label: "Serves nothing" },
 };
 
 // A URL the PDF can be fetched from, with what its last check found.
@@ -215,7 +215,7 @@ function Details({
       <img
         src={thumbnailPath(item.id, 640)}
         alt="First page"
-        className="mx-4 mt-4 h-64 w-[calc(100%-2rem)] rounded border border-line bg-white object-cover object-top"
+        className="mx-4 mt-4 h-64 w-[calc(100%-2rem)] rounded border border-line bg-panel object-cover object-top"
       />
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
         <Row label="Collections">
@@ -282,7 +282,7 @@ function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }
   return (
     <div className="space-y-3 px-4 py-4">
       {item.notes.map((note) => (
-        <article key={note.id} className="group rounded-lg bg-amber-50 px-3.5 py-3 text-sm">
+        <article key={note.id} className="group rounded-lg bg-note px-3.5 py-3 text-sm">
           <p className="whitespace-pre-wrap text-ink">{note.note}</p>
           <footer className="mt-2 flex items-center justify-between text-xs text-muted">
             <time dateTime={note.dateAdded}>{dateTime(note.dateAdded)}</time>
@@ -290,7 +290,7 @@ function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }
               type="button"
               aria-label="Delete note"
               onClick={() => filing.deleteNote(note.id)}
-              className="rounded p-1 opacity-0 group-hover:opacity-100 hover:bg-amber-100"
+              className="rounded p-1 opacity-0 group-hover:opacity-100 hover:bg-note-hover"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -381,7 +381,7 @@ function SendNotice({ attempt }: { attempt: SendAttempt | undefined }) {
   return (
     <p
       role="alert"
-      className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800"
+      className="flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
     >
       <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
       <span className="min-w-0 break-words">{attempt.message}</span>
@@ -400,7 +400,7 @@ export default function InspectorPanel(props: InspectorPanelProps) {
   return (
     <aside
       aria-label="Item details"
-      className="flex h-full min-h-0 flex-col border-l border-line bg-white"
+      className="flex h-full min-h-0 flex-col border-l border-line bg-panel"
     >
       <header className="flex items-start gap-2 px-4 pt-3">
         <div className="min-w-0 flex-1">

@@ -14,7 +14,7 @@ type SelectionBarProps = {
 };
 
 const BUTTON =
-  "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium hover:bg-white/60";
+  "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium hover:bg-panel/60";
 const MENU_ITEM = "cursor-default rounded px-2.5 py-1.5 outline-none data-[highlighted]:bg-surface";
 
 export default function SelectionBar({
@@ -39,7 +39,7 @@ export default function SelectionBar({
           <DropdownMenu.Content
             align="start"
             sideOffset={4}
-            className="z-50 max-h-80 w-56 overflow-y-auto rounded-lg border border-line bg-white p-1 text-sm text-ink shadow-lg"
+            className="z-50 max-h-80 w-56 overflow-y-auto rounded-lg border border-line bg-panel p-1 text-sm text-ink shadow-lg"
           >
             {collections.map((collection) => (
               <DropdownMenu.Item
@@ -62,7 +62,7 @@ export default function SelectionBar({
         aria-label="Clear selection"
         title="Clear selection"
         onClick={onClear}
-        className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/60"
+        className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-panel/60"
       >
         <X className="h-4 w-4" />
       </button>

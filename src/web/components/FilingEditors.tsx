@@ -46,7 +46,7 @@ export function FilingPicker({
         <Popover.Content
           align="start"
           sideOffset={4}
-          className="z-50 w-60 overflow-hidden rounded-lg border border-line bg-white text-sm shadow-lg"
+          className="z-50 w-60 overflow-hidden rounded-lg border border-line bg-panel text-sm shadow-lg"
         >
           <Command label={trigger}>
             <Command.Input

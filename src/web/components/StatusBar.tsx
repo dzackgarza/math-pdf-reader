@@ -9,10 +9,10 @@ function CaptureIndicator({ read }: { read: StatusRead }) {
     read.kind === "checking"
       ? ["text-faint", "Checking…"]
       : read.kind === "failed"
-        ? ["text-red-600", `Not capturing: ${read.message}`]
+        ? ["text-danger", `Not capturing: ${read.message}`]
         : read.status.ready
-          ? ["text-green-600", "Capturing PDFs from the browser"]
-          : ["text-red-600", `Not capturing: ${read.status.root} is not writable`];
+          ? ["text-ok", "Capturing PDFs from the browser"]
+          : ["text-danger", `Not capturing: ${read.status.root} is not writable`];
   return (
     <span role="status" aria-label={title} title={title} className={`ml-auto ${color}`}>
       <Radio aria-hidden className="h-3.5 w-3.5" />

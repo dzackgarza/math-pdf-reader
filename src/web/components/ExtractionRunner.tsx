@@ -41,7 +41,7 @@ function Outcome({
   }
   if (attempt.kind === "error") {
     return (
-      <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+      <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
         {attempt.message}
       </p>
     );
@@ -59,7 +59,7 @@ function Outcome({
   }
   if (outcome.status === "rejected") {
     return (
-      <div role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <div role="alert" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
         <p className="flex items-center gap-2 font-medium">
           <AlertTriangle aria-hidden className="h-4 w-4 shrink-0" /> {name} did not run
         </p>
@@ -72,12 +72,12 @@ function Outcome({
     );
   }
   return (
-    <div role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+    <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
       <p className="flex items-center gap-2 font-medium">
         <AlertTriangle aria-hidden className="h-4 w-4 shrink-0" /> {name} exited with code{" "}
         {outcome.exit_code}; nothing was written
       </p>
-      <pre className="mt-2 max-h-48 overflow-auto rounded bg-white/70 p-2 font-mono text-xs whitespace-pre-wrap">
+      <pre className="mt-2 max-h-48 overflow-auto rounded bg-panel/70 p-2 font-mono text-xs whitespace-pre-wrap">
         {outcome.stderr.trim() === "" ? "(no stderr)" : outcome.stderr}
       </pre>
     </div>
@@ -103,7 +103,7 @@ function RunControls({
         disabled={running !== undefined}
         onChange={(event) => setChosen(event.target.value)}
         title={plugins.find((plugin) => plugin.id === chosen)?.accepted_inputs[0]?.label}
-        className="min-w-0 flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-sm"
+        className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1.5 text-sm"
       >
         {plugins.map((plugin) => (
           <option key={plugin.id} value={plugin.id}>
@@ -135,7 +135,7 @@ export default function ExtractionRunner({ plugins, attempt, onRun }: ItemExtrac
   }
   if (plugins.status === "failed") {
     return (
-      <p role="alert" className="text-sm text-red-700">
+      <p role="alert" className="text-sm text-danger">
         Extraction plugins could not be listed: {plugins.message}
       </p>
     );

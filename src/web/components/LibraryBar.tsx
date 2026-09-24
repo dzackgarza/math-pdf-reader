@@ -50,7 +50,7 @@ function SortMenu({ table }: { table: Table<BucketItem> }) {
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="z-50 w-52 rounded-lg border border-line bg-white p-1 text-sm shadow-lg"
+          className="z-50 w-52 rounded-lg border border-line bg-panel p-1 text-sm shadow-lg"
         >
           <DropdownMenu.RadioGroup
             value={sorted?.id ?? ""}
@@ -98,7 +98,7 @@ export default function LibraryBar({
   onLayout,
 }: LibraryBarProps) {
   return (
-    <div className="flex items-center gap-1.5 border-b border-line bg-white px-3 py-2">
+    <div className="flex items-center gap-1.5 border-b border-line bg-panel px-3 py-2">
       {QUICK_FILTERS.map((filter) => {
         const on = filter.view.kind === view.kind;
         const name = quickFilterName(filter);

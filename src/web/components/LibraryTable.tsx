@@ -53,7 +53,7 @@ function StatusBadge({ item }: { item: BucketItem }) {
     <span
       title={sourceCheckText(item.sourceCheck)}
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-        offline ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+        offline ? "bg-danger-soft text-danger" : "bg-ok-soft text-ok"
       }`}
     >
       <span
@@ -80,7 +80,7 @@ const CELL_RENDERERS: Record<
 > = {
   title: (item) => (
     <span className="flex min-w-0 items-center gap-2.5">
-      <FileText aria-hidden className="h-4 w-4 shrink-0 text-red-600" />
+      <FileText aria-hidden className="h-4 w-4 shrink-0 text-danger" />
       <span className="truncate font-medium text-ink" title={item.title}>
         {item.title}
       </span>
@@ -145,7 +145,7 @@ export default function LibraryTable({
           style={{ minWidth: table.getTotalSize() }}
         >
           <ContextMenu.Trigger asChild>
-            <thead className="sticky top-0 z-10 bg-white shadow-[inset_0_-1px_0_var(--color-line)]">
+            <thead className="sticky top-0 z-10 bg-panel shadow-[inset_0_-1px_0_var(--color-line)]">
               {table.getHeaderGroups().map((group) => (
                 <tr key={group.id}>
                   <th className="w-10 px-3 py-2.5">
@@ -228,7 +228,7 @@ export default function LibraryTable({
                         onClick={() => onSelectItem(row.id)}
                         onDoubleClick={() => onOpenItem(row.id)}
                         className={`cursor-default border-b border-line ${
-                          selected ? "bg-accent-soft" : "bg-white hover:bg-surface"
+                          selected ? "bg-accent-soft" : "bg-panel hover:bg-surface"
                         }`}
                       >
                         <td className="w-10 px-3 py-2">
@@ -263,7 +263,7 @@ export default function LibraryTable({
         </table>
 
         <ContextMenu.Portal>
-          <ContextMenu.Content className="z-50 w-60 rounded-lg border border-line bg-white p-2 text-sm shadow-lg">
+          <ContextMenu.Content className="z-50 w-60 rounded-lg border border-line bg-panel p-2 text-sm shadow-lg">
             <div className="flex items-center justify-between px-2 pb-2 text-xs font-semibold text-muted">
               <span className="flex items-center gap-1.5">
                 <Eye className="h-3.5 w-3.5" /> Columns

@@ -126,7 +126,7 @@ function SavedSearchList({ payload, entry }: { payload: LibraryPayload; entry: s
 }
 
 const ACTION_CLASSES =
-  "inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium hover:bg-surface";
+  "inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm font-medium hover:bg-surface";
 
 // A collection's page: its description, Keep offline, its subcollections and recent activity.
 function CollectionDetails({
@@ -144,7 +144,7 @@ function CollectionDetails({
     .slice(-4)
     .reverse();
   return (
-    <div className="grid gap-4 border-b border-line bg-white px-5 pb-4 text-sm md:grid-cols-3">
+    <div className="grid gap-4 border-b border-line bg-panel px-5 pb-4 text-sm md:grid-cols-3">
       <div className="space-y-1.5">
         <p className={collection.description === "" ? "text-faint" : "text-ink"}>
           {collection.description === "" ? "No description" : collection.description}
@@ -256,7 +256,7 @@ function EntryHeader({
   const saved = payload.savedSearches.find((candidate) => candidate.id === entry);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 border-y border-line bg-white px-5 py-3.5">
+    <div className="flex flex-wrap items-center gap-3 border-y border-line bg-panel px-5 py-3.5">
       <div className="min-w-0 flex-1">
         <h2 className="flex items-center gap-1.5 text-lg font-semibold">
           {parent !== undefined && (
@@ -301,7 +301,7 @@ function EntryHeader({
 }
 
 const TOOLBAR_BUTTON =
-  "inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-40";
+  "inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-40";
 
 // New collection, and the actions on the chosen rows: a new topic for them, a tag for them;
 // and a new smart collection (a saved search built from rules).
@@ -365,7 +365,7 @@ export default function OrganizationScreen(props: OrganizationScreenProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-1 bg-white px-5 pt-3">
+      <div className="flex flex-wrap items-center gap-1 bg-panel px-5 pt-3">
         {ORGANIZATION_TABS.map((candidate) => (
           <Link
             key={candidate}
@@ -382,7 +382,7 @@ export default function OrganizationScreen(props: OrganizationScreenProps) {
       </div>
       <section
         aria-label={TAB_LABELS[tab]}
-        className="max-h-72 shrink-0 overflow-y-auto bg-white px-5 py-4"
+        className="max-h-72 shrink-0 overflow-y-auto bg-panel px-5 py-4"
       >
         {entryCount === 0 && <p className="py-4 text-sm text-muted">{EMPTY_TEXT[tab]}</p>}
         {tab === "collections" && (

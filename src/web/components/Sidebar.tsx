@@ -25,7 +25,7 @@ function NavItem({
       href={to}
       aria-current={active ? "page" : undefined}
       className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm ${
-        active ? "bg-accent-soft font-medium text-accent" : "text-ink hover:bg-black/[0.04]"
+        active ? "bg-accent-soft font-medium text-accent" : "text-ink hover:bg-ink/[0.04]"
       }`}
     >
       <span className={`h-4 w-4 shrink-0 ${active ? "text-accent" : "text-muted"}`}>{icon}</span>
@@ -77,7 +77,7 @@ export default function Sidebar({
             aria-label="New collection"
             title="New collection"
             onClick={onNewCollection}
-            className="rounded p-1 text-faint hover:bg-black/[0.04] hover:text-ink"
+            className="rounded p-1 text-faint hover:bg-ink/[0.04] hover:text-ink"
           >
             <FolderPlus className="h-4 w-4" />
           </button>

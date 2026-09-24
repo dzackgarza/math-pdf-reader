@@ -35,7 +35,7 @@ const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
 ) {
   const searching = search.query.trim().length > 0;
   return (
-    <div className="flex items-center gap-1 border-b border-line bg-white px-3 py-2">
+    <div className="flex items-center gap-1 border-b border-line bg-panel px-3 py-2">
       <label className="relative flex max-w-md min-w-40 flex-1 items-center">
         <Search aria-hidden className="absolute left-2.5 h-4 w-4 text-faint" />
         <input
@@ -51,7 +51,7 @@ const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
             }
           }}
           placeholder="Search"
-          className="w-full rounded-md border border-line bg-white py-1.5 pr-2 pl-8 text-sm outline-none placeholder:text-faint focus:border-accent"
+          className="w-full rounded-md border border-line bg-panel py-1.5 pr-2 pl-8 text-sm outline-none placeholder:text-faint focus:border-accent"
         />
       </label>
       <button

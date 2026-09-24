@@ -23,9 +23,9 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, Er
       <div className="flex h-full items-center justify-center bg-surface p-6">
         <section
           role="alert"
-          className="w-full max-w-3xl rounded-xl bg-white p-6 shadow-lg ring-1 ring-line"
+          className="w-full max-w-3xl rounded-xl bg-panel p-6 shadow-lg ring-1 ring-line"
         >
-          <h1 className="flex items-center gap-2 text-lg font-semibold text-red-700">
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-danger">
             <AlertTriangle aria-hidden className="h-5 w-5" /> The library window failed to render
           </h1>
           <pre className="mt-4 overflow-x-auto rounded-lg bg-surface p-4 font-mono text-xs whitespace-pre-wrap">

@@ -68,7 +68,7 @@ export function emptyOrganization(): Organization {
     savedSearches: [],
     items: {},
     activity: [],
-    preferences: { outlineOnOpen: false },
+    preferences: { outlineOnOpen: false, theme: "system" },
   };
 }
 

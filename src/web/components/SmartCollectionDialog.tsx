@@ -27,7 +27,7 @@ type SmartCollectionDialogProps = {
 
 const READING_LABELS = { unread: "Unread", reading: "Being read", finished: "Finished" } as const;
 const INPUT =
-  "min-w-0 rounded-md border border-line bg-white px-2 py-1.5 text-sm outline-none focus:border-accent";
+  "min-w-0 rounded-md border border-line bg-panel px-2 py-1.5 text-sm outline-none focus:border-accent";
 
 function Options({ values }: { values: [string, string][] }) {
   return values.map(([value, label]) => (
@@ -174,10 +174,10 @@ export default function SmartCollectionDialog({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/20" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-scrim" />
         <Dialog.Content
           aria-describedby={undefined}
-          className="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[40rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-white p-5 shadow-2xl outline-none"
+          className="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[40rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-line bg-panel p-5 shadow-2xl outline-none"
         >
           <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
           <form

@@ -1,9 +1,20 @@
 import { FolderOpen } from "lucide-react";
 import type { ReactNode } from "react";
-import type { Preferences } from "../../server/libraryContract";
+import {
+  type Preferences,
+  THEMES,
+  type Theme,
+  ThemeSchema,
+} from "../../server/libraryContract";
 import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
 import type { StatusRead } from "../useBucketStatus";
+
+const THEME_LABELS: Record<Theme, string> = {
+  system: "Match the system",
+  light: "Light",
+  dark: "Dark",
+};
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -61,6 +72,22 @@ export default function SettingsScreen({
             onChange={(outlineOnOpen) => onPreferences({ ...preferences, outlineOnOpen })}
           />
           <span>Open the outline when a PDF opens</span>
+        </Row>
+        <Row label="Theme">
+          <select
+            aria-label="Theme"
+            value={preferences.theme}
+            onChange={(event) =>
+              onPreferences({ ...preferences, theme: ThemeSchema.parse(event.target.value) })
+            }
+            className="rounded-md border border-line bg-panel px-2 py-1 text-ink"
+          >
+            {THEMES.map((theme) => (
+              <option key={theme} value={theme}>
+                {THEME_LABELS[theme]}
+              </option>
+            ))}
+          </select>
         </Row>
         <Row label="Version">{service.version}</Row>
       </dl>

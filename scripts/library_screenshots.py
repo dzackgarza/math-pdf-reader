@@ -307,8 +307,47 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.frame_locator("iframe").locator(".page canvas").first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "reader")
+        dark_screens(browser.new_page(viewport=VIEWPORT, color_scheme="dark"), out, origins, filed)
         browser.close()
     return timings
+
+
+def dark_screens(page: Page, out: Path, origins: dict[str, str], filed: dict[str, str]) -> None:
+    """The main screens under a dark system setting, with the theme preference at its default."""
+    page.goto(origins["seeded"])
+    page.get_by_role("row").filter(has_text=filed["title"]).first.click()
+    page.get_by_role("complementary", name="Item details").wait_for()
+    shoot(page, out, "dark-library-populated")
+    page.get_by_role("tab", name="Notes").click()
+    shoot(page, out, "dark-inspector-notes")
+    page.get_by_role("tab", name="Details").click()
+
+    page.get_by_role("button", name="Filters").click()
+    page.get_by_role("dialog").wait_for()
+    shoot(page, out, "dark-filters")
+    page.keyboard.press("Escape")
+
+    page.keyboard.press("Control+p")
+    page.get_by_placeholder("Go to PDF").fill("cone conjecture")
+    shoot(page, out, "dark-palette-items")
+    page.keyboard.press("Escape")
+
+    page.goto(f"{origins['seeded']}/#/organization/collections/{filed['birational']}")
+    page.get_by_role("row").nth(1).click()
+    shoot(page, out, "dark-organization-collections")
+
+    page.goto(f"{origins['seeded']}/#/settings")
+    page.get_by_text("Library folder").wait_for()
+    shoot(page, out, "dark-settings")
+
+    page.goto(f"{origins['seeded']}/#/timeline")
+    page.locator("[data-timeline-key]").first.wait_for()
+    shoot(page, out, "dark-timeline")
+
+    page.goto(f"{origins['seeded']}/read/{quote(filed['reader'])}")
+    page.frame_locator("iframe").locator(".page canvas").first.wait_for()
+    page.wait_for_timeout(500)
+    shoot(page, out, "dark-reader")
 
 
 def headless_display(stack: ExitStack) -> str:
@@ -328,8 +367,12 @@ def headless_display(stack: ExitStack) -> str:
 
 
 def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: dict[str, str]) -> None:
-    """The library and the reader in the system WebKitGTK, the engine of the desktop window."""
-    env = {**os.environ, "WAYLAND_DISPLAY": headless_display(stack), "GDK_BACKEND": "wayland"}
+    """The library and the reader in the system WebKitGTK, the engine of the desktop window.
+    WebKitGTK takes prefers-color-scheme from GTK, which on Wayland reads the desktop's
+    org.gnome.desktop.interface color-scheme; the in-memory GSettings backend holds the schema
+    default (light), so the Dark preference's screenshots show the preference, not the desktop's
+    setting."""
+    env = {**os.environ, "WAYLAND_DISPLAY": headless_display(stack), "GDK_BACKEND": "wayland", "GSETTINGS_BACKEND": "memory"}
     options = webdriver.WebKitGTKOptions()
     options.binary_location = "/usr/lib/webkit2gtk-4.1/MiniBrowser"
     options.add_argument("--automation")
@@ -348,6 +391,15 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     wait.until(lambda d: d.execute_script("return document.querySelector('iframe').contentDocument?.querySelector('.page canvas') != null"))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-reader.png"))
+
+    # The Dark preference over the light GTK theme.
+    call(origins["seeded"], "PUT", "/api/preferences", {"outlineOnOpen": False, "theme": "dark"})
+    driver.get(origins["seeded"])
+    row = wait.until(expected_conditions.element_to_be_clickable((By.XPATH, cell)))
+    row.click()
+    wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
+    driver.save_screenshot(str(out / "webkit-dark-library-populated.png"))
+    call(origins["seeded"], "PUT", "/api/preferences", {"outlineOnOpen": False, "theme": "system"})
     driver.quit()
 
 
@@ -410,7 +462,7 @@ def record_sent(root: Path, key: str) -> None:
         "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
     }
     filing = {"tags": [], "collections": [], "notes": [], "reading": {"status": "unread"}, "sourceCheck": {"status": "unchecked"}, "mirrors": [], "modifiedAt": record["sentAt"], "zotero": record}
-    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}, "activity": [], "preferences": {"outlineOnOpen": False}}
+    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}, "activity": [], "preferences": {"outlineOnOpen": False, "theme": "system"}}
     (root / "organization.json").write_text(json.dumps(organization))
 
 

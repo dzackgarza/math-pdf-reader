@@ -55,7 +55,7 @@ export default function TimelineScreen({ stored, onError }: TimelineScreenProps)
             aria-label="Shortest reading"
             value={minimum}
             onChange={(event) => setMinimum(Number(event.target.value))}
-            className="rounded-md border border-line bg-white px-2 py-1 text-ink"
+            className="rounded-md border border-line bg-panel px-2 py-1 text-ink"
           >
             {MINIMUMS.map(([seconds, label]) => (
               <option key={seconds} value={seconds}>

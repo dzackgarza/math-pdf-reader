@@ -60,7 +60,7 @@ export default function LibraryGrid({
                 className={`relative flex cursor-default flex-col gap-2 rounded-lg border p-2 ${
                   item.id === selectedItemId
                     ? "border-accent bg-accent-soft"
-                    : "border-line bg-white hover:bg-surface"
+                    : "border-line bg-panel hover:bg-surface"
                 }`}
               >
                 <input
@@ -76,7 +76,7 @@ export default function LibraryGrid({
                   src={thumbnailPath(item.id, 320)}
                   alt=""
                   loading="lazy"
-                  className="aspect-[3/4] w-full rounded border border-line bg-white object-cover object-top"
+                  className="aspect-[3/4] w-full rounded border border-line bg-panel object-cover object-top"
                 />
                 <p className="line-clamp-2 text-sm font-medium text-ink" title={item.title}>
                   {item.title}

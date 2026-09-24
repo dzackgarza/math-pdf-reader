@@ -112,6 +112,11 @@ type WorkspaceProps = {
 function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps) {
   const { mutate, reload, refresh } = api;
   const [, navigate] = useLocation();
+  // index.css resolves every colour from the root's data-theme.
+  const { theme } = payload.preferences;
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
   const [search, setSearch] = useState<AdvancedSearchSettings>(defaultSearchSettings);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -321,7 +326,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">
         <Sidebar pdfCount={payload.items.length} onNewCollection={newCollection} />
-        <main className="flex min-w-0 flex-1 flex-col bg-white">
+        <main className="flex min-w-0 flex-1 flex-col bg-panel">
           {screen.kind !== "settings" && screen.kind !== "timeline" && (
             <TopBar
               ref={searchField}
@@ -462,7 +467,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       {toast !== null && (
         <div
           role={toast.kind === "failure" ? "alert" : "status"}
-          className="fixed right-5 bottom-12 z-50 flex max-w-md items-start gap-2 rounded-lg bg-ink px-4 py-3 text-sm text-white shadow-xl"
+          className="fixed right-5 bottom-12 z-50 flex max-w-md items-start gap-2 rounded-lg bg-toast px-4 py-3 text-sm text-white shadow-xl"
         >
           {toast.kind === "failure" ? (
             <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
@@ -507,9 +512,9 @@ export default function App() {
       <FullScreen>
         <section
           role="alert"
-          className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-lg ring-1 ring-line"
+          className="w-full max-w-2xl rounded-xl bg-panel p-6 shadow-lg ring-1 ring-line"
         >
-          <h1 className="flex items-center gap-2 text-lg font-semibold text-red-700">
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-danger">
             <AlertTriangle aria-hidden className="h-5 w-5" /> The library could not be loaded
           </h1>
           <p className="mt-3 text-sm break-words text-ink">{state.message}</p>
@@ -538,7 +543,7 @@ export default function App() {
       <FullScreen>
         <section
           role="alert"
-          className="w-full max-w-xl rounded-xl bg-white p-6 shadow-lg ring-1 ring-line"
+          className="w-full max-w-xl rounded-xl bg-panel p-6 shadow-lg ring-1 ring-line"
         >
           <h1 className="text-lg font-semibold">
             The saved column layout does not fit this version

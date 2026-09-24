@@ -20,7 +20,7 @@ export type ItemCommands = {
 
 const ITEM =
   "flex cursor-default items-center gap-2 rounded px-2.5 py-1.5 outline-none data-highlighted:bg-accent-soft data-disabled:text-faint";
-const PANEL = "z-50 min-w-52 rounded-lg border border-line bg-white p-1 text-sm shadow-lg";
+const PANEL = "z-50 min-w-52 rounded-lg border border-line bg-panel p-1 text-sm shadow-lg";
 const SEPARATOR = "my-1 h-px bg-line";
 
 function Item({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
