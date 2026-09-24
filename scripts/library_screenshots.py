@@ -22,6 +22,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import uuid
 from contextlib import ExitStack
 from pathlib import Path
 from urllib.parse import quote
@@ -78,6 +79,29 @@ def timed_library_load(origin: str) -> tuple[float, dict[str, object]]:
     started = time.perf_counter()
     payload = call(origin, "GET", "/api/library")
     return time.perf_counter() - started, payload
+
+
+def record_readings(origin: str, items: list[dict[str, object]]) -> None:
+    """Report reading sessions for recent items, as the reader does: a morning's reading, a
+    return to the first paper within half an hour (the timeline joins the two), a short look
+    the timeline's default minimum hides, and an afternoon's reading."""
+    first, second, third, fourth = (str(item["id"]) for item in items[:4])
+    sessions = [
+        (first, "2026-09-24T09:00:00Z", "2026-09-24T09:40:00Z", [(1, 600), (2, 900), (3, 700)]),
+        (second, "2026-09-24T09:42:00Z", "2026-09-24T09:44:00Z", [(1, 20)]),
+        (first, "2026-09-24T09:50:00Z", "2026-09-24T10:10:00Z", [(4, 800), (5, 400)]),
+        (third, "2026-09-24T14:00:00Z", "2026-09-24T14:25:00Z", [(1, 300), (7, 1100)]),
+        (fourth, "2026-09-24T16:30:00Z", "2026-09-24T16:36:00Z", [(2, 360)]),
+    ]
+    for key, opened, last_seen, pages in sessions:
+        report = {
+            "id": str(uuid.uuid4()),
+            "key": key,
+            "openedAt": opened,
+            "lastSeenAt": last_seen,
+            "pages": [{"page": page, "seconds": seconds} for page, seconds in pages],
+        }
+        call(origin, "POST", "/api/reading-sessions", report)
 
 
 def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
@@ -275,6 +299,10 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.get_by_text("Library folder").wait_for()
         shoot(page, out, "settings")
 
+        page.goto(f"{origins['seeded']}/#/timeline")
+        page.locator("[data-timeline-key]").first.wait_for()
+        shoot(page, out, "timeline")
+
         page.goto(f"{origins['seeded']}/read/{quote(filed['reader'])}")
         page.frame_locator("iframe").locator(".page canvas").first.wait_for()
         page.wait_for_timeout(500)
@@ -355,6 +383,7 @@ def main(out: Path) -> None:
         assert len(items) == SEEDED_COUNT, f"seeded library lists {len(items)} items"
         filed = file_library(origins["seeded"], items)
         place_extraction(roots["seeded"], filed["extracted"])
+        record_readings(origins["seeded"], sorted(items, key=lambda item: str(item["dateAdded"]), reverse=True))
 
         timings = {
             "seed_1000_pdfs_s": seed_seconds,
@@ -381,7 +410,7 @@ def record_sent(root: Path, key: str) -> None:
         "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
     }
     filing = {"tags": [], "collections": [], "notes": [], "reading": {"status": "unread"}, "sourceCheck": {"status": "unchecked"}, "mirrors": [], "modifiedAt": record["sentAt"], "zotero": record}
-    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}, "activity": []}
+    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}, "activity": [], "preferences": {"outlineOnOpen": False}}
     (root / "organization.json").write_text(json.dumps(organization))
 
 

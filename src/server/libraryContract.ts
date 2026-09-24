@@ -291,6 +291,32 @@ export const MissingItemSchema = z.strictObject({
   mirrors: z.array(HttpUrlSchema),
 });
 
+// A reading session, as the reader reports it while a PDF is open: when it opened, the last
+// moment it was read (idle time excluded), and each page read, with the seconds spent on it in
+// stretches of at least MIN_PAGE_SECONDS; a page scrolled past in less is not read.
+export const MIN_PAGE_SECONDS = 5;
+
+export const ReadingSessionReportSchema = z.strictObject({
+  id: z.uuid(),
+  key: z.string().min(1),
+  openedAt: z.iso.datetime({ offset: true }),
+  lastSeenAt: z.iso.datetime({ offset: true }),
+  pages: z
+    .array(z.strictObject({ page: z.int().min(1), seconds: z.number().min(MIN_PAGE_SECONDS) }))
+    .min(1),
+});
+
+// A stored session carries the item as it was when read, so the timeline outlives the item.
+export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
+  item: z.strictObject({
+    title: z.string().min(1),
+    authors: z.array(z.string().min(1)),
+    year: z.int().nullable(),
+    abstract: z.string().min(1).nullable(),
+    sourceUrl: z.url(),
+  }),
+});
+
 // How the app behaves: whether the reader opens a PDF with its outline showing.
 export const PreferencesSchema = z.strictObject({ outlineOnOpen: z.boolean() });
 
@@ -423,6 +449,7 @@ export type Rule = z.infer<typeof RuleSchema>;
 export type RuleField = Rule["field"];
 export type Activity = z.infer<typeof ActivitySchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
+export type ReadingSession = z.infer<typeof ReadingSessionSchema>;
 export type CollectionUpdate = z.infer<typeof CollectionUpdateRequestSchema>;
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 export type ItemNote = z.infer<typeof ItemNoteSchema>;

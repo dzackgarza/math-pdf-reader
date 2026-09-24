@@ -447,6 +447,37 @@ describe("library window", () => {
     await reopened.waitForFunction("PDFViewerApplication.page === 4");
   });
 
+  test("the Timeline shows a reading session with the pages read for at least five seconds, and its title reopens the PDF", async () => {
+    await page.goto(`${bucket.origin}/read/reading`);
+    const viewer = await (await page.waitForSelector("iframe"))?.contentFrame();
+    if (viewer === undefined || viewer === null) {
+      throw new Error("the reader has no viewer frame");
+    }
+    await viewer.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages === 10");
+    // Pages 1 and 2 are read for six seconds each; page 3 is passed through at once.
+    for (const pageNumber of [1, 2]) {
+      await viewer.evaluate(`PDFViewerApplication.page = ${pageNumber}`);
+      await Bun.sleep(6000);
+    }
+    await viewer.evaluate("PDFViewerApplication.page = 3");
+    const reported = page.waitForResponse((response) =>
+      response.url().endsWith("/api/reading-sessions"),
+    );
+    await page.click('a[aria-label="Library"]');
+    expect((await reported).status()).toBe(200);
+
+    await page.goto(`${bucket.origin}/#/timeline`);
+    await page.waitForSelector('select[aria-label="Shortest reading"]');
+    // Twelve seconds is under the default minimum of thirty.
+    expect(await page.$('[data-timeline-key="reading"]')).toBeNull();
+    await page.select('select[aria-label="Shortest reading"]', "5");
+    const entry = await page.waitForSelector('[data-timeline-key="reading"]');
+    expect(await entry?.evaluate((element) => element.textContent)).toContain("pp. 1–2");
+    await shot("timeline");
+    await page.click('[data-timeline-key="reading"] a');
+    await page.waitForFunction(() => location.pathname === "/read/reading");
+  });
+
   test("the grid view shows each PDF's first page, and a double-click opens the reader", async () => {
     await openLibrary();
     const keys = (await rowKeys()).sort();

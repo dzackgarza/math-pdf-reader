@@ -1,4 +1,13 @@
-import { Folder, FolderPlus, Library, Search, Settings, Shapes, Tag } from "lucide-react";
+import {
+  Folder,
+  FolderPlus,
+  History,
+  Library,
+  Search,
+  Settings,
+  Shapes,
+  Tag,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { QUICK_FILTERS } from "../librarySelectors";
@@ -60,6 +69,7 @@ export default function Sidebar({
           count={pdfCount}
           alsoAt={QUICK_FILTERS.map((filter) => filter.path)}
         />
+        <NavItem to="/timeline" icon={<History className={icon} />} label="Timeline" />
       </div>
 
       <div className="space-y-0.5">

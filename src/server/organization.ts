@@ -61,7 +61,7 @@ export function organizationFile(root: string): string {
 }
 
 // The organization of a bucket nobody has filed anything in yet.
-function emptyOrganization(): Organization {
+export function emptyOrganization(): Organization {
   return {
     version: 2,
     collections: [],

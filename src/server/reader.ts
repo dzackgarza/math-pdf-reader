@@ -4,7 +4,12 @@
 // it opens the same view. Annotations made with PDF.js's editors are saved into the stored PDF.
 // The Highwire `citation_*` tags let the Zotero Connector save the page.
 import { html, raw } from "hono/html";
-import { type BucketItem, LIBRARY_VIEW_KEY, type Preferences } from "./libraryContract";
+import {
+  type BucketItem,
+  LIBRARY_VIEW_KEY,
+  MIN_PAGE_SECONDS,
+  type Preferences,
+} from "./libraryContract";
 
 export function pdfUrlPath(key: string): string {
   return `/pdf/${encodeURIComponent(key)}.pdf`;
@@ -84,6 +89,15 @@ document.addEventListener("webviewerloaded", (event) => {
 //
 // Reading: a second after the page changes, the page and the page count go to
 // /api/items/<key>/reading, which records them as the item's last viewed page.
+//
+// Minutes without input after which the reader stops counting time as reading.
+const IDLE_MINUTES = 10;
+
+// Reading session: a stretch on one page counts once it lasts MIN_PAGE_SECONDS; it ends when
+// the page changes, when the page is hidden, or IDLE_MINUTES after the last input (pointer,
+// wheel, key), and a new one starts with the next input. The session (opening time, last
+// moment read, seconds per page) goes to /api/reading-sessions every 30 seconds, on each page
+// change, and as a beacon when the page is left; nothing is sent until a page is read.
 //
 // Saving: the annotation storage reports its first change after each save (onSetModified,
 // wrapped so PDF.js's own callback still runs); a short pause later, PDFDocumentProxy.saveDocument
@@ -190,8 +204,93 @@ frame.addEventListener("load", async () => {
       pendingSave = setTimeout(startSave, 700);
     };
   });
+  const IDLE_MS = ${IDLE_MINUTES} * 60 * 1000;
+  const MIN_PAGE_MS = ${MIN_PAGE_SECONDS} * 1000;
+  const session = { id: crypto.randomUUID(), key: document.body.dataset.key, openedAt: new Date().toISOString() };
+  const readMs = new Map();
+  let stretch = null;
+  let lastInput = Date.now();
+  let lastRead = null;
+  const readingUntil = () => Math.min(Date.now(), lastInput + IDLE_MS);
+  const stretchMs = () => (stretch === null ? 0 : readingUntil() - stretch.since);
+  const endStretch = () => {
+    if (stretch !== null && stretchMs() >= MIN_PAGE_MS) {
+      readMs.set(stretch.page, (readMs.get(stretch.page) ?? 0) + stretchMs());
+      lastRead = readingUntil();
+    }
+    stretch = null;
+  };
+  const startStretch = (page) => {
+    stretch = document.visibilityState === "visible" ? { page, since: Date.now() } : null;
+  };
+  const sessionReport = () => {
+    const pages = new Map(readMs);
+    let until = lastRead;
+    if (stretch !== null && stretchMs() >= MIN_PAGE_MS) {
+      pages.set(stretch.page, (pages.get(stretch.page) ?? 0) + stretchMs());
+      until = readingUntil();
+    }
+    if (pages.size === 0) {
+      return null;
+    }
+    const read = [...pages].map(([page, ms]) => ({ page, seconds: Math.round(ms / 1000) }));
+    return JSON.stringify({ ...session, lastSeenAt: new Date(until).toISOString(), pages: read });
+  };
+  const sendSession = (asBeacon) => {
+    const body = sessionReport();
+    if (body === null) {
+      return Promise.resolve();
+    }
+    if (asBeacon) {
+      navigator.sendBeacon("/api/reading-sessions", new Blob([body], { type: "application/json" }));
+      return Promise.resolve();
+    }
+    return fetch("/api/reading-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).then(async (response) => {
+      if (!response.ok) {
+        saveStatus.textContent = "Reading not recorded: " + (await response.json()).error.message;
+        saveStatus.dataset.failed = "";
+      }
+    });
+  };
+  const onInput = () => {
+    if (Date.now() - lastInput > IDLE_MS) {
+      endStretch();
+      lastInput = Date.now();
+      startStretch(viewer.page);
+      return;
+    }
+    lastInput = Date.now();
+  };
+  for (const target of [window, frame.contentWindow]) {
+    for (const type of ["pointermove", "pointerdown", "wheel", "keydown"]) {
+      target.addEventListener(type, onInput, { passive: true });
+    }
+  }
+  viewerDocumentLoaded.then(() => startStretch(viewer.page));
+  viewer.eventBus.on("pagechanging", ({ pageNumber }) => {
+    endStretch();
+    startStretch(pageNumber);
+    sendSession(false);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      endStretch();
+      sendSession(true);
+    } else {
+      startStretch(viewer.page);
+    }
+  });
+  setInterval(() => sendSession(false), 30000);
+  window.addEventListener("pagehide", () => sendSession(true));
+
   document.getElementById("library").addEventListener("click", async (event) => {
     event.preventDefault();
+    await sendSession(false);
     if (pendingSave !== null) {
       clearTimeout(pendingSave);
       startSave();
@@ -256,7 +355,11 @@ export function readerPage(item: BucketItem, origin: string, preferences: Prefer
       iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
     </style>
   </head>
-  <body data-item-path="${itemApiPath(item.id)}" data-resume-hash="${resumeHash(item)}">
+  <body
+    data-key="${item.id}"
+    data-item-path="${itemApiPath(item.id)}"
+    data-resume-hash="${resumeHash(item)}"
+  >
     <header>
       <a id="library" href="/" aria-label="Library" title="Library">${LIBRARY}<span>Library</span></a>
       <button id="back" type="button" aria-label="Back" title="Back (Alt+←)" disabled>${BACK}</button>

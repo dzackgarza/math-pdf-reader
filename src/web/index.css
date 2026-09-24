@@ -1,4 +1,19 @@
 @import "tailwindcss";
+/* daisyUI supplies only the Timeline screen's timeline. Its themes would redefine the app's
+   color tokens (--color-accent among them), so none is loaded; the variables the timeline
+   reads (daisyui/components/timeline.css) come from the app's palette below. */
+@plugin "daisyui" {
+  include: timeline;
+  themes: false;
+}
+
+:root {
+  --color-base-100: #ffffff;
+  --color-base-300: var(--color-line);
+  --border: 1px;
+  --radius-box: 0.5rem;
+  --radius-selector: 0.5rem;
+}
 @import "@fontsource-variable/inter";
 
 @theme {

@@ -45,6 +45,7 @@ import {
   updateCollection,
 } from "./organization";
 import { sendRoutes, zoteroStatus } from "./send";
+import { sessionRoutes } from "./sessions";
 import { sourceRoutes } from "./sourceRoutes";
 import { replacePdf } from "./store";
 import { retrieveMetadata } from "./titles";
@@ -503,5 +504,6 @@ export function registerLibraryRoutes(
   savedSearchRoutes(app, state);
   sendRoutes(app, state, root, zotero, library);
   sourceRoutes(app, state, root, loadAppConfig(CONFIG_PATH).rebuild, library);
+  sessionRoutes(app, state, root);
   return library;
 }

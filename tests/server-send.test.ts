@@ -14,7 +14,7 @@ import {
   LibraryPayloadSchema,
   type ZoteroRecord,
 } from "../src/server/libraryContract";
-import { unfiled } from "../src/server/organization";
+import { emptyOrganization, unfiled } from "../src/server/organization";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -68,13 +68,7 @@ const SENT: ZoteroRecord = {
 
 function recordSent(bucket: Bucket, key: string): void {
   const filing = { ...unfiled(SENT.sentAt), zotero: SENT };
-  const organization = {
-    version: 2,
-    collections: [],
-    savedSearches: [],
-    items: { [key]: filing },
-    activity: [],
-  };
+  const organization = { ...emptyOrganization(), items: { [key]: filing } };
   writeFileSync(join(bucket.root, "organization.json"), JSON.stringify(organization));
 }
 

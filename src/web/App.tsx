@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, RefreshCw } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import {
   type AdvancedSearchSettings,
@@ -56,6 +56,7 @@ import { type LibraryView, reconcileView, relatedItems, visibleItems } from "./l
 import { entryView, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import TimelineScreen from "./screens/TimelineScreen";
 import { defaultSearchSettings } from "./search";
 import { newRule } from "./smartRules";
 import { type StatusRead, useBucketStatus } from "./useBucketStatus";
@@ -117,7 +118,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const [nameRequest, setNameRequest] = useState<NameRequest | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
-  const report = (message: string) => setToast({ kind: "failure", message });
+  const report = useCallback((message: string) => setToast({ kind: "failure", message }), []);
   const [sendAttempts, setSendAttempt] = useKeyedAttempts<SendAttempt>();
   const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
   // Keys whose sources are being verified, and lost PDFs being rebuilt.
@@ -321,7 +322,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       <div className="flex min-h-0 flex-1">
         <Sidebar pdfCount={payload.items.length} onNewCollection={newCollection} />
         <main className="flex min-w-0 flex-1 flex-col bg-white">
-          {screen.kind !== "settings" && (
+          {screen.kind !== "settings" && screen.kind !== "timeline" && (
             <TopBar
               ref={searchField}
               search={search}
@@ -378,6 +379,12 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               }
             />
           )}
+          {screen.kind === "timeline" && (
+            <TimelineScreen
+              stored={new Set(payload.items.map((item) => item.id))}
+              onError={report}
+            />
+          )}
           {screen.kind === "settings" && (
             <SettingsScreen
               read={read}
@@ -393,7 +400,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
             />
           )}
         </main>
-        {selected !== undefined && screen.kind !== "settings" && (
+        {selected !== undefined && screen.kind !== "settings" && screen.kind !== "timeline" && (
           <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:top-0 max-xl:bottom-6 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
             <InspectorPanel
               key={selected.id}

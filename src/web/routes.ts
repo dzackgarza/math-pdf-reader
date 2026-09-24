@@ -8,7 +8,8 @@ export type OrganizationTab = (typeof ORGANIZATION_TABS)[number];
 export type Screen =
   | { kind: "library"; view: LibraryView }
   | { kind: "organization"; tab: OrganizationTab; entry: string | null }
-  | { kind: "settings" };
+  | { kind: "settings" }
+  | { kind: "timeline" };
 
 const LIBRARY_VIEWS: Record<string, LibraryView> = {
   "/": { kind: "all" },
@@ -28,6 +29,9 @@ export function screenAt(path: string): Screen | null {
   }
   if (path === "/settings") {
     return { kind: "settings" };
+  }
+  if (path === "/timeline") {
+    return { kind: "timeline" };
   }
   const [, section, tabSegment, entry] = path.split("/");
   const tab = organizationTab(tabSegment);
