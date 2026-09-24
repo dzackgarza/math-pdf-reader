@@ -3,6 +3,7 @@
 import { browser } from "wxt/browser";
 import { storage } from "wxt/utils/storage";
 import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
+import { ApiErrorSchema } from "../contract/library";
 import type { CaptureOutcome } from "./messages";
 
 // Whether this browser's PDF navigations go to the bucket. On until the user switches it off.
@@ -20,10 +21,12 @@ export const lastCapture = storage.defineItem<LastCapture | null>("local:lastCap
 export type BucketState =
   | { kind: "ready"; status: ServerStatus }
   | { kind: "not-ready"; status: ServerStatus }
+  | { kind: "check-failed"; detail: string }
   | { kind: "unreachable"; detail: string };
 
 // A refused connection or a non-bucket answer on the configured port is `unreachable`: the
-// extension cannot hand PDFs to it.
+// extension cannot hand PDFs to it. The bucket's own error document is `check-failed`: it
+// answered, but could not tell whether its data folder can take captures.
 export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   const answered = await fetch(`${bucketOrigin}/status`, { cache: "no-store" }).then(
     (response) => ({ ok: true as const, response }),
@@ -34,7 +37,13 @@ export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   }
   if (!answered.response.ok) {
     const detail = `${answered.response.status} ${answered.response.statusText}`;
-    return { kind: "unreachable", detail };
+    if (answered.response.headers.get("Content-Type") !== "application/json") {
+      return { kind: "unreachable", detail };
+    }
+    const failure = ApiErrorSchema.safeParse(await answered.response.json());
+    return failure.success
+      ? { kind: "check-failed", detail: failure.data.error.message }
+      : { kind: "unreachable", detail };
   }
   const status = ServerStatusSchema.safeParse(await answered.response.json());
   if (!status.success) {
@@ -49,11 +58,19 @@ function badgeFor(state: BucketState, enabled: boolean, bucketOrigin: string): B
   if (state.kind === "unreachable") {
     return { text: "!", color: "#b3261e", title: `PDF Bucket is not reachable at ${bucketOrigin}` };
   }
-  if (state.kind === "not-ready") {
+  if (state.kind === "check-failed") {
     return {
       text: "!",
       color: "#b3261e",
-      title: `PDF Bucket at ${bucketOrigin} cannot store PDFs (${state.status.root} is not writable)`,
+      title: `PDF Bucket at ${bucketOrigin} cannot tell whether it can store PDFs (${state.detail})`,
+    };
+  }
+  if (state.kind === "not-ready") {
+    const cause = state.status.storage.root_exists ? "is not writable" : "does not exist";
+    return {
+      text: "!",
+      color: "#b3261e",
+      title: `PDF Bucket at ${bucketOrigin} cannot store PDFs (${state.status.root} ${cause})`,
     };
   }
   if (!enabled) {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
@@ -51,4 +51,34 @@ test("status reports a missing root as not ready without creating it", async () 
     ready: false,
   });
   expect(readdirSync(parent)).toEqual([]);
+});
+
+test("status reports a root this process cannot write as existing but not ready", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-status-"));
+  chmodSync(root, 0o555);
+  const app = await bucket(root);
+
+  const response = await app.request("/status");
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    storage: { root_exists: true, root_writable: false },
+    capabilities: { capture: false },
+    ready: false,
+  });
+});
+
+test("status answers a failed check of the root with the operating system's error, not a storage state", async () => {
+  const parent = mkdtempSync(join(tmpdir(), "pdf-bucket-status-"));
+  const root = join(parent, "looping-root");
+  symlinkSync(root, root);
+  const app = await bucket(root);
+
+  const response = await app.request("/status");
+
+  expect(response.status).toBe(500);
+  // ELOOP is errno 40 on Linux: the message carries the operating system's own answer.
+  expect(await response.json()).toEqual({
+    error: { kind: "storage_check_failed", message: expect.stringContaining("(os error 40)") },
+  });
 });

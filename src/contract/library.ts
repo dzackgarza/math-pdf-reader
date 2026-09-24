@@ -394,6 +394,7 @@ export const API_ERROR_KINDS = [
   "not_a_folder",
   "resolver_failed",
   "zotero_failed",
+  "storage_check_failed",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({

@@ -1,5 +1,6 @@
 //! The bucket's HTTP surface: capture, import, status, the PDF and reader URLs, the event
 //! stream, the API route groups, the PDF.js viewer and the library UI bundle.
+use std::io::ErrorKind;
 use std::path::Path as FsPath;
 
 use axum::body::{Body, Bytes};
@@ -8,6 +9,8 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use nix::errno::Errno;
+use nix::unistd::{access, AccessFlags};
 use serde_json::json;
 use tower::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
@@ -219,22 +222,54 @@ async fn import_folder(
     Ok(Json(response))
 }
 
-// Whether this process may write into the directory: access(2) with W_OK.
-fn writable_directory(path: &FsPath) -> bool {
-    if !path.is_dir() {
-        return false;
+/// A stat(2) or access(2) call on the bucket root that failed without answering what it asked;
+/// the caller gets the operating system's own error.
+fn storage_check_failed(root: &FsPath, call: &str, error: impl std::fmt::Display) -> AppError {
+    AppError::api(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        ApiErrorErrorKind::StorageCheckFailed,
+        format!(
+            "cannot check the bucket root {}: {call}: {error}",
+            root.display()
+        ),
+    )
+}
+
+/// Whether the bucket root is a directory this process may write into. Only the operating
+/// system's answer that the directory is missing (ENOENT, ENOTDIR from stat(2)) or not writable
+/// (EACCES, EROFS, EPERM from access(2) with W_OK) is a storage state; any other error is a
+/// failure of the check.
+async fn root_storage(root: &FsPath) -> AppResult<ServerStatusStorage> {
+    let root_exists = match tokio::fs::metadata(root).await {
+        Ok(metadata) => metadata.is_dir(),
+        Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
+            false
+        }
+        Err(error) => return Err(storage_check_failed(root, "stat", error)),
+    };
+    if !root_exists {
+        return Ok(ServerStatusStorage {
+            root_exists,
+            root_writable: false,
+        });
     }
-    match nix::unistd::access(path, nix::unistd::AccessFlags::W_OK) {
+    let root_writable = match access(root, AccessFlags::W_OK) {
         Ok(()) => true,
-        Err(_denied) => false,
-    }
+        Err(Errno::EACCES | Errno::EROFS | Errno::EPERM) => false,
+        Err(errno) => return Err(storage_check_failed(root, "access", errno)),
+    };
+    Ok(ServerStatusStorage {
+        root_exists,
+        root_writable,
+    })
 }
 
 /// `GET /status`: the capture extension and the library read it to tell whether the bucket is
 /// up and able to store captures.
 async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Json<ServerStatus>> {
     let root = &state.config.root;
-    let writable = writable_directory(root);
+    let storage = root_storage(root).await?;
+    let writable = storage.root_writable;
     Ok(Json(ServerStatus {
         backend_url: origin(&headers)?,
         root: root
@@ -246,10 +281,7 @@ async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Js
             name: ServerStatusServiceName::PdfBucket,
             version: VERSION.try_into().expect("the crate version is not empty"),
         },
-        storage: ServerStatusStorage {
-            root_exists: root.is_dir(),
-            root_writable: writable,
-        },
+        storage,
         capabilities: ServerStatusCapabilities { capture: writable },
         ready: writable,
     }))
