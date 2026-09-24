@@ -42,13 +42,16 @@ The window starts at login only when the session reaches `graphical-session.targ
 
 ### Hyprland
 
-After a capture the window asks for focus. By default Hyprland only marks it urgent. To bring the window to the front on the reader page, load the shipped window rule from the Hyprland Lua config (for example `~/.config/hypr/confs/windowrules.lua`):
+After a capture the window asks for focus.
+By default Hyprland only marks it urgent.
+To bring the window to the front on the reader page, load the shipped window rule from the Hyprland Lua config (for example `~/.config/hypr/confs/windowrules.lua`):
 
 ```lua
 dofile("<checkout>/desktop/hyprland/pdf-bucket.lua")
 ```
 
-The rule sets `focus_on_activate` for the bucket window only. `docs/m1.md` records the events with and without it.
+The rule sets `focus_on_activate` for the bucket window only.
+`docs/m1.md` records the events with and without it.
 
 ## Browser extensions
 
