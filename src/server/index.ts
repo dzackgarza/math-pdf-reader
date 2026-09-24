@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "./app";
-import { CONFIG_PATH, dataRoot, loadAppConfig, pdfjsDir } from "./config";
+import { CONFIG_PATH, dataRoot, indexExportFile, loadAppConfig, pdfjsDir } from "./config";
 import { EXTRACTIONS_MANIFEST } from "./extractions";
 
 const VERSION = "0.1.0";
@@ -25,5 +25,6 @@ export default {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: indexExportFile(),
   }).fetch,
 };

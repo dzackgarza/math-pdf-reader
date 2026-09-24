@@ -25,6 +25,7 @@ function bucket() {
       pdfjsDir: pdfjsDir(config),
       zoteroUrl: config.zotero.url,
       extractionsManifest: EXTRACTIONS_MANIFEST,
+      indexExport: null,
     }),
   };
 }

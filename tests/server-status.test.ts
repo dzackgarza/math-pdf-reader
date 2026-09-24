@@ -17,6 +17,7 @@ test("status reports a ready storage contract for an existing writable root", as
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: null,
   });
 
   const response = await app.request(`${origin}/status`);
@@ -42,6 +43,7 @@ test("status reports a missing root as not ready without creating it", async () 
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: null,
   });
 
   const response = await app.request(`${origin}/status`);

@@ -57,6 +57,7 @@ const app = createApp({
   pdfjsDir: pdfjsDir(config),
   zoteroUrl: config.zotero.url,
   extractionsManifest: EXTRACTIONS_MANIFEST,
+  indexExport: null,
 });
 const api = (path: string, init?: RequestInit) => app.request(`http://bucket${path}`, init);
 

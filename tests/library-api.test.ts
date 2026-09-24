@@ -42,6 +42,7 @@ function open(root: string): Bucket {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: null,
   });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }

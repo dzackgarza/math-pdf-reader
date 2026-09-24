@@ -29,6 +29,7 @@ const server = Bun.serve({
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest,
+    indexExport: null,
   }).fetch,
 });
 process.stdout.write(`${server.url.origin}\n`);

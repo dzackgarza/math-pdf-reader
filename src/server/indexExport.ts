@@ -73,12 +73,19 @@ export async function readIndexExport(exportFile: string): Promise<IndexExport> 
   return IndexExportSchema.parse(JSON.parse(await readFile(exportFile, "utf8")));
 }
 
-export async function exportIndex(root: string, exportFile: string): Promise<IndexExport> {
+// REMOVED names items the user deleted or sent away on purpose; the export may drop those.
+export async function exportIndex(
+  root: string,
+  exportFile: string,
+  removed: ReadonlySet<string>,
+): Promise<IndexExport> {
   const stored = await listItems(root, []);
   if (existsSync(exportFile)) {
     const keys = new Set(stored.map((item) => item.key));
     const previous = await readIndexExport(exportFile);
-    const missing = previous.items.map((item) => item.key).filter((key) => !keys.has(key));
+    const missing = previous.items
+      .map((item) => item.key)
+      .filter((key) => !keys.has(key) && !removed.has(key));
     if (missing.length > 0) {
       throw new PdfsMissingError(missing, exportFile);
     }
@@ -99,6 +106,53 @@ export async function exportIndex(root: string, exportFile: string): Promise<Ind
   await writeFile(partial, `${JSON.stringify(index, null, 2)}\n`);
   await rename(partial, exportFile);
   return index;
+}
+
+// Rewrites the index export whenever the running server changes the library. Changes that
+// arrive while an export runs are folded into one more export after it. A refused export (a
+// PDF missing from the store) is reported on stderr and leaves the previous export in place.
+export class IndexExporter {
+  private running = false;
+  private pending = false;
+  private readonly removed = new Set<string>();
+
+  constructor(
+    private readonly root: string,
+    private readonly exportFile: string,
+  ) {}
+
+  // Items removed on purpose; the next export drops them instead of refusing.
+  forget(keys: string[]): void {
+    for (const key of keys) {
+      this.removed.add(key);
+    }
+  }
+
+  changed(): void {
+    this.pending = true;
+    if (!this.running) {
+      void this.run();
+    }
+  }
+
+  private async run(): Promise<void> {
+    this.running = true;
+    while (this.pending) {
+      this.pending = false;
+      const dropping = new Set(this.removed);
+      await exportIndex(this.root, this.exportFile, dropping).then(
+        () => {
+          for (const key of dropping) {
+            this.removed.delete(key);
+          }
+        },
+        (error: Error) => {
+          process.stderr.write(`index export refused: ${error.message}\n`);
+        },
+      );
+    }
+    this.running = false;
+  }
 }
 
 export async function importIndex(root: string, exportFile: string): Promise<Organization> {

@@ -152,8 +152,14 @@ export function deleteSavedSearch(org: Organization, id: string): Organization {
 // sees a half-written file and a response is sent only after its change is on disk.
 export class OrganizationStore {
   private queue: Promise<Organization> = Promise.resolve(emptyOrganization());
+  private readonly writeListeners: (() => void)[] = [];
 
   constructor(private readonly root: string) {}
+
+  // LISTENER runs after every write that landed.
+  onWrite(listener: () => void): void {
+    this.writeListeners.push(listener);
+  }
 
   async read(): Promise<Organization> {
     const path = organizationFile(this.root);
@@ -172,6 +178,9 @@ export class OrganizationStore {
       const partial = `${path}.partial`;
       await writeFile(partial, `${JSON.stringify(next, null, 2)}\n`);
       await rename(partial, path);
+      for (const listener of this.writeListeners) {
+        listener();
+      }
       return next;
     };
     this.queue = this.queue.then(write, write);

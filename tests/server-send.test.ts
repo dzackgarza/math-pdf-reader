@@ -38,6 +38,7 @@ function emptyBucket(): Bucket {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: null,
   });
   return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
 }

@@ -5,6 +5,7 @@ import { WEB_DIST_DIR } from "./config";
 import type { CaptureResponse } from "./contract";
 import { BucketEvents } from "./events";
 import { registerExtractionRoutes } from "./extractions";
+import { IndexExporter } from "./indexExport";
 import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
@@ -19,6 +20,9 @@ export type AppConfig = {
   zoteroUrl: string;
   // The extraction plugins the inspector lists and runs.
   extractionsManifest: string;
+  // The index export the server rewrites after every change, or null for a bucket whose
+  // changes are not exported (tests, evidence runs).
+  indexExport: string | null;
 };
 
 const CaptureFormSchema = z.strictObject({
@@ -50,7 +54,15 @@ export function createApp(config: AppConfig): Hono {
     throw error;
   });
 
-  const library = registerLibraryRoutes(app, config.root, new ZoteroWriteApi(config.zoteroUrl));
+  const exporter =
+    config.indexExport === null ? null : new IndexExporter(config.root, config.indexExport);
+  const library = registerLibraryRoutes(
+    app,
+    config.root,
+    new ZoteroWriteApi(config.zoteroUrl),
+    exporter,
+  );
+  exporter?.changed();
 
   app.get("/status", async (c) => {
     const origin = new URL(c.req.url).origin;
@@ -66,6 +78,7 @@ export function createApp(config: AppConfig): Hono {
       return c.json({ error: "not_a_pdf" }, 400);
     }
     const result = await captureBytes(config.root, form.data);
+    library.stored();
     const response: CaptureResponse = {
       key: result.item.key,
       existing: result.existing,

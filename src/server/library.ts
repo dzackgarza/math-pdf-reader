@@ -1,5 +1,6 @@
 // The library API: the stored items joined with their filing, and the filing mutations.
 import type { Context, Hono } from "hono";
+import type { IndexExporter } from "./indexExport";
 import type { z } from "zod";
 import { CONFIG_PATH, loadAppConfig } from "./config";
 import {
@@ -55,6 +56,10 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
 export type Library = {
   payload(): Promise<LibraryPayload>;
   item(key: string): Promise<{ item: BucketItem; organization: Organization } | null>;
+  // A PDF was stored: the index export is rewritten.
+  stored(): void;
+  // Items left the bucket on purpose: the index export drops them.
+  removed(keys: string[]): void;
 };
 
 function apiError(c: Context, status: 400 | 404, kind: ApiErrorKind, message: string) {
@@ -82,9 +87,13 @@ export class LibraryState {
   readonly index: LibraryIndex;
   readonly organizations: OrganizationStore;
 
-  constructor(root: string) {
+  constructor(
+    root: string,
+    readonly exporter: IndexExporter | null,
+  ) {
     this.index = new LibraryIndex(root);
     this.organizations = new OrganizationStore(root);
+    this.organizations.onWrite(() => exporter?.changed());
   }
 
   async payloadOf(organization: Organization): Promise<LibraryPayload> {
@@ -229,9 +238,19 @@ function savedSearchRoutes(app: Hono, state: LibraryState) {
   });
 }
 
-export function registerLibraryRoutes(app: Hono, root: string, zotero: ZoteroWriteApi): Library {
-  const state = new LibraryState(root);
+export function registerLibraryRoutes(
+  app: Hono,
+  root: string,
+  zotero: ZoteroWriteApi,
+  exporter: IndexExporter | null,
+): Library {
+  const state = new LibraryState(root, exporter);
   const library: Library = {
+    stored: () => exporter?.changed(),
+    removed: (keys) => {
+      exporter?.forget(keys);
+      exporter?.changed();
+    },
     payload: async () => state.payloadOf(await state.organizations.read()),
     item: async (key) => {
       const indexed = await state.indexed(key);

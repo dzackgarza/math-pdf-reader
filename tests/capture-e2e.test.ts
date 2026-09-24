@@ -48,6 +48,7 @@ function startBucket(port: number) {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport: null,
   });
   const server = Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
   if (server.port === undefined) {

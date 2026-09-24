@@ -9,7 +9,7 @@ const root = dataRoot();
 const exportFile = file ?? indexExportFile();
 
 if (command === "export") {
-  const index = await exportIndex(root, exportFile);
+  const index = await exportIndex(root, exportFile, new Set());
   process.stdout.write(`exported ${index.items.length} items to ${exportFile}\n`);
 } else if (command === "import") {
   const organization = await importIndex(root, exportFile);
