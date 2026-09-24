@@ -1,5 +1,7 @@
 import { FolderOpen } from "lucide-react";
 import type { ReactNode } from "react";
+import type { Preferences } from "../../server/libraryContract";
+import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
 import type { StatusRead } from "../useBucketStatus";
 
@@ -15,9 +17,13 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 export default function SettingsScreen({
   read,
   onError,
+  preferences,
+  onPreferences,
 }: {
   read: StatusRead;
   onError: (message: string) => void;
+  preferences: Preferences;
+  onPreferences: (preferences: Preferences) => void;
 }) {
   if (read.kind !== "read") {
     return null;
@@ -47,6 +53,14 @@ export default function SettingsScreen({
               <FolderOpen className="h-4 w-4" />
             </button>
           )}
+        </Row>
+        <Row label="Reader">
+          <Switch
+            label="Open the outline when a PDF opens"
+            on={preferences.outlineOnOpen}
+            onChange={(outlineOnOpen) => onPreferences({ ...preferences, outlineOnOpen })}
+          />
+          <span>Open the outline when a PDF opens</span>
         </Row>
         <Row label="Version">{service.version}</Row>
       </dl>

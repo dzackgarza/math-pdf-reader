@@ -288,12 +288,16 @@ export const MissingItemSchema = z.strictObject({
   mirrors: z.array(HttpUrlSchema),
 });
 
+// How the app behaves: whether the reader opens a PDF with its outline showing.
+export const PreferencesSchema = z.strictObject({ outlineOnOpen: z.boolean() });
+
 export const LibraryPayloadSchema = z.strictObject({
   items: z.array(BucketItemSchema),
   missing: z.array(MissingItemSchema),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
   activity: z.array(ActivitySchema),
+  preferences: PreferencesSchema,
 });
 
 // What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
@@ -415,6 +419,7 @@ export type Collection = z.infer<typeof CollectionSchema>;
 export type Rule = z.infer<typeof RuleSchema>;
 export type RuleField = Rule["field"];
 export type Activity = z.infer<typeof ActivitySchema>;
+export type Preferences = z.infer<typeof PreferencesSchema>;
 export type CollectionUpdate = z.infer<typeof CollectionUpdateRequestSchema>;
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
 export type ItemNote = z.infer<typeof ItemNoteSchema>;

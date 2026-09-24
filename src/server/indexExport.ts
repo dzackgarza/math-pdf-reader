@@ -12,6 +12,7 @@ import {
   ActivitySchema,
   CollectionSchema,
   type MissingItem,
+  PreferencesSchema,
   type RebuildOutcome,
   SavedSearchSchema,
   TitleSourceSchema,
@@ -39,6 +40,7 @@ export const IndexExportSchema = z.strictObject({
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
   activity: z.array(ActivitySchema),
+  preferences: PreferencesSchema,
   items: z.array(ExportedItemSchema),
 });
 
@@ -92,6 +94,7 @@ export async function exportIndex(
     collections: organization.collections,
     savedSearches: organization.savedSearches,
     activity: organization.activity,
+    preferences: organization.preferences,
     items: stored.map(({ key, provenance, title, authors }) => ({
       key,
       provenance,
@@ -198,6 +201,7 @@ export async function importIndex(root: string, exportFile: string): Promise<Org
     collections: index.collections,
     savedSearches: index.savedSearches,
     activity: index.activity,
+    preferences: index.preferences,
     items: Object.fromEntries(filed.map((item) => [item.key, item.filing])),
   }));
 }

@@ -4,7 +4,7 @@
 // it opens the same view. Annotations made with PDF.js's editors are saved into the stored PDF.
 // The Highwire `citation_*` tags let the Zotero Connector save the page.
 import { html, raw } from "hono/html";
-import { type BucketItem, LIBRARY_VIEW_KEY } from "./libraryContract";
+import { type BucketItem, LIBRARY_VIEW_KEY, type Preferences } from "./libraryContract";
 
 export function pdfUrlPath(key: string): string {
   return `/pdf/${encodeURIComponent(key)}.pdf`;
@@ -43,7 +43,9 @@ const LINK = ICON(
 // creates PDFHistory only when not embedded). The frame is this page's whole document, so the
 // viewer is told it is not embedded, and external links keep leaving through the top window, as
 // they do for an embedded viewer. PDF.js's comment tool, off by default, is turned on beside
-// its highlight, text, ink and image tools. The viewer's event bus exists once its
+// its highlight, text, ink and image tools. The sidebar opens as the preferences say, never
+// as the PDF's /PageMode asks (sidebarViewOnLoad set to a view overrides the page mode and
+// PDF.js's remembered sidebar). The viewer's event bus exists once its
 // initializedPromise settles, which happens before it opens the PDF, so a listener added then
 // cannot miss \`documentloaded\`. PDF.js refuses to unload while the document holds any
 // annotation (onBeforeUnload with _hasChanges), since it expects a download to keep them; here
@@ -66,6 +68,7 @@ document.addEventListener("webviewerloaded", (event) => {
   const options = viewerWindow.PDFViewerApplicationOptions;
   options.set("externalLinkTarget", LinkTarget.TOP);
   options.set("enableComment", true);
+  options.set("sidebarViewOnLoad", Number(document.documentElement.dataset.sidebarViewOnLoad));
   app.initializedPromise.then(() => app.eventBus.on("documentloaded", documentLoaded, { once: true }));
 });
 `);
@@ -199,11 +202,16 @@ frame.addEventListener("load", async () => {
 });
 `);
 
-export function readerPage(item: BucketItem, origin: string) {
+// PDF.js's SidebarView values (web/ui_utils.js): NONE, OUTLINE.
+const SIDEBAR_NONE = 0;
+const SIDEBAR_OUTLINE = 2;
+
+export function readerPage(item: BucketItem, origin: string, preferences: Preferences) {
+  const sidebarView = preferences.outlineOnOpen ? SIDEBAR_OUTLINE : SIDEBAR_NONE;
   const { provenance } = item;
   const viewer = `/pdfjs/web/viewer.html?file=${encodeURIComponent(pdfUrlPath(item.id))}`;
   return html`<!doctype html>
-<html lang="en">
+<html lang="en" data-sidebar-view-on-load="${sidebarView}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

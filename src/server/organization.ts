@@ -21,6 +21,7 @@ import {
   collectionSubtree,
   ItemNoteSchema,
   MirrorSchema,
+  PreferencesSchema,
   ReadingSchema,
   SavedSearchSchema,
   SourceCheckSchema,
@@ -47,6 +48,7 @@ const OrganizationSchema = z.strictObject({
   items: z.record(z.string().min(1), ItemFilingSchema),
   // Filing changes per collection, oldest first, the latest ACTIVITY_KEPT of them.
   activity: z.array(ActivitySchema),
+  preferences: PreferencesSchema,
 });
 
 const ACTIVITY_KEPT = 500;
@@ -60,7 +62,14 @@ export function organizationFile(root: string): string {
 
 // The organization of a bucket nobody has filed anything in yet.
 function emptyOrganization(): Organization {
-  return { version: 2, collections: [], savedSearches: [], items: {}, activity: [] };
+  return {
+    version: 2,
+    collections: [],
+    savedSearches: [],
+    items: {},
+    activity: [],
+    preferences: { outlineOnOpen: false },
+  };
 }
 
 export function unfiled(capturedAt: string): ItemFiling {

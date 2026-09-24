@@ -161,7 +161,8 @@ export function createApp(config: AppConfig): Hono {
     if (found === null) {
       return c.notFound();
     }
-    return c.html(readerPage(found.item, new URL(c.req.url).origin));
+    const { preferences } = found.organization;
+    return c.html(readerPage(found.item, new URL(c.req.url).origin, preferences));
   });
 
   registerExtractionRoutes(app, config.root, config.extractionsManifest);

@@ -15,6 +15,7 @@ import {
   NewCollectionRequestSchema,
   NewSavedSearchRequestSchema,
   NoteRequestSchema,
+  PreferencesSchema,
   ReadingRequestSchema,
   type RetrieveMetadataResponse,
   type Rule,
@@ -151,6 +152,7 @@ export class LibraryState {
       collections: organization.collections,
       savedSearches: organization.savedSearches,
       activity: organization.activity,
+      preferences: organization.preferences,
     };
   }
 
@@ -478,6 +480,13 @@ export function registerLibraryRoutes(
   };
 
   app.get("/api/library", async (c) => c.json(await library.payload()));
+  app.put("/api/preferences", async (c) => {
+    const body = await parseBody(c, PreferencesSchema);
+    if (!body.success) {
+      return invalid(c, body.error);
+    }
+    return state.change(c, (org) => ({ ...org, preferences: body.data }));
+  });
   app.get("/api/settings", (c) => {
     const settings: Settings = {
       root,

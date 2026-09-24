@@ -378,7 +378,18 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               }
             />
           )}
-          {screen.kind === "settings" && <SettingsScreen read={read} onError={report} />}
+          {screen.kind === "settings" && <SettingsScreen
+              read={read}
+              onError={report}
+              preferences={payload.preferences}
+              onPreferences={(preferences) =>
+                attempt(
+                  mutate(LibraryPayloadSchema, "PUT", "/api/preferences", preferences).then(
+                    () => undefined,
+                  ),
+                )
+              }
+            />}
         </main>
         {selected !== undefined && screen.kind !== "settings" && (
           <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:top-0 max-xl:bottom-6 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">

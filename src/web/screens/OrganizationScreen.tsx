@@ -18,6 +18,7 @@ import {
   type SavedSearch,
 } from "../../server/libraryContract";
 import CollectionCards from "../components/CollectionCards";
+import Switch from "../components/Switch";
 import { activityText, dateTime, isTopic, pdfCount, ruleText, tagLabel } from "../format";
 import { itemsInView, tagCounts, viewName } from "../librarySelectors";
 import { entryView, ORGANIZATION_TABS, type OrganizationTab, organizationPath } from "../routes";
@@ -165,24 +166,11 @@ function CollectionDetails({
               Its PDFs stay in the bucket after Send to Zotero.
             </span>
           </span>
-          <button
-            type="button"
-            role="switch"
-            aria-label="Keep offline"
-            aria-checked={collection.keepOffline}
-            onClick={() =>
-              actions.updateCollection(collection, { keepOffline: !collection.keepOffline })
-            }
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-              collection.keepOffline ? "bg-accent" : "bg-line"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
-                collection.keepOffline ? "left-4.5" : "left-0.5"
-              }`}
-            />
-          </button>
+          <Switch
+            label="Keep offline"
+            on={collection.keepOffline}
+            onChange={(keepOffline) => actions.updateCollection(collection, { keepOffline })}
+          />
         </label>
         {children.length > 0 && (
           <div>

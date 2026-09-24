@@ -352,15 +352,19 @@ describe("library window", () => {
     expect((await sidebarOnOpen())[0]).toBe(false);
     await shot("reader-outline-closed");
 
-    await page.goto(`${bucket.origin}/#/settings`);
     const toggle = 'button[role="switch"][aria-label="Open the outline when a PDF opens"]';
+    const openSettings = async () => {
+      await page.goto(`${bucket.origin}/#/settings`);
+      await page.waitForSelector(toggle);
+    };
+    await openSettings();
     await page.click(toggle);
     await page.waitForSelector(`${toggle}[aria-checked="true"]`);
     // SidebarView.OUTLINE is 2.
     expect(await sidebarOnOpen()).toEqual([true, 2]);
     await shot("reader-outline-open");
 
-    await page.goto(`${bucket.origin}/#/settings`);
+    await openSettings();
     await page.click(toggle);
     await page.waitForSelector(`${toggle}[aria-checked="false"]`);
   });
