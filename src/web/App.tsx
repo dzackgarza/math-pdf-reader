@@ -20,7 +20,8 @@ import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
 import EmptyTable from "./components/EmptyTable";
 import InspectorPanel from "./components/InspectorPanel";
 import ItemContextMenu from "./components/ItemContextMenu";
-import LibraryBar from "./components/LibraryBar";
+import LibraryBar, { type LibraryLayout } from "./components/LibraryBar";
+import LibraryGrid from "./components/LibraryGrid";
 import LibraryTable from "./components/LibraryTable";
 import MissingList from "./components/MissingList";
 import NameDialog, { type NameRequest } from "./components/NameDialog";
@@ -56,6 +57,20 @@ import { resetColumnLayout, useLibraryTable } from "./useLibraryTable";
 
 function readerUrl(key: string): string {
   return `/read/${encodeURIComponent(key)}`;
+}
+
+// List or grid, kept in this browser for the next visit.
+const LAYOUT_STORAGE_KEY = "pdf-bucket:layout";
+
+function useLibraryLayout(): [LibraryLayout, (layout: LibraryLayout) => void] {
+  const [layout, setLayout] = useState<LibraryLayout>(() =>
+    localStorage.getItem(LAYOUT_STORAGE_KEY) === "grid" ? "grid" : "list",
+  );
+  const choose = (next: LibraryLayout) => {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, next);
+    setLayout(next);
+  };
+  return [layout, choose];
 }
 
 function FullScreen({ children }: { children: ReactNode }) {
@@ -95,6 +110,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   // Keys whose sources are being verified, and lost PDFs being rebuilt.
   const [verifying, setVerifying] = useState<ReadonlySet<string>>(new Set());
   const [rebuilding, setRebuilding] = useState<ReadonlySet<string>>(new Set());
+  const [layout, setLayout] = useLibraryLayout();
   const toggleKey =
     (setter: typeof setVerifying, key: string) =>
     (on: boolean): void =>
@@ -239,6 +255,13 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     resetColumns: () => resetColumnLayout(table),
   });
 
+  const empty = (
+    <EmptyTable
+      bucketEmpty={payload.items.length === 0}
+      searching={search.query.trim().length > 0}
+      onClearSearch={() => setSearch(defaultSearchSettings())}
+    />
+  );
   const tableElement = (
     <LibraryTable
       table={table}
@@ -247,13 +270,17 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       onSelectItem={setSelectedId}
       onOpenItem={openReader}
       rowMenu={rowMenu}
-      empty={
-        <EmptyTable
-          bucketEmpty={payload.items.length === 0}
-          searching={search.query.trim().length > 0}
-          onClearSearch={() => setSearch(defaultSearchSettings())}
-        />
-      }
+      empty={empty}
+    />
+  );
+  const gridElement = (
+    <LibraryGrid
+      table={table}
+      selectedItemId={selectedId}
+      onSelectItem={setSelectedId}
+      onOpenItem={openReader}
+      rowMenu={rowMenu}
+      empty={empty}
     />
   );
 
@@ -272,9 +299,18 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
             />
           )}
           {screen.kind === "library" && (
-            <LibraryBar payload={payload} view={screen.view} navigate={navigate} table={table} />
+            <LibraryBar
+              payload={payload}
+              view={screen.view}
+              navigate={navigate}
+              table={table}
+              layout={layout}
+              onLayout={setLayout}
+            />
           )}
-          {screen.kind === "library" && screen.view.kind !== "missing" && tableElement}
+          {screen.kind === "library" &&
+            screen.view.kind !== "missing" &&
+            (layout === "grid" ? gridElement : tableElement)}
           {screen.kind === "library" && screen.view.kind === "missing" && (
             <MissingList
               missing={payload.missing}

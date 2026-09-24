@@ -20,6 +20,7 @@ import {
   shortDate,
   sourceCheckText,
   sourceDomain,
+  thumbnailPath,
   topicName,
   topicTag,
 } from "../format";
@@ -206,62 +207,69 @@ function Details({
   const asOptions = (values: string[]) => values.map((value) => ({ id: value, name: value }));
 
   return (
-    <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
-      <Row label="Collections">
-        {item.collections.map((id) => (
-          <Chip
-            key={id}
-            label={names.get(id) ?? id}
-            kind="collection"
-            onRemove={() =>
-              filing.setCollections(item.collections.filter((candidate) => candidate !== id))
-            }
+    <>
+      <img
+        src={thumbnailPath(item.id, 640)}
+        alt="First page"
+        className="mx-4 mt-4 max-h-64 w-[calc(100%-2rem)] rounded border border-line bg-white object-cover object-top"
+      />
+      <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
+        <Row label="Collections">
+          {item.collections.map((id) => (
+            <Chip
+              key={id}
+              label={names.get(id) ?? id}
+              kind="collection"
+              onRemove={() =>
+                filing.setCollections(item.collections.filter((candidate) => candidate !== id))
+              }
+            />
+          ))}
+          <FilingPicker
+            label="collection"
+            options={collections.filter((collection) => !item.collections.includes(collection.id))}
+            onPick={(id) => filing.setCollections([...item.collections, id])}
+            onCreate={filing.fileInNewCollection}
           />
-        ))}
-        <FilingPicker
-          label="collection"
-          options={collections.filter((collection) => !item.collections.includes(collection.id))}
-          onPick={(id) => filing.setCollections([...item.collections, id])}
-          onCreate={filing.fileInNewCollection}
-        />
-      </Row>
-      <Row label="Topics">
-        {topics.map((tag) => (
-          <TagChip key={tag} tag={tag} onRemove={() => without(tag)} />
-        ))}
-        <FilingPicker
-          label="topic"
-          options={asOptions(
-            knownTags
-              .filter(isTopic)
-              .filter((tag) => !topics.includes(tag))
-              .map(topicName),
-          )}
-          onPick={(name) => addTag(topicTag(name))}
-          onCreate={(name) => addTag(topicTag(name))}
-        />
-      </Row>
-      <Row label="Tags">
-        {tags.map((tag) => (
-          <TagChip key={tag} tag={tag} onRemove={() => without(tag)} />
-        ))}
-        <FilingPicker
-          label="tag"
-          options={asOptions(knownTags.filter((tag) => !isTopic(tag) && !tags.includes(tag)))}
-          onPick={addTag}
-          onCreate={addTag}
-        />
-      </Row>
-      <Row label="Sources">
-        <Sources item={item} sources={props.sources} />
-      </Row>
-      <Row label="Extraction">
-        <div className="w-full space-y-2">
-          <ExtractionFiles extraction={item.extraction} />
-          <ExtractionRunner {...extraction} />
-        </div>
-      </Row>
-    </dl>
+        </Row>
+        <Row label="Topics">
+          {topics.map((tag) => (
+            <TagChip key={tag} tag={tag} onRemove={() => without(tag)} />
+          ))}
+          <FilingPicker
+            label="topic"
+            options={asOptions(
+              knownTags
+                .filter(isTopic)
+                .filter((tag) => !topics.includes(tag))
+                .map(topicName),
+            )}
+            onPick={(name) => addTag(topicTag(name))}
+            onCreate={(name) => addTag(topicTag(name))}
+          />
+        </Row>
+        <Row label="Tags">
+          {tags.map((tag) => (
+            <TagChip key={tag} tag={tag} onRemove={() => without(tag)} />
+          ))}
+          <FilingPicker
+            label="tag"
+            options={asOptions(knownTags.filter((tag) => !isTopic(tag) && !tags.includes(tag)))}
+            onPick={addTag}
+            onCreate={addTag}
+          />
+        </Row>
+        <Row label="Sources">
+          <Sources item={item} sources={props.sources} />
+        </Row>
+        <Row label="Extraction">
+          <div className="w-full space-y-2">
+            <ExtractionFiles extraction={item.extraction} />
+            <ExtractionRunner {...extraction} />
+          </div>
+        </Row>
+      </dl>
+    </>
   );
 }
 

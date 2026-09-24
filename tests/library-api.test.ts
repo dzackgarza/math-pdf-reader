@@ -382,3 +382,24 @@ test("the reader's last viewed page is recorded per item without counting as a f
   const unknown = await send(bucket, "PUT", "/api/items/missing/reading", { page: 1, pages: 2 });
   expect(unknown.status).toBe(404);
 });
+
+test("an item's first page is served as a PNG of the requested width", async () => {
+  const bucket = emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const thumbnail = async (width: number) => {
+    const response = await bucket.request(`/api/items/lattices/thumbnail?width=${width}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    return new Uint8Array(await response.arrayBuffer());
+  };
+  // PNG: the signature, then the IHDR chunk whose first field is the width (big-endian).
+  const pngWidth = (png: Uint8Array) => new DataView(png.buffer).getUint32(16);
+
+  const small = await thumbnail(160);
+  expect([...small.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  expect(pngWidth(small)).toBe(160);
+  expect(pngWidth(await thumbnail(320))).toBe(320);
+
+  expect((await bucket.request("/api/items/missing/thumbnail?width=160")).status).toBe(404);
+  expect((await bucket.request("/api/items/lattices/thumbnail?width=0")).status).toBe(400);
+});

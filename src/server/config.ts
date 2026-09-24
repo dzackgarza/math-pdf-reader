@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { xdgData } from "xdg-basedir";
+import { xdgCache, xdgData } from "xdg-basedir";
 import { z } from "zod";
 
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -63,4 +63,13 @@ export function dataRoot(): string {
 // so that wiping or losing the store leaves the export that rebuilds it.
 export function indexExportFile(): string {
   return join(xdgDataHome(), "pdf-bucket-export", "index.json");
+}
+
+// Derived files the app can always make again (first-page thumbnails) live in the XDG cache
+// directory: $XDG_CACHE_HOME/pdf-bucket, which is ~/.cache/pdf-bucket when it is unset.
+export function cacheRoot(): string {
+  if (xdgCache === undefined) {
+    throw new Error("no XDG cache directory: neither XDG_CACHE_HOME nor HOME is set");
+  }
+  return join(xdgCache, "pdf-bucket");
 }

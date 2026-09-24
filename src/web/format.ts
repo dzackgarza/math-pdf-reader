@@ -24,6 +24,11 @@ export function sourceCheckText(check: SourceCheck): string {
     : `Last verified ${dateTime(check.checkedAt)}: ${check.detail}`;
 }
 
+// The item's first page as a PNG, WIDTH pixels wide.
+export function thumbnailPath(key: string, width: number): string {
+  return `/api/items/${encodeURIComponent(key)}/thumbnail?width=${width}`;
+}
+
 export function sourceDomain(url: string): string {
   return new URL(url).hostname.replace(/^www\./, "");
 }

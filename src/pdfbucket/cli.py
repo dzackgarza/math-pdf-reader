@@ -14,6 +14,7 @@ from pdfbucket.models import CaptureProvenance, CaptureRequest, ItemTitle, Store
 from pdfbucket.provenance import embed_metadata, read_stored_item
 from pdfbucket.resolution import resolve as resolve_item
 from pdfbucket.store import pdf_path, remove_item, replace_pdf, restore_pdf, store_pdf, stored_keys
+from pdfbucket.thumbnails import render_first_page
 
 app = App(help="PDF Bucket store")
 
@@ -43,6 +44,12 @@ def restore(root: Path, pdf: Path, key: str, pdf_url: str, source_url: str, capt
 def replace(root: Path, key: str, pdf: Path) -> None:
     """Replace KEY's stored PDF under ROOT with the PDF at PDF when it carries the same embedded provenance; print the outcome."""
     print(replace_pdf(root, key, pdf.read_bytes()).model_dump_json())
+
+
+@app.command
+def thumbnail(root: Path, key: str, out: Path, width: int) -> None:
+    """Render KEY's first page under ROOT, WIDTH pixels wide, as a PNG at OUT."""
+    render_first_page(pdf_path(root, key), out, width)
 
 
 @app.command

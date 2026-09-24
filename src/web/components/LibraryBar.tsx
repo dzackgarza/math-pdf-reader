@@ -2,7 +2,7 @@
 // it) with their counts, and the Sort menu over the table's columns.
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Table } from "@tanstack/react-table";
-import { ArrowDownUp, Check } from "lucide-react";
+import { ArrowDownUp, Check, LayoutGrid, List } from "lucide-react";
 import type { BucketItem, LibraryPayload } from "../../server/libraryContract";
 import {
   type LibraryView,
@@ -11,12 +11,21 @@ import {
   quickFilterName,
 } from "../librarySelectors";
 
+export type LibraryLayout = "list" | "grid";
+
 type LibraryBarProps = {
   payload: LibraryPayload;
   view: LibraryView;
   navigate: (path: string) => void;
   table: Table<BucketItem>;
+  layout: LibraryLayout;
+  onLayout: (layout: LibraryLayout) => void;
 };
+
+const LAYOUTS = [
+  { layout: "list", label: "List view", icon: <List className="h-4 w-4" /> },
+  { layout: "grid", label: "Grid view", icon: <LayoutGrid className="h-4 w-4" /> },
+] as const;
 
 const MENU_ITEM =
   "flex cursor-default items-center gap-2 rounded px-2 py-1.5 outline-none data-[highlighted]:bg-surface";
@@ -80,7 +89,14 @@ function SortMenu({ table }: { table: Table<BucketItem> }) {
   );
 }
 
-export default function LibraryBar({ payload, view, navigate, table }: LibraryBarProps) {
+export default function LibraryBar({
+  payload,
+  view,
+  navigate,
+  table,
+  layout,
+  onLayout,
+}: LibraryBarProps) {
   return (
     <div className="flex items-center gap-1.5 border-b border-line bg-white px-3 py-2">
       {QUICK_FILTERS.map((filter) => {
@@ -107,6 +123,23 @@ export default function LibraryBar({ payload, view, navigate, table }: LibraryBa
         );
       })}
       <SortMenu table={table} />
+      <div className="flex rounded-md border border-line">
+        {LAYOUTS.map((choice) => (
+          <button
+            key={choice.layout}
+            type="button"
+            aria-label={choice.label}
+            title={choice.label}
+            aria-pressed={layout === choice.layout}
+            onClick={() => onLayout(choice.layout)}
+            className={`inline-flex h-8 w-8 items-center justify-center ${
+              layout === choice.layout ? "bg-accent-soft text-accent" : "text-muted hover:text-ink"
+            }`}
+          >
+            {choice.icon}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

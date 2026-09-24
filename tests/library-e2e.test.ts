@@ -397,6 +397,43 @@ describe("library window", () => {
     await reopened.waitForFunction("PDFViewerApplication.page === 4");
   });
 
+  test("the grid view shows each PDF's first page, and a double-click opens the reader", async () => {
+    await openLibrary();
+    const keys = (await rowKeys()).sort();
+    await page.click('button[aria-label="Grid view"]');
+    await page.waitForFunction(
+      (count) =>
+        document.querySelectorAll("[data-card-id] img").length === count &&
+        [...document.querySelectorAll<HTMLImageElement>("[data-card-id] img")].every(
+          (image) => image.complete && image.naturalWidth > 0,
+        ),
+      {},
+      keys.length,
+    );
+    await shot("library-grid");
+    expect(
+      (
+        await page.$$eval("[data-card-id]", (cards) =>
+          cards.map((card) => card.getAttribute("data-card-id")),
+        )
+      ).sort(),
+    ).toEqual(keys);
+
+    await page.click('[data-card-id="reading"]');
+    await page.waitForFunction(
+      () =>
+        document.querySelector<HTMLImageElement>('aside img[alt="First page"]')?.naturalWidth ?? 0,
+    );
+    await page.click('[data-card-id="reading"]', { count: 2 });
+    await page.waitForFunction(() => location.pathname === "/read/reading");
+
+    // The layout is kept for the next visit; the list comes back only when chosen.
+    await openRoot();
+    await page.waitForSelector('[data-card-id="reading"]');
+    await page.click('button[aria-label="List view"]');
+    await page.waitForSelector(row("reading"));
+  });
+
   test("the library at a narrow width", async () => {
     await openLibrary();
     await page.click(row("lattices"));

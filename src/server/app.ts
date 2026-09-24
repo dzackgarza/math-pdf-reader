@@ -10,6 +10,7 @@ import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
 import { captureBytes, StoreCommandError, storedPdfPath } from "./store";
+import { thumbnailRoutes } from "./thumbnails";
 import { retrieveMetadata } from "./titles";
 import { ZoteroError, ZoteroWriteApi } from "./zotero";
 
@@ -119,6 +120,7 @@ export function createApp(config: AppConfig): Hono {
   });
 
   registerExtractionRoutes(app, config.root, config.extractionsManifest);
+  thumbnailRoutes(app, config.root);
 
   app.use(
     "/pdfjs/*",
