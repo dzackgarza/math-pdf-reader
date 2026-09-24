@@ -224,3 +224,7 @@ export type SendResponse = z.infer<typeof SendResponseSchema>;
 export type TitleSource = z.infer<typeof TitleSourceSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
+
+// The session-storage key under which the library page keeps its current view (the address's
+// hash, e.g. `#/unfiled`); the reader's Library button returns to that view.
+export const LIBRARY_VIEW_KEY = "pdf-bucket.library-view";
