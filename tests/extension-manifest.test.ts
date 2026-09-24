@@ -9,7 +9,11 @@ test("the Chrome build declares the declarativeNetRequest interception route", a
   const output = await build({ root: EXTENSION_ROOT, browser: "chrome", mode: "production" });
 
   expect(output.manifest.manifest_version).toBe(3);
-  expect(output.manifest.permissions).toEqual(["declarativeNetRequestWithHostAccess", "storage"]);
+  expect(output.manifest.permissions).toEqual([
+    "declarativeNetRequestWithHostAccess",
+    "storage",
+    "alarms",
+  ]);
   expect(output.manifest.host_permissions).toEqual(["<all_urls>"]);
   expect(output.manifest.minimum_chrome_version).toBe("128");
 });
@@ -22,6 +26,7 @@ test("the Firefox build declares the blocking webRequest interception route", as
     "webRequest",
     "webRequestBlocking",
     "storage",
+    "alarms",
     "<all_urls>",
   ]);
 });
