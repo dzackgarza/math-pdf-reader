@@ -314,9 +314,9 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
     driver.save_screenshot(str(out / "webkit-library-populated.png"))
     driver.get(f"{origins['seeded']}/read/{quote(filed['reader'])}")
-    driver.switch_to.frame(wait.until(expected_conditions.presence_of_element_located((By.TAG_NAME, "iframe"))))
-    wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, ".page canvas")))
-    driver.switch_to.default_content()
+    # The reader rewrites its own address as the view changes, which ends a WebDriver frame
+    # context; the viewer is same-origin, so the page itself reports when PDF.js has drawn.
+    wait.until(lambda d: d.execute_script("return document.querySelector('iframe').contentDocument?.querySelector('.page canvas') != null"))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-reader.png"))
     driver.quit()

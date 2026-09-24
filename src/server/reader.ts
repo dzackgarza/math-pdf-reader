@@ -26,10 +26,11 @@ const LINK = ICON(
 
 // Runs in the reader page. The viewer is same-origin, so the page reads PDF.js's event bus:
 // every view change (page, zoom, scroll) replaces the address's fragment with PDF.js's own
-// open parameters, and the fragment the page was opened with goes to the viewer.
+// open parameters. The fragment the page was opened with goes to the viewer as a same-document
+// replace, which PDF.js's hashchange handler applies (as the initial view if the document is
+// still loading) and which adds no history entry.
 const SCRIPT = raw(`
 const frame = document.querySelector("iframe");
-frame.src = frame.dataset.viewer + location.hash;
 const navigate = (event) => {
   if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); history.back(); }
   if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); history.forward(); }
@@ -44,6 +45,10 @@ copy.addEventListener("click", async () => {
   setTimeout(() => delete copy.dataset.copied, 1500);
 });
 frame.addEventListener("load", async () => {
+  const inner = frame.contentWindow.location;
+  if (location.hash !== "" && inner.hash !== location.hash) {
+    inner.replace(inner.pathname + inner.search + location.hash);
+  }
   frame.contentWindow.addEventListener("keydown", navigate);
   const viewer = frame.contentWindow.PDFViewerApplication;
   await viewer.initializedPromise;
@@ -98,7 +103,7 @@ export function readerPage(item: BucketItem, origin: string) {
       <h1 title="${item.title}">${item.title}</h1>
       <button id="copy-link" type="button" aria-label="Copy link to this view" title="Copy link to this view">${LINK}</button>
     </header>
-    <iframe data-viewer="${viewer}" title="${item.title}"></iframe>
+    <iframe src="${viewer}" title="${item.title}"></iframe>
     <script type="module">${SCRIPT}</script>
   </body>
 </html>`;

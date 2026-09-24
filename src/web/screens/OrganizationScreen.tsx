@@ -18,7 +18,7 @@ import {
   SEARCH_FIELDS,
 } from "../../server/libraryContract";
 import { isTopic, tagLabel } from "../format";
-import { itemsInView, tagCounts, viewName } from "../librarySelectors";
+import { tagCounts, viewName } from "../librarySelectors";
 import { entryView, ORGANIZATION_TABS, type OrganizationTab, organizationPath } from "../routes";
 import { SEARCH_FIELD_LABELS } from "../search";
 
@@ -57,19 +57,12 @@ function entryClasses(selected: boolean): string {
   }`;
 }
 
-function Count({ value }: { value: number }) {
-  return (
-    <span className="ml-auto pl-3 text-xs text-muted tabular-nums">{value.toLocaleString()}</span>
-  );
-}
-
 function CollectionTree({ payload, entry }: { payload: LibraryPayload; entry: string | null }) {
   const renderNode = (collection: Collection, depth: number): ReactNode => {
     const children = payload.collections.filter(
       (candidate) => candidate.parentId === collection.id,
     );
     const selected = collection.id === entry;
-    const count = itemsInView(payload, { kind: "collection", id: collection.id }).length;
     return (
       <li key={collection.id}>
         <Link
@@ -83,7 +76,6 @@ function CollectionTree({ payload, entry }: { payload: LibraryPayload; entry: st
             <Folder aria-hidden className="h-4 w-4 shrink-0 text-accent" />
           )}
           <span className="truncate">{collection.name}</span>
-          <Count value={count} />
         </Link>
         {children.length > 0 && <ul>{children.map((child) => renderNode(child, depth + 1))}</ul>}
       </li>
@@ -111,7 +103,7 @@ function TagList({
   const Icon = tab === "topics" ? Shapes : Tag;
   return (
     <ul className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-1">
-      {tags.map(([tag, count]) => (
+      {tags.map(([tag]) => (
         <li key={tag}>
           <Link href={organizationPath(tab, tag)} className={entryClasses(tag === entry)}>
             <Icon
@@ -119,7 +111,6 @@ function TagList({
               className={`h-4 w-4 shrink-0 ${tab === "topics" ? "text-topic" : "text-accent"}`}
             />
             <span className="truncate">{tagLabel(tag)}</span>
-            <Count value={count} />
           </Link>
         </li>
       ))}
@@ -151,7 +142,6 @@ function SavedSearchList({ payload, entry }: { payload: LibraryPayload; entry: s
                 {searchSummary(search)}
               </span>
             </span>
-            <Count value={itemsInView(payload, { kind: "saved", id: search.id }).length} />
           </Link>
         </li>
       ))}
