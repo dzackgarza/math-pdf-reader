@@ -208,7 +208,25 @@ async fn import_folder(
 ) -> AppResult<Json<FolderImportResponse>> {
     let request: FolderImportRequest = parse_body(&body)?;
     let folder = FsPath::new(request.path.as_str());
-    if !folder.is_dir() {
+    // Only the operating system's answer that the path is no directory (a stat(2) of something
+    // else, ENOENT, ENOTDIR) is `not_a_folder`; any other error is a failure of the check.
+    let is_folder = match tokio::fs::metadata(folder).await {
+        Ok(metadata) => metadata.is_dir(),
+        Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
+            false
+        }
+        Err(error) => {
+            return Err(AppError::api(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorErrorKind::FolderCheckFailed,
+                format!(
+                    "cannot check the folder {}: stat: {error}",
+                    folder.display()
+                ),
+            ))
+        }
+    };
+    if !is_folder {
         return Err(AppError::api(
             StatusCode::BAD_REQUEST,
             ApiErrorErrorKind::NotAFolder,

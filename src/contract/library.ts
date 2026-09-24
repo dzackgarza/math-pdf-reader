@@ -392,6 +392,7 @@ export const API_ERROR_KINDS = [
   "provenance_mismatch",
   "no_pdf_at_url",
   "not_a_folder",
+  "folder_check_failed",
   "resolver_failed",
   "zotero_failed",
   "storage_check_failed",
