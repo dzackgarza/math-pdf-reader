@@ -749,7 +749,9 @@ describe("library window", () => {
     await page.keyboard.press("Enter");
     // The mirror's link in the sources list; a text match would also find the URL still in the
     // field it was typed into, before the server's answer adds the line.
-    await page.waitForSelector(`${details} li a[href="${published("/~author/mirror/problems.pdf")}"]`);
+    await page.waitForSelector(
+      `${details} li a[href="${published("/~author/mirror/problems.pdf")}"]`,
+    );
     await page.click(`${details} button[aria-label="Verify sources"]`);
     await page.waitForFunction(
       (selector) => document.querySelector(selector) === null,
