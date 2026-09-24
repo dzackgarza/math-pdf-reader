@@ -116,13 +116,15 @@ desktop-rust-checks:
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _clippy
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _cargo-test
 
-# Provision the CI runner: Tauri's Linux build inputs, and user namespaces for Chromium's
-# sandbox, which Ubuntu 24.04's AppArmor blocks (actions/runner-images#10443). The qc-ci job
-# runs this recipe as its setup_recipe.
+# Provision the CI runner: Tauri's Linux build inputs, user namespaces for Chromium's sandbox,
+# which Ubuntu 24.04's AppArmor blocks (actions/runner-images#10443), and the pinned PDF.js viewer
+# the reader pages load (trash-cli for the recipe's cleanup). The qc-ci job runs this recipe as
+# its setup_recipe.
 ci-setup:
     sudo apt-get update
-    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev trash-cli
     sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+    just fetch-pdfjs
 
 # Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
 extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
