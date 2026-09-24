@@ -4,7 +4,16 @@
 import { existsSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { z } from "zod";
+import {
+  type ItemFiling,
+  ItemFilingSchema,
+  type Organization,
+  OrganizationSchema,
+} from "../contract/files";
+import { collectionSubtree } from "../contract/library";
+
+export { type ItemFiling, ItemFilingSchema, type Organization };
+
 import type {
   Activity,
   Collection,
@@ -14,47 +23,9 @@ import type {
   SavedSearch,
   SourceCheck,
   ZoteroRecord,
-} from "./libraryContract";
-import {
-  ActivitySchema,
-  CollectionSchema,
-  collectionSubtree,
-  ItemNoteSchema,
-  MirrorSchema,
-  PreferencesSchema,
-  ReadingSchema,
-  SavedSearchSchema,
-  SourceCheckSchema,
-  ZoteroRecordSchema,
-} from "./libraryContract";
-
-export const ItemFilingSchema = z.strictObject({
-  tags: z.array(z.string().min(1)),
-  collections: z.array(z.string().min(1)),
-  notes: z.array(ItemNoteSchema),
-  reading: ReadingSchema,
-  // The last check of the PDF URL, and the item's mirrors with theirs.
-  sourceCheck: SourceCheckSchema,
-  mirrors: z.array(MirrorSchema),
-  modifiedAt: z.iso.datetime({ offset: true }),
-  // Present once a send has created the item in Zotero.
-  zotero: ZoteroRecordSchema.optional(),
-});
-
-const OrganizationSchema = z.strictObject({
-  version: z.literal(2),
-  collections: z.array(CollectionSchema),
-  savedSearches: z.array(SavedSearchSchema),
-  items: z.record(z.string().min(1), ItemFilingSchema),
-  // Filing changes per collection, oldest first, the latest ACTIVITY_KEPT of them.
-  activity: z.array(ActivitySchema),
-  preferences: PreferencesSchema,
-});
+} from "../contract/library";
 
 const ACTIVITY_KEPT = 500;
-
-export type ItemFiling = z.infer<typeof ItemFilingSchema>;
-export type Organization = z.infer<typeof OrganizationSchema>;
 
 export function organizationFile(root: string): string {
   return join(root, "organization.json");

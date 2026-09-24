@@ -4,16 +4,16 @@ import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { readIndexExport } from "../src/server/indexExport";
 import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
-} from "../src/server/libraryContract";
+} from "../src/contract/library";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { readIndexExport } from "../src/server/indexExport";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { recordMetadata } from "../src/server/store";
 

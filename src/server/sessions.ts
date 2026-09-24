@@ -5,20 +5,9 @@ import { existsSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Hono } from "hono";
-import { z } from "zod";
+import { type Sessions, SessionsSchema } from "../contract/files";
+import { type ReadingSession, ReadingSessionReportSchema } from "../contract/library";
 import { apiError, invalid, type LibraryState, parseBody } from "./library";
-import {
-  type ReadingSession,
-  ReadingSessionReportSchema,
-  ReadingSessionSchema,
-} from "./libraryContract";
-
-const SessionsSchema = z.strictObject({
-  version: z.literal(1),
-  sessions: z.array(ReadingSessionSchema),
-});
-
-type Sessions = z.infer<typeof SessionsSchema>;
 
 class SessionStore {
   private queue: Promise<Sessions> = Promise.resolve({ version: 1, sessions: [] });

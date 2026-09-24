@@ -1,7 +1,8 @@
 // The library API contract: what `/api/library` and the filing mutations send and accept.
 // Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
-import { ProvenanceSchema } from "./contract";
+import { ProvenanceSchema } from "./capture";
+import { NonEmptySchema, Sha256Schema, TrimmedSchema } from "./text";
 
 export const SEARCH_FIELDS = ["title", "source", "pdfUrl", "tags", "notes", "key"] as const;
 
@@ -14,15 +15,15 @@ export const AdvancedSearchSettingsSchema = z.strictObject({
   searchFields: z.record(z.enum(SEARCH_FIELDS), z.boolean()),
 });
 
-const NameSchema = z.string().trim().min(1);
+const NameSchema = TrimmedSchema;
 
 // A collection: its name, its parent (a subcollection), a description, whether it is pinned
 // to the front of the collections, and whether its items stay in the bucket after a send to
 // Zotero (Keep offline).
 export const CollectionSchema = z.strictObject({
-  id: z.string().min(1),
+  id: NonEmptySchema,
   name: NameSchema,
-  parentId: z.string().min(1).optional(),
+  parentId: NonEmptySchema.optional(),
   description: z.string(),
   pinned: z.boolean(),
   keepOffline: z.boolean(),
@@ -34,25 +35,25 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("created"),
     at: z.iso.datetime({ offset: true }),
-    collectionId: z.string().min(1),
+    collectionId: NonEmptySchema,
   }),
   z.strictObject({
     kind: z.literal("filed"),
     at: z.iso.datetime({ offset: true }),
-    collectionId: z.string().min(1),
+    collectionId: NonEmptySchema,
     count: z.int().min(1),
   }),
   z.strictObject({
     kind: z.literal("tagged"),
     at: z.iso.datetime({ offset: true }),
-    collectionId: z.string().min(1),
+    collectionId: NonEmptySchema,
     count: z.int().min(1),
-    tags: z.array(z.string().min(1)).min(1),
+    tags: z.array(NonEmptySchema).min(1),
   }),
   z.strictObject({
     kind: z.literal("keptOffline"),
     at: z.iso.datetime({ offset: true }),
-    collectionId: z.string().min(1),
+    collectionId: NonEmptySchema,
     on: z.boolean(),
   }),
 ]);
@@ -68,13 +69,13 @@ const containsRule = <F extends string>(field: F) =>
   z.strictObject({
     field: z.literal(field),
     operator: z.enum(["contains", "does not contain"]),
-    value: z.string().trim().min(1),
+    value: TrimmedSchema,
   });
 const isRule = <F extends string>(field: F) =>
   z.strictObject({
     field: z.literal(field),
     operator: z.enum(["is", "is not"]),
-    value: z.string().trim().min(1),
+    value: TrimmedSchema,
   });
 export const READING_STATES = ["unread", "reading", "finished"] as const;
 export const RuleSchema = z.discriminatedUnion("field", [
@@ -108,7 +109,7 @@ export const RULE_FIELDS = RuleSchema.options.map((option) => option.shape.field
 
 // A saved search: its rules, all of which or any of which an item must meet.
 export const SavedSearchSchema = z.strictObject({
-  id: z.string().min(1),
+  id: NonEmptySchema,
   name: NameSchema,
   match: z.enum(["all", "any"]),
   rules: z.array(RuleSchema).min(1),
@@ -134,13 +135,18 @@ export const ReadingRequestSchema = z
 // other bytes (changed); or no PDF at all (dead), with the HTTP status or network error.
 export const SOURCE_RESULTS = ["accessible", "changed", "dead"] as const;
 
-export const SourceCheckSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("unchecked") }),
+const checkedAs = <S extends (typeof SOURCE_RESULTS)[number]>(status: S) =>
   z.strictObject({
-    status: z.enum(SOURCE_RESULTS),
+    status: z.literal(status),
     checkedAt: z.iso.datetime({ offset: true }),
     detail: z.string(),
-  }),
+  });
+
+export const SourceCheckSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("unchecked") }),
+  checkedAs("accessible"),
+  checkedAs("changed"),
+  checkedAs("dead"),
 ]);
 
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
@@ -151,8 +157,8 @@ export const MirrorSchema = z.strictObject({ url: HttpUrlSchema, check: SourceCh
 export const MirrorRequestSchema = z.strictObject({ url: HttpUrlSchema });
 
 export const ItemNoteSchema = z.strictObject({
-  id: z.string().min(1),
-  note: z.string().trim().min(1),
+  id: NonEmptySchema,
+  note: TrimmedSchema,
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
 });
@@ -160,8 +166,8 @@ export const ItemNoteSchema = z.strictObject({
 // A file an extraction plugin left beside the stored PDF: `name` is the Markdown's file
 // name, or an artifact's path inside `<key>.extraction/`.
 const ArtifactSchema = z.strictObject({
-  name: z.string().min(1),
-  path: z.string().min(1),
+  name: NonEmptySchema,
+  path: NonEmptySchema,
   sizeBytes: z.number().int().nonnegative(),
 });
 
@@ -183,8 +189,8 @@ export const SEND_STEPS = ["fields", "pdf", "markdown"] as const;
 
 export const SendStepSchema = z.discriminatedUnion("step", [
   z.strictObject({ step: z.literal("fields") }),
-  z.strictObject({ step: z.literal("pdf"), attachmentKey: z.string().min(1) }),
-  z.strictObject({ step: z.literal("markdown"), attachmentKey: z.string().min(1) }),
+  z.strictObject({ step: z.literal("pdf"), attachmentKey: NonEmptySchema }),
+  z.strictObject({ step: z.literal("markdown"), attachmentKey: NonEmptySchema }),
 ]);
 
 // How the Zotero item's metadata was found: a resolver plugin on an identifier, or, for an
@@ -192,15 +198,15 @@ export const SendStepSchema = z.discriminatedUnion("step", [
 export const SendSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("resolver"),
-    pluginId: z.string().min(1),
-    identifier: z.string().min(1),
+    pluginId: NonEmptySchema,
+    identifier: NonEmptySchema,
   }),
   z.strictObject({ kind: z.literal("manuscript") }),
 ]);
 
 // The Zotero item a send created, and the steps done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
-  itemKey: z.string().min(1),
+  itemKey: NonEmptySchema,
   sentAt: z.iso.datetime({ offset: true }),
   source: SendSourceSchema,
   steps: z.array(SendStepSchema),
@@ -220,7 +226,7 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
 // The answer to a send: the Zotero item and the steps this send performed.
 // `kept`: the item stays in the bucket because a collection holding it keeps its items offline.
 export const SendResponseSchema = z.strictObject({
-  itemKey: z.string().min(1),
+  itemKey: NonEmptySchema,
   created: z.boolean(),
   performed: z.array(z.enum(SEND_STEPS)),
   kept: z.boolean(),
@@ -235,16 +241,16 @@ export const TitleSourceSchema = z.enum(TITLE_SOURCES);
 // The library item: title, url, tags, collections, notes and dates carry the same meaning
 // as in a reference-manager item; provenance, file and extraction are the bucket's own.
 export const BucketItemSchema = z.strictObject({
-  id: z.string().min(1),
-  title: z.string().min(1),
+  id: NonEmptySchema,
+  title: NonEmptySchema,
   titleSource: TitleSourceSchema,
-  authors: z.array(z.string().min(1)),
+  authors: z.array(NonEmptySchema),
   // From a resolver; null when none gave them.
   year: z.int().nullable(),
-  abstract: z.string().min(1).nullable(),
+  abstract: NonEmptySchema.nullable(),
   url: z.url(),
-  tags: z.array(z.string().min(1)),
-  collections: z.array(z.string().min(1)),
+  tags: z.array(NonEmptySchema),
+  collections: z.array(NonEmptySchema),
   notes: z.array(ItemNoteSchema),
   reading: ReadingSchema,
   sourceCheck: SourceCheckSchema,
@@ -252,7 +258,7 @@ export const BucketItemSchema = z.strictObject({
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
   provenance: ProvenanceSchema,
-  file: z.strictObject({ path: z.string().min(1), sizeBytes: z.number().int().nonnegative() }),
+  file: z.strictObject({ path: NonEmptySchema, sizeBytes: z.number().int().nonnegative() }),
   extraction: ExtractionSchema,
   zotero: ZoteroStatusSchema,
 });
@@ -263,16 +269,16 @@ export const BucketItemSchema = z.strictObject({
 export const RetrieveMetadataOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("resolved"),
-    pluginId: z.string().min(1),
-    identifier: z.string().min(1),
-    title: z.string().min(1),
+    pluginId: NonEmptySchema,
+    identifier: NonEmptySchema,
+    title: NonEmptySchema,
   }),
   z.strictObject({ status: z.literal("unidentified") }),
   z.strictObject({
     status: z.literal("failed"),
-    pluginId: z.string().min(1),
-    identifier: z.string().min(1),
-    message: z.string().min(1),
+    pluginId: NonEmptySchema,
+    identifier: NonEmptySchema,
+    message: NonEmptySchema,
   }),
 ]);
 
@@ -284,9 +290,9 @@ export const RetrieveMetadataResponseSchema = z.strictObject({
 // An item the index export holds whose PDF the store has lost: what Rebuild needs to fetch it
 // again and what the library shows of it meanwhile.
 export const MissingItemSchema = z.strictObject({
-  key: z.string().min(1),
-  title: z.string().min(1),
-  authors: z.array(z.string().min(1)),
+  key: NonEmptySchema,
+  title: NonEmptySchema,
+  authors: z.array(NonEmptySchema),
   provenance: ProvenanceSchema,
   mirrors: z.array(HttpUrlSchema),
 });
@@ -298,7 +304,7 @@ export const MIN_PAGE_SECONDS = 5;
 
 export const ReadingSessionReportSchema = z.strictObject({
   id: z.uuid(),
-  key: z.string().min(1),
+  key: NonEmptySchema,
   openedAt: z.iso.datetime({ offset: true }),
   lastSeenAt: z.iso.datetime({ offset: true }),
   pages: z
@@ -309,10 +315,10 @@ export const ReadingSessionReportSchema = z.strictObject({
 // A stored session carries the item as it was when read, so the timeline outlives the item.
 export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
   item: z.strictObject({
-    title: z.string().min(1),
-    authors: z.array(z.string().min(1)),
+    title: NonEmptySchema,
+    authors: z.array(NonEmptySchema),
     year: z.int().nullable(),
-    abstract: z.string().min(1).nullable(),
+    abstract: NonEmptySchema.nullable(),
     sourceUrl: z.url(),
   }),
 });
@@ -340,15 +346,15 @@ export const LibraryPayloadSchema = z.strictObject({
 // What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
 // or a mirror and matched the recorded original; or every URL was tried and none served it.
 export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
-  z.strictObject({ key: z.string().min(1), status: z.literal("present") }),
+  z.strictObject({ key: NonEmptySchema, status: z.literal("present") }),
   z.strictObject({
-    key: z.string().min(1),
+    key: NonEmptySchema,
     status: z.literal("restored"),
     from: z.url(),
-    stored_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    stored_sha256: Sha256Schema,
   }),
   z.strictObject({
-    key: z.string().min(1),
+    key: NonEmptySchema,
     status: z.literal("unrestored"),
     attempts: z.array(
       z.strictObject({
@@ -363,15 +369,15 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
 // Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF.
 export const ImportUrlRequestSchema = z.strictObject({ url: HttpUrlSchema });
 export const ImportUrlResponseSchema = z.strictObject({
-  key: z.string().min(1),
+  key: NonEmptySchema,
   existing: z.boolean(),
 });
 
 // Add Folder: every PDF directly inside the folder; the keys newly stored and those already held.
-export const FolderImportRequestSchema = z.strictObject({ path: z.string().min(1) });
+export const FolderImportRequestSchema = z.strictObject({ path: NonEmptySchema });
 export const FolderImportResponseSchema = z.strictObject({
-  stored: z.array(z.string().min(1)),
-  existing: z.array(z.string().min(1)),
+  stored: z.array(NonEmptySchema),
+  existing: z.array(NonEmptySchema),
 });
 
 export const API_ERROR_KINDS = [
@@ -391,26 +397,26 @@ export const API_ERROR_KINDS = [
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({
-  error: z.strictObject({ kind: z.enum(API_ERROR_KINDS), message: z.string().min(1) }),
+  error: z.strictObject({ kind: z.enum(API_ERROR_KINDS), message: NonEmptySchema }),
 });
 
 // Request bodies.
-export const TagsRequestSchema = z.strictObject({ tags: z.array(z.string().trim().min(1)) });
-export const CollectionsRequestSchema = z.strictObject({ collections: z.array(z.string().min(1)) });
-export const NoteRequestSchema = z.strictObject({ note: z.string().trim().min(1) });
+export const TagsRequestSchema = z.strictObject({ tags: z.array(TrimmedSchema) });
+export const CollectionsRequestSchema = z.strictObject({ collections: z.array(NonEmptySchema) });
+export const NoteRequestSchema = z.strictObject({ note: TrimmedSchema });
 // Tags or collections added to every item listed, each keeping what it had.
-const BulkKeysSchema = z.array(z.string().min(1)).min(1);
+const BulkKeysSchema = z.array(NonEmptySchema).min(1);
 export const BulkTagsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
-  add: z.array(z.string().trim().min(1)).min(1),
+  add: z.array(TrimmedSchema).min(1),
 });
 export const BulkCollectionsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
-  add: z.array(z.string().min(1)).min(1),
+  add: z.array(NonEmptySchema).min(1),
 });
 export const NewCollectionRequestSchema = z.strictObject({
   name: NameSchema,
-  parentId: z.string().min(1).optional(),
+  parentId: NonEmptySchema.optional(),
 });
 // Any of a collection's own fields; the others stay as they are.
 export const CollectionUpdateRequestSchema = z
@@ -426,9 +432,9 @@ export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
 export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({ id: true });
 
 export const SettingsSchema = z.strictObject({
-  root: z.string().min(1),
-  organizationFile: z.string().min(1),
-  pdfjsVersion: z.string().min(1),
+  root: NonEmptySchema,
+  organizationFile: NonEmptySchema,
+  pdfjsVersion: NonEmptySchema,
 });
 
 // The collection and every collection below it.

@@ -10,7 +10,7 @@ import {
   type Rule,
   RuleSchema,
   type SavedSearch,
-} from "../../server/libraryContract";
+} from "../../contract/library";
 import { isTopic, pdfCount, RULE_FIELD_LABELS, sourceDomain, topicName } from "../format";
 import { itemsMatching, tagCounts } from "../librarySelectors";
 import { newRule, OPERATORS } from "../smartRules";

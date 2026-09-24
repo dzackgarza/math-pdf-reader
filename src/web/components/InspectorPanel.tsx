@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
-import type { BucketItem, Collection, Extraction, SourceCheck } from "../../server/libraryContract";
+import type { BucketItem, Collection, Extraction, SourceCheck } from "../../contract/library";
 import {
   dateTime,
   isTopic,

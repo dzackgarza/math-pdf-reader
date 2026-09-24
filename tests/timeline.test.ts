@@ -1,7 +1,7 @@
 // The timeline's reading of stored sessions: reopenings of one PDF close together form one
 // entry, short entries are filtered, and page lists read as ranges.
 import { expect, test } from "bun:test";
-import type { ReadingSession } from "../src/server/libraryContract";
+import type { ReadingSession } from "../src/contract/library";
 import { pageRanges, timelineEntries } from "../src/web/timeline";
 
 const item = (title: string) => ({

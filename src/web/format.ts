@@ -6,7 +6,7 @@ import {
   type RuleField,
   type SourceCheck,
   TOPIC_PREFIX,
-} from "../server/libraryContract";
+} from "../contract/library";
 
 // Authors as a table cell shows them, after Zotero's Creator column: one surname, two joined
 // with "&", three or more as the first surname and "et al.". A surname is taken as the name's

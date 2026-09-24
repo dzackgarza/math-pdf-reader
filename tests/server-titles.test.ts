@@ -8,13 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { z } from "zod";
+import { LibraryPayloadSchema, RetrieveMetadataResponseSchema } from "../src/contract/library";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import {
-  LibraryPayloadSchema,
-  RetrieveMetadataResponseSchema,
-} from "../src/server/libraryContract";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);

@@ -16,7 +16,7 @@ import {
   type CollectionUpdate,
   type LibraryPayload,
   type SavedSearch,
-} from "../../server/libraryContract";
+} from "../../contract/library";
 import CollectionCards from "../components/CollectionCards";
 import Switch from "../components/Switch";
 import { activityText, dateTime, isTopic, pdfCount, ruleText, tagLabel } from "../format";

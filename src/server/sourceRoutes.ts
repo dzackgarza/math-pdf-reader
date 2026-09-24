@@ -2,9 +2,9 @@
 // a PDF the store has lost.
 import { Semaphore } from "async-mutex";
 import type { Context, Hono } from "hono";
+import { MirrorRequestSchema, type RebuildOutcome } from "../contract/library";
 import { recoverable } from "./indexExport";
 import { apiError, invalid, type Library, type LibraryState, now, parseBody } from "./library";
-import { MirrorRequestSchema, type RebuildOutcome } from "./libraryContract";
 import type { IndexedItem } from "./libraryIndex";
 import { addMirror, recordSourceChecks, removeMirror } from "./organization";
 import { checkSource, type DownloadSettings, rebuildItem } from "./sources";

@@ -12,10 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { type CaptureResponse, CaptureResponseSchema } from "../src/server/contract";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { type CaptureResponse, CaptureResponseSchema } from "../src/contract/capture";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -26,7 +23,10 @@ import {
   type SavedSearch,
   SavedSearchSchema,
   SettingsSchema,
-} from "../src/server/libraryContract";
+} from "../src/contract/library";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);

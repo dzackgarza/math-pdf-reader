@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Command as CmdK } from "cmdk";
 import { FileText, Search, Terminal } from "lucide-react";
 import { type KeyboardEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { BucketItem } from "../../server/libraryContract";
+import type { BucketItem } from "../../contract/library";
 import type { Command } from "../commands";
 import { shortDate, sourceDomain } from "../format";
 import { buildSearchDocuments, rankForPalette, type SearchDocument } from "../search";

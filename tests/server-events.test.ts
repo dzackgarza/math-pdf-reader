@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { CaptureResponseSchema } from "../src/contract/capture";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { CaptureResponseSchema } from "../src/server/contract";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 

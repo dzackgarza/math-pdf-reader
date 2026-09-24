@@ -1,28 +1,23 @@
 // Bridge to the Python store: provenance embedding and the folder layout live there.
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import { z } from "zod";
+import {
+  type CaptureResult,
+  CaptureResultSchema,
+  RemovalSchema,
+  type ReplaceOutcome,
+  ReplaceOutcomeSchema,
+  type Resolution,
+  ResolutionSchema,
+  type StoredItem,
+  StoredItemListSchema,
+  StoredItemSchema,
+} from "../contract/store";
 import { STORE_COMMAND } from "./config";
-import { ProvenanceSchema } from "./contract";
-import { type TitleSource, TitleSourceSchema } from "./libraryContract";
 
-const StoredItemSchema = z.strictObject({
-  key: z.string().min(1),
-  provenance: ProvenanceSchema,
-  title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
-  authors: z.array(z.string().min(1)),
-  year: z.int().nullable(),
-  abstract: z.string().min(1).nullable(),
-});
+export type { CaptureResult, ReplaceOutcome, Resolution, StoredItem };
 
-const CaptureResultSchema = z.strictObject({
-  item: StoredItemSchema,
-  stored_sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  existing: z.boolean(),
-});
-
-export type StoredItem = z.infer<typeof StoredItemSchema>;
-export type CaptureResult = z.infer<typeof CaptureResultSchema>;
+import type { TitleSource } from "../contract/library";
 
 export type CaptureUpload = {
   pdf: File;
@@ -87,33 +82,8 @@ export async function captureBytes(root: string, upload: CaptureUpload): Promise
 // options, so a key that starts with a dash stays a key.
 export async function listItems(root: string, keys: string[]): Promise<StoredItem[]> {
   const stdout = await runStore(["list", root, "--", ...keys], "ignore");
-  return z.array(StoredItemSchema).parse(JSON.parse(stdout));
+  return StoredItemListSchema.parse(JSON.parse(stdout));
 }
-
-export const ResolutionSchema = z.discriminatedUnion("status", [
-  z.strictObject({
-    status: z.literal("resolved"),
-    key: z.string().min(1),
-    plugin_id: z.string().min(1),
-    identifier: z.string().min(1),
-    bibtex: z.string().startsWith("@"),
-  }),
-  z.strictObject({
-    status: z.literal("unidentified"),
-    key: z.string().min(1),
-    candidates: z.array(z.string()),
-  }),
-  z.strictObject({
-    status: z.literal("failed"),
-    key: z.string().min(1),
-    plugin_id: z.string().min(1),
-    identifier: z.string().min(1),
-    exit_code: z.int(),
-    stderr: z.string(),
-  }),
-]);
-
-export type Resolution = z.infer<typeof ResolutionSchema>;
 
 // Finds an identifier for the item and resolves it to BibTeX with a plugin in the manifest.
 export async function resolveItem(
@@ -149,13 +119,6 @@ export async function recordMetadata(
   return StoredItemSchema.parse(JSON.parse(await runStore(args, "ignore")));
 }
 
-const ReplaceOutcomeSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("replaced"), item: StoredItemSchema }),
-  z.strictObject({ status: z.literal("provenance_mismatch"), key: z.string().min(1) }),
-]);
-
-export type ReplaceOutcome = z.infer<typeof ReplaceOutcomeSchema>;
-
 // Replaces the stored PDF with BYTES, the reader's save with its annotations; the store keeps
 // the file unless the bytes carry the provenance embedded in it.
 export async function replacePdf(
@@ -170,9 +133,7 @@ export async function replacePdf(
 // Moves the stored PDF and its extraction to the desktop trash.
 export async function removeStored(root: string, key: string): Promise<void> {
   const stdout = await runStore(["remove", "--", root, key], "ignore");
-  z.strictObject({ key: z.literal(key), trashed: z.array(z.string()).min(1) }).parse(
-    JSON.parse(stdout),
-  );
+  RemovalSchema.parse(JSON.parse(stdout));
 }
 
 // Store bytes re-downloaded for a missing PDF under its key with the provenance recorded at

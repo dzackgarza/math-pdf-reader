@@ -1,7 +1,7 @@
 // The bucket's `/status` report, read when the window opens.
 import { useEffect, useState } from "react";
-import { type ServerStatus, ServerStatusSchema } from "../server/contract";
-import { type Settings, SettingsSchema } from "../server/libraryContract";
+import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
+import { type Settings, SettingsSchema } from "../contract/library";
 
 export type BucketStatus = ServerStatus & { settings: Settings; checkedAt: Date };
 

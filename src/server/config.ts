@@ -1,45 +1,13 @@
 // Declared config surface: one JSON file, strict schema, no runtime defaults.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { xdgCache, xdgData } from "xdg-basedir";
-import { z } from "zod";
+import { type AppConfig, CONFIG_PATH, loadAppConfig, REPO_ROOT } from "../contract/config";
 
-export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
-export const CONFIG_PATH = join(REPO_ROOT, "pdf-bucket.config.json");
+export { type AppConfig, CONFIG_PATH, loadAppConfig, REPO_ROOT };
 export const WEB_DIST_DIR = join(REPO_ROOT, "dist/web");
 
 // The Python store package owns provenance embedding and the folder layout.
 export const STORE_COMMAND = ["uv", "run", "--project", REPO_ROOT, "--locked", "pdfbucket"];
-
-export const AppConfigSchema = z.strictObject({
-  server: z.strictObject({
-    host: z.string().min(1),
-    port: z.number().int().positive(),
-  }),
-  pdfjs: z.strictObject({
-    version: z.string().regex(/^\d+\.\d+\.\d+$/),
-    sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  }),
-  // Sub-frames smaller than this keep the browser's own viewer (embedded previews).
-  capture: z.strictObject({
-    min_frame_width: z.number().int().positive(),
-    min_frame_height: z.number().int().positive(),
-  }),
-  // Zotero's local HTTP server; the send action writes through its local write API.
-  zotero: z.strictObject({ url: z.url({ protocol: /^http$/ }) }),
-  // `just rebuild-cache`: downloads at once, and how long one may take before its URL is dead.
-  rebuild: z.strictObject({
-    concurrent_downloads: z.number().int().positive(),
-    download_timeout_seconds: z.number().int().positive(),
-  }),
-});
-
-export type AppConfig = z.infer<typeof AppConfigSchema>;
-
-export function loadAppConfig(configPath: string): AppConfig {
-  return AppConfigSchema.parse(JSON.parse(readFileSync(configPath, "utf8")));
-}
 
 // The prebuilt PDF.js viewer, unpacked from the pinned release by `just fetch-pdfjs`.
 export function pdfjsDir(config: AppConfig): string {

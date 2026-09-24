@@ -1,6 +1,6 @@
 import { HardDrive, Radio } from "lucide-react";
 import prettyBytes from "pretty-bytes";
-import type { LibraryPayload } from "../../server/libraryContract";
+import type { LibraryPayload } from "../../contract/library";
 import type { StatusRead } from "../useBucketStatus";
 
 // Whether browser captures can land: the one state worth a glance, detailed on hover.

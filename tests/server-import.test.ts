@@ -5,15 +5,15 @@ import { copyFileSync, mkdtempSync, readFileSync, renameSync, writeFileSync } fr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import {
   ApiErrorSchema,
   FolderImportResponseSchema,
   ImportUrlResponseSchema,
   LibraryPayloadSchema,
-} from "../src/server/libraryContract";
+} from "../src/contract/library";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 setDefaultTimeout(30_000);

@@ -1,6 +1,6 @@
 // The smart collection editor's choices: the operators each rule field takes, and a new rule
 // on a field with the first value the library offers for it.
-import type { LibraryPayload, Rule, RuleField } from "../server/libraryContract";
+import type { LibraryPayload, Rule, RuleField } from "../contract/library";
 import { isTopic, sourceDomain, topicName } from "./format";
 import { tagCounts } from "./librarySelectors";
 import { defaultSearchSettings } from "./search";

@@ -5,15 +5,15 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
   type ZoteroRecord,
-} from "../src/server/libraryContract";
+} from "../src/contract/library";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
+import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import { emptyOrganization, unfiled } from "../src/server/organization";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 

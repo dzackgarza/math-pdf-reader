@@ -7,7 +7,7 @@ import {
   type READING_STATES,
   type Rule,
   type SavedSearch,
-} from "../server/libraryContract";
+} from "../contract/library";
 import { sourceDomain, tagLabel, topicTag } from "./format";
 import { filterItems } from "./search";
 

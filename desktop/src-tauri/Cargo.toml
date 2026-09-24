@@ -30,16 +30,7 @@ strip-ansi-escapes = "0.2"
 tauri-plugin-dialog = "2"
 
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
 
-# Lint silencing is checked, not free: #[allow] is denied; use #[expect(..., reason = "...")]
-# (clippy restriction lints allow_attributes, allow_attributes_without_reason).
-[lints.clippy]
-allow_attributes = "deny"
-allow_attributes_without_reason = "deny"
+
+[lints]
+workspace = true

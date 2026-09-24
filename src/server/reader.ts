@@ -10,7 +10,7 @@ import {
   MIN_PAGE_SECONDS,
   type Preferences,
   type Theme,
-} from "./libraryContract";
+} from "../contract/library";
 
 export function pdfUrlPath(key: string): string {
   return `/pdf/${encodeURIComponent(key)}.pdf`;

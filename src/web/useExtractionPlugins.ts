@@ -6,7 +6,7 @@ import {
   ExtractionOutcomeSchema,
   type ExtractionPlugin,
   ExtractionPluginsResponseSchema,
-} from "../server/extractionContract";
+} from "../contract/extraction";
 import { requestError } from "./useLibraryApi";
 
 export type PluginsState =

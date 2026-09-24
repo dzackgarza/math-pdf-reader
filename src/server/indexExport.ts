@@ -6,48 +6,15 @@ import { existsSync, mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Semaphore } from "async-mutex";
-import { z } from "zod";
-import { ProvenanceSchema } from "./contract";
-import {
-  ActivitySchema,
-  CollectionSchema,
-  type MissingItem,
-  PreferencesSchema,
-  type RebuildOutcome,
-  SavedSearchSchema,
-  TitleSourceSchema,
-} from "./libraryContract";
-import {
-  ItemFilingSchema,
-  type Organization,
-  OrganizationStore,
-  organizationFile,
-  unfiled,
-} from "./organization";
+import { type ExportedItem, type IndexExport, IndexExportSchema } from "../contract/files";
+import type { MissingItem, RebuildOutcome } from "../contract/library";
+
+export type { ExportedItem, IndexExport };
+export { IndexExportSchema };
+
+import { type Organization, OrganizationStore, organizationFile, unfiled } from "./organization";
 import { type DownloadSettings, type RecoverableItem, rebuildItem } from "./sources";
 import { listItems } from "./store";
-
-const ExportedItemSchema = z.strictObject({
-  key: z.string().min(1),
-  provenance: ProvenanceSchema,
-  title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
-  authors: z.array(z.string().min(1)),
-  year: z.int().nullable(),
-  abstract: z.string().min(1).nullable(),
-  filing: ItemFilingSchema,
-});
-
-export const IndexExportSchema = z.strictObject({
-  version: z.literal(2),
-  collections: z.array(CollectionSchema),
-  savedSearches: z.array(SavedSearchSchema),
-  activity: z.array(ActivitySchema),
-  preferences: PreferencesSchema,
-  items: z.array(ExportedItemSchema),
-});
-
-export type IndexExport = z.infer<typeof IndexExportSchema>;
-export type ExportedItem = z.infer<typeof ExportedItemSchema>;
 
 // The previous export lists items the store no longer holds. Writing a new export would drop
 // the only record that can bring them back.

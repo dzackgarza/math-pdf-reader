@@ -3,7 +3,7 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, Play } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { useState } from "react";
-import type { ExtractionPlugin, PdfLimit } from "../../server/extractionContract";
+import type { ExtractionPlugin, PdfLimit } from "../../contract/extraction";
 import type { ExtractionAttempt } from "../libraryActions";
 import type { PluginsState } from "../useExtractionPlugins";
 

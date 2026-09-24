@@ -5,7 +5,7 @@
 import { Cite } from "@citation-js/core";
 import { format } from "@citation-js/name";
 import "@citation-js/plugin-bibtex";
-import type { RetrieveMetadataOutcome } from "./libraryContract";
+import type { RetrieveMetadataOutcome } from "../contract/library";
 import { type ResolvedMetadata, recordMetadata, resolveItem } from "./store";
 
 // citation-js parses the entry to CSL, which also turns the BibTeX's LaTeX into text and

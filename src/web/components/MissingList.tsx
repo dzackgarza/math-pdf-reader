@@ -1,7 +1,7 @@
 // The lost PDFs: items the index export holds whose PDF the store no longer has, each with
 // the URLs Rebuild will try.
 import { LoaderCircle, RotateCcw } from "lucide-react";
-import type { MissingItem } from "../../server/libraryContract";
+import type { MissingItem } from "../../contract/library";
 import { shortDate } from "../format";
 
 type MissingListProps = {

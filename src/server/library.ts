@@ -1,8 +1,6 @@
 // The library API: the stored items joined with their filing, and the filing mutations.
 import type { Context, Hono } from "hono";
 import type { z } from "zod";
-import { CONFIG_PATH, loadAppConfig } from "./config";
-import type { IndexExporter } from "./indexExport";
 import {
   type Activity,
   type ApiErrorKind,
@@ -22,7 +20,9 @@ import {
   SavedSearchUpdateRequestSchema,
   type Settings,
   TagsRequestSchema,
-} from "./libraryContract";
+} from "../contract/library";
+import { CONFIG_PATH, loadAppConfig } from "./config";
+import type { IndexExporter } from "./indexExport";
 import { type IndexedItem, LibraryIndex } from "./libraryIndex";
 import {
   addCollection,

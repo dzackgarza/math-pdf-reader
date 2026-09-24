@@ -8,9 +8,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Mutex } from "async-mutex";
 import type { Context, Hono } from "hono";
-import { arxivId } from "../resolvers/arxivId";
-import { REPO_ROOT } from "./config";
-import type { Library, LibraryState } from "./library";
 import {
   type ApiErrorKind,
   collectionSubtree,
@@ -21,7 +18,10 @@ import {
   type SendStepDone,
   type ZoteroRecord,
   type ZoteroStatus,
-} from "./libraryContract";
+} from "../contract/library";
+import { arxivId } from "../resolvers/arxivId";
+import { REPO_ROOT } from "./config";
+import type { Library, LibraryState } from "./library";
 import type { IndexedItem } from "./libraryIndex";
 import { type Organization, removeItem, setZoteroRecord } from "./organization";
 import { type Resolution, removeStored, resolveItem } from "./store";

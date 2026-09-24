@@ -1,0 +1,48 @@
+[package]
+name = "pdf-bucket"
+version = "0.1.0"
+description = "PDF Bucket server: capture, PDF and reader URLs, library API, index export"
+authors = ["Zack Garza"]
+edition = "2021"
+
+[lib]
+name = "pdf_bucket"
+
+[[bin]]
+name = "pdf-bucket"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+askama = "0.16.1"
+axum = { version = "0.8.9", features = ["multipart", "macros"] }
+biblatex = "0.12.0"
+chrono = "0.4.45"
+clap = { version = "4.6.7", features = ["derive"] }
+dirs = "7.0.0"
+futures = "0.3.34"
+hex = "0.4.3"
+lol_html = "3.0.1"
+percent-encoding = "2.3.2"
+regress = "0.12.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "process", "fs", "sync", "time", "signal", "io-util", "net"] }
+tokio-stream = { version = "0.1.19", features = ["sync"] }
+tower-http = { version = "0.7.1", features = ["fs"] }
+url = "2.5.8"
+uuid = { version = "1.26.1", features = ["serde", "v4"] }
+
+[build-dependencies]
+prettyplease = "0.3.0"
+schemars = "0.8"
+serde_json = "1.0.151"
+syn = { version = "3.0.6", features = ["full"] }
+typify = "0.8.0"
+
+[dev-dependencies]
+tower = { version = "0.5.3", features = ["util"] }

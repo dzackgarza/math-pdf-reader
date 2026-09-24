@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
-import type { BucketItem } from "../../server/libraryContract";
+import type { BucketItem } from "../../contract/library";
 import type { Command } from "../commands";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "../keyboardShortcuts";
 import CommandPalette, { type PaletteMode } from "./CommandPalette";

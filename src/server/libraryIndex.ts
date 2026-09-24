@@ -3,7 +3,7 @@
 // provenance is re-read from a PDF only when that file is new or has changed.
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import type { Extraction } from "./libraryContract";
+import type { Extraction } from "../contract/library";
 import { listItems, type StoredItem } from "./store";
 
 type Artifact = Extract<Extraction, { status: "extracted" }>["markdown"];

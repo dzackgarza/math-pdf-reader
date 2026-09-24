@@ -2,19 +2,19 @@ import { existsSync, statSync } from "node:fs";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { z } from "zod";
-import { CONFIG_PATH, loadAppConfig, WEB_DIST_DIR } from "./config";
-import type { CaptureResponse } from "./contract";
-import { BucketEvents } from "./events";
-import { registerExtractionRoutes } from "./extractions";
-import { findPdfAt, pdfsInFolder } from "./imports";
-import { IndexExporter } from "./indexExport";
-import { registerLibraryRoutes } from "./library";
+import type { CaptureResponse } from "../contract/capture";
 import {
   FolderImportRequestSchema,
   type FolderImportResponse,
   ImportUrlRequestSchema,
   type ImportUrlResponse,
-} from "./libraryContract";
+} from "../contract/library";
+import { CONFIG_PATH, loadAppConfig, WEB_DIST_DIR } from "./config";
+import { BucketEvents } from "./events";
+import { registerExtractionRoutes } from "./extractions";
+import { findPdfAt, pdfsInFolder } from "./imports";
+import { IndexExporter } from "./indexExport";
+import { registerLibraryRoutes } from "./library";
 import { pdfUrlPath, readerPage, readerUrlPath } from "./reader";
 import { serverStatus } from "./status";
 import { type CaptureUpload, captureBytes, StoreCommandError, storedPdfPath } from "./store";

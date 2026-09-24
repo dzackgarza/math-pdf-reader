@@ -3,7 +3,7 @@ import { type Cell, flexRender, type Table } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, Eye, FileText, Inbox, RotateCcw } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type CSSProperties, type ReactNode, useState } from "react";
-import type { BucketItem } from "../../server/libraryContract";
+import type { BucketItem } from "../../contract/library";
 import { type ColumnKey, columnKey } from "../columnModel";
 import { authorList, readingText, shortDate, sourceCheckText, sourceDomain } from "../format";
 import { availability } from "../librarySelectors";

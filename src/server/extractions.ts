@@ -3,27 +3,15 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
-import { z } from "zod";
-import { REPO_ROOT } from "./config";
 import {
-  AcceptedInputSchema,
   ExtractionOutcomeSchema,
   type ExtractionPluginsResponse,
-} from "./extractionContract";
+  PluginManifestSchema,
+} from "../contract/extraction";
+import { REPO_ROOT } from "./config";
 import { runStore, storedPdfPath } from "./store";
 
 export const EXTRACTIONS_MANIFEST = join(REPO_ROOT, "plugins/manifests/extractions.json");
-
-const PluginManifestSchema = z.strictObject({
-  plugins: z.array(
-    z.strictObject({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      command: z.array(z.string()).min(1),
-      accepted_inputs: z.array(AcceptedInputSchema),
-    }),
-  ),
-});
 
 // A plugin that exits non-zero is a failed upstream; a PDF outside its limits is unprocessable.
 const OUTCOME_STATUS = { succeeded: 200, failed: 502, rejected: 422 } as const;

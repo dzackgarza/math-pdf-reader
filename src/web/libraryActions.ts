@@ -1,7 +1,7 @@
 // What the window's filing controls do: each asks for what it needs (a name, a
 // confirmation), calls the library API, and moves to the result.
 
-import type { ExtractionOutcome } from "../server/extractionContract";
+import type { ExtractionOutcome } from "../contract/extraction";
 import {
   type AdvancedSearchSettings,
   type BucketItem,
@@ -16,7 +16,7 @@ import {
   type SavedSearch,
   SavedSearchSchema,
   SendResponseSchema,
-} from "../server/libraryContract";
+} from "../contract/library";
 import type { ConfirmRequest } from "./components/ConfirmDialog";
 import type { ItemFilingActions } from "./components/InspectorPanel";
 import type { NameRequest } from "./components/NameDialog";

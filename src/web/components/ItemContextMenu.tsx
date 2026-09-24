@@ -2,7 +2,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import type { BucketItem, Collection } from "../../server/libraryContract";
+import type { BucketItem, Collection } from "../../contract/library";
 
 export type ItemCommands = {
   open: () => void;

@@ -15,11 +15,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
+import { CaptureResponseSchema } from "../src/contract/capture";
+import { CollectionSchema } from "../src/contract/library";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir, REPO_ROOT } from "../src/server/config";
-import { CaptureResponseSchema } from "../src/server/contract";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { CollectionSchema } from "../src/server/libraryContract";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const fixtures = join(import.meta.dir, "fixtures");

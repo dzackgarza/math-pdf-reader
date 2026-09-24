@@ -2,7 +2,7 @@
 // or clear the choice.
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { FolderPlus, Tag, X } from "lucide-react";
-import type { Collection } from "../../server/libraryContract";
+import type { Collection } from "../../contract/library";
 
 type SelectionBarProps = {
   count: number;

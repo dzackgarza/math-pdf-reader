@@ -2,7 +2,7 @@
 // fetch (with the browser's cookies), the post to the bucket, the link-origin record and
 // the exemptions. The sender's tab comes from the runtime, never from the message.
 import { z } from "zod";
-import { CaptureResponseSchema } from "../server/contract";
+import { CaptureResponseSchema } from "../contract/capture";
 
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
 

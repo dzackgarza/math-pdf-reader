@@ -1,7 +1,7 @@
 // Status contract: the capture extension and the desktop window poll this before acting.
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
-import { SERVICE_NAME, type ServerStatus } from "./contract";
+import { SERVICE_NAME, type ServerStatus } from "../contract/capture";
 
 // Node exposes no boolean permission query; `access` rejects on denial. This is the
 // one boundary that translates that rejection into the status contract's boolean.

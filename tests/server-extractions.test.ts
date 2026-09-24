@@ -4,14 +4,14 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
-} from "../src/server/extractionContract";
+} from "../src/contract/extraction";
+import { ApiErrorSchema } from "../src/contract/library";
+import { createApp } from "../src/server/app";
+import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST, registerExtractionRoutes } from "../src/server/extractions";
-import { ApiErrorSchema } from "../src/server/libraryContract";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 
 const config = loadAppConfig(CONFIG_PATH);

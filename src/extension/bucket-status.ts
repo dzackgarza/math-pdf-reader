@@ -2,7 +2,7 @@
 // background (toolbar badge) and the status page (popup and options page).
 import { browser } from "wxt/browser";
 import { storage } from "wxt/utils/storage";
-import { type ServerStatus, ServerStatusSchema } from "../server/contract";
+import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
 import type { CaptureOutcome } from "./messages";
 
 // Whether this browser's PDF navigations go to the bucket. On until the user switches it off.

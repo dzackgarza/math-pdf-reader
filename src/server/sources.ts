@@ -5,8 +5,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { RebuildOutcome, SourceCheck, TitleSource } from "../contract/library";
 import type { AppConfig } from "./config";
-import type { RebuildOutcome, SourceCheck, TitleSource } from "./libraryContract";
 import { recordMetadata, restorePdf, type StoredItem, storedPdfPath } from "./store";
 
 export type DownloadSettings = AppConfig["rebuild"];
