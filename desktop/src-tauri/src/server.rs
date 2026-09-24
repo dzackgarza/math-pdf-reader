@@ -10,15 +10,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // The checkout the binary was built from, and the PATH of that build: the server runs from
 // that checkout with the tools (direnv, bun, uv) the build itself used.
 const CHECKOUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 const BUILD_PATH: &str = env!("PDF_BUCKET_BUILD_PATH");
-// How long the window waits for a starting server: 30 one-second attempts.
-const READY_ATTEMPTS: u32 = 30;
-const READY_DELAY: Duration = Duration::from_secs(1);
+// How long the window waits for a starting server, and how often it asks. The server answers
+// about 0.4 s after it starts; a short interval loads the bucket as soon as it does.
+const READY_TIMEOUT: Duration = Duration::from_secs(30);
+const READY_DELAY: Duration = Duration::from_millis(50);
 const STDERR_LINES: usize = 40;
 
 // Why the server is not serving.
@@ -189,7 +190,8 @@ fn describe(status: io::Result<ExitStatus>, tail: &VecDeque<String>) -> String {
 // Polls `/status` until it answers 200, as long as the server has not stopped.
 pub fn wait_until_ready(origin: &str, stopped: &AtomicBool) -> Result<(), Failure> {
     let url = format!("{origin}/status");
-    for _ in 0..READY_ATTEMPTS {
+    let deadline = Instant::now() + READY_TIMEOUT;
+    while Instant::now() < deadline {
         if stopped.load(Ordering::SeqCst) {
             return Err(Failure("The server stopped before it answered.".into()));
         }
@@ -203,6 +205,7 @@ pub fn wait_until_ready(origin: &str, stopped: &AtomicBool) -> Result<(), Failur
         thread::sleep(READY_DELAY);
     }
     Err(Failure(format!(
-        "The server did not answer {url} within {READY_ATTEMPTS} seconds."
+        "The server did not answer {url} within {} seconds.",
+        READY_TIMEOUT.as_secs()
     )))
 }
