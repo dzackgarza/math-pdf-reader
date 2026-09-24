@@ -165,6 +165,7 @@ export const API_ERROR_KINDS = [
   "unknown_saved_search",
   "unknown_plugin",
   "already_sent",
+  "provenance_mismatch",
   "resolver_failed",
   "zotero_failed",
 ] as const;

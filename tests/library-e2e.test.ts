@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { build } from "vite";
+import { z } from "zod";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
@@ -286,6 +287,52 @@ describe("library window", () => {
     await page.setViewport({ width: 700, height: 900 });
     await shot("reader-narrow");
     await page.setViewport(viewport);
+  });
+
+  test("a text note written on a page in the reader is saved into the PDF and is there after a reload", async () => {
+    const openViewer = async () => {
+      await page.goto(`${bucket.origin}/read/problems`);
+      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
+      if (frame === undefined || frame === null) {
+        throw new Error("the reader has no viewer frame");
+      }
+      await frame.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
+      return frame;
+    };
+    const note = `Checked the Hasse–Minkowski step ${Date.now()}`;
+    const viewer = await openViewer();
+    // PDF.js's free-text tool, as its toolbar button selects it; a click on the page places a
+    // note there.
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
+    );
+    const layer = await viewer.waitForSelector(
+      '.page[data-page-number="1"] .annotationEditorLayer',
+    );
+    await layer?.click({ offset: { x: 120, y: 160 } });
+    await viewer.waitForSelector(".freeTextEditor .internal");
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/problems/pdf") && response.request().method() === "PUT",
+    );
+    await page.keyboard.type(note);
+    await page.keyboard.press("Escape");
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
+    );
+    expect((await saved).status()).toBe(200);
+    await shot("reader-annotated");
+
+    const reopened = await openViewer();
+    // The annotations PDF.js reads from the stored file, not from the editor it drew.
+    const contents = z
+      .array(z.string())
+      .parse(
+        await reopened.evaluate(
+          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
+        ),
+      );
+    expect(contents).toContain(note);
   });
 
   test("the library at a narrow width", async () => {

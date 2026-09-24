@@ -326,3 +326,41 @@ test("settings report the served root, its filing file and the pinned PDF.js ver
     pdfjsVersion: config.pdfjs.version,
   });
 });
+
+test("a PDF saved from the reader replaces the stored file only while it keeps the item's provenance", async () => {
+  const bucket = emptyBucket();
+  const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
+  const stored = join(bucket.root, "lattices.pdf");
+  const before = readFileSync(stored);
+  const put = (key: string, body: Uint8Array<ArrayBuffer>) =>
+    bucket.request(`/api/items/${key}/pdf`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf" },
+      body,
+    });
+
+  // An incremental update, as PDF.js writes one: the stored bytes with objects appended.
+  const annotated = new Uint8Array([
+    ...before,
+    ...new TextEncoder().encode("\n% an incremental update\n"),
+  ]);
+  const saved = await put("lattices", annotated);
+  expect(saved.status).toBe(200);
+  expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
+  expect(byId((await library(bucket)).items).get("lattices")?.provenance).toEqual(
+    lattices.provenance,
+  );
+
+  // Another item's PDF carries another provenance; bytes that are no PDF carry none.
+  const foreign = await put(
+    "lattices",
+    new Uint8Array(readFileSync(join(bucket.root, "problems.pdf"))),
+  );
+  expect(foreign.status).toBe(409);
+  expect(await errorKind(foreign)).toBe("provenance_mismatch");
+  const junk = await put("lattices", new TextEncoder().encode("not a pdf"));
+  expect(junk.status).toBe(400);
+  expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
+  expect((await put("missing", annotated)).status).toBe(404);
+});

@@ -136,6 +136,24 @@ export async function recordMetadata(
   return StoredItemSchema.parse(JSON.parse(stdout));
 }
 
+const ReplaceOutcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("replaced"), item: StoredItemSchema }),
+  z.strictObject({ status: z.literal("provenance_mismatch"), key: z.string().min(1) }),
+]);
+
+export type ReplaceOutcome = z.infer<typeof ReplaceOutcomeSchema>;
+
+// Replaces the stored PDF with BYTES, the reader's save with its annotations; the store keeps
+// the file unless the bytes carry the provenance embedded in it.
+export async function replacePdf(
+  root: string,
+  key: string,
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<ReplaceOutcome> {
+  const stdout = await runStore(["replace", "--", root, key, "/dev/stdin"], new Blob([bytes]));
+  return ReplaceOutcomeSchema.parse(JSON.parse(stdout));
+}
+
 // Moves the stored PDF and its extraction to the desktop trash.
 export async function removeStored(root: string, key: string): Promise<void> {
   const stdout = await runStore(["remove", "--", root, key], "ignore");

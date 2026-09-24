@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import Literal
 
 from pathvalidate import sanitize_filename
 from pydantic import BaseModel, ConfigDict
@@ -14,9 +15,10 @@ from pdfbucket.models import (
     CaptureProvenance,
     CaptureRequest,
     CaptureResult,
+    StoredItem,
     provenance_for,
 )
-from pdfbucket.provenance import embed_provenance, read_stored_item
+from pdfbucket.provenance import embed_provenance, embedded_provenance, read_stored_item
 
 
 class UnknownKeyError(LookupError):
@@ -119,6 +121,36 @@ def remove_item(root: Path, key: str) -> RemovedItem:
     for path in [*beside, pdf]:
         send2trash(path)
     return RemovedItem(key=key, trashed=[path.name for path in [*beside, pdf]])
+
+
+class Replaced(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["replaced"]
+    item: StoredItem
+
+
+class ProvenanceMismatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["provenance_mismatch"]
+    key: str
+
+
+def replace_pdf(root: Path, key: str, pdf_bytes: bytes) -> Replaced | ProvenanceMismatch:
+    """Replace KEY's stored PDF with PDF_BYTES (the reader's save, annotations included).
+
+    The new bytes must carry the provenance embedded in the stored file, as an incremental
+    update of it does; anything else would silently turn this key into another document.
+    """
+    assert pdf_bytes.startswith(b"%PDF-"), "the bytes are not a PDF"
+    path = pdf_path(root, key)
+    if embedded_provenance(pdf_bytes) != read_stored_item(path).provenance:
+        return ProvenanceMismatch(status="provenance_mismatch", key=key)
+    partial = path.with_suffix(".partial")
+    partial.write_bytes(pdf_bytes)
+    partial.replace(path)
+    return Replaced(status="replaced", item=read_stored_item(path))
 
 
 def restore_pdf(root: Path, key: str, pdf_bytes: bytes, provenance: CaptureProvenance) -> CaptureResult:

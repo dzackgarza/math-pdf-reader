@@ -96,6 +96,15 @@ def read_authors(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> list[str]:
     return [name.strip() for name in docinfo.get("/Author", "").split(";") if name.strip()]
 
 
+def embedded_provenance(pdf_bytes: bytes) -> CaptureProvenance | None:
+    """The provenance embedded in PDF_BYTES, or None when the bytes carry none."""
+    with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
+        docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
+    if any(key not in docinfo for key in DOCINFO_KEYS.values()):
+        return None
+    return CaptureProvenance.model_validate({field: docinfo[key] for field, key in DOCINFO_KEYS.items()})
+
+
 def read_stored_item(path: Path) -> StoredItem:
     with pikepdf.open(path) as pdf:
         docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}

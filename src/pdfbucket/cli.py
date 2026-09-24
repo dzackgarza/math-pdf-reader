@@ -13,7 +13,7 @@ from pdfbucket.manifest import load_manifest
 from pdfbucket.models import CaptureProvenance, CaptureRequest, ItemTitle, StoredItem, TitleSource
 from pdfbucket.provenance import embed_metadata, read_stored_item
 from pdfbucket.resolution import resolve as resolve_item
-from pdfbucket.store import pdf_path, remove_item, restore_pdf, store_pdf, stored_keys
+from pdfbucket.store import pdf_path, remove_item, replace_pdf, restore_pdf, store_pdf, stored_keys
 
 app = App(help="PDF Bucket store")
 
@@ -37,6 +37,12 @@ def restore(root: Path, pdf: Path, key: str, pdf_url: str, source_url: str, capt
         title_hint=title_hint,
     )
     print(restore_pdf(root, key, pdf.read_bytes(), provenance).model_dump_json())
+
+
+@app.command
+def replace(root: Path, key: str, pdf: Path) -> None:
+    """Replace KEY's stored PDF under ROOT with the PDF at PDF when it carries the same embedded provenance; print the outcome."""
+    print(replace_pdf(root, key, pdf.read_bytes()).model_dump_json())
 
 
 @app.command

@@ -33,6 +33,7 @@ import {
   unfiled,
 } from "./organization";
 import { sendRoutes, zoteroStatus } from "./send";
+import { replacePdf } from "./store";
 import { retrieveMetadata } from "./titles";
 import type { ZoteroWriteApi } from "./zotero";
 
@@ -66,7 +67,7 @@ export type Library = {
   removed(keys: string[]): void;
 };
 
-function apiError(c: Context, status: 400 | 404, kind: ApiErrorKind, message: string) {
+function apiError(c: Context, status: 400 | 404 | 409, kind: ApiErrorKind, message: string) {
   return c.json({ error: { kind, message } }, status);
 }
 
@@ -149,6 +150,28 @@ function itemRoutes(app: Hono, state: LibraryState, root: string, resolversManif
       item: bucketItem(indexed, await state.organizations.read()),
     };
     return c.json(response);
+  });
+
+  // The reader's save: the PDF with its annotations written in by PDF.js.
+  app.put("/api/items/:key/pdf", async (c) => {
+    const key = c.req.param("key");
+    if (!(await state.isStored(key))) {
+      return unknownItem(c, key);
+    }
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") {
+      return apiError(c, 400, "invalid_request", "the request body is not a PDF");
+    }
+    const outcome = await replacePdf(root, key, bytes);
+    if (outcome.status === "provenance_mismatch") {
+      const message = `the PDF does not carry the provenance embedded in ${key}`;
+      return apiError(c, 409, "provenance_mismatch", message);
+    }
+    const indexed = await state.indexed(key);
+    if (indexed === undefined) {
+      throw new Error(`${key} left the store while its PDF was replaced`);
+    }
+    return c.json(bucketItem(indexed, await state.organizations.read()));
   });
 
   app.put("/api/items/:key/tags", async (c) => {

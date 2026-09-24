@@ -1,7 +1,8 @@
 // Reader page: the prebuilt PDF.js viewer over the stored PDF, full width, under a bar with a
 // Library button, back and forward, and a link to the current view. The page's address carries
 // PDF.js's view parameters (`#page=…&zoom=…`, PDF.js's open parameters), so reloading or sharing
-// it opens the same view. The Highwire `citation_*` tags let the Zotero Connector save the page.
+// it opens the same view. Annotations made with PDF.js's editors are saved into the stored PDF.
+// The Highwire `citation_*` tags let the Zotero Connector save the page.
 import { html, raw } from "hono/html";
 import { type BucketItem, LIBRARY_VIEW_KEY } from "./libraryContract";
 
@@ -11,6 +12,10 @@ export function pdfUrlPath(key: string): string {
 
 export function readerUrlPath(key: string): string {
   return `/read/${encodeURIComponent(key)}`;
+}
+
+function savePath(key: string): string {
+  return `/api/items/${encodeURIComponent(key)}/pdf`;
 }
 
 // Lucide icons (lucide.dev, ISC): library-big, arrow-left, arrow-right, link.
@@ -32,13 +37,31 @@ const LINK = ICON(
 // itself embedded and keeps no navigation history (PDFViewerApplication._initializeViewerComponents
 // creates PDFHistory only when not embedded). The frame is this page's whole document, so the
 // viewer is told it is not embedded, and external links keep leaving through the top window, as
-// they do for an embedded viewer.
+// they do for an embedded viewer. PDF.js's comment tool, off by default, is turned on beside
+// its highlight, text, ink and image tools. The viewer's event bus exists once its
+// initializedPromise settles, which happens before it opens the PDF, so a listener added then
+// cannot miss \`documentloaded\`. PDF.js refuses to unload while the document holds any
+// annotation (onBeforeUnload with _hasChanges), since it expects a download to keep them; here
+// they are saved, so a listener registered ahead of PDF.js's stops that refusal while every
+// change is saved.
 const BEFORE_VIEWER = raw(`
+let annotationsSaved = true;
+let documentLoaded;
+const viewerDocumentLoaded = new Promise((resolve) => { documentLoaded = resolve; });
 document.addEventListener("webviewerloaded", (event) => {
   const viewerWindow = event.detail.source;
-  viewerWindow.PDFViewerApplication.isViewerEmbedded = false;
+  const app = viewerWindow.PDFViewerApplication;
+  viewerWindow.addEventListener("beforeunload", (unload) => {
+    if (annotationsSaved) {
+      unload.stopImmediatePropagation();
+    }
+  });
+  app.isViewerEmbedded = false;
   const { LinkTarget } = viewerWindow.PDFViewerApplicationConstants;
-  viewerWindow.PDFViewerApplicationOptions.set("externalLinkTarget", LinkTarget.TOP);
+  const options = viewerWindow.PDFViewerApplicationOptions;
+  options.set("externalLinkTarget", LinkTarget.TOP);
+  options.set("enableComment", true);
+  app.initializedPromise.then(() => app.eventBus.on("documentloaded", documentLoaded, { once: true }));
 });
 `);
 
@@ -49,6 +72,12 @@ document.addEventListener("webviewerloaded", (event) => {
 // fragment with PDF.js's own open parameters. The fragment the page was opened with goes to the
 // viewer as a same-document replace, which PDF.js's hashchange handler applies (as the initial
 // view if the document is still loading) and which adds no history entry.
+//
+// Saving: the annotation storage reports its first change after each save (onSetModified,
+// wrapped so PDF.js's own callback still runs); a short pause later, PDFDocumentProxy.saveDocument
+// writes the PDF with every annotation as an incremental update of the loaded file, and the page
+// PUTs it to the server, which keeps it only while it carries the item's provenance. Saves run
+// one after another; the Library link waits for a pending save.
 const SCRIPT = raw(`
 const frame = document.querySelector("iframe");
 const backButton = document.getElementById("back");
@@ -57,6 +86,8 @@ const libraryView = sessionStorage.getItem(${JSON.stringify(LIBRARY_VIEW_KEY)});
 if (libraryView !== null) {
   document.getElementById("library").href = "/" + libraryView;
 }
+const saveStatus = document.getElementById("save-status");
+const savePath = document.body.dataset.savePath;
 const copy = document.getElementById("copy-link");
 copy.addEventListener("click", async () => {
   await navigator.clipboard.writeText(location.href);
@@ -91,6 +122,49 @@ frame.addEventListener("load", async () => {
     showBounds();
   });
   frame.contentWindow.addEventListener("popstate", showBounds);
+
+  let pendingSave = null;
+  let saves = Promise.resolve();
+  const save = async () => {
+    saveStatus.textContent = "Saving…";
+    const bytes = await viewer.pdfDocument.saveDocument();
+    const response = await fetch(savePath, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf" },
+      body: bytes,
+    });
+    if (response.ok) {
+      saveStatus.textContent = "";
+      delete saveStatus.dataset.failed;
+      annotationsSaved = pendingSave === null;
+      return;
+    }
+    saveStatus.textContent = "Not saved: " + (await response.json()).error.message;
+    saveStatus.dataset.failed = "";
+  };
+  const startSave = () => {
+    pendingSave = null;
+    saves = saves.then(save);
+  };
+  viewerDocumentLoaded.then(() => {
+    const storage = viewer.pdfDocument.annotationStorage;
+    const ownCallback = storage.onSetModified;
+    storage.onSetModified = () => {
+      ownCallback?.();
+      annotationsSaved = false;
+      clearTimeout(pendingSave);
+      pendingSave = setTimeout(startSave, 700);
+    };
+  });
+  document.getElementById("library").addEventListener("click", async (event) => {
+    event.preventDefault();
+    if (pendingSave !== null) {
+      clearTimeout(pendingSave);
+      startSave();
+    }
+    await saves;
+    location.assign(event.currentTarget.href);
+  });
 });
 `);
 
@@ -134,6 +208,8 @@ export function readerPage(item: BucketItem, origin: string) {
       button:hover:enabled, #library:hover { background: var(--surface); color: var(--ink); }
       button:disabled { opacity: 0.35; cursor: default; }
       #copy-link[data-copied] { color: var(--accent); }
+      #save-status { flex: none; font-size: 0.75rem; color: var(--muted); }
+      #save-status[data-failed] { color: #b91c1c; }
       h1 {
         flex: 1; min-width: 0; margin: 0 0.5rem; overflow: hidden;
         font-size: 0.875rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis;
@@ -141,12 +217,13 @@ export function readerPage(item: BucketItem, origin: string) {
       iframe { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
     </style>
   </head>
-  <body>
+  <body data-save-path="${savePath(item.id)}">
     <header>
       <a id="library" href="/" aria-label="Library" title="Library">${LIBRARY}<span>Library</span></a>
       <button id="back" type="button" aria-label="Back" title="Back (Alt+←)" disabled>${BACK}</button>
       <button id="forward" type="button" aria-label="Forward" title="Forward (Alt+→)" disabled>${FORWARD}</button>
       <h1 title="${item.title}">${item.title}</h1>
+      <span id="save-status" role="status"></span>
       <button id="copy-link" type="button" aria-label="Copy link to this view" title="Copy link to this view">${LINK}</button>
     </header>
     <iframe src="${viewer}" title="${item.title}"></iframe>
