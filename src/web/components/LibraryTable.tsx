@@ -198,6 +198,7 @@ export default function LibraryTable({
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}
+                            data-column={cell.column.id}
                             style={widthStyle(cell.column.getSize())}
                             className="truncate px-4 py-2"
                           >

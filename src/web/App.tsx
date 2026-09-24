@@ -19,6 +19,7 @@ import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
 import EmptyTable from "./components/EmptyTable";
 import InspectorPanel from "./components/InspectorPanel";
 import ItemContextMenu from "./components/ItemContextMenu";
+import LibraryBar from "./components/LibraryBar";
 import LibraryTable from "./components/LibraryTable";
 import NameDialog, { type NameRequest } from "./components/NameDialog";
 import Sidebar from "./components/Sidebar";
@@ -38,7 +39,7 @@ import {
   saveSearch,
   sendToZotero,
 } from "./libraryActions";
-import { itemsInView, type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
+import { type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
@@ -237,16 +238,10 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               onChangeSearch={setSearch}
               onOpenFilters={() => setFiltersOpen(true)}
               onSaveSearch={saveCurrentSearch}
-              unfiled={
-                screen.kind === "library"
-                  ? {
-                      on: screen.view.kind === "unfiled",
-                      count: itemsInView(payload, { kind: "unfiled" }).length,
-                      onToggle: () => navigate(screen.view.kind === "unfiled" ? "/" : "/unfiled"),
-                    }
-                  : null
-              }
             />
+          )}
+          {screen.kind === "library" && (
+            <LibraryBar payload={payload} view={screen.view} navigate={navigate} table={table} />
           )}
           {screen.kind === "library" && tableElement}
           {screen.kind === "organization" && (

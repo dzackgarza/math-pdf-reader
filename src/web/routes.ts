@@ -1,5 +1,5 @@
 // The screens the window shows, addressed by the hash path (`/#/organization/tags/MMP`).
-import type { LibraryView } from "./librarySelectors";
+import { type LibraryView, QUICK_FILTERS } from "./librarySelectors";
 
 export const ORGANIZATION_TABS = ["collections", "topics", "tags", "saved"] as const;
 
@@ -12,7 +12,7 @@ export type Screen =
 
 const LIBRARY_VIEWS: Record<string, LibraryView> = {
   "/": { kind: "all" },
-  "/unfiled": { kind: "unfiled" },
+  ...Object.fromEntries(QUICK_FILTERS.map((filter) => [filter.path, filter.view])),
 };
 
 function organizationTab(segment: string | undefined): OrganizationTab | null {

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { type BucketItem, LibraryPayloadSchema } from "../src/server/libraryContract";
 import { OrganizationStore } from "../src/server/organization";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
 import { SCRATCH_DATA_HOME } from "./preload";
@@ -376,47 +377,76 @@ describe("library window", () => {
     await shot("library");
   });
 
-  test("the Library entry counts the PDFs; the Unfiled toggle narrows the library to PDFs in no collection and back", async () => {
+  test("the Library entry counts the PDFs; each quick filter narrows the library and a second click clears it", async () => {
     await openLibrary();
-    const payload = (await (await fetch(`${bucket.origin}/api/library`)).json()) as {
-      items: { id: string; collections: string[] }[];
-    };
-    const all = payload.items.map((item) => item.id).sort();
-    const unfiled = payload.items
-      .filter((item) => item.collections.length === 0)
-      .map((item) => item.id)
-      .sort();
-    expect(unfiled.length).toBeGreaterThan(0);
-    expect(unfiled.length).toBeLessThan(all.length);
+    const payload = LibraryPayloadSchema.parse(
+      await (await fetch(`${bucket.origin}/api/library`)).json(),
+    );
+    const keysWhere = (keep: (item: BucketItem) => boolean) =>
+      payload.items
+        .filter(keep)
+        .map((item) => item.id)
+        .sort();
+    const all = keysWhere(() => true);
+    const filters = [
+      { name: "Unfiled", hash: "#/unfiled", keys: keysWhere((item) => item.collections.length === 0) },
+      { name: "Unread", hash: "#/unread", keys: keysWhere((item) => item.reading.status === "unread") },
+    ];
     const sortedRows = async () => (await rowKeys()).sort();
-    const toggle = 'button[aria-label="Unfiled"]';
+    const rowCount = (count: number) =>
+      page.waitForFunction(
+        (wanted) => document.querySelectorAll("tr[data-item-id]").length === wanted,
+        {},
+        count,
+      );
+    const chip = (name: string) => `button[aria-label="${name}"]`;
+    const pressed = (name: string) =>
+      page.$eval(chip(name), (button) => button.getAttribute("aria-pressed"));
 
-    const library = await page.$eval("nav a", (link) => link.textContent?.trim());
-    expect(library).toBe(`Library${all.length}`);
+    expect(await page.$eval("nav a", (link) => link.textContent?.trim())).toBe(
+      `Library${all.length}`,
+    );
+    for (const filter of filters) {
+      // Each filter must discriminate: it keeps some items and drops others.
+      expect(filter.keys.length).toBeGreaterThan(0);
+      expect(filter.keys.length).toBeLessThan(all.length);
+      expect(await page.$eval(chip(filter.name), (button) => button.textContent?.trim())).toBe(
+        `${filter.name}${filter.keys.length}`,
+      );
+      await page.click(chip(filter.name));
+      await page.waitForFunction((hash) => location.hash === hash, {}, filter.hash);
+      await rowCount(filter.keys.length);
+      expect(await sortedRows()).toEqual(filter.keys);
+      expect(await pressed(filter.name)).toBe("true");
+      expect(await page.$eval("nav a", (link) => link.getAttribute("aria-current"))).toBe("page");
+    }
+    await shot("library-quick-filter");
+
+    const last = filters[filters.length - 1]?.name ?? "";
+    await page.click(chip(last));
+    await rowCount(all.length);
     expect(await sortedRows()).toEqual(all);
-    expect(await page.$eval(toggle, (button) => button.textContent?.trim())).toBe(
-      `Unfiled${unfiled.length}`,
-    );
+    expect(await pressed(last)).toBe("false");
+  });
 
-    await page.click(toggle);
-    await page.waitForFunction(() => location.hash === "#/unfiled");
-    await page.waitForFunction(
-      (count) => document.querySelectorAll("tr[data-item-id]").length === count,
-      {},
-      unfiled.length,
-    );
-    await shot("library-unfiled");
-    expect(await sortedRows()).toEqual(unfiled);
-    expect(await page.$eval(toggle, (button) => button.getAttribute("aria-pressed"))).toBe("true");
-    expect(await page.$eval("nav a", (link) => link.getAttribute("aria-current"))).toBe("page");
+  test("the Sort menu orders the table by the chosen column and direction", async () => {
+    await openLibrary();
+    const titles = async () =>
+      page.$$eval(`tr[data-item-id] td[data-column="title"]`, (cells) =>
+        cells.map((cell) => cell.textContent?.trim() ?? ""),
+      );
+    const expected = [...(await titles())].sort((a, b) => a.localeCompare(b));
 
-    await page.click(toggle);
-    await page.waitForFunction(
-      (count) => document.querySelectorAll("tr[data-item-id]").length === count,
-      {},
-      all.length,
-    );
-    expect(await sortedRows()).toEqual(all);
-    expect(await page.$eval(toggle, (button) => button.getAttribute("aria-pressed"))).toBe("false");
+    await page.click('button[aria-label="Sort"]');
+    await (await byRole("menuitemradio", "Title")).click();
+    await page.waitForFunction(() => document.querySelector('[role="menu"]') === null);
+    await page.click('button[aria-label="Sort"]');
+    await (await byRole("menuitemradio", "Ascending")).click();
+    await shot("library-sorted");
+    expect(await titles()).toEqual(expected);
+
+    await page.click('button[aria-label="Sort"]');
+    await (await byRole("menuitemradio", "Descending")).click();
+    expect(await titles()).toEqual([...expected].reverse());
   });
 });

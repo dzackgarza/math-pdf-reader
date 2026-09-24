@@ -1,4 +1,6 @@
 // The commands the palette runs.
+import { QUICK_FILTERS, quickFilterName } from "./librarySelectors";
+
 export type Command = {
   id: string;
   name: string;
@@ -54,7 +56,9 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
         ];
   return [
     goTo("go-library", "Library", "/"),
-    goTo("go-unfiled", "Library, Unfiled Only", "/unfiled"),
+    ...QUICK_FILTERS.map((filter) =>
+      goTo(`go-${filter.view.kind}`, `Library, ${quickFilterName(filter)}`, filter.path),
+    ),
     goTo("go-collections", "Collections", "/organization/collections"),
     goTo("go-topics", "Topics", "/organization/topics"),
     goTo("go-tags", "Tags", "/organization/tags"),

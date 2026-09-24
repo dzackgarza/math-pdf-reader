@@ -1,6 +1,7 @@
 import { Folder, FolderPlus, Library, Search, Settings, Shapes, Tag } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { QUICK_FILTERS } from "../librarySelectors";
 
 function NavItem({
   to,
@@ -13,7 +14,7 @@ function NavItem({
   icon: ReactNode;
   label: string;
   count?: number;
-  // Further paths this entry is the current page for, e.g. the library's Unfiled filter.
+  // Further paths this entry is the current page for: the library under a quick filter.
   alsoAt?: string[];
 }) {
   const [location] = useLocation();
@@ -57,7 +58,7 @@ export default function Sidebar({
           icon={<Library className={icon} />}
           label="Library"
           count={pdfCount}
-          alsoAt={["/unfiled"]}
+          alsoAt={QUICK_FILTERS.map((filter) => filter.path)}
         />
       </div>
 

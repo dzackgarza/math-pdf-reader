@@ -11,6 +11,8 @@ import { filterItems } from "./search";
 export type LibraryView =
   | { kind: "all" }
   | { kind: "unfiled" }
+  | { kind: "unread" }
+  | { kind: "recent" }
   | { kind: "collection"; id: string }
   | { kind: "tag"; tag: string }
   | { kind: "saved"; id: string };
@@ -35,6 +37,12 @@ export function itemsInView(payload: LibraryPayload, view: LibraryView): BucketI
       return payload.items;
     case "unfiled":
       return payload.items.filter((item) => item.collections.length === 0);
+    case "unread":
+      return payload.items.filter((item) => item.reading.status === "unread");
+    case "recent": {
+      const since = Date.now() - WEEK_MS;
+      return payload.items.filter((item) => Date.parse(item.dateAdded) >= since);
+    }
     case "collection": {
       const subtree = collectionSubtree(payload.collections, view.id);
       return payload.items.filter((item) => item.collections.some((id) => subtree.has(id)));
@@ -54,7 +62,27 @@ function savedSearch(payload: LibraryPayload, id: string) {
   return found;
 }
 
-const FIXED_VIEW_NAMES = { all: "Library", unfiled: "Unfiled" } as const;
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+const FIXED_VIEW_NAMES = {
+  all: "Library",
+  unfiled: "Unfiled",
+  unread: "Unread",
+  recent: "Added This Week",
+} as const;
+
+// The library's quick filters, one at a time: the view each shows and its address.
+export const QUICK_FILTERS = [
+  { view: { kind: "unread" }, path: "/unread" },
+  { view: { kind: "unfiled" }, path: "/unfiled" },
+  { view: { kind: "recent" }, path: "/added-this-week" },
+] as const satisfies { view: LibraryView; path: string }[];
+
+export type QuickFilter = (typeof QUICK_FILTERS)[number];
+
+export function quickFilterName(filter: QuickFilter): string {
+  return FIXED_VIEW_NAMES[filter.view.kind];
+}
 
 export function viewName(payload: LibraryPayload, view: LibraryView): string {
   if (view.kind === "collection") {
