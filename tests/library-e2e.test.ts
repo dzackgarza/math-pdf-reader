@@ -39,6 +39,8 @@ const CAPTURES = [
   ["problems", "problem-set.pdf", "Problem set on quadratic forms"],
   ["notes", "ten-page-notes.pdf", "Ten lectures on lattice theory"],
   ["reading", "ten-page-notes.pdf", "Ten lectures, the reading copy"],
+  // Its catalog asks viewers to open its outline (/PageMode /UseOutlines).
+  ["outlined", "outlined-notes.pdf", "Ten lectures with an outline"],
 ] as const;
 
 function executable(name: string): string {
@@ -326,6 +328,41 @@ describe("library window", () => {
     await page.setViewport({ width: 700, height: 900 });
     await shot("reader-narrow");
     await page.setViewport(viewport);
+  });
+
+  test("a PDF that asks for its outline opens with the outline closed, unless the setting opens it", async () => {
+    const sidebarOnOpen = async () => {
+      await page.goto(`${bucket.origin}/read/outlined`);
+      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
+      if (frame === undefined || frame === null) {
+        throw new Error("the reader has no viewer frame");
+      }
+      // ViewsManager.setInitialView marks the sidebar state applied.
+      await frame.waitForFunction(
+        "PDFViewerApplication.pdfViewer?.pagesCount === 10 && PDFViewerApplication.viewsManager?.isInitialViewSet",
+      );
+      return z
+        .tuple([z.boolean(), z.int()])
+        .parse(
+          await frame.evaluate(
+            "[PDFViewerApplication.viewsManager.isOpen, PDFViewerApplication.viewsManager.visibleView]",
+          ),
+        );
+    };
+    expect((await sidebarOnOpen())[0]).toBe(false);
+    await shot("reader-outline-closed");
+
+    await page.goto(`${bucket.origin}/#/settings`);
+    const toggle = 'button[role="switch"][aria-label="Open the outline when a PDF opens"]';
+    await page.click(toggle);
+    await page.waitForSelector(`${toggle}[aria-checked="true"]`);
+    // SidebarView.OUTLINE is 2.
+    expect(await sidebarOnOpen()).toEqual([true, 2]);
+    await shot("reader-outline-open");
+
+    await page.goto(`${bucket.origin}/#/settings`);
+    await page.click(toggle);
+    await page.waitForSelector(`${toggle}[aria-checked="false"]`);
   });
 
   test("a text note written on a page in the reader is saved into the PDF and is there after a reload", async () => {
