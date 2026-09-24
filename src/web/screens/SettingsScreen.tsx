@@ -1,11 +1,6 @@
 import { FolderOpen } from "lucide-react";
 import type { ReactNode } from "react";
-import {
-  type Preferences,
-  THEMES,
-  type Theme,
-  ThemeSchema,
-} from "../../server/libraryContract";
+import { type Preferences, THEMES, type Theme, ThemeSchema } from "../../server/libraryContract";
 import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
 import type { StatusRead } from "../useBucketStatus";
