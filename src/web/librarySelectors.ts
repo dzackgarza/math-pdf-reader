@@ -10,8 +10,7 @@ import { filterItems } from "./search";
 
 export type LibraryView =
   | { kind: "all" }
-  | { kind: "inbox" }
-  | { kind: "cache" }
+  | { kind: "unfiled" }
   | { kind: "collection"; id: string }
   | { kind: "tag"; tag: string }
   | { kind: "saved"; id: string };
@@ -33,9 +32,8 @@ export function reconcileView(payload: LibraryPayload, view: LibraryView): Libra
 export function itemsInView(payload: LibraryPayload, view: LibraryView): BucketItem[] {
   switch (view.kind) {
     case "all":
-    case "cache":
       return payload.items;
-    case "inbox":
+    case "unfiled":
       return payload.items.filter((item) => item.collections.length === 0);
     case "collection": {
       const subtree = collectionSubtree(payload.collections, view.id);
@@ -56,7 +54,7 @@ function savedSearch(payload: LibraryPayload, id: string) {
   return found;
 }
 
-const FIXED_VIEW_NAMES = { all: "Library", inbox: "Inbox", cache: "Offline Cache" } as const;
+const FIXED_VIEW_NAMES = { all: "Library", unfiled: "Unfiled" } as const;
 
 export function viewName(payload: LibraryPayload, view: LibraryView): string {
   if (view.kind === "collection") {

@@ -93,9 +93,7 @@ export function createApp(config: AppConfig): Hono {
     if (found === null) {
       return c.notFound();
     }
-    return c.html(
-      readerPage(found.item, found.organization.collections, new URL(c.req.url).origin),
-    );
+    return c.html(readerPage(found.item, new URL(c.req.url).origin));
   });
 
   registerExtractionRoutes(app, config.root, config.extractionsManifest);

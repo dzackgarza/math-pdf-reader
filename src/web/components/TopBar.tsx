@@ -1,19 +1,17 @@
-import { BookmarkPlus, FolderPlus, Search, SlidersHorizontal } from "lucide-react";
+import { BookmarkPlus, Search, SlidersHorizontal } from "lucide-react";
+import { forwardRef } from "react";
 import type { AdvancedSearchSettings } from "../../server/libraryContract";
-import { formatShortcut, KEYBOARD_SHORTCUTS } from "../keyboardShortcuts";
 import { defaultSearchSettings } from "../search";
 
 type TopBarProps = {
   search: AdvancedSearchSettings;
   onChangeSearch: (search: AdvancedSearchSettings) => void;
   onOpenFilters: () => void;
-  onOpenPalette: () => void;
   onSaveSearch: () => void;
-  onNewCollection: () => void;
 };
 
-const BUTTON_CLASSES =
-  "inline-flex shrink-0 items-center gap-2 rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-medium hover:bg-surface disabled:opacity-40";
+const ICON_BUTTON =
+  "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-ink";
 
 // Whether the filters differ from the plain title/source/tag search.
 function filtersChanged(search: AdvancedSearchSettings): boolean {
@@ -25,55 +23,57 @@ function filtersChanged(search: AdvancedSearchSettings): boolean {
   );
 }
 
-export default function TopBar({
-  search,
-  onChangeSearch,
-  onOpenFilters,
-  onOpenPalette,
-  onSaveSearch,
-  onNewCollection,
-}: TopBarProps) {
+// The search field the window focuses on Ctrl+F; Escape clears it.
+const TopBar = forwardRef<HTMLInputElement, TopBarProps>(function TopBar(
+  { search, onChangeSearch, onOpenFilters, onSaveSearch },
+  ref,
+) {
+  const searching = search.query.trim().length > 0;
   return (
-    <div className="flex items-center gap-2.5 border-b border-line bg-white px-5 py-3">
-      <label className="relative flex max-w-xl min-w-48 flex-1 items-center">
-        <Search aria-hidden className="absolute left-3 h-4 w-4 text-faint" />
+    <div className="flex items-center gap-1 border-b border-line bg-white px-3 py-2">
+      <label className="relative flex max-w-md min-w-40 flex-1 items-center">
+        <Search aria-hidden className="absolute left-2.5 h-4 w-4 text-faint" />
         <input
+          ref={ref}
           type="search"
-          aria-label="Search your PDFs"
+          aria-label="Search"
           value={search.query}
           onChange={(event) => onChangeSearch({ ...search, query: event.target.value })}
-          placeholder="Search your PDFs (title, source, tags…)"
-          className="w-full rounded-lg border border-line bg-white py-2 pr-20 pl-9 text-sm outline-none placeholder:text-faint focus:border-accent"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              onChangeSearch({ ...search, query: "" });
+              event.currentTarget.blur();
+            }
+          }}
+          placeholder="Search"
+          className="w-full rounded-md border border-line bg-white py-1.5 pr-2 pl-8 text-sm outline-none placeholder:text-faint focus:border-accent"
         />
-        <button
-          type="button"
-          onClick={onOpenPalette}
-          className="absolute right-2 rounded border border-line bg-surface px-1.5 py-0.5 font-mono text-xs text-muted hover:text-ink"
-        >
-          {formatShortcut(KEYBOARD_SHORTCUTS.openItemPalette)}
-        </button>
       </label>
-      <button type="button" onClick={onOpenFilters} className={BUTTON_CLASSES}>
-        <SlidersHorizontal className="h-4 w-4" /> Filters
+      <button
+        type="button"
+        aria-label="Filters"
+        title="Filters"
+        onClick={onOpenFilters}
+        className={ICON_BUTTON}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
         {filtersChanged(search) && (
-          <span className="h-2 w-2 rounded-full bg-accent" aria-label="Filters changed" />
+          <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent" />
         )}
       </button>
-      <button
-        type="button"
-        onClick={onSaveSearch}
-        disabled={search.query.trim().length === 0}
-        className={BUTTON_CLASSES}
-      >
-        <BookmarkPlus className="h-4 w-4" /> Save Search
-      </button>
-      <button
-        type="button"
-        onClick={onNewCollection}
-        className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-white hover:bg-blue-700"
-      >
-        <FolderPlus className="h-4 w-4" /> New Collection
-      </button>
+      {searching && (
+        <button
+          type="button"
+          aria-label="Save search"
+          title="Save search"
+          onClick={onSaveSearch}
+          className={ICON_BUTTON}
+        >
+          <BookmarkPlus className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
-}
+});
+
+export default TopBar;

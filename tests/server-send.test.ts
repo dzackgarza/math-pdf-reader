@@ -2,7 +2,7 @@
 // any request that reaches for Zotero fails loudly instead of writing to a real library; the
 // Zotero write path itself is proved by the evidence run in docs/m3.md.
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server/app";
@@ -126,23 +126,4 @@ test("an extraction made after the send is owed to Zotero, and a later send goes
     record: SENT,
     pending: ["markdown"],
   });
-});
-
-test("only an item whose PDF reached Zotero leaves the bucket", async () => {
-  const bucket = emptyBucket();
-  await capture(bucket, "lattices");
-  await capture(bucket, "problems");
-
-  const unsent = await bucket.request("/api/items/lattices", { method: "DELETE" });
-  expect(unsent.status).toBe(409);
-  expect(await errorKind(unsent)).toBe("not_sent");
-  expect(existsSync(join(bucket.root, "lattices.pdf"))).toBe(true);
-
-  recordSent(bucket, "lattices");
-  const removed = await bucket.request("/api/items/lattices", { method: "DELETE" });
-
-  expect(removed.status).toBe(200);
-  const payload = LibraryPayloadSchema.parse(await removed.json());
-  expect(payload.items.map((candidate) => candidate.id)).toEqual(["problems"]);
-  expect(existsSync(join(bucket.root, "lattices.pdf"))).toBe(false);
 });

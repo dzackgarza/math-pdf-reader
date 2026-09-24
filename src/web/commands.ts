@@ -30,7 +30,7 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
       : [
           {
             id: "open-reader",
-            name: "Open selected PDF in the reader",
+            name: "Open Selected PDF",
             category: "Library",
             action: actions.openSelectedInReader,
           },
@@ -41,48 +41,48 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
       : [
           {
             id: "send-zotero",
-            name: "Send selected PDF to Zotero",
+            name: "Send Selected PDF to Zotero",
             category: "Library",
             action: actions.sendSelectedToZotero,
           },
         ];
   return [
     goTo("go-library", "Library", "/"),
-    goTo("go-inbox", "Inbox", "/inbox"),
+    goTo("go-unfiled", "Unfiled", "/unfiled"),
     goTo("go-collections", "Collections", "/organization/collections"),
     goTo("go-topics", "Topics", "/organization/topics"),
     goTo("go-tags", "Tags", "/organization/tags"),
-    goTo("go-saved", "Saved searches", "/organization/saved"),
+    goTo("go-saved", "Saved Searches", "/organization/saved"),
     goTo("go-settings", "Settings", "/settings"),
     ...reader,
     ...send,
     {
       id: "new-collection",
-      name: "New collection",
+      name: "New Collection",
       category: "Library",
       action: actions.newCollection,
     },
     {
       id: "save-search",
-      name: "Save the current search",
+      name: "Save Search",
       category: "Library",
       action: actions.saveSearch,
     },
     {
       id: "reload",
-      name: "Reload the library from the bucket",
+      name: "Reload Library",
       category: "Library",
       action: actions.reloadLibrary,
     },
     {
       id: "columns-all",
-      name: "Show all columns",
+      name: "Show All Columns",
       category: "Columns",
       action: actions.showAllColumns,
     },
     {
       id: "columns-reset",
-      name: "Reset columns",
+      name: "Reset Columns",
       category: "Columns",
       action: actions.resetColumns,
     },

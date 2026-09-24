@@ -12,8 +12,7 @@ export type Screen =
 
 const LIBRARY_VIEWS: Record<string, LibraryView> = {
   "/": { kind: "all" },
-  "/inbox": { kind: "inbox" },
-  "/cache": { kind: "cache" },
+  "/unfiled": { kind: "unfiled" },
 };
 
 function organizationTab(segment: string | undefined): OrganizationTab | null {

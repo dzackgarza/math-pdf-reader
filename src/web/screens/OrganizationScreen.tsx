@@ -45,10 +45,10 @@ const TAB_LABELS: Record<OrganizationTab, string> = {
 };
 
 const EMPTY_TEXT: Record<OrganizationTab, string> = {
-  collections: "No collections yet. New Collection creates one; add PDFs to it from their details.",
-  topics: "No topics yet. Add a topic to a PDF from its details.",
-  tags: "No tags yet. Add a tag to a PDF from its details.",
-  saved: "No saved searches yet. Type a search above and choose Save Search.",
+  collections: "No collections",
+  topics: "No topics",
+  tags: "No tags",
+  saved: "No saved searches",
 };
 
 function entryClasses(selected: boolean): string {
@@ -203,11 +203,9 @@ function EntryHeader({
   actions,
 }: Omit<OrganizationScreenProps, "table"> & { entry: string }) {
   const view = entryView(tab, entry);
-  const count = itemsInView(payload, view).length;
   const collection = payload.collections.find((candidate) => candidate.id === entry);
   const parent = payload.collections.find((candidate) => candidate.id === collection?.parentId);
   const saved = payload.savedSearches.find((candidate) => candidate.id === entry);
-  const summary = saved === undefined ? "" : ` · ${searchSummary(saved)}`;
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-y border-line bg-white px-5 py-3.5">
@@ -221,10 +219,7 @@ function EntryHeader({
           )}
           <span className="truncate">{viewName(payload, view)}</span>
         </h2>
-        <p className="text-sm text-muted">
-          {count.toLocaleString()} {count === 1 ? "PDF" : "PDFs"}
-          {summary}
-        </p>
+        {saved !== undefined && <p className="text-sm text-muted">{searchSummary(saved)}</p>}
       </div>
       {collection !== undefined && <CollectionActions collection={collection} actions={actions} />}
       {saved !== undefined && (
@@ -276,13 +271,7 @@ export default function OrganizationScreen(props: OrganizationScreenProps) {
         {tab === "saved" && <SavedSearchList payload={payload} entry={entry} />}
       </section>
       {entry !== null && <EntryHeader {...props} entry={entry} />}
-      {entry === null ? (
-        <p className="border-t border-line px-5 py-10 text-center text-sm text-muted">
-          Choose one of the {TAB_LABELS[tab].toLowerCase()} above to see its PDFs.
-        </p>
-      ) : (
-        table
-      )}
+      {entry !== null && table}
     </div>
   );
 }

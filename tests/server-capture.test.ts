@@ -42,10 +42,11 @@ function captureForm(
   return form;
 }
 
-async function metaTags(response: Response): Promise<Record<string, string>> {
+// The Highwire `citation_*` tags the Zotero Connector reads.
+async function citationTags(response: Response): Promise<Record<string, string>> {
   const { document } = parseHTML(await response.text());
   return Object.fromEntries(
-    Array.from(document.querySelectorAll("meta[name]"), (meta) => [
+    Array.from(document.querySelectorAll("meta[name^=citation_]"), (meta) => [
       meta.getAttribute("name"),
       meta.getAttribute("content"),
     ]),
@@ -82,7 +83,7 @@ test("a captured PDF is served at its PDF URL and read back into a reader page w
 
   const reader = await app.request(result.reader_url);
   expect(reader.status).toBe(200);
-  expect(await metaTags(reader)).toEqual({
+  expect(await citationTags(reader)).toEqual({
     citation_title: title,
     citation_pdf_url: `${origin}/pdf/lattices.pdf`,
     citation_abstract_html_url: sourcePage,

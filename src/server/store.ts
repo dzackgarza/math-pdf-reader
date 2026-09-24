@@ -36,7 +36,14 @@ export class StoreCommandError extends Error {
 }
 
 export async function runStore(args: string[], stdin: Blob | "ignore"): Promise<string> {
-  const proc = Bun.spawn([...STORE_COMMAND, ...args], { stdin, stdout: "pipe", stderr: "pipe" });
+  // Bun.spawn without `env` passes the environment the process started with, not process.env
+  // as it stands now; the store (and send2trash in it) must see the current one.
+  const proc = Bun.spawn([...STORE_COMMAND, ...args], {
+    stdin,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: process.env,
+  });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),

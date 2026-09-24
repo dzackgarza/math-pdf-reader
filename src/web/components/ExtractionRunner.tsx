@@ -33,9 +33,9 @@ function Outcome({
 }) {
   if (attempt.kind === "running") {
     return (
-      <p role="status" className="text-sm text-muted">
-        {pluginName(plugins, attempt.pluginId)} is working on this PDF; nothing is placed until it
-        finishes.
+      <p role="status" className="flex items-center gap-2 text-sm text-muted">
+        <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-accent" />
+        {pluginName(plugins, attempt.pluginId)}
       </p>
     );
   }
@@ -113,18 +113,16 @@ function RunControls({
       </select>
       <button
         type="button"
+        aria-label="Run extraction"
+        title="Run extraction"
         disabled={running !== undefined || chosen === ""}
         onClick={() => onRun(chosen)}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-60"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line hover:bg-surface disabled:opacity-60"
       >
         {running === undefined ? (
-          <>
-            <Play className="h-3.5 w-3.5" /> Run
-          </>
+          <Play className="h-3.5 w-3.5" />
         ) : (
-          <>
-            <LoaderCircle aria-hidden className="h-3.5 w-3.5 animate-spin text-accent" /> Running…
-          </>
+          <LoaderCircle aria-hidden className="h-3.5 w-3.5 animate-spin text-accent" />
         )}
       </button>
     </div>

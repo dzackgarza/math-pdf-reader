@@ -1,4 +1,5 @@
-// Keyboard shortcuts for the command palette: Ctrl+K searches items, Ctrl+Shift+P runs commands.
+// The window's keyboard shortcuts, as editors bind them: Ctrl+F finds in the table, Ctrl+P goes to
+// a PDF by fuzzy title, Ctrl+Shift+P runs a command.
 const KEYBOARD_MODIFIERS = ["ctrl", "shift", "alt", "meta"] as const;
 
 type KeyboardModifier = (typeof KEYBOARD_MODIFIERS)[number];
@@ -6,18 +7,12 @@ type KeyboardModifier = (typeof KEYBOARD_MODIFIERS)[number];
 type KeyboardShortcut = { key: string; modifiers: KeyboardModifier[] };
 
 export const KEYBOARD_SHORTCUTS = {
-  openItemPalette: { key: "k", modifiers: ["ctrl"] },
+  focusSearch: { key: "f", modifiers: ["ctrl"] },
+  openItemPalette: { key: "p", modifiers: ["ctrl"] },
   openCommandPalette: { key: "p", modifiers: ["ctrl", "shift"] },
 } satisfies Record<string, KeyboardShortcut>;
 
 type KeyboardEventLike = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey">;
-
-const MODIFIER_LABELS: Record<KeyboardModifier, string> = {
-  ctrl: "Ctrl",
-  shift: "Shift",
-  alt: "Alt",
-  meta: "Meta",
-};
 
 function modifierPressed(event: KeyboardEventLike, modifier: KeyboardModifier): boolean {
   switch (modifier) {
@@ -39,12 +34,4 @@ export function matchesShortcut(event: KeyboardEventLike, shortcut: KeyboardShor
       (modifier) => modifierPressed(event, modifier) === shortcut.modifiers.includes(modifier),
     )
   );
-}
-
-export function formatShortcut(shortcut: KeyboardShortcut): string {
-  const modifiers = KEYBOARD_MODIFIERS.filter((modifier) => shortcut.modifiers.includes(modifier));
-  return [
-    ...modifiers.map((modifier) => MODIFIER_LABELS[modifier]),
-    shortcut.key.toUpperCase(),
-  ].join("+");
 }

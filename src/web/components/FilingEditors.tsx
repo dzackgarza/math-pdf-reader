@@ -1,118 +1,93 @@
-// Inline editors for an item's filing: add a tag or topic by name, add the item to a collection.
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+// The filing picker: a combobox (cmdk inside a Radix popover, cmdk's documented pairing) that
+// files the item under an existing collection, topic or tag, or creates one from the typed name.
+import * as Popover from "@radix-ui/react-popover";
+import { Command } from "cmdk";
 import { Plus } from "lucide-react";
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
-import type { Collection } from "../../server/libraryContract";
+import { useState } from "react";
 
-const ADD_BUTTON_CLASSES =
-  "inline-flex h-6 w-6 items-center justify-center rounded-full border border-line text-muted hover:border-accent hover:text-accent";
+export type FilingOption = { id: string; name: string };
 
-export function AddByName({
+export function FilingPicker({
   label,
-  suggestions,
-  onAdd,
+  options,
+  onPick,
+  onCreate,
 }: {
-  label: string;
-  suggestions: string[];
-  onAdd: (name: string) => void;
+  // What is being added, e.g. "collection"; names the trigger ("Add to collection") and field.
+  label: "collection" | "topic" | "tag";
+  options: FilingOption[];
+  onPick: (id: string) => void;
+  onCreate: (name: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState("");
-  const listId = useId();
-  const input = useRef<HTMLInputElement>(null);
-
-  // The field appears because the user asked to add; it takes the keyboard at once.
-  useEffect(() => {
-    if (editing) {
-      input.current?.focus();
-    }
-  }, [editing]);
-
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        aria-label={label}
-        onClick={() => setEditing(true)}
-        className={ADD_BUTTON_CLASSES}
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </button>
-    );
-  }
-
-  const finish = () => {
-    setEditing(false);
-    setValue("");
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const name = query.trim();
+  const exact = options.some((option) => option.name.toLowerCase() === name.toLowerCase());
+  const close = () => {
+    setOpen(false);
+    setQuery("");
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      finish();
-    }
-    if (event.key === "Enter" && value.trim().length > 0) {
-      onAdd(value.trim());
-      finish();
-    }
-  };
+  const trigger = label === "collection" ? "Add to collection" : `Add ${label}`;
+  const field = `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 
   return (
-    <>
-      <input
-        aria-label={label}
-        ref={input}
-        list={listId}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={onKeyDown}
-        onBlur={finish}
-        className="h-6 w-36 rounded-full border border-accent px-2.5 text-xs outline-none"
-      />
-      <datalist id={listId}>
-        {suggestions.map((suggestion) => (
-          <option key={suggestion} value={suggestion}>
-            {suggestion}
-          </option>
-        ))}
-      </datalist>
-    </>
-  );
-}
-
-export function AddToCollection({
-  collections,
-  onAdd,
-}: {
-  collections: Collection[];
-  onAdd: (collectionId: string) => void;
-}) {
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
+    <Popover.Root open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+      <Popover.Trigger asChild>
         <button
           type="button"
-          aria-label="Add to collection"
-          disabled={collections.length === 0}
-          className={`${ADD_BUTTON_CLASSES} disabled:opacity-40`}
+          aria-label={trigger}
+          title={trigger}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-line text-muted hover:border-accent hover:text-accent"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
           align="start"
-          className="z-50 max-h-72 min-w-48 overflow-y-auto rounded-lg border border-line bg-white p-1 text-sm shadow-lg"
+          sideOffset={4}
+          className="z-50 w-60 overflow-hidden rounded-lg border border-line bg-white text-sm shadow-lg"
         >
-          {collections.map((collection) => (
-            <DropdownMenu.Item
-              key={collection.id}
-              onSelect={() => onAdd(collection.id)}
-              className="cursor-pointer rounded px-2.5 py-1.5 outline-none data-highlighted:bg-accent-soft"
-            >
-              {collection.name}
-            </DropdownMenu.Item>
-          ))}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+          <Command label={trigger}>
+            <Command.Input
+              aria-label={field}
+              value={query}
+              onValueChange={setQuery}
+              placeholder={field}
+              className="w-full border-b border-line px-3 py-2 outline-none placeholder:text-faint"
+            />
+            <Command.List className="max-h-60 overflow-y-auto p-1">
+              {options.map((option) => (
+                <Command.Item
+                  key={option.id}
+                  value={option.name}
+                  onSelect={() => {
+                    onPick(option.id);
+                    close();
+                  }}
+                  className="cursor-pointer rounded px-2.5 py-1.5 data-[selected=true]:bg-accent-soft"
+                >
+                  {option.name}
+                </Command.Item>
+              ))}
+              {name.length > 0 && !exact && (
+                <Command.Item
+                  value={`create ${name}`}
+                  forceMount
+                  onSelect={() => {
+                    onCreate(name);
+                    close();
+                  }}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2.5 py-1.5 data-[selected=true]:bg-accent-soft"
+                >
+                  <Plus aria-hidden className="h-3.5 w-3.5 text-muted" />
+                  {name}
+                </Command.Item>
+              )}
+            </Command.List>
+          </Command>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

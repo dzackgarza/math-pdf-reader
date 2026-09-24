@@ -40,14 +40,83 @@ function itemPath(key: string): string {
   return `/api/items/${encodeURIComponent(key)}`;
 }
 
-export function filingActions(context: ActionContext, key: string): ItemFilingActions {
+function newCollection(context: ActionContext, name: string) {
+  return context.mutate(CollectionSchema, "POST", "/api/collections", { name });
+}
+
+function fileIn(context: ActionContext, item: BucketItem, collectionId: string) {
+  return context.mutate(LibraryPayloadSchema, "PUT", `${itemPath(item.id)}/collections`, {
+    collections: [...item.collections, collectionId],
+  });
+}
+
+function setTags(context: ActionContext, item: BucketItem, tags: string[]) {
+  return context.mutate(LibraryPayloadSchema, "PUT", `${itemPath(item.id)}/tags`, { tags });
+}
+
+export function filingActions(context: ActionContext, item: BucketItem): ItemFilingActions {
   const change = (method: "PUT" | "POST" | "DELETE", path: string, body?: object) =>
-    run(context, context.mutate(LibraryPayloadSchema, method, `${itemPath(key)}${path}`, body));
+    run(context, context.mutate(LibraryPayloadSchema, method, `${itemPath(item.id)}${path}`, body));
   return {
     setTags: (tags) => change("PUT", "/tags", { tags }),
     setCollections: (collections) => change("PUT", "/collections", { collections }),
+    fileInNewCollection: (name) =>
+      run(
+        context,
+        newCollection(context, name).then((collection) => fileIn(context, item, collection.id)),
+      ),
     addNote: (note) => change("POST", "/notes", { note }),
     deleteNote: (noteId) => change("DELETE", `/notes/${encodeURIComponent(noteId)}`),
+  };
+}
+
+// What the row context menu does to one item.
+export type ItemMenuActions = {
+  fileIn: (collectionId: string) => void;
+  fileInNewCollection: () => void;
+  addTag: () => void;
+  delete: () => void;
+};
+
+export function itemMenuActions(
+  context: ActionContext,
+  item: BucketItem,
+  onDeleted: () => void,
+): ItemMenuActions {
+  return {
+    fileIn: (collectionId) => run(context, fileIn(context, item, collectionId)),
+    fileInNewCollection: () =>
+      context.askName({
+        title: "New collection",
+        label: "Name",
+        submitLabel: "Create",
+        initialName: "",
+        onSubmit: (name) =>
+          run(
+            context,
+            newCollection(context, name).then((collection) => fileIn(context, item, collection.id)),
+          ),
+      }),
+    addTag: () =>
+      context.askName({
+        title: "Add tag",
+        label: "Name",
+        submitLabel: "Add",
+        initialName: "",
+        onSubmit: (name) =>
+          run(context, setTags(context, item, [...new Set([...item.tags, name])])),
+      }),
+    delete: () =>
+      context.confirm({
+        title: `Delete “${item.title}”?`,
+        description: "The PDF moves to the trash.",
+        confirmLabel: "Delete",
+        onConfirm: () =>
+          run(
+            context,
+            context.mutate(LibraryPayloadSchema, "DELETE", itemPath(item.id)).then(onDeleted),
+          ),
+      }),
   };
 }
 
@@ -153,8 +222,8 @@ export function organizationActions(context: ActionContext): OrganizationActions
   };
 }
 
-// What the window shows about a send while or after it runs; a completed send shows through
-// the item's own Zotero status instead.
+// What the window shows about a send while it runs or after it failed; a completed send takes
+// the item out of the bucket.
 export type SendAttempt =
   | { kind: "sending" }
   | { kind: "refused"; message: string }
@@ -167,7 +236,11 @@ export function sendToZotero(
 ): void {
   onAttempt({ kind: "sending" });
   context.mutate(SendResponseSchema, "POST", `${itemPath(key)}/zotero`).then(
-    () => onAttempt(null),
+    () => {
+      onAttempt(null);
+      // The item is in Zotero now and no longer in the bucket.
+      context.refresh();
+    },
     (error: Error) => {
       // A failed send may have recorded its Zotero item before the failing step.
       context.refresh();
@@ -175,22 +248,6 @@ export function sendToZotero(
       onAttempt({ kind: refused ? "refused" : "failed", message: error.message });
     },
   );
-}
-
-export function removeFromBucket(context: ActionContext, item: BucketItem, onRemoved: () => void) {
-  if (item.zotero.status !== "sent") {
-    return;
-  }
-  context.confirm({
-    title: `Remove “${item.title}” from the bucket?`,
-    description: `The PDF and its extraction move to the desktop trash. Zotero keeps item ${item.zotero.record.itemKey} with the PDF attached.`,
-    confirmLabel: "Remove from bucket",
-    onConfirm: () =>
-      run(
-        context,
-        context.mutate(LibraryPayloadSchema, "DELETE", itemPath(item.id)).then(onRemoved),
-      ),
-  });
 }
 
 // An extraction run on an item: in progress, answered with its outcome, or refused by the

@@ -121,16 +121,12 @@ export default function CommandPalette({
                 value={query}
                 onValueChange={onValueChange}
                 onKeyDown={onKeyDown}
-                placeholder={
-                  mode === "commands" ? "Run a command" : "Search PDFs, or type > for commands"
-                }
+                placeholder={mode === "commands" ? "Command" : "Go to PDF"}
                 className="w-full bg-transparent text-base outline-none placeholder:text-faint"
               />
             </div>
             <CmdK.List className="max-h-80 overflow-y-auto p-1.5">
-              <CmdK.Empty className="py-8 text-center text-sm text-muted">
-                No matching {mode === "commands" ? "commands" : "PDFs"}.
-              </CmdK.Empty>
+              <CmdK.Empty className="py-8 text-center text-sm text-muted">No match</CmdK.Empty>
               {mode === "commands" ? commands.map(renderCommand) : ranked.map(renderItem)}
             </CmdK.List>
           </CmdK>

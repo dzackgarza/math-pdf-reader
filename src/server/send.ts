@@ -1,7 +1,7 @@
 // The send action: create the bucket item in Zotero, set its URL and access date, attach the
 // stored PDF and the extraction Markdown, and record the Zotero key in the filing document
-// after each step. Removing the item from the bucket is a separate request that only an item
-// whose PDF reached Zotero accepts.
+// after each step. Once every step is done the item leaves the bucket: Zotero holds it now.
+// Deleting an item moves its PDF to the desktop trash and drops its filing.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Mutex } from "async-mutex";
@@ -20,7 +20,7 @@ import type {
   ZoteroStatus,
 } from "./libraryContract";
 import type { IndexedItem } from "./libraryIndex";
-import { setZoteroRecord } from "./organization";
+import { removeItem, setZoteroRecord } from "./organization";
 import { type Resolution, removeStored, resolveItem } from "./store";
 import type { ZoteroWriteApi } from "./zotero";
 
@@ -65,6 +65,11 @@ type ResolverFailure = Extract<Resolution, { status: "failed" }>;
 export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero: ZoteroWriteApi) {
   // One send or removal at a time, so two clicks never create two Zotero items.
   const sends = new Mutex();
+
+  const remove = async (key: string) => {
+    await removeStored(root, key);
+    return state.organizations.update((org) => removeItem(org, key));
+  };
 
   const save = (key: string, record: ZoteroRecord) =>
     state.organizations.update((org) =>
@@ -164,6 +169,7 @@ export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero:
         await save(key, record);
         performed.push(step);
       }
+      await remove(key);
       const response: SendResponse = {
         itemKey: record.itemKey,
         created: existing === undefined,
@@ -179,13 +185,7 @@ export function sendRoutes(app: Hono, state: LibraryState, root: string, zotero:
       if ((await state.indexed(key)) === undefined) {
         return apiError(c, 404, "unknown_item", `no stored PDF has key ${key}`);
       }
-      const record = (await state.organizations.read()).items[key]?.zotero;
-      if (record === undefined || !record.steps.some((step) => step.step === "pdf")) {
-        const message = `${key} has not reached Zotero with its PDF; only a sent item leaves the bucket`;
-        return apiError(c, 409, "not_sent", message);
-      }
-      await removeStored(root, key);
-      return c.json(await state.payloadOf(await state.organizations.read()));
+      return c.json(await state.payloadOf(await remove(key)));
     }),
   );
 }

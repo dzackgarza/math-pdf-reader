@@ -12,8 +12,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseHTML } from "linkedom";
-import { z } from "zod";
 import { createApp } from "../src/server/app";
 import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
 import { type CaptureResponse, CaptureResponseSchema } from "../src/server/contract";
@@ -258,41 +256,6 @@ test("filing refuses unknown items, unknown collections and empty tags", async (
   expect(await errorKind(blankTag)).toBe("invalid_request");
 
   expect(byId((await library(bucket)).items).get("lattices")?.tags).toEqual([]);
-});
-
-test("the reader page shows the provenance panel and leads back to the library", async () => {
-  const bucket = emptyBucket();
-  const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
-  await send(bucket, "PUT", "/api/items/lattices/tags", { tags: ["topic:Lattices", "MMP"] });
-  const codes = CollectionSchema.parse(
-    await (await send(bucket, "POST", "/api/collections", { name: "Coding Theory" })).json(),
-  );
-  await send(bucket, "PUT", "/api/items/lattices/collections", { collections: [codes.id] });
-  await send(bucket, "POST", "/api/items/lattices/notes", {
-    note: "Compare with the Leech lattice.",
-  });
-
-  const { document } = parseHTML(await (await bucket.request("/read/lattices")).text());
-  const panel = z
-    .object({ textContent: z.string() })
-    .parse(document.querySelector("[aria-label='Provenance']"));
-
-  expect(document.querySelector("a[href='/']")?.textContent).toContain("Library");
-  for (const fact of [
-    lattices.provenance.source_url,
-    lattices.provenance.pdf_url,
-    lattices.provenance.original_sha256,
-    join(bucket.root, "lattices.pdf"),
-    "Lattices",
-    "MMP",
-    "Coding Theory",
-    "Compare with the Leech lattice.",
-  ]) {
-    expect(panel.textContent).toContain(fact);
-  }
-  expect(document.querySelector("iframe")?.getAttribute("src")).toBe(
-    "/pdfjs/web/viewer.html?file=%2Fpdf%2Flattices.pdf",
-  );
 });
 
 test("renames, note deletions and saved-search deletions persist, and unknown ids are refused", async () => {

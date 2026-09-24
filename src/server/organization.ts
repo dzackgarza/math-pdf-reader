@@ -108,6 +108,14 @@ export function setZoteroRecord(
   return fileItem(org, key, now, (filing) => ({ ...filing, zotero: record }));
 }
 
+// The item left the bucket (deleted, or sent to Zotero): its filing goes with it.
+export function removeItem(org: Organization, key: string): Organization {
+  return {
+    ...org,
+    items: Object.fromEntries(Object.entries(org.items).filter(([k]) => k !== key)),
+  };
+}
+
 export function addCollection(org: Organization, collection: Collection): Organization {
   return { ...org, collections: [...org.collections, collection] };
 }

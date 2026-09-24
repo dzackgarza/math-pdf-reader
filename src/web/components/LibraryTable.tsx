@@ -15,6 +15,8 @@ type LibraryTableProps = {
   selectedItemId: string | null;
   onSelectItem: (id: string) => void;
   onOpenItem: (id: string) => void;
+  // The context menu of the row right-clicked, as ContextMenu.Content.
+  rowMenu: (id: string) => ReactNode;
   empty: ReactNode;
 };
 
@@ -96,9 +98,11 @@ export default function LibraryTable({
   selectedItemId,
   onSelectItem,
   onOpenItem,
+  rowMenu,
   empty,
 }: LibraryTableProps) {
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [menuRow, setMenuRow] = useState<string | null>(null);
   const rows = table.getRowModel().rows;
 
   return (
@@ -150,44 +154,54 @@ export default function LibraryTable({
               ))}
             </thead>
           </ContextMenu.Trigger>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={table.getVisibleLeafColumns().length}
-                  className="px-6 py-20 text-center"
-                >
-                  <Inbox aria-hidden className="mx-auto mb-3 h-9 w-9 text-faint" />
-                  {empty}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => {
-                const selected = row.id === selectedItemId;
-                return (
-                  <tr
-                    key={row.id}
-                    aria-selected={selected}
-                    onClick={() => onSelectItem(row.id)}
-                    onDoubleClick={() => onOpenItem(row.id)}
-                    className={`cursor-default border-b border-line ${
-                      selected ? "bg-accent-soft" : "bg-white hover:bg-surface"
-                    }`}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        style={widthStyle(cell.column.getSize())}
-                        className="truncate px-4 py-2"
-                      >
-                        {renderCell(cell, collectionNames)}
-                      </td>
-                    ))}
+          <ContextMenu.Root onOpenChange={(open) => !open && setMenuRow(null)}>
+            <ContextMenu.Trigger asChild>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={table.getVisibleLeafColumns().length}
+                      className="px-6 py-20 text-center"
+                    >
+                      <Inbox aria-hidden className="mx-auto mb-3 h-9 w-9 text-faint" />
+                      {empty}
+                    </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
+                ) : (
+                  rows.map((row) => {
+                    const selected = row.id === selectedItemId;
+                    return (
+                      <tr
+                        key={row.id}
+                        data-item-id={row.id}
+                        aria-selected={selected}
+                        onContextMenu={() => {
+                          onSelectItem(row.id);
+                          setMenuRow(row.id);
+                        }}
+                        onClick={() => onSelectItem(row.id)}
+                        onDoubleClick={() => onOpenItem(row.id)}
+                        className={`cursor-default border-b border-line ${
+                          selected ? "bg-accent-soft" : "bg-white hover:bg-surface"
+                        }`}
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <td
+                            key={cell.id}
+                            style={widthStyle(cell.column.getSize())}
+                            className="truncate px-4 py-2"
+                          >
+                            {renderCell(cell, collectionNames)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </ContextMenu.Trigger>
+            <ContextMenu.Portal>{menuRow !== null && rowMenu(menuRow)}</ContextMenu.Portal>
+          </ContextMenu.Root>
         </table>
 
         <ContextMenu.Portal>

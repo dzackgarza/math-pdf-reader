@@ -1,5 +1,5 @@
 import { AlertTriangle, LoaderCircle, RefreshCw } from "lucide-react";
-import { type ReactNode, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import {
   type AdvancedSearchSettings,
@@ -18,24 +18,27 @@ import CommandPaletteHost, { type CommandPaletteHostHandle } from "./components/
 import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
 import EmptyTable from "./components/EmptyTable";
 import InspectorPanel from "./components/InspectorPanel";
+import ItemContextMenu from "./components/ItemContextMenu";
 import LibraryTable from "./components/LibraryTable";
 import NameDialog, { type NameRequest } from "./components/NameDialog";
 import Sidebar from "./components/Sidebar";
 import StatusBar from "./components/StatusBar";
 import TopBar from "./components/TopBar";
+import { openInBrowser, showInFolder } from "./desktop";
+import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import {
   type ActionContext,
   createCollection,
   type ExtractionAttempt,
   extractWith,
   filingActions,
+  itemMenuActions,
   organizationActions,
-  removeFromBucket,
   type SendAttempt,
   saveSearch,
   sendToZotero,
 } from "./libraryActions";
-import { type LibraryView, reconcileView, viewName, visibleItems } from "./librarySelectors";
+import { type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
@@ -86,6 +89,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
   const plugins = useExtractionPlugins();
   const palette = useRef<CommandPaletteHostHandle>(null);
+  const searchField = useRef<HTMLInputElement>(null);
 
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
   const items = useMemo(
@@ -112,6 +116,76 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     saveSearch(context, search, () => setSearch(defaultSearchSettings()));
 
   const openReader = (key: string) => window.location.assign(readerUrl(key));
+  const itemById = (key: string) => payload.items.find((item) => item.id === key);
+  const deselect = () => setSelectedId(null);
+  // Runs an action outside the page; a failure shows as a toast.
+  const attempt = (action: Promise<void>): void => {
+    action.then(
+      () => undefined,
+      (error: Error) => setToast(error.message),
+    );
+  };
+
+  // Ctrl+F finds in the table; Enter opens and Delete deletes the selected PDF.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (matchesShortcut(event, KEYBOARD_SHORTCUTS.focusSearch)) {
+        event.preventDefault();
+        searchField.current?.focus();
+        searchField.current?.select();
+        return;
+      }
+      const target = event.target;
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (
+        typing ||
+        selected === undefined ||
+        document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null
+      ) {
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        openReader(selected.id);
+      }
+      if (event.key === "Delete") {
+        event.preventDefault();
+        itemMenuActions(context, selected, deselect).delete();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  const rowMenu = (key: string) => {
+    const item = itemById(key);
+    if (item === undefined) {
+      return null;
+    }
+    const actions = itemMenuActions(context, item, deselect);
+    const reveal = showInFolder();
+    return (
+      <ItemContextMenu
+        item={item}
+        collections={payload.collections}
+        commands={{
+          open: () => openReader(key),
+          openInBrowser: () =>
+            attempt(openInBrowser(new URL(readerUrl(key), window.location.origin).href)),
+          fileIn: actions.fileIn,
+          fileInNewCollection: actions.fileInNewCollection,
+          addTag: actions.addTag,
+          send: () => send(key),
+          copy: (text) => attempt(navigator.clipboard.writeText(text)),
+          showInFolder: reveal === null ? null : () => attempt(reveal(item.file.path)),
+          delete: actions.delete,
+        }}
+      />
+    );
+  };
   const send = (key: string) =>
     sendToZotero(context, key, (attempt) => setSendAttempt(key, attempt));
   const extract = (key: string, pluginId: string) =>
@@ -135,6 +209,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       selectedItemId={selectedId}
       onSelectItem={setSelectedId}
       onOpenItem={openReader}
+      rowMenu={rowMenu}
       empty={
         <EmptyTable
           bucketEmpty={payload.items.length === 0}
@@ -148,29 +223,18 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">
-        <Sidebar payload={payload} read={read} />
+        <Sidebar onNewCollection={newCollection} />
         <main className="flex min-w-0 flex-1 flex-col bg-white">
           {screen.kind !== "settings" && (
             <TopBar
+              ref={searchField}
               search={search}
               onChangeSearch={setSearch}
               onOpenFilters={() => setFiltersOpen(true)}
-              onOpenPalette={() => palette.current?.open("items")}
               onSaveSearch={saveCurrentSearch}
-              onNewCollection={newCollection}
             />
           )}
-          {screen.kind === "library" && (
-            <>
-              <div className="flex items-baseline gap-3 px-5 pt-4 pb-3">
-                <h1 className="text-lg font-semibold">{viewName(payload, screen.view)}</h1>
-                <span className="text-sm text-muted">
-                  {items.length.toLocaleString()} {items.length === 1 ? "PDF" : "PDFs"}
-                </span>
-              </div>
-              {tableElement}
-            </>
-          )}
+          {screen.kind === "library" && tableElement}
           {screen.kind === "organization" && (
             <OrganizationScreen
               payload={payload}
@@ -180,20 +244,19 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               table={tableElement}
             />
           )}
-          {screen.kind === "settings" && <SettingsScreen payload={payload} read={read} />}
+          {screen.kind === "settings" && <SettingsScreen read={read} onError={setToast} />}
         </main>
         {selected !== undefined && screen.kind !== "settings" && (
-          <div className="w-[26rem] shrink-0 max-2xl:fixed max-2xl:inset-y-0 max-2xl:right-0 max-2xl:z-30 max-2xl:shadow-2xl">
+          <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
             <InspectorPanel
               key={selected.id}
               item={selected}
               collections={payload.collections}
               knownTags={knownTags}
-              filing={filingActions(context, selected.id)}
+              filing={filingActions(context, selected)}
               send={{
                 attempt: sendAttempts.get(selected.id),
                 onSend: () => send(selected.id),
-                onRemove: () => removeFromBucket(context, selected, () => setSelectedId(null)),
               }}
               extraction={{
                 plugins,
