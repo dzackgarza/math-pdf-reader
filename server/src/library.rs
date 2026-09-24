@@ -373,7 +373,7 @@ async fn new_collection(State(state): State<Shared>, body: Bytes) -> AppResult<J
     let name = trimmed(&request.name)?;
     if let Some(parent) = &request.parent_id {
         if !state.collection_ids().await?.contains(parent.as_str()) {
-            return Err(unknown_collection(&[parent.to_string()]));
+            return Err(unknown_collection(std::slice::from_ref(parent)));
         }
     }
     let collection = Collection {

@@ -65,17 +65,25 @@ fn web_url(value: &str) -> bool {
     }
 }
 
-fn invalid_capture(issue: impl Into<String>) -> Response {
-    let issue = issue.into();
-    (
-        StatusCode::BAD_REQUEST,
-        Json(json!({ "error": "invalid_capture_form", "issues": [{ "message": issue }] })),
-    )
-        .into_response()
+// Why the capture form was refused; it answers 400 `invalid_capture_form`.
+struct InvalidCapture(String);
+
+impl IntoResponse for InvalidCapture {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "invalid_capture_form", "issues": [{ "message": self.0 }] })),
+        )
+            .into_response()
+    }
+}
+
+fn invalid_capture(issue: impl Into<String>) -> InvalidCapture {
+    InvalidCapture(issue.into())
 }
 
 // The capture extension's form: the PDF's bytes, where it was linked from, and a title hint.
-async fn capture_form(mut form: Multipart) -> Result<Upload, Response> {
+async fn capture_form(mut form: Multipart) -> Result<Upload, InvalidCapture> {
     let (mut pdf, mut pdf_url, mut source_url, mut title_hint) = (None, None, None, None);
     while let Some(field) = form
         .next_field()
@@ -141,7 +149,7 @@ async fn capture_bytes(
 ) -> AppResult<Response> {
     let upload = match capture_form(form).await {
         Ok(upload) => upload,
-        Err(response) => return Ok(response),
+        Err(invalid) => return Ok(invalid.into_response()),
     };
     if !is_pdf(&upload.bytes) {
         return Ok((
