@@ -1,0 +1,156 @@
+//! Where a stored PDF came from, checked again: whether its PDF URL and mirrors still serve the
+//! captured bytes (the recorded original SHA-256), and rebuilding a PDF the store has lost from
+//! the first of those URLs that does.
+use std::time::Duration;
+
+use sha2::{Digest, Sha256};
+use url::Url;
+
+use crate::contract::{
+    AppConfigRebuild, NonEmpty, Provenance, RebuildOutcome, RebuildOutcomeUnrestoredAttemptsItem,
+    RebuildOutcomeUnrestoredAttemptsItemStatus, SourceCheck, Timestamp, TitleSource,
+};
+use crate::error::AppResult;
+use crate::store::{ResolvedMetadata, Store};
+
+pub fn sha256(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+/// The one boundary where a network failure becomes a dead-URL outcome. A `file:` URL (a PDF
+/// added from a folder) is read from disk.
+pub async fn download(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
+    let parsed = Url::parse(url).map_err(|error| error.to_string())?;
+    if parsed.scheme() == "file" {
+        let path = parsed
+            .to_file_path()
+            .map_err(|()| format!("{url} names no local file"))?;
+        return tokio::fs::read(&path)
+            .await
+            .map_err(|error| error.to_string());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status().as_u16()));
+    }
+    let body = response.bytes().await.map_err(|error| error.to_string())?;
+    Ok(body.to_vec())
+}
+
+enum Fetched {
+    Accessible(Vec<u8>),
+    Changed(String),
+    Dead(String),
+}
+
+async fn fetch_original(url: &str, original_sha256: &str, settings: &AppConfigRebuild) -> Fetched {
+    let timeout = Duration::from_secs(settings.download_timeout_seconds.get());
+    match download(url, timeout).await {
+        Err(failure) => Fetched::Dead(failure),
+        Ok(bytes) => {
+            let observed = sha256(&bytes);
+            if observed == original_sha256 {
+                Fetched::Accessible(bytes)
+            } else {
+                Fetched::Changed(format!("serves bytes hashing to {observed}"))
+            }
+        }
+    }
+}
+
+pub async fn check_source(
+    url: &str,
+    original_sha256: &str,
+    settings: &AppConfigRebuild,
+) -> SourceCheck {
+    let fetched = fetch_original(url, original_sha256, settings).await;
+    let checked_at = Timestamp::now();
+    match fetched {
+        Fetched::Accessible(_) => SourceCheck::Accessible {
+            checked_at,
+            detail: "serves the captured bytes".to_string(),
+        },
+        Fetched::Changed(detail) => SourceCheck::Changed { checked_at, detail },
+        Fetched::Dead(detail) => SourceCheck::Dead { checked_at, detail },
+    }
+}
+
+/// An item the store may have lost, as the index export records it.
+pub struct RecoverableItem {
+    pub key: String,
+    pub provenance: Provenance,
+    pub title: String,
+    pub title_source: TitleSource,
+    pub authors: Vec<String>,
+    pub year: Option<i64>,
+    pub abstract_: Option<String>,
+    pub mirrors: Vec<String>,
+}
+
+/// Restores the item's PDF from its PDF URL, else from each mirror in turn, when the store has
+/// lost it. A title and authors a resolver gave are recorded again; any other title is read
+/// from the restored bytes as it was before.
+pub async fn rebuild_item(
+    store: &Store,
+    item: &RecoverableItem,
+    settings: &AppConfigRebuild,
+) -> AppResult<RebuildOutcome> {
+    let key: NonEmpty = item
+        .key
+        .as_str()
+        .try_into()
+        .expect("an exported key is never empty");
+    if store.pdf_path(&item.key).is_some() {
+        return Ok(RebuildOutcome::Present { key });
+    }
+    let mut attempts = Vec::new();
+    let urls = std::iter::once(&item.provenance.pdf_url).chain(&item.mirrors);
+    for url in urls {
+        let fetched = fetch_original(url, &item.provenance.original_sha256, settings).await;
+        let (status, detail) = match fetched {
+            Fetched::Accessible(bytes) => {
+                store.restore(&item.key, &bytes, &item.provenance).await?;
+                if item.title_source == TitleSource::Resolver {
+                    let metadata = ResolvedMetadata {
+                        title: item.title.clone(),
+                        authors: item.authors.clone(),
+                        year: item.year,
+                        abstract_: item.abstract_.clone(),
+                    };
+                    store
+                        .record_metadata(&item.key, TitleSource::Resolver, &metadata)
+                        .await?;
+                }
+                let path = store
+                    .pdf_path(&item.key)
+                    .expect("the store holds the PDF it just restored");
+                let stored_sha256 = sha256(&tokio::fs::read(path).await?)
+                    .try_into()
+                    .expect("a SHA-256 digest is 64 hex digits");
+                return Ok(RebuildOutcome::Restored {
+                    key,
+                    from: url.clone(),
+                    stored_sha256,
+                });
+            }
+            Fetched::Changed(detail) => {
+                (RebuildOutcomeUnrestoredAttemptsItemStatus::Changed, detail)
+            }
+            Fetched::Dead(detail) => (RebuildOutcomeUnrestoredAttemptsItemStatus::Dead, detail),
+        };
+        attempts.push(RebuildOutcomeUnrestoredAttemptsItem {
+            url: url.clone(),
+            status,
+            detail,
+        });
+    }
+    Ok(RebuildOutcome::Unrestored { key, attempts })
+}

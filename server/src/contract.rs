@@ -50,4 +50,15 @@ impl fmt::Display for Timestamp {
     }
 }
 
-include!(concat!(env!("OUT_DIR"), "/contract.rs"));
+// typify lays the types out as the schema reads; a variant that holds a whole stored item is
+// larger than one that holds a key, and boxing it would make the generated types differ from
+// the schema's shape.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "generated from the contract schema, whose variants differ in size"
+)]
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/contract.rs"));
+}
+
+pub use generated::*;

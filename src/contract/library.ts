@@ -493,3 +493,5 @@ export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSc
 // The session-storage key under which the library page keeps its current view (the address's
 // hash, e.g. `#/unfiled`); the reader's Library button returns to that view.
 export const LIBRARY_VIEW_KEY = "pdf-bucket.library-view";
+// The same key as a schema, so the server's reader page gets it from the generated contract.
+export const LibraryViewKeySchema = z.literal(LIBRARY_VIEW_KEY);
