@@ -7,9 +7,14 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Semaphore } from "async-mutex";
 import { z } from "zod";
-import type { AppConfig } from "./config";
 import { ProvenanceSchema } from "./contract";
-import { CollectionSchema, SavedSearchSchema } from "./libraryContract";
+import {
+  CollectionSchema,
+  type MissingItem,
+  type RebuildOutcome,
+  SavedSearchSchema,
+  TitleSourceSchema,
+} from "./libraryContract";
 import {
   ItemFilingSchema,
   type Organization,
@@ -17,11 +22,14 @@ import {
   organizationFile,
   unfiled,
 } from "./organization";
-import { listItems, restorePdf, storedPdfPath } from "./store";
+import { type DownloadSettings, type RecoverableItem, rebuildItem } from "./sources";
+import { listItems } from "./store";
 
 const ExportedItemSchema = z.strictObject({
   key: z.string().min(1),
   provenance: ProvenanceSchema,
+  title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
+  authors: z.array(z.string().min(1)),
   filing: ItemFilingSchema,
 });
 
@@ -33,21 +41,8 @@ export const IndexExportSchema = z.strictObject({
 });
 
 export type IndexExport = z.infer<typeof IndexExportSchema>;
-type ExportedItem = z.infer<typeof ExportedItemSchema>;
+export type ExportedItem = z.infer<typeof ExportedItemSchema>;
 
-export type RebuildOutcome =
-  | { key: string; status: "present" }
-  | { key: string; status: "restored"; stored_sha256: string }
-  | { key: string; status: "dead"; pdf_url: string; reason: string }
-  | {
-      key: string;
-      status: "changed";
-      pdf_url: string;
-      expected_sha256: string;
-      observed_sha256: string;
-    };
-
-export type RebuildSettings = AppConfig["rebuild"];
 
 // The previous export lists items the store no longer holds. Writing a new export would drop
 // the only record that can bring them back.
@@ -95,9 +90,11 @@ export async function exportIndex(
     version: 2,
     collections: organization.collections,
     savedSearches: organization.savedSearches,
-    items: stored.map(({ key, provenance }) => ({
+    items: stored.map(({ key, provenance, title, authors }) => ({
       key,
       provenance,
+      title,
+      authors,
       filing: organization.items[key] ?? unfiled(provenance.captured_at),
     })),
   };
@@ -120,6 +117,27 @@ export class IndexExporter {
     private readonly root: string,
     private readonly exportFile: string,
   ) {}
+
+  // The items the last export holds whose PDF is not among STORED and that were not removed
+  // on purpose: the ones Rebuild can bring back.
+  async missing(stored: ReadonlySet<string>): Promise<{ item: ExportedItem; shown: MissingItem }[]> {
+    if (!existsSync(this.exportFile)) {
+      return [];
+    }
+    const index = await readIndexExport(this.exportFile);
+    return index.items
+      .filter((item) => !stored.has(item.key) && !this.removed.has(item.key))
+      .map((item) => ({
+        item,
+        shown: {
+          key: item.key,
+          title: item.title.text,
+          authors: item.authors,
+          provenance: item.provenance,
+          mirrors: item.filing.mirrors.map((mirror) => mirror.url),
+        },
+      }));
+  }
 
   // Items removed on purpose; the next export drops them instead of refusing.
   forget(keys: string[]): void {
@@ -174,64 +192,24 @@ export async function importIndex(root: string, exportFile: string): Promise<Org
   }));
 }
 
-type Download = { bytes: Uint8Array<ArrayBuffer> } | { failure: string };
-
-// The one boundary where a network rejection becomes a dead-URL outcome.
-async function download(url: string, timeoutSeconds: number): Promise<Download> {
-  const signal = AbortSignal.timeout(timeoutSeconds * 1000);
-  const response = await fetch(url, { signal }).then(
-    (answer) => answer,
-    (error: Error) => error,
-  );
-  if (response instanceof Error) {
-    return { failure: response.message };
-  }
-  if (!response.ok) {
-    return { failure: `HTTP ${response.status}` };
-  }
-  return response.arrayBuffer().then(
-    (body) => ({ bytes: new Uint8Array(body) }),
-    (error: Error) => ({ failure: error.message }),
-  );
-}
-
-async function rebuildItem(
-  root: string,
-  item: ExportedItem,
-  settings: RebuildSettings,
-): Promise<RebuildOutcome> {
-  const { key, provenance } = item;
-  if (storedPdfPath(root, key) !== null) {
-    return { key, status: "present" };
-  }
-  const fetched = await download(provenance.pdf_url, settings.download_timeout_seconds);
-  if ("failure" in fetched) {
-    return { key, status: "dead", pdf_url: provenance.pdf_url, reason: fetched.failure };
-  }
-  const observed = new Bun.CryptoHasher("sha256").update(fetched.bytes).digest("hex");
-  if (observed !== provenance.original_sha256) {
-    return {
-      key,
-      status: "changed",
-      pdf_url: provenance.pdf_url,
-      expected_sha256: provenance.original_sha256,
-      observed_sha256: observed,
-    };
-  }
-  const restored = await restorePdf(root, key, fetched.bytes, provenance);
-  return { key, status: "restored", stored_sha256: restored.stored_sha256 };
-}
-
-// Every item the export lists, in export order: present, restored, or reported by key.
+// Every item the export lists, in export order: present, restored, or unrestored with each
+// URL tried.
 export async function rebuildCache(
   root: string,
   exportFile: string,
-  settings: RebuildSettings,
+  settings: DownloadSettings,
 ): Promise<RebuildOutcome[]> {
   mkdirSync(root, { recursive: true });
   const index = await readIndexExport(exportFile);
   const downloads = new Semaphore(settings.concurrent_downloads);
   return Promise.all(
-    index.items.map((item) => downloads.runExclusive(() => rebuildItem(root, item, settings))),
+    index.items.map((item) =>
+      downloads.runExclusive(() => rebuildItem(root, recoverable(item), settings)),
+    ),
   );
+}
+
+export function recoverable(item: ExportedItem): RecoverableItem {
+  const { key, provenance, title, authors, filing } = item;
+  return { key, provenance, title, authors, mirrors: filing.mirrors.map((mirror) => mirror.url) };
 }

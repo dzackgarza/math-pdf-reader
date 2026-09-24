@@ -35,6 +35,7 @@ import {
   unfiled,
 } from "./organization";
 import { sendRoutes, zoteroStatus } from "./send";
+import { sourceRoutes } from "./sourceRoutes";
 import { replacePdf } from "./store";
 import { retrieveMetadata } from "./titles";
 import type { ZoteroWriteApi } from "./zotero";
@@ -52,6 +53,8 @@ export function bucketItem(indexed: IndexedItem, organization: Organization): Bu
     collections: filing.collections,
     notes: filing.notes,
     reading: filing.reading,
+    sourceCheck: filing.sourceCheck,
+    mirrors: filing.mirrors,
     extraction: indexed.extraction,
     zotero: zoteroStatus(filing.zotero, indexed.extraction),
     dateAdded: provenance.captured_at,
@@ -70,11 +73,11 @@ export type Library = {
   removed(keys: string[]): void;
 };
 
-function apiError(c: Context, status: 400 | 404 | 409, kind: ApiErrorKind, message: string) {
+export function apiError(c: Context, status: 400 | 404 | 409, kind: ApiErrorKind, message: string) {
   return c.json({ error: { kind, message } }, status);
 }
 
-function invalid(c: Context, error: z.ZodError) {
+export function invalid(c: Context, error: z.ZodError) {
   return apiError(c, 400, "invalid_request", error.message);
 }
 
@@ -82,11 +85,11 @@ function unknownCollection(c: Context, id: string) {
   return apiError(c, 404, "unknown_collection", `no collection has id ${id}`);
 }
 
-async function parseBody<T extends z.ZodType>(c: Context, schema: T) {
+export async function parseBody<T extends z.ZodType>(c: Context, schema: T) {
   return schema.safeParse(await c.req.json());
 }
 
-function now(): string {
+export function now(): string {
   return new Date().toISOString();
 }
 
@@ -105,11 +108,19 @@ export class LibraryState {
   }
 
   async payloadOf(organization: Organization): Promise<LibraryPayload> {
+    const indexed = await this.index.items();
     return {
-      items: (await this.index.items()).map((indexed) => bucketItem(indexed, organization)),
+      items: indexed.map((entry) => bucketItem(entry, organization)),
+      missing: (await this.missing(indexed)).map(({ shown }) => shown),
       collections: organization.collections,
       savedSearches: organization.savedSearches,
     };
+  }
+
+  // The items the index export holds whose PDF is gone; none without an export.
+  async missing(indexed?: IndexedItem[]) {
+    const stored = new Set((indexed ?? (await this.index.items())).map((entry) => entry.stored.key));
+    return this.exporter === null ? [] : this.exporter.missing(stored);
   }
 
   async indexed(key: string): Promise<IndexedItem | undefined> {
@@ -340,5 +351,6 @@ export function registerLibraryRoutes(
   collectionRoutes(app, state);
   savedSearchRoutes(app, state);
   sendRoutes(app, state, root, zotero, library);
+  sourceRoutes(app, state, root, loadAppConfig(CONFIG_PATH).rebuild, library);
   return library;
 }

@@ -5,13 +5,22 @@ import { existsSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { Collection, ItemNote, Reading, SavedSearch, ZoteroRecord } from "./libraryContract";
+import type {
+  Collection,
+  ItemNote,
+  Reading,
+  SavedSearch,
+  SourceCheck,
+  ZoteroRecord,
+} from "./libraryContract";
 import {
   CollectionSchema,
   collectionSubtree,
   ItemNoteSchema,
+  MirrorSchema,
   ReadingSchema,
   SavedSearchSchema,
+  SourceCheckSchema,
   ZoteroRecordSchema,
 } from "./libraryContract";
 
@@ -20,6 +29,9 @@ export const ItemFilingSchema = z.strictObject({
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),
   reading: ReadingSchema,
+  // The last check of the PDF URL, and the item's mirrors with theirs.
+  sourceCheck: SourceCheckSchema,
+  mirrors: z.array(MirrorSchema),
   modifiedAt: z.iso.datetime({ offset: true }),
   // Present once a send has created the item in Zotero.
   zotero: ZoteroRecordSchema.optional(),
@@ -50,6 +62,8 @@ export function unfiled(capturedAt: string): ItemFiling {
     collections: [],
     notes: [],
     reading: { status: "unread" },
+    sourceCheck: { status: "unchecked" },
+    mirrors: [],
     modifiedAt: capturedAt,
   };
 }
@@ -126,6 +140,38 @@ export function setReading(
 ): Organization {
   const filing = org.items[key] ?? unfiled(capturedAt);
   return { ...org, items: { ...org.items, [key]: { ...filing, reading } } };
+}
+
+export function addMirror(org: Organization, key: string, url: string, now: string): Organization {
+  return fileItem(org, key, now, (filing) => ({
+    ...filing,
+    mirrors: filing.mirrors.some((mirror) => mirror.url === url)
+      ? filing.mirrors
+      : [...filing.mirrors, { url, check: { status: "unchecked" } }],
+  }));
+}
+
+export function removeMirror(org: Organization, key: string, url: string, now: string): Organization {
+  return fileItem(org, key, now, (filing) => ({
+    ...filing,
+    mirrors: filing.mirrors.filter((mirror) => mirror.url !== url),
+  }));
+}
+
+// The outcome of checking the PDF URL and the mirrors (by URL): not a filing change.
+export function recordSourceChecks(
+  org: Organization,
+  key: string,
+  capturedAt: string,
+  sourceCheck: SourceCheck,
+  mirrorChecks: Map<string, SourceCheck>,
+): Organization {
+  const filing = org.items[key] ?? unfiled(capturedAt);
+  const mirrors = filing.mirrors.map((mirror) => ({
+    ...mirror,
+    check: mirrorChecks.get(mirror.url) ?? mirror.check,
+  }));
+  return { ...org, items: { ...org.items, [key]: { ...filing, sourceCheck, mirrors } } };
 }
 
 // The item left the bucket (deleted, or sent to Zotero): its filing goes with it.

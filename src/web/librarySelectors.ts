@@ -13,6 +13,8 @@ export type LibraryView =
   | { kind: "unfiled" }
   | { kind: "unread" }
   | { kind: "recent" }
+  | { kind: "offline" }
+  | { kind: "missing" }
   | { kind: "collection"; id: string }
   | { kind: "tag"; tag: string }
   | { kind: "saved"; id: string };
@@ -31,6 +33,16 @@ export function reconcileView(payload: LibraryPayload, view: LibraryView): Libra
   return view;
 }
 
+// Whether an item can still be fetched from where it came from: offline when the last check
+// found its PDF URL dead or changed and no mirror serving the captured bytes.
+export type Availability = "cached" | "offline";
+
+export function availability(item: BucketItem): Availability {
+  const lost = item.sourceCheck.status === "dead" || item.sourceCheck.status === "changed";
+  const mirrored = item.mirrors.some((mirror) => mirror.check.status === "accessible");
+  return lost && !mirrored ? "offline" : "cached";
+}
+
 export function itemsInView(payload: LibraryPayload, view: LibraryView): BucketItem[] {
   switch (view.kind) {
     case "all":
@@ -39,6 +51,11 @@ export function itemsInView(payload: LibraryPayload, view: LibraryView): BucketI
       return payload.items.filter((item) => item.collections.length === 0);
     case "unread":
       return payload.items.filter((item) => item.reading.status === "unread");
+    case "offline":
+      return payload.items.filter((item) => availability(item) === "offline");
+    // Lost PDFs are not library items; the library shows them in their own list.
+    case "missing":
+      return [];
     case "recent": {
       const since = Date.now() - WEEK_MS;
       return payload.items.filter((item) => Date.parse(item.dateAdded) >= since);
@@ -69,6 +86,8 @@ const FIXED_VIEW_NAMES = {
   unfiled: "Unfiled",
   unread: "Unread",
   recent: "Added This Week",
+  offline: "Offline",
+  missing: "Needs Re-fetch",
 } as const;
 
 // The library's quick filters, one at a time: the view each shows and its address.
@@ -76,12 +95,20 @@ export const QUICK_FILTERS = [
   { view: { kind: "unread" }, path: "/unread" },
   { view: { kind: "unfiled" }, path: "/unfiled" },
   { view: { kind: "recent" }, path: "/added-this-week" },
+  { view: { kind: "offline" }, path: "/offline" },
+  { view: { kind: "missing" }, path: "/needs-refetch" },
 ] as const satisfies { view: LibraryView; path: string }[];
 
 export type QuickFilter = (typeof QUICK_FILTERS)[number];
 
 export function quickFilterName(filter: QuickFilter): string {
   return FIXED_VIEW_NAMES[filter.view.kind];
+}
+
+export function quickFilterCount(payload: LibraryPayload, filter: QuickFilter): number {
+  return filter.view.kind === "missing"
+    ? payload.missing.length
+    : itemsInView(payload, filter.view).length;
 }
 
 export function viewName(payload: LibraryPayload, view: LibraryView): string {

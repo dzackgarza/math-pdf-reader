@@ -44,6 +44,26 @@ export const ReadingRequestSchema = z
   .strictObject({ page: z.int().min(1), pages: z.int().min(1) })
   .refine((reading) => reading.page <= reading.pages, "page lies beyond the page count");
 
+// Whether a URL still serves the captured PDF: never checked; the same bytes (accessible);
+// other bytes (changed); or no PDF at all (dead), with the HTTP status or network error.
+export const SOURCE_RESULTS = ["accessible", "changed", "dead"] as const;
+
+export const SourceCheckSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("unchecked") }),
+  z.strictObject({
+    status: z.enum(SOURCE_RESULTS),
+    checkedAt: z.iso.datetime({ offset: true }),
+    detail: z.string(),
+  }),
+]);
+
+const HttpUrlSchema = z.url({ protocol: /^https?$/ });
+
+// Another URL that serves the same PDF; Rebuild tries mirrors after the PDF URL.
+export const MirrorSchema = z.strictObject({ url: HttpUrlSchema, check: SourceCheckSchema });
+
+export const MirrorRequestSchema = z.strictObject({ url: HttpUrlSchema });
+
 export const ItemNoteSchema = z.strictObject({
   id: z.string().min(1),
   note: z.string().trim().min(1),
@@ -136,6 +156,8 @@ export const BucketItemSchema = z.strictObject({
   collections: z.array(z.string().min(1)),
   notes: z.array(ItemNoteSchema),
   reading: ReadingSchema,
+  sourceCheck: SourceCheckSchema,
+  mirrors: z.array(MirrorSchema),
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
   provenance: ProvenanceSchema,
@@ -168,17 +190,52 @@ export const RetrieveMetadataResponseSchema = z.strictObject({
   item: BucketItemSchema,
 });
 
+// An item the index export holds whose PDF the store has lost: what Rebuild needs to fetch it
+// again and what the library shows of it meanwhile.
+export const MissingItemSchema = z.strictObject({
+  key: z.string().min(1),
+  title: z.string().min(1),
+  authors: z.array(z.string().min(1)),
+  provenance: ProvenanceSchema,
+  mirrors: z.array(HttpUrlSchema),
+});
+
 export const LibraryPayloadSchema = z.strictObject({
   items: z.array(BucketItemSchema),
+  missing: z.array(MissingItemSchema),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
 });
+
+// What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
+// or a mirror and matched the recorded original; or every URL was tried and none served it.
+export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
+  z.strictObject({ key: z.string().min(1), status: z.literal("present") }),
+  z.strictObject({
+    key: z.string().min(1),
+    status: z.literal("restored"),
+    from: z.url(),
+    stored_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  }),
+  z.strictObject({
+    key: z.string().min(1),
+    status: z.literal("unrestored"),
+    attempts: z.array(
+      z.strictObject({
+        url: z.url(),
+        status: z.enum(["changed", "dead"]),
+        detail: z.string(),
+      }),
+    ),
+  }),
+]);
 
 export const API_ERROR_KINDS = [
   "invalid_request",
   "unknown_item",
   "unknown_collection",
   "unknown_note",
+  "unknown_mirror",
   "unknown_saved_search",
   "unknown_plugin",
   "already_sent",
@@ -242,6 +299,10 @@ export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;
 export type TitleSource = z.infer<typeof TitleSourceSchema>;
 export type Reading = z.infer<typeof ReadingSchema>;
+export type SourceCheck = z.infer<typeof SourceCheckSchema>;
+export type Mirror = z.infer<typeof MirrorSchema>;
+export type MissingItem = z.infer<typeof MissingItemSchema>;
+export type RebuildOutcome = z.infer<typeof RebuildOutcomeSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
 

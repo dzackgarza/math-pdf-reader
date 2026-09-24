@@ -15,6 +15,7 @@ import {
   type ZoteroRecord,
 } from "../src/server/libraryContract";
 import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { unfiled } from "../src/server/organization";
 
 const config = loadAppConfig(CONFIG_PATH);
 const origin = `http://${config.server.host}:${config.server.port}`;
@@ -66,14 +67,7 @@ const SENT: ZoteroRecord = {
 };
 
 function recordSent(bucket: Bucket, key: string): void {
-  const filing = {
-    tags: [],
-    collections: [],
-    notes: [],
-    reading: { status: "unread" },
-    modifiedAt: SENT.sentAt,
-    zotero: SENT,
-  };
+  const filing = { ...unfiled(SENT.sentAt), zotero: SENT };
   const organization = { version: 2, collections: [], savedSearches: [], items: { [key]: filing } };
   writeFileSync(join(bucket.root, "organization.json"), JSON.stringify(organization));
 }

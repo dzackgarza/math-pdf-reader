@@ -19,9 +19,7 @@ if (command === "export") {
 } else if (command === "rebuild") {
   const outcomes = await rebuildCache(root, exportFile, loadAppConfig(CONFIG_PATH).rebuild);
   process.stdout.write(`${JSON.stringify(outcomes, null, 2)}\n`);
-  const unrestored = outcomes.filter(
-    (outcome) => outcome.status === "dead" || outcome.status === "changed",
-  );
+  const unrestored = outcomes.filter((outcome) => outcome.status === "unrestored");
   process.exitCode = unrestored.length > 0 ? 1 : 0;
 } else {
   throw new Error("usage: bun src/server/indexCli.ts export | import | rebuild [<export file>]");

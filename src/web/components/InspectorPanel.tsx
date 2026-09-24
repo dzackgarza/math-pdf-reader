@@ -1,10 +1,34 @@
 import * as Tabs from "@radix-ui/react-tabs";
-import { AlertTriangle, BookOpen, FileText, LoaderCircle, Send, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpen,
+  Check,
+  CircleDashed,
+  FileText,
+  LoaderCircle,
+  RefreshCw,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
-import type { BucketItem, Collection, Extraction } from "../../server/libraryContract";
-import { dateTime, isTopic, shortDate, sourceDomain, topicName, topicTag } from "../format";
-import type { SendAttempt } from "../libraryActions";
+import type {
+  BucketItem,
+  Collection,
+  Extraction,
+  SourceCheck,
+} from "../../server/libraryContract";
+import {
+  dateTime,
+  isTopic,
+  shortDate,
+  sourceCheckText,
+  sourceDomain,
+  topicName,
+  topicTag,
+} from "../format";
+import type { ItemSourceActions, SendAttempt } from "../libraryActions";
 import { Chip, TagChip } from "./Chips";
 import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
 import { FilingPicker } from "./FilingEditors";
@@ -28,6 +52,7 @@ type InspectorPanelProps = {
   collections: Collection[];
   knownTags: string[];
   filing: ItemFilingActions;
+  sources: ItemSourceActions & { verifying: boolean };
   send: ItemSendActions;
   extraction: ItemExtractionActions;
   onOpenReader: () => void;
@@ -59,6 +84,97 @@ function ExtractionFiles({ extraction }: { extraction: Extraction }) {
   );
 }
 
+const CHECK_MARKS: Record<SourceCheck["status"], { icon: ReactNode; label: string }> = {
+  unchecked: { icon: <CircleDashed className="h-3.5 w-3.5 text-faint" />, label: "Not verified" },
+  accessible: { icon: <Check className="h-3.5 w-3.5 text-green-600" />, label: "Serves the PDF" },
+  changed: { icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />, label: "Serves other bytes" },
+  dead: { icon: <X className="h-3.5 w-3.5 text-red-600" />, label: "Serves nothing" },
+};
+
+// A URL the PDF can be fetched from, with what its last check found.
+function SourceLine({
+  url,
+  check,
+  onRemove,
+}: {
+  url: string;
+  check: SourceCheck;
+  onRemove?: () => void;
+}) {
+  const mark = CHECK_MARKS[check.status];
+  return (
+    <li className="group flex min-w-0 items-center gap-1.5" title={sourceCheckText(check)}>
+      <span aria-label={mark.label} className="shrink-0">
+        {mark.icon}
+      </span>
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="min-w-0 truncate text-xs text-accent hover:underline"
+      >
+        {url}
+      </a>
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          aria-label={`Remove mirror ${url}`}
+          onClick={onRemove}
+          className="ml-auto shrink-0 rounded p-0.5 text-muted opacity-0 group-hover:opacity-100 hover:bg-surface"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </li>
+  );
+}
+
+// The PDF URL and the mirrors, a field to add a mirror, and Verify.
+function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelProps["sources"] }) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="w-full space-y-2">
+      <ul className="space-y-1">
+        <SourceLine url={item.provenance.pdf_url} check={item.sourceCheck} />
+        {item.mirrors.map((mirror) => (
+          <SourceLine
+            key={mirror.url}
+            url={mirror.url}
+            check={mirror.check}
+            onRemove={() => sources.removeMirror(mirror.url)}
+          />
+        ))}
+      </ul>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          sources.addMirror(draft.trim());
+          setDraft("");
+        }}
+      >
+        <input
+          type="url"
+          aria-label="Mirror URL"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Add mirror URL"
+          className="w-full rounded-md border border-line px-2 py-1 text-xs outline-none placeholder:text-faint focus:border-accent"
+        />
+      </form>
+      <button
+        type="button"
+        aria-label="Verify sources"
+        onClick={sources.verify}
+        disabled={sources.verifying}
+        className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-surface disabled:opacity-60"
+      >
+        <RefreshCw aria-hidden className={`h-3.5 w-3.5 ${sources.verifying ? "animate-spin" : ""}`} />
+        Verify
+      </button>
+    </div>
+  );
+}
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
@@ -74,6 +190,7 @@ function Details({
   knownTags,
   filing,
   extraction,
+  ...props
 }: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose">) {
   const names = new Map(collections.map((collection) => [collection.id, collection.name]));
   const topics = item.tags.filter(isTopic);
@@ -133,6 +250,9 @@ function Details({
           onPick={addTag}
           onCreate={addTag}
         />
+      </Row>
+      <Row label="Sources">
+        <Sources item={item} sources={props.sources} />
       </Row>
       <Row label="Extraction">
         <div className="w-full space-y-2">

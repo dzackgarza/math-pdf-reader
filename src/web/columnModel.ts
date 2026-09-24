@@ -10,11 +10,13 @@ import type {
 import { z } from "zod";
 import type { BucketItem } from "../server/libraryContract";
 import { authorList, sourceDomain, tagLabel } from "./format";
+import { availability } from "./librarySelectors";
 
 export const COLUMN_KEYS = [
   "title",
   "authors",
   "reading",
+  "status",
   "source",
   "dateAdded",
   "tags",
@@ -34,6 +36,7 @@ const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { key: "title", label: "Title", visible: true, width: 380 },
   { key: "authors", label: "Authors", visible: true, width: 200 },
   { key: "reading", label: "Read", visible: true, width: 100 },
+  { key: "status", label: "Status", visible: true, width: 110 },
   { key: "source", label: "Source", visible: true, width: 170 },
   { key: "dateAdded", label: "Added", visible: true, width: 130 },
   { key: "tags", label: "Tags", visible: true, width: 260 },
@@ -111,6 +114,7 @@ const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   // Sorts by the fraction read; an unread item before any opened one.
   reading: (item) =>
     String(item.reading.status === "viewed" ? item.reading.page / item.reading.pages : -1),
+  status: (item) => availability(item),
   source: (item) => sourceDomain(item.url),
   dateAdded: (item) => item.dateAdded,
   tags: (item) => item.tags.map(tagLabel).join(", "),

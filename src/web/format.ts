@@ -1,5 +1,5 @@
 // Display forms shared by the table, the inspector and the palette.
-import { type Reading, TOPIC_PREFIX } from "../server/libraryContract";
+import { type Reading, type SourceCheck, TOPIC_PREFIX } from "../server/libraryContract";
 
 // Authors as a table cell shows them, after Zotero's Creator column: one surname, two joined
 // with "&", three or more as the first surname and "et al.". A surname is taken as the name's
@@ -15,6 +15,13 @@ export function authorList(authors: string[]): string {
 // The last viewed page out of the page count, or "Unread" for an item never opened.
 export function readingText(reading: Reading): string {
   return reading.status === "viewed" ? `${reading.page} / ${reading.pages}` : "Unread";
+}
+
+// When a URL was last checked and what the check found.
+export function sourceCheckText(check: SourceCheck): string {
+  return check.status === "unchecked"
+    ? "Not verified"
+    : `Last verified ${dateTime(check.checkedAt)}: ${check.detail}`;
 }
 
 export function sourceDomain(url: string): string {

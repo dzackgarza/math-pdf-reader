@@ -3,7 +3,7 @@
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
@@ -44,8 +44,28 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+// The publisher the fixtures were captured from: what each path serves right now.
+const served = new Map<string, Uint8Array<ArrayBuffer>>(
+  CAPTURES.map(([key, file]) => [
+    `/~author/${key}.pdf`,
+    new Uint8Array(readFileSync(join(fixtures, file))),
+  ]),
+);
+const publisher = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  fetch(request) {
+    const bytes = served.get(new URL(request.url).pathname);
+    return bytes === undefined
+      ? new Response("not found", { status: 404 })
+      : new Response(bytes, { headers: { "Content-Type": "application/pdf" } });
+  },
+});
+const published = (path: string) => new URL(path, publisher.url).href;
+
 async function startBucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-"));
+  const indexExport = join(mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")), "index.json");
   // A port nothing listens on, so a send reaches for Zotero and fails instead of writing.
   const probe = Bun.serve({ port: 0, fetch: () => new Response() });
   const zoteroUrl = probe.url.origin;
@@ -56,7 +76,7 @@ async function startBucket() {
     pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    indexExport: null,
+    indexExport,
     resolversManifest: RESOLVERS_MANIFEST,
   });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch, idleTimeout: 0 });
@@ -64,15 +84,15 @@ async function startBucket() {
   for (const [key, file, linkText] of CAPTURES) {
     const form = new FormData();
     form.set("pdf", new File([readFileSync(join(fixtures, file))], `${key}.pdf`));
-    form.set("pdf_url", `https://www.math.example.edu/~author/${key}.pdf`);
-    form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
+    form.set("pdf_url", published(`/~author/${key}.pdf`));
+    form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", linkText);
     const response = await fetch(`${origin}/capture-bytes`, { method: "POST", body: form });
     if (!response.ok) {
       throw new Error(`capture of ${key} failed: ${response.status} ${await response.text()}`);
     }
   }
-  return { root, origin, stop: () => server.stop(true) };
+  return { root, origin, indexExport, stop: () => server.stop(true) };
 }
 
 describe("library window", () => {
@@ -113,6 +133,11 @@ describe("library window", () => {
     await page.goto(`${bucket.origin}/`);
     await page.waitForSelector(row("lattices"));
   };
+  // The library with no particular row expected (some may be missing from the store).
+  const openRoot = async () => {
+    await page.goto(`${bucket.origin}/`);
+    await page.waitForSelector("nav a");
+  };
 
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
@@ -134,6 +159,7 @@ describe("library window", () => {
   afterAll(async () => {
     await browser.close();
     bucket.stop();
+    publisher.stop(true);
   });
 
   test("typing a new collection name in the details files the item into that new collection", async () => {
@@ -375,6 +401,65 @@ describe("library window", () => {
     await shot("library-narrow");
     await page.setViewport(viewport);
     await shot("library");
+  });
+
+  test("Verify marks a PDF whose URL no longer serves it Offline; a mirror that serves it keeps it Cached", async () => {
+    served.delete("/~author/problems.pdf");
+    await openLibrary();
+    const status = () => page.$eval(`${row("problems")} [data-status]`, (cell) => cell.textContent);
+    expect(await status()).toBe("Cached");
+    await page.click(row("problems"));
+    const details = 'aside[aria-label="Item details"]';
+    await page.click(`${details} button[aria-label="Verify sources"]`);
+    await page.waitForFunction(
+      (selector) => document.querySelector(selector)?.textContent === "Offline",
+      {},
+      `${row("problems")} [data-status]`,
+    );
+    await page.click('button[aria-label="Offline"]');
+    await page.waitForFunction(() => location.hash === "#/offline");
+    expect(await rowKeys()).toEqual(["problems"]);
+    await shot("details-offline");
+
+    served.set("/~author/mirror/problems.pdf", new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf"))));
+    await page.click(row("problems"));
+    await page.type(`${details} input[aria-label="Mirror URL"]`, published("/~author/mirror/problems.pdf"));
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(`${details} ::-p-text(${published("/~author/mirror/problems.pdf")})`);
+    await page.click(`${details} button[aria-label="Verify sources"]`);
+    await page.waitForFunction(
+      (selector) => document.querySelector(selector) === null,
+      {},
+      row("problems"),
+    );
+    await page.click('button[aria-label="Offline"]');
+    await page.waitForSelector(row("problems"));
+    expect(await status()).toBe("Cached");
+    await shot("details-mirror");
+  });
+
+  test("a lost PDF the export holds is listed under Needs Re-fetch until Rebuild restores it", async () => {
+    // The export is written after every change; wait until it holds the item to be lost.
+    const exported = async () =>
+      existsSync(bucket.indexExport) ? readFileSync(bucket.indexExport, "utf8") : "";
+    while (!(await exported()).includes('"key": "lattices"')) {
+      await Bun.sleep(50);
+    }
+    const away = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-away-"));
+    renameSync(join(bucket.root, "lattices.pdf"), join(away, "lattices.pdf"));
+
+    await openRoot();
+    await page.waitForSelector('button[aria-label="Needs Re-fetch"]');
+    await page.click('button[aria-label="Needs Re-fetch"]');
+    await page.waitForFunction(() => location.hash === "#/needs-refetch");
+    await page.waitForSelector('[data-missing-key="lattices"]');
+    await shot("library-needs-refetch");
+    await page.click('[data-missing-key="lattices"] button[aria-label="Rebuild"]');
+    await page.waitForFunction(() => document.querySelector('[data-missing-key="lattices"]') === null);
+
+    await openLibrary();
+    expect(await rowKeys()).toContain("lattices");
+    expect(existsSync(join(bucket.root, "lattices.pdf"))).toBe(true);
   });
 
   test("the Library entry counts the PDFs; each quick filter narrows the library and a second click clears it", async () => {

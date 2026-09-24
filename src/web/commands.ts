@@ -17,6 +17,8 @@ export type AppCommandActions = {
   showSelectedInFolder: (() => void) | null;
   sendSelectedToZotero: (() => void) | null;
   reloadLibrary: () => void;
+  verifyAllSources: () => void;
+  rebuildAllLost: () => void;
   showAllColumns: () => void;
   resetColumns: () => void;
 };
@@ -85,6 +87,18 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
       name: "Reload Library",
       category: "Library",
       action: actions.reloadLibrary,
+    },
+    {
+      id: "verify-all",
+      name: "Verify All Sources",
+      category: "Library",
+      action: actions.verifyAllSources,
+    },
+    {
+      id: "rebuild-all",
+      name: "Rebuild Lost PDFs",
+      category: "Library",
+      action: actions.rebuildAllLost,
     },
     {
       id: "columns-all",

@@ -4,7 +4,12 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Table } from "@tanstack/react-table";
 import { ArrowDownUp, Check } from "lucide-react";
 import type { BucketItem, LibraryPayload } from "../../server/libraryContract";
-import { itemsInView, type LibraryView, QUICK_FILTERS, quickFilterName } from "../librarySelectors";
+import {
+  type LibraryView,
+  QUICK_FILTERS,
+  quickFilterCount,
+  quickFilterName,
+} from "../librarySelectors";
 
 type LibraryBarProps = {
   payload: LibraryPayload;
@@ -96,7 +101,7 @@ export default function LibraryBar({ payload, view, navigate, table }: LibraryBa
           >
             <span>{name}</span>
             <span className="text-xs tabular-nums">
-              {itemsInView(payload, filter.view).length.toLocaleString()}
+              {quickFilterCount(payload, filter).toLocaleString()}
             </span>
           </button>
         );

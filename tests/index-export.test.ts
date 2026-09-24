@@ -109,20 +109,30 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
     {
       key: "2401.00001",
       status: "restored",
+      from: at("/pdf/2401.00001"),
       stored_sha256: sha256(readFileSync(join(root, "2401.00001.pdf"))),
     },
     {
       key: "lecture-notes",
       status: "restored",
+      from: at("/notes/lecture-notes.pdf"),
       stored_sha256: sha256(readFileSync(join(root, "lecture-notes.pdf"))),
     },
-    { key: "long-notes", status: "dead", pdf_url: at("/gone/long-notes.pdf"), reason: "HTTP 404" },
+    {
+      key: "long-notes",
+      status: "unrestored",
+      attempts: [{ url: at("/gone/long-notes.pdf"), status: "dead", detail: "HTTP 404" }],
+    },
     {
       key: "revised",
-      status: "changed",
-      pdf_url: at("/revised/notes.pdf"),
-      expected_sha256: sha256(lectureNotes),
-      observed_sha256: sha256(problemSet),
+      status: "unrestored",
+      attempts: [
+        {
+          url: at("/revised/notes.pdf"),
+          status: "changed",
+          detail: `serves bytes hashing to ${sha256(problemSet)}`,
+        },
+      ],
     },
     { key: "ten-page-notes", status: "present" },
   ]);

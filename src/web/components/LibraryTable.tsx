@@ -5,7 +5,8 @@ import prettyBytes from "pretty-bytes";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { BucketItem } from "../../server/libraryContract";
 import { type ColumnKey, columnKey } from "../columnModel";
-import { authorList, readingText, shortDate, sourceDomain } from "../format";
+import { authorList, readingText, shortDate, sourceCheckText, sourceDomain } from "../format";
+import { availability } from "../librarySelectors";
 import { orderedLeafColumns, reorderColumn, resetColumnLayout } from "../useLibraryTable";
 import { Chip, TagChip } from "./Chips";
 
@@ -44,6 +45,23 @@ function Chips({ children, hidden }: { children: ReactNode; hidden: number }) {
   );
 }
 
+// Cached, or Offline when the PDF URL no longer serves the captured bytes and no mirror does;
+// the last check shows on hover.
+function StatusBadge({ item }: { item: BucketItem }) {
+  const offline = availability(item) === "offline";
+  return (
+    <span
+      title={sourceCheckText(item.sourceCheck)}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
+        offline ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
+      }`}
+    >
+      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${offline ? "bg-red-600" : "bg-green-600"}`} />
+      <span data-status>{offline ? "Offline" : "Cached"}</span>
+    </span>
+  );
+}
+
 function Muted({ children }: { children: ReactNode }) {
   return <span className="text-muted tabular-nums">{children}</span>;
 }
@@ -75,6 +93,7 @@ const CELL_RENDERERS: Record<
       {readingText(item.reading)}
     </span>
   ),
+  status: (item) => <StatusBadge item={item} />,
   source: (item) => <Muted>{sourceDomain(item.url)}</Muted>,
   dateAdded: (item) => <Muted>{shortDate(item.dateAdded)}</Muted>,
   dateModified: (item) => <Muted>{shortDate(item.dateModified)}</Muted>,

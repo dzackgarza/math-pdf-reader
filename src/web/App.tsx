@@ -5,6 +5,7 @@ import {
   type AdvancedSearchSettings,
   type BucketItem,
   type LibraryPayload,
+  LibraryPayloadSchema,
 } from "../server/libraryContract";
 import {
   type ColumnLayout,
@@ -21,6 +22,7 @@ import InspectorPanel from "./components/InspectorPanel";
 import ItemContextMenu from "./components/ItemContextMenu";
 import LibraryBar from "./components/LibraryBar";
 import LibraryTable from "./components/LibraryTable";
+import MissingList from "./components/MissingList";
 import NameDialog, { type NameRequest } from "./components/NameDialog";
 import Sidebar from "./components/Sidebar";
 import StatusBar from "./components/StatusBar";
@@ -35,9 +37,11 @@ import {
   filingActions,
   itemMenuActions,
   organizationActions,
+  rebuildLost,
   type SendAttempt,
   saveSearch,
   sendToZotero,
+  sourceActions,
 } from "./libraryActions";
 import { type LibraryView, reconcileView, visibleItems } from "./librarySelectors";
 import { entryView, type Screen, screenAt } from "./routes";
@@ -88,6 +92,30 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const [toast, setToast] = useState<string | null>(null);
   const [sendAttempts, setSendAttempt] = useKeyedAttempts<SendAttempt>();
   const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
+  // Keys whose sources are being verified, and lost PDFs being rebuilt.
+  const [verifying, setVerifying] = useState<ReadonlySet<string>>(new Set());
+  const [rebuilding, setRebuilding] = useState<ReadonlySet<string>>(new Set());
+  const toggleKey =
+    (setter: typeof setVerifying, key: string) =>
+    (on: boolean): void =>
+      setter((previous) => {
+        const next = new Set(previous);
+        if (on) {
+          next.add(key);
+        } else {
+          next.delete(key);
+        }
+        return next;
+      });
+  const rebuild = (key: string) => {
+    toggleKey(setRebuilding, key)(true);
+    rebuildLost(context, key, () => toggleKey(setRebuilding, key)(false));
+  };
+  const rebuildAll = () => {
+    for (const lost of payload.missing) {
+      rebuild(lost.key);
+    }
+  };
   const plugins = useExtractionPlugins();
   const palette = useRef<CommandPaletteHostHandle>(null);
   const searchField = useRef<HTMLInputElement>(null);
@@ -204,6 +232,9 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
       selected === undefined || reveal === null ? null : () => attempt(reveal(selected.file.path)),
     sendSelectedToZotero: selected === undefined ? null : () => send(selected.id),
     reloadLibrary: reload,
+    verifyAllSources: () =>
+      attempt(mutate(LibraryPayloadSchema, "POST", "/api/verify").then(() => undefined)),
+    rebuildAllLost: rebuildAll,
     showAllColumns: () => table.toggleAllColumnsVisible(true),
     resetColumns: () => resetColumnLayout(table),
   });
@@ -243,7 +274,15 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
           {screen.kind === "library" && (
             <LibraryBar payload={payload} view={screen.view} navigate={navigate} table={table} />
           )}
-          {screen.kind === "library" && tableElement}
+          {screen.kind === "library" && screen.view.kind !== "missing" && tableElement}
+          {screen.kind === "library" && screen.view.kind === "missing" && (
+            <MissingList
+              missing={payload.missing}
+              rebuilding={rebuilding}
+              onRebuild={rebuild}
+              onRebuildAll={rebuildAll}
+            />
+          )}
           {screen.kind === "organization" && (
             <OrganizationScreen
               payload={payload}
@@ -263,6 +302,10 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
               collections={payload.collections}
               knownTags={knownTags}
               filing={filingActions(context, selected)}
+              sources={{
+                ...sourceActions(context, selected, toggleKey(setVerifying, selected.id)),
+                verifying: verifying.has(selected.id),
+              }}
               send={{
                 attempt: sendAttempts.get(selected.id),
                 onSend: () => send(selected.id),

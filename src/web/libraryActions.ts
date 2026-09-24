@@ -7,6 +7,7 @@ import {
   type BucketItem,
   CollectionSchema,
   LibraryPayloadSchema,
+  RebuildOutcomeSchema,
   RetrieveMetadataResponseSchema,
   SavedSearchSchema,
   SendResponseSchema,
@@ -53,6 +54,60 @@ function fileIn(context: ActionContext, item: BucketItem, collectionId: string) 
 
 function setTags(context: ActionContext, item: BucketItem, tags: string[]) {
   return context.mutate(LibraryPayloadSchema, "PUT", `${itemPath(item.id)}/tags`, { tags });
+}
+
+// What the details panel does with the item's sources.
+export type ItemSourceActions = {
+  verify: () => void;
+  addMirror: (url: string) => void;
+  removeMirror: (url: string) => void;
+};
+
+export function sourceActions(
+  context: ActionContext,
+  item: BucketItem,
+  onVerifying: (verifying: boolean) => void,
+): ItemSourceActions {
+  const path = itemPath(item.id);
+  return {
+    verify: () => {
+      onVerifying(true);
+      run(
+        context,
+        context
+          .mutate(LibraryPayloadSchema, "POST", `${path}/verify`)
+          .finally(() => onVerifying(false)),
+      );
+    },
+    addMirror: (url) =>
+      run(context, context.mutate(LibraryPayloadSchema, "POST", `${path}/mirrors`, { url })),
+    removeMirror: (url) =>
+      run(
+        context,
+        context.mutate(
+          LibraryPayloadSchema,
+          "DELETE",
+          `${path}/mirrors?url=${encodeURIComponent(url)}`,
+        ),
+      ),
+  };
+}
+
+// Rebuilds one lost PDF; one that no URL serves any more is reported with each URL tried.
+export function rebuildLost(context: ActionContext, key: string, onDone: () => void): void {
+  run(
+    context,
+    context
+      .mutate(RebuildOutcomeSchema, "POST", `${itemPath(key)}/rebuild`)
+      .then((outcome) => {
+        context.refresh();
+        if (outcome.status === "unrestored") {
+          const tried = outcome.attempts.map((attempt) => `${attempt.url}: ${attempt.detail}`);
+          context.report(`${key} was not restored. ${tried.join("; ")}`);
+        }
+      })
+      .finally(onDone),
+  );
 }
 
 export function filingActions(context: ActionContext, item: BucketItem): ItemFilingActions {
