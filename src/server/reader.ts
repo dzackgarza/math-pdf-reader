@@ -104,6 +104,7 @@ export function readerPage(item: BucketItem, origin: string) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${item.title}</title>
     <meta name="citation_title" content="${item.title}" />
+    ${item.authors.map((author) => html`<meta name="citation_author" content="${author}" />`)}
     <meta name="citation_pdf_url" content="${origin}${pdfUrlPath(item.id)}" />
     <meta name="citation_abstract_html_url" content="${provenance.source_url}" />
     <script>${BEFORE_VIEWER}</script>

@@ -1,20 +1,23 @@
-// Item titles from the identifier resolvers ("Retrieve metadata", as Zotero names it): the
-// store finds an identifier for the item and runs the resolver plugin that accepts it; the
-// title in the BibTeX the resolver prints becomes the item's title, recorded inside the PDF.
-// Without a resolver title the store reads the title from the PDF itself.
+// Item titles and authors from the identifier resolvers ("Retrieve metadata", as Zotero names
+// it): the store finds an identifier for the item and runs the resolver plugin that accepts
+// it; the title and authors in the BibTeX the resolver prints become the item's, recorded
+// inside the PDF. Without a resolver the store reads both from the PDF itself.
 import { Cite } from "@citation-js/core";
+import { format } from "@citation-js/name";
 import "@citation-js/plugin-bibtex";
 import type { RetrieveMetadataOutcome } from "./libraryContract";
-import { recordTitle, resolveItem } from "./store";
+import { recordMetadata, resolveItem } from "./store";
 
-// citation-js parses the entry to CSL, which also turns the BibTeX's LaTeX into text.
-export function bibtexTitle(bibtex: string): string {
+// citation-js parses the entry to CSL, which also turns the BibTeX's LaTeX into text and
+// splits `author` into CSL names (given and family, or one literal name).
+export function bibtexMetadata(bibtex: string): { title: string; authors: string[] } {
   const [entry] = new Cite(bibtex).data;
   const title = entry?.title?.trim();
   if (title === undefined || title === "") {
     throw new Error(`resolver BibTeX carries no title: ${bibtex.slice(0, 200)}`);
   }
-  return title;
+  const authors = (entry?.author ?? []).map((name) => format(name));
+  return { title, authors };
 }
 
 export async function retrieveMetadata(
@@ -34,8 +37,8 @@ export async function retrieveMetadata(
         message: `exit ${resolution.exit_code}: ${resolution.stderr.trim()}`,
       };
     case "resolved": {
-      const title = bibtexTitle(resolution.bibtex);
-      await recordTitle(root, key, title, "resolver");
+      const { title, authors } = bibtexMetadata(resolution.bibtex);
+      await recordMetadata(root, key, title, "resolver", authors);
       return {
         status: "resolved",
         pluginId: resolution.plugin_id,

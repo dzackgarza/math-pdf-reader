@@ -44,16 +44,17 @@ def test_a_pdf_without_a_metadata_title_reads_back_under_the_capture_hint_then_t
     assert (unhinted.title.text, unhinted.title.source) == ("problem-set-3.pdf", "filename")
 
 
-def test_a_recorded_resolver_title_is_written_into_the_pdf_and_leaves_the_provenance_as_captured(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+def test_recorded_resolver_title_and_authors_are_written_into_the_pdf_and_leave_the_provenance_as_captured(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     capture(capsys, tmp_path, LECTURE_NOTES, "notes", "Lecture notes on lattices")
     before = describe(capsys, tmp_path, "notes")
 
-    app(["title", str(tmp_path), "notes", "Ten Lectures on Integral Lattices", "resolver"], result_action="return_value")
+    app(["metadata", str(tmp_path), "notes", "Ten Lectures on Integral Lattices", "resolver", "--author", "Maryna Viazovska", "--author", "Henry Cohn"], result_action="return_value")
     recorded = StoredItem.model_validate_json(capsys.readouterr().out)
     after = describe(capsys, tmp_path, "notes")
 
     assert recorded == after
     assert (after.title.text, after.title.source) == ("Ten Lectures on Integral Lattices", "resolver")
+    assert after.authors == ["Maryna Viazovska", "Henry Cohn"]
     assert after.provenance == before.provenance
     # Independent read: any PDF tool sees the title, and the bucket's source key says where it came from.
     with pikepdf.open(tmp_path / "notes.pdf") as pdf:
@@ -61,8 +62,11 @@ def test_a_recorded_resolver_title_is_written_into_the_pdf_and_leaves_the_proven
         with pdf.open_metadata(set_pikepdf_as_editor=False) as xmp:
             dc_title = str(xmp["dc:title"])
             xmp_source = str(xmp[f"{XMP_PROVENANCE}title-source"])
+            dc_creator = list(xmp["dc:creator"])
     assert docinfo["/Title"] == "Ten Lectures on Integral Lattices"
     assert dc_title == "Ten Lectures on Integral Lattices"
     assert docinfo["/PDFBucketTitleSource"] == "resolver"
+    assert docinfo["/Author"] == "Maryna Viazovska; Henry Cohn"
+    assert dc_creator == ["Maryna Viazovska", "Henry Cohn"]
     assert xmp_source == "resolver"
     assert docinfo["/PDFBucketTitleHint"] == "Lecture notes on lattices"

@@ -9,10 +9,11 @@ import type {
 } from "@tanstack/react-table";
 import { z } from "zod";
 import type { BucketItem } from "../server/libraryContract";
-import { sourceDomain, tagLabel } from "./format";
+import { authorList, sourceDomain, tagLabel } from "./format";
 
 export const COLUMN_KEYS = [
   "title",
+  "authors",
   "source",
   "dateAdded",
   "tags",
@@ -29,7 +30,8 @@ export type ColumnKey = (typeof COLUMN_KEYS)[number];
 type ColumnDefinition = { key: ColumnKey; label: string; visible: boolean; width: number };
 
 const DEFAULT_COLUMNS: ColumnDefinition[] = [
-  { key: "title", label: "Title", visible: true, width: 420 },
+  { key: "title", label: "Title", visible: true, width: 380 },
+  { key: "authors", label: "Authors", visible: true, width: 200 },
   { key: "source", label: "Source", visible: true, width: 170 },
   { key: "dateAdded", label: "Added", visible: true, width: 130 },
   { key: "tags", label: "Tags", visible: true, width: 260 },
@@ -46,7 +48,7 @@ export const LOCKED_COLUMN_ID: ColumnKey = "title";
 
 const MIN_COLUMN_WIDTH = 60;
 
-const COLUMN_STORAGE_KEY = "pdf-bucket:columns:v1";
+const COLUMN_STORAGE_KEY = "pdf-bucket:columns:v2";
 
 export type ColumnLayout = {
   columnVisibility: VisibilityState;
@@ -103,6 +105,7 @@ export function writeColumnLayout(layout: ColumnLayout): void {
 // The text each column shows and sorts by.
 const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   title: (item) => item.title,
+  authors: (item) => authorList(item.authors),
   source: (item) => sourceDomain(item.url),
   dateAdded: (item) => item.dateAdded,
   tags: (item) => item.tags.map(tagLabel).join(", "),

@@ -1,13 +1,15 @@
-"""Provenance and the item title embedded in the PDF: XMP properties plus document-information keys.
+"""Provenance, title and authors embedded in the PDF: XMP properties plus document-information keys.
 
 The document-information dictionary is the read path; XMP carries the same values for
-tools that only read XMP. A title the bucket settles on (from an identifier resolver) goes
-into the standard `/Title` and `dc:title`, so every PDF tool shows it, with its source beside
-it in the bucket's own keys; until then the title is read from what the file already holds.
+tools that only read XMP. A title and authors the bucket settles on (from an identifier
+resolver) go into the standard `/Title`, `/Author`, `dc:title` and `dc:creator`, so every PDF
+tool shows them, with the title's source beside it in the bucket's own keys; until then both
+are read from what the file already holds.
 """
 
 from __future__ import annotations
 
+import json
 from io import BytesIO
 from pathlib import Path
 
@@ -27,9 +29,14 @@ DOCINFO_KEYS = {
 }
 
 
-# The title the bucket recorded and where it came from.
+# The title the bucket recorded and where it came from, and the authors it recorded (a JSON list).
 TITLE_KEY = "/PDFBucketTitle"
 TITLE_SOURCE_KEY = "/PDFBucketTitleSource"
+AUTHORS_KEY = "/PDFBucketAuthors"
+
+# `/Author` holds one text string; several names are joined with "; " (the arXiv and
+# ExifTool convention), which the fallback read splits again.
+AUTHOR_SEPARATOR = "; "
 
 
 def provenance_values(provenance: CaptureProvenance) -> dict[str, str]:
@@ -78,6 +85,17 @@ def read_title(pdf: pikepdf.Pdf, docinfo: dict[str, str], key: str, title_hint: 
     return ItemTitle(text=f"{key}.pdf", source="filename")
 
 
+def read_authors(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> list[str]:
+    """The recorded authors; else the PDF's own XMP `dc:creator`, else its `/Author` split at ";"."""
+    if AUTHORS_KEY in docinfo:
+        return [str(name) for name in json.loads(docinfo[AUTHORS_KEY])]
+    with pdf.open_metadata(set_pikepdf_as_editor=False) as xmp:
+        creators = [str(name).strip() for name in xmp.get("dc:creator", [])]
+    if any(creators):
+        return [name for name in creators if name]
+    return [name.strip() for name in docinfo.get("/Author", "").split(";") if name.strip()]
+
+
 def read_stored_item(path: Path) -> StoredItem:
     with pikepdf.open(path) as pdf:
         docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
@@ -86,19 +104,23 @@ def read_stored_item(path: Path) -> StoredItem:
             raise MissingProvenanceError(path, missing)
         provenance = CaptureProvenance.model_validate({field: docinfo[key] for field, key in DOCINFO_KEYS.items()})
         title = read_title(pdf, docinfo, path.stem, provenance.title_hint)
-    return StoredItem(key=path.stem, provenance=provenance, title=title)
+        authors = read_authors(pdf, docinfo)
+    return StoredItem(key=path.stem, provenance=provenance, title=title, authors=authors)
 
 
-def embed_title(path: Path, title: ItemTitle) -> None:
-    """Record TITLE in the stored PDF at PATH; the file is replaced only complete."""
+def embed_metadata(path: Path, title: ItemTitle, authors: list[str]) -> None:
+    """Record TITLE and AUTHORS in the stored PDF at PATH; the file is replaced only complete."""
     partial = path.with_suffix(".partial")
     with pikepdf.open(path) as pdf:
         with pdf.open_metadata() as metadata:
             metadata["dc:title"] = title.text
+            metadata["dc:creator"] = authors
             metadata[f"{{{XMP_NAMESPACE}}}title"] = title.text
             metadata[f"{{{XMP_NAMESPACE}}}title-source"] = title.source
         pdf.docinfo["/Title"] = title.text
+        pdf.docinfo["/Author"] = AUTHOR_SEPARATOR.join(authors)
         pdf.docinfo[TITLE_KEY] = title.text
         pdf.docinfo[TITLE_SOURCE_KEY] = title.source
+        pdf.docinfo[AUTHORS_KEY] = json.dumps(authors, ensure_ascii=False)
         pdf.save(partial)
     partial.replace(path)

@@ -221,6 +221,9 @@ export default function InspectorPanel(props: InspectorPanelProps) {
       <header className="flex items-start gap-2 px-4 pt-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-base leading-snug font-semibold text-ink">{item.title}</h2>
+          {item.authors.length > 0 && (
+            <p className="mt-0.5 text-sm text-ink/80">{item.authors.join(", ")}</p>
+          )}
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
             <a
               href={item.provenance.source_url}

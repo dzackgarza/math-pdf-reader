@@ -114,6 +114,7 @@ export const BucketItemSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string().min(1),
   titleSource: TitleSourceSchema,
+  authors: z.array(z.string().min(1)),
   url: z.url(),
   tags: z.array(z.string().min(1)),
   collections: z.array(z.string().min(1)),

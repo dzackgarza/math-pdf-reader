@@ -11,7 +11,7 @@ from pydantic import HttpUrl, TypeAdapter
 from pdfbucket.extraction import plugin_by_id, run_extraction
 from pdfbucket.manifest import load_manifest
 from pdfbucket.models import CaptureProvenance, CaptureRequest, ItemTitle, StoredItem, TitleSource
-from pdfbucket.provenance import embed_title, read_stored_item
+from pdfbucket.provenance import embed_metadata, read_stored_item
 from pdfbucket.resolution import resolve as resolve_item
 from pdfbucket.store import pdf_path, remove_item, restore_pdf, store_pdf, stored_keys
 
@@ -46,10 +46,10 @@ def describe(root: Path, key: str) -> None:
 
 
 @app.command
-def title(root: Path, key: str, text: str, source: TitleSource) -> None:
-    """Record TEXT, from SOURCE, as KEY's title inside its stored PDF under ROOT; print the stored item."""
+def metadata(root: Path, key: str, text: str, source: TitleSource, *, author: tuple[str, ...] = ()) -> None:
+    """Record TEXT, from SOURCE, as KEY's title and each AUTHOR, in order, inside its stored PDF under ROOT; print the stored item."""
     path = pdf_path(root, key)
-    embed_title(path, ItemTitle(text=text, source=source))
+    embed_metadata(path, ItemTitle(text=text, source=source), list(author))
     print(read_stored_item(path).model_dump_json())
 
 

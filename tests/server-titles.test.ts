@@ -120,6 +120,20 @@ async function citationTitle(app: ReturnType<typeof createApp>, key: string) {
   return document.querySelector('meta[name="citation_title"]')?.getAttribute("content");
 }
 
+async function citationAuthors(app: ReturnType<typeof createApp>, key: string) {
+  const { document } = parseHTML(await (await app.request(`${origin}/read/${key}`)).text());
+  return [...document.querySelectorAll('meta[name="citation_author"]')].map((meta) =>
+    meta.getAttribute("content"),
+  );
+}
+
+const ARXIV_AUTHORS = [
+  "Maria Fernanda Zordan Bonini",
+  "Robson Ricardo de Araujo",
+  "Antonio Aparecido de Andrade",
+  "Jéfferson Luiz Rocha Bastos",
+];
+
 const arxiv = {
   pdf: "https://arxiv.org/pdf/2609.21174v1",
   source: "https://arxiv.org/abs/2609.21174v1",
@@ -138,6 +152,8 @@ test("an arXiv capture takes its title from the arXiv resolver, not from the lin
   expect(await citationTitle(reread, "2609.21174v1")).toBe(
     "On The Cyclicity of Algebraic Lattices",
   );
+  expect(captured.authors).toEqual(ARXIV_AUTHORS);
+  expect(await citationAuthors(reread, "2609.21174v1")).toEqual(ARXIV_AUTHORS);
 });
 
 test("a DOI capture takes the title from the resolved BibTeX, with its LaTeX turned into text", async () => {
@@ -161,6 +177,8 @@ test("a DOI capture takes the title from the resolved BibTeX, with its LaTeX tur
     "The sphere packing problem in dimension 8",
     "resolver",
   ]);
+  // The lecture notes name no author: this one comes from the DOI BibTeX alone.
+  expect(captured.authors).toEqual(["Maryna Viazovska"]);
 });
 
 test("with the resolver unreachable, a capture succeeds and falls back to the PDF's own title, then to the hint", async () => {
@@ -188,6 +206,9 @@ test("with the resolver unreachable, a capture succeeds and falls back to the PD
     "Lecture notes on lattices",
     "capture-hint",
   ]);
+  // The arXiv PDF names its authors in its own metadata; the lecture notes name none.
+  expect(withMetadata.authors).toEqual(ARXIV_AUTHORS);
+  expect(withHint.authors).toEqual([]);
 });
 
 test("Retrieve metadata resolves an item captured while the resolver was down", async () => {

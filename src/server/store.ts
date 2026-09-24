@@ -10,6 +10,7 @@ const StoredItemSchema = z.strictObject({
   key: z.string().min(1),
   provenance: ProvenanceSchema,
   title: z.strictObject({ text: z.string().min(1), source: TitleSourceSchema }),
+  authors: z.array(z.string().min(1)),
 });
 
 const CaptureResultSchema = z.strictObject({
@@ -122,14 +123,16 @@ export async function resolveItem(
   return ResolutionSchema.parse(JSON.parse(stdout));
 }
 
-// Records TEXT, from SOURCE, as the item's title inside its stored PDF.
-export async function recordTitle(
+// Records TEXT, from SOURCE, as the item's title and AUTHORS, in order, inside its stored PDF.
+export async function recordMetadata(
   root: string,
   key: string,
   text: string,
   source: TitleSource,
+  authors: string[],
 ): Promise<StoredItem> {
-  const stdout = await runStore(["title", "--", root, key, text, source], "ignore");
+  const options = authors.flatMap((author) => ["--author", author]);
+  const stdout = await runStore(["metadata", ...options, "--", root, key, text, source], "ignore");
   return StoredItemSchema.parse(JSON.parse(stdout));
 }
 

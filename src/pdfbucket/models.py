@@ -48,6 +48,7 @@ class StoredItem(BaseModel):
     key: str
     provenance: CaptureProvenance
     title: ItemTitle
+    authors: list[str]
 
 
 class CaptureResult(BaseModel):
