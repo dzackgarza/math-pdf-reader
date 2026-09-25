@@ -147,7 +147,7 @@ for (const [path, name] of Object.entries(papers)) {
     continue;
   }
   await run(
-    `uv run --locked pdfbucket describe ${root} ${key} | jq -r '"\\(.key) \\(.provenance.original_sha256)"'`,
+    `printf '%s ' ${key} && uv run --locked pdfbucket read -- ${join(root, `${key}.pdf`)} | jq -r '.[0].record.provenance.original_sha256'`,
   );
   process.stdout.write(`fixture ${name} ${sha256(join(fixtures, name))}\n\n`);
 }

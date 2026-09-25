@@ -8,15 +8,15 @@ use axum::Json;
 use serde::de::DeserializeOwned;
 use tokio::sync::{Mutex, Semaphore};
 
-use crate::config::{store_command, BucketConfig, THUMBNAIL_RENDERS};
+use crate::config::{BucketConfig, THUMBNAIL_RENDERS};
 use crate::contract::{
-    BucketItem, BucketItemFile, ExportedItem, LibraryPayload, MissingItem, Organization,
-    ZoteroStatus,
+    BucketItem, BucketItemFile, ExportedItem, LibraryPayload, LibraryPayloadUnreadableItem,
+    MissingItem, Organization, ZoteroStatus,
 };
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
 use crate::export::{concurrency, IndexExporter};
-use crate::index::{IndexedItem, LibraryIndex};
+use crate::index::IndexedItem;
 use crate::organization::{filing_of, OrganizationStore};
 use crate::send::zotero_status;
 use crate::sessions::SessionStore;
@@ -28,7 +28,6 @@ pub type Shared = Arc<AppState>;
 pub struct AppState {
     pub config: BucketConfig,
     pub store: Store,
-    pub index: LibraryIndex,
     pub organizations: OrganizationStore,
     pub exporter: Option<Arc<IndexExporter>>,
     pub zotero: ZoteroWriteApi,
@@ -45,17 +44,12 @@ pub struct AppState {
 impl AppState {
     /// Must run on a tokio runtime: the index exporter starts its task here.
     pub fn new(config: BucketConfig) -> Shared {
-        let store = Store::new(
-            config.root.clone(),
-            store_command(),
-            config.process_env.clone(),
-        );
+        let store = Store::configured(&config);
         let exporter = config
             .index_export
             .clone()
             .map(|file| IndexExporter::start(store.clone(), file));
         let state = Arc::new(Self {
-            index: LibraryIndex::new(store.clone()),
             organizations: OrganizationStore::new(&config.root, exporter.clone()),
             sessions: SessionStore::new(&config.root),
             zotero: ZoteroWriteApi::new(&config.zotero_url),
@@ -87,7 +81,7 @@ impl AppState {
     }
 
     pub async fn indexed(&self, key: &str) -> AppResult<Option<IndexedItem>> {
-        self.index.item(key).await
+        self.store.item(key).await
     }
 
     pub async fn require(&self, key: &str) -> AppResult<IndexedItem> {
@@ -124,14 +118,26 @@ impl AppState {
     }
 
     pub async fn payload_of(&self, organization: Organization) -> AppResult<LibraryPayload> {
-        let indexed = self.index.items().await?;
-        let missing = self.missing(&indexed).await?;
+        let library = self.store.library().await?;
+        let missing = self.missing(&library.items).await?;
         Ok(LibraryPayload {
-            items: indexed
+            items: library
+                .items
                 .iter()
                 .map(|entry| bucket_item(entry, &organization))
                 .collect::<AppResult<_>>()?,
             missing: missing.into_iter().map(|(_, shown)| shown).collect(),
+            unreadable: library
+                .unreadable
+                .into_iter()
+                .map(|file| LibraryPayloadUnreadableItem {
+                    file: file.file.try_into().expect("a file name is never empty"),
+                    message: file
+                        .message
+                        .try_into()
+                        .expect("a read failure names its cause"),
+                })
+                .collect(),
             collections: organization.collections,
             saved_searches: organization.saved_searches,
             activity: organization.activity,
@@ -166,7 +172,10 @@ pub fn bucket_item(indexed: &IndexedItem, organization: &Organization) -> AppRes
         authors: stored.authors.clone(),
         year: stored.year,
         abstract_: stored.abstract_.clone(),
-        url: provenance.source_url.clone(),
+        url: match &provenance.source_url {
+            Some(page) => page.clone(),
+            None => provenance.pdf_url.clone(),
+        },
         tags: filing.tags,
         collections: filing.collections,
         notes: filing.notes,

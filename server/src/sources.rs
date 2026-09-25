@@ -8,11 +8,12 @@ use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::contract::{
-    AppConfigRebuild, NonEmpty, Provenance, RebuildOutcome, RebuildOutcomeUnrestoredAttemptsItem,
-    RebuildOutcomeUnrestoredAttemptsItemStatus, SourceCheck, Timestamp, TitleSource,
+    AppConfigRebuild, NonEmpty, Provenance, RebuildOutcome, RebuildOutcomeRestoredMetadata,
+    RebuildOutcomeUnrestoredAttemptsItem, RebuildOutcomeUnrestoredAttemptsItemStatus, SourceCheck,
+    Timestamp, TitleSource,
 };
 use crate::error::AppResult;
-use crate::store::{ResolvedMetadata, Store};
+use crate::store::{ResolvedMetadata, Restoration, Store};
 
 pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -115,21 +116,61 @@ pub struct RecoverableItem {
     pub mirrors: Vec<String>,
 }
 
+// Writes the fetched original back under the item's key and records again the metadata a
+// resolver gave it.
+async fn restore(
+    store: &Store,
+    item: &RecoverableItem,
+    key: NonEmpty,
+    from: &str,
+    bytes: &[u8],
+) -> AppResult<RebuildOutcome> {
+    let stored_sha256 = match store.restore(&item.key, bytes, &item.provenance).await? {
+        Restoration::Present => return Ok(RebuildOutcome::Present { key }),
+        Restoration::Restored { stored_sha256 } => stored_sha256,
+    };
+    let metadata = if item.title_source == TitleSource::Resolver {
+        let recorded = ResolvedMetadata {
+            title: item.title.clone(),
+            authors: item.authors.clone(),
+            year: item.year,
+            abstract_: item.abstract_.clone(),
+        };
+        match store
+            .record_metadata(&item.key, TitleSource::Resolver, &recorded)
+            .await
+        {
+            Ok(_stored) => RebuildOutcomeRestoredMetadata::Recorded,
+            Err(error) => RebuildOutcomeRestoredMetadata::Failed(nonempty(error.to_string())),
+        }
+    } else {
+        RebuildOutcomeRestoredMetadata::FromPdf
+    };
+    Ok(RebuildOutcome::Restored {
+        key,
+        from: from.to_string(),
+        stored_sha256: stored_sha256
+            .try_into()
+            .expect("a SHA-256 digest is 64 hex digits"),
+        metadata,
+    })
+}
+
+fn nonempty(text: String) -> NonEmpty {
+    text.try_into().expect("an error names what failed")
+}
+
 /// Restores the item's PDF from its PDF URL, else from each mirror in turn, when the store has
 /// lost it. A title and authors a resolver gave are recorded again; any other title is read
-/// from the restored bytes as it was before.
+/// from the restored bytes as it was before. A failure of the store is this item's outcome.
 pub async fn rebuild_item(
     store: &Store,
     item: &RecoverableItem,
     settings: &AppConfigRebuild,
-) -> AppResult<RebuildOutcome> {
-    let key: NonEmpty = item
-        .key
-        .as_str()
-        .try_into()
-        .expect("an exported key is never empty");
+) -> RebuildOutcome {
+    let key: NonEmpty = nonempty(item.key.clone());
     if store.pdf_path(&item.key).is_some() {
-        return Ok(RebuildOutcome::Present { key });
+        return RebuildOutcome::Present { key };
     }
     let mut attempts = Vec::new();
     let urls = std::iter::once(&item.provenance.pdf_url).chain(&item.mirrors);
@@ -137,29 +178,13 @@ pub async fn rebuild_item(
         let fetched = fetch_original(url, &item.provenance.original_sha256, settings).await;
         let (status, detail) = match fetched {
             Fetched::Accessible(bytes) => {
-                store.restore(&item.key, &bytes, &item.provenance).await?;
-                if item.title_source == TitleSource::Resolver {
-                    let metadata = ResolvedMetadata {
-                        title: item.title.clone(),
-                        authors: item.authors.clone(),
-                        year: item.year,
-                        abstract_: item.abstract_.clone(),
-                    };
-                    store
-                        .record_metadata(&item.key, TitleSource::Resolver, &metadata)
-                        .await?;
-                }
-                let path = store
-                    .pdf_path(&item.key)
-                    .expect("the store holds the PDF it just restored");
-                let stored_sha256 = sha256(&tokio::fs::read(path).await?)
-                    .try_into()
-                    .expect("a SHA-256 digest is 64 hex digits");
-                return Ok(RebuildOutcome::Restored {
-                    key,
-                    from: url.clone(),
-                    stored_sha256,
-                });
+                return match restore(store, item, key.clone(), url, &bytes).await {
+                    Ok(outcome) => outcome,
+                    Err(error) => RebuildOutcome::Failed {
+                        key,
+                        message: nonempty(error.to_string()),
+                    },
+                };
             }
             Fetched::Changed(detail) => {
                 (RebuildOutcomeUnrestoredAttemptsItemStatus::Changed, detail)
@@ -172,5 +197,5 @@ pub async fn rebuild_item(
             detail,
         });
     }
-    Ok(RebuildOutcome::Unrestored { key, attempts })
+    RebuildOutcome::Unrestored { key, attempts }
 }

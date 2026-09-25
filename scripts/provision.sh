@@ -29,6 +29,16 @@ fi
 
 # The app runs an installed copy, so later builds can rewrite the build tree while it runs.
 install -D -m 755 target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
+# Its Python commands and extraction plugins run from its own environment
+# (config::app_python_bin): a wheel of this checkout's package with the locked dependencies, so
+# switching the checkout's branch leaves the installed app's store as it was installed.
+wheels=$(mktemp -d)
+uv build --wheel --out-dir "$wheels"
+uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file "$wheels/requirements.txt"
+venv="$data/pdf-bucket-app/venv"
+uv venv --clear --python 3.14 "$venv"
+uv pip install --python "$venv/bin/python" --requirement "$wheels/requirements.txt" "$wheels"/pdfbucket-*.whl
+trash "$wheels"
 # Launcher and autostart entry and the icon, named after the window's Wayland app_id (the binary
 # name) so that launchers and taskbars match the running window to them.
 for size in 32x32 128x128; do

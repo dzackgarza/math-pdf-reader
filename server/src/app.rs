@@ -3,32 +3,36 @@
 use std::io::ErrorKind;
 use std::path::Path as FsPath;
 
-use axum::body::{Body, Bytes};
-use axum::extract::{DefaultBodyLimit, Multipart, Path, Request, State};
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum_extra::headers::Range;
+use axum_extra::TypedHeader;
+use axum_range::{KnownSize, Ranged};
+use futures::stream::{self, StreamExt};
 use nix::errno::Errno;
 use nix::unistd::{access, AccessFlags};
-use serde_json::json;
-use tower::ServiceExt;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 use url::Url;
 
 use crate::config::VERSION;
 use crate::contract::{
     ApiErrorErrorKind, CaptureResponse, FolderImportRequest, FolderImportResponse,
-    ImportUrlRequest, ImportUrlResponse, ServerStatus, ServerStatusCapabilities,
-    ServerStatusService, ServerStatusServiceName, ServerStatusStorage,
+    FolderImportResponseFilesItem, ImportUrlRequest, ImportUrlResponse, NonEmpty, OpenReader,
+    RetrieveMetadataOutcome, ServerStatus, ServerStatusCapabilities, ServerStatusService,
+    ServerStatusServiceName, ServerStatusStorage, StoredItemTitle, TitleSource,
 };
-use crate::contract::{OpenReader, RetrieveMetadataOutcome, StoredItemTitle, TitleSource};
 use crate::error::{AppError, AppResult};
 use crate::events;
-use crate::imports::{find_pdf_at, is_pdf, pdfs_in_folder};
+use crate::export::concurrency;
+use crate::imports::{find_pdf_at, folder_upload, pdf_names_in_folder, FolderFile};
+use crate::library::entity_tag;
 use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
-use crate::store::Upload;
+use crate::store::{Captured, Upload};
 use crate::titles::retrieve_metadata;
 use crate::{extractions, library, send, sessions, source_routes, thumbnails};
 
@@ -43,30 +47,26 @@ fn origin(headers: &HeaderMap) -> AppResult<String> {
     Ok(format!("http://{host}"))
 }
 
-/// Stores an upload; a new item takes its title from a resolver when one knows its identifier,
-/// and a resolver that fails leaves the title the PDF itself gives. The result carries the
-/// item's title as stored once that is done.
-async fn store(state: &Shared, upload: &Upload) -> AppResult<crate::contract::CaptureResult> {
-    let mut result = state.store.capture(upload).await?;
-    if !result.existing {
-        match retrieve_metadata(
-            &state.store,
-            &result.item.key,
-            &state.config.resolvers_manifest,
-        )
-        .await?
-        {
-            RetrieveMetadataOutcome::Resolved { title, .. } => {
-                result.item.title = StoredItemTitle {
-                    text: title,
-                    source: TitleSource::Resolver,
-                };
-            }
-            RetrieveMetadataOutcome::Unidentified | RetrieveMetadataOutcome::Failed { .. } => {}
-        }
-    }
+/// Stores an upload. A new item then takes its title from a resolver when one knows its
+/// identifier; whatever the resolvers' outcome, the PDF stays stored, and the outcome is
+/// answered beside it (None for a PDF already stored).
+async fn store(
+    state: &Shared,
+    upload: &Upload,
+) -> AppResult<(Captured, Option<RetrieveMetadataOutcome>)> {
+    let mut captured = state.store.capture(upload).await?;
     state.stored();
-    Ok(result)
+    if captured.existing {
+        return Ok((captured, None));
+    }
+    let outcome = retrieve_metadata(state, &captured.item.key).await;
+    if let RetrieveMetadataOutcome::Resolved { title, .. } = &outcome {
+        captured.item.title = StoredItemTitle {
+            text: title.clone(),
+            source: TitleSource::Resolver,
+        };
+    }
+    Ok((captured, Some(outcome)))
 }
 
 fn web_url(value: &str) -> bool {
@@ -76,49 +76,28 @@ fn web_url(value: &str) -> bool {
     }
 }
 
-// Why the capture form was refused; it answers 400 `invalid_capture_form`.
-struct InvalidCapture(String);
-
-impl IntoResponse for InvalidCapture {
-    fn into_response(self) -> Response {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "invalid_capture_form", "issues": [{ "message": self.0 }] })),
-        )
-            .into_response()
-    }
-}
-
-fn invalid_capture(issue: impl Into<String>) -> InvalidCapture {
-    InvalidCapture(issue.into())
-}
-
-// The capture extension's form: the PDF's bytes, where it was linked from, and a title hint.
-async fn capture_form(mut form: Multipart) -> Result<Upload, InvalidCapture> {
+// The capture extension's form: the PDF's bytes and the name it was offered under, its URL,
+// the page that linked to it when one is known, and a title hint.
+async fn capture_form(mut form: Multipart) -> AppResult<Upload> {
+    let unreadable = |error: axum::extract::multipart::MultipartError| {
+        AppError::invalid(format!(
+            "the capture form cannot be read: {}",
+            error.body_text()
+        ))
+    };
     let (mut pdf, mut pdf_url, mut source_url, mut title_hint) = (None, None, None, None);
-    while let Some(field) = form
-        .next_field()
-        .await
-        .map_err(|error| invalid_capture(error.body_text()))?
-    {
+    while let Some(field) = form.next_field().await.map_err(unreadable)? {
         let name = field.name().map(str::to_string);
         match name.as_deref() {
             Some("pdf") => {
-                let filename = match field.file_name() {
-                    Some(filename) => filename.to_string(),
-                    None => return Err(invalid_capture("pdf is not a file")),
+                let Some(filename) = field.file_name().map(str::to_string) else {
+                    return Err(AppError::invalid("the capture form's pdf is not a file"));
                 };
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|error| invalid_capture(error.body_text()))?;
+                let bytes = field.bytes().await.map_err(unreadable)?;
                 pdf = Some((filename, bytes.to_vec()));
             }
             Some(text @ ("pdf_url" | "source_url" | "title_hint")) => {
-                let value = field
-                    .text()
-                    .await
-                    .map_err(|error| invalid_capture(error.body_text()))?;
+                let value = field.text().await.map_err(unreadable)?;
                 let slot = match text {
                     "pdf_url" => &mut pdf_url,
                     "source_url" => &mut source_url,
@@ -126,27 +105,31 @@ async fn capture_form(mut form: Multipart) -> Result<Upload, InvalidCapture> {
                 };
                 *slot = Some(value);
             }
-            other => return Err(invalid_capture(format!("unexpected field {other:?}"))),
+            other => {
+                return Err(AppError::invalid(format!(
+                    "the capture form has an unexpected field {other:?}"
+                )))
+            }
         }
     }
-    let (Some((filename, bytes)), Some(pdf_url), Some(source_url), Some(title_hint)) =
-        (pdf, pdf_url, source_url, title_hint)
+    let (Some((filename, bytes)), Some(pdf_url), Some(title_hint)) = (pdf, pdf_url, title_hint)
     else {
-        return Err(invalid_capture(
-            "pdf, pdf_url, source_url and title_hint are required",
+        return Err(AppError::invalid(
+            "the capture form requires pdf, pdf_url and title_hint",
         ));
     };
-    if !web_url(&pdf_url) || !web_url(&source_url) {
-        return Err(invalid_capture(
+    let linked = source_url.as_deref().is_none_or(web_url);
+    if !web_url(&pdf_url) || !linked {
+        return Err(AppError::invalid(
             "pdf_url and source_url must be http or https URLs",
         ));
     }
     if title_hint.is_empty() {
-        return Err(invalid_capture("title_hint must not be empty"));
+        return Err(AppError::invalid("title_hint must not be empty"));
     }
     Ok(Upload {
         bytes,
-        filename,
+        filename: Some(filename),
         pdf_url,
         source_url,
         title_hint,
@@ -157,34 +140,28 @@ async fn capture_bytes(
     State(state): State<Shared>,
     headers: HeaderMap,
     form: Multipart,
-) -> AppResult<Response> {
-    let upload = match capture_form(form).await {
-        Ok(upload) => upload,
-        Err(invalid) => return Ok(invalid.into_response()),
-    };
-    if !is_pdf(&upload.bytes) {
-        return Ok((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "not_a_pdf" })),
-        )
-            .into_response());
-    }
-    let result = store(&state, &upload).await?;
+) -> AppResult<Json<CaptureResponse>> {
+    let upload = capture_form(form).await?;
     let origin = origin(&headers)?;
-    let key = result.item.key.to_string();
+    let (captured, metadata) = store(&state, &upload).await?;
+    let key = captured.item.key.to_string();
     let response = CaptureResponse {
-        existing: result.existing,
-        stored_sha256: result.stored_sha256,
+        existing: captured.existing,
+        stored_sha256: captured
+            .stored_sha256
+            .try_into()
+            .expect("a SHA-256 digest is 64 hex digits"),
         reader_url: format!("{origin}{}", reader_url_path(&key)),
         pdf_url: format!("{origin}{}", pdf_url_path(&key)),
-        provenance: result.item.provenance,
-        key: result.item.key,
+        provenance: captured.item.provenance,
+        key: captured.item.key,
+        metadata,
     };
     state.events.publish_open_reader(OpenReader {
         reader_url: response.reader_url.clone(),
-        title: result.item.title.text,
+        title: captured.item.title.text,
     });
-    Ok(Json(response).into_response())
+    Ok(Json(response))
 }
 
 async fn import_url(
@@ -207,13 +184,55 @@ async fn import_url(
                 failure.to_string(),
             )
         })?;
-    let result = store(&state, &upload).await?;
+    let (captured, metadata) = store(&state, &upload).await?;
     Ok(Json(ImportUrlResponse {
-        key: result.item.key,
-        existing: result.existing,
+        key: captured.item.key,
+        existing: captured.existing,
+        metadata,
     }))
 }
 
+fn nonempty(text: String) -> NonEmpty {
+    text.try_into().expect("the text is never empty")
+}
+
+// One file of a folder import: read, checked and stored on its own, its failure its outcome.
+async fn import_one(
+    state: &Shared,
+    folder: &FsPath,
+    name: String,
+) -> FolderImportResponseFilesItem {
+    let file = nonempty(name.clone());
+    let upload = match folder_upload(folder, &name).await {
+        Ok(FolderFile::Pdf(upload)) => upload,
+        Ok(FolderFile::NotPdf) => return FolderImportResponseFilesItem::NotAPdf { file },
+        Err(error) => {
+            return FolderImportResponseFilesItem::Failed {
+                file,
+                message: nonempty(format!("cannot read {name}: {error}")),
+            }
+        }
+    };
+    match store(state, &upload).await {
+        Ok((captured, None)) => FolderImportResponseFilesItem::Existing {
+            file,
+            key: captured.item.key,
+        },
+        Ok((captured, Some(metadata))) => FolderImportResponseFilesItem::Stored {
+            file,
+            key: captured.item.key,
+            metadata,
+        },
+        Err(error) => FolderImportResponseFilesItem::Failed {
+            file,
+            message: nonempty(error.to_string()),
+        },
+    }
+}
+
+/// Add Folder: every file directly inside the folder whose name ends in `.pdf`, a few at a
+/// time (the rebuild download limit), each read only when its turn comes, each with its own
+/// outcome in name order.
 async fn import_folder(
     State(state): State<Shared>,
     body: Bytes,
@@ -245,19 +264,13 @@ async fn import_folder(
             format!("{} is no folder", folder.display()),
         ));
     }
-    let mut response = FolderImportResponse {
-        stored: Vec::new(),
-        existing: Vec::new(),
-    };
-    for upload in pdfs_in_folder(folder).await? {
-        let result = store(&state, &upload).await?;
-        if result.existing {
-            response.existing.push(result.item.key);
-        } else {
-            response.stored.push(result.item.key);
-        }
-    }
-    Ok(Json(response))
+    let names = pdf_names_in_folder(folder).await?;
+    let files = stream::iter(names)
+        .map(|name| import_one(&state, folder, name))
+        .buffered(concurrency(&state.config.app.rebuild))
+        .collect()
+        .await;
+    Ok(Json(FolderImportResponse { files }))
 }
 
 /// A stat(2) or access(2) call on the bucket root that failed without answering what it asked;
@@ -325,23 +338,32 @@ async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Js
     }))
 }
 
+/// A stored PDF, with range requests (which PDF.js makes for a large PDF) and its SHA-256 as the
+/// entity tag, both taken from the one file opened.
 async fn pdf(
     State(state): State<Shared>,
     Path(file): Path<String>,
-    request: Request,
+    range: Option<TypedHeader<Range>>,
 ) -> AppResult<Response> {
-    let Some(path) = file
-        .strip_suffix(".pdf")
-        .and_then(|key| state.store.pdf_path(key))
-    else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+    let Some(key) = file.strip_suffix(".pdf") else {
+        return Err(AppError::unknown_item(&file));
     };
-    // ServeFile answers range requests, which PDF.js makes for a large PDF.
-    let served = ServeFile::new(path)
-        .oneshot(request)
-        .await
-        .map_err(AppError::internal)?;
-    Ok(served.map(Body::new))
+    let Some(opened) = state.store.open(key).await? else {
+        return Err(AppError::unknown_item(key));
+    };
+    let body = KnownSize::file(opened.file).await?;
+    let ranged = Ranged::new(range.map(|TypedHeader(range)| range), body);
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/pdf".parse().expect("a media type"),
+            ),
+            (header::ETAG, entity_tag(&opened.sha256)),
+        ],
+        ranged,
+    )
+        .into_response())
 }
 
 async fn read(
@@ -350,7 +372,7 @@ async fn read(
     headers: HeaderMap,
 ) -> AppResult<Response> {
     let Some(indexed) = state.indexed(&key).await? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
+        return Err(AppError::unknown_item(&key));
     };
     let organization = state.organizations.read().await?;
     let item = bucket_item(&indexed, &organization)?;

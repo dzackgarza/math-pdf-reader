@@ -1,10 +1,11 @@
-"""Seed a bucket root with COUNT PDFs made from committed fixtures, stored through the real store.
+"""Seed a bucket root with COUNT PDFs made from committed fixtures, with provenance embedded as the store embeds it.
 
 Run inside the project environment: `uv run --locked python scripts/seed_bucket.py ROOT COUNT`.
 Every PDF is a copy of a committed fixture PDF (tests/fixtures) with its own document title;
 its provenance (PDF URL, source page, capture time, original hash) is embedded by
-`pdfbucket.store.store_pdf`, exactly as a browser capture would. Titles, sources and capture
-times are synthetic and deterministic.
+`pdfbucket.provenance.embed_provenance`, the pikepdf step of a browser capture, and it is written to
+`<ROOT>/<identifier>.pdf`, the key the server derives from that file name. Titles, sources and
+capture times are synthetic and deterministic.
 """
 
 from __future__ import annotations
@@ -12,14 +13,14 @@ from __future__ import annotations
 import random
 import sys
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
 
 import pikepdf
-from pydantic import HttpUrl
 
-from pdfbucket.models import CaptureRequest
-from pdfbucket.store import store_pdf
+from pdfbucket.models import Provenance
+from pdfbucket.provenance import embed_provenance
 
 SUBJECTS = [
     "flips",
@@ -81,14 +82,16 @@ def seed(root: Path, count: int) -> None:
         title = rng.choice(CLAIMS).format(subject=rng.choice(SUBJECTS), n=rng.randint(2, 24))
         identifier = f"{2400 + index // 400}.{10000 + index:05d}"
         source, pdf_url = rng.choice(SOURCES)
-        request = CaptureRequest(
-            pdf_url=HttpUrl(pdf_url.format(id=identifier)),
-            source_url=HttpUrl(source.format(id=identifier)),
+        captured_at = NEWEST_CAPTURE - timedelta(hours=index * 7 + rng.randint(0, 6), minutes=rng.randint(0, 59))
+        original = titled_copy(fixtures[index % len(fixtures)], title)
+        provenance = Provenance(
+            pdf_url=pdf_url.format(id=identifier),
+            source_url=source.format(id=identifier),
+            captured_at=captured_at.isoformat(),
+            original_sha256=sha256(original).hexdigest(),
             title_hint=title,
         )
-        captured_at = NEWEST_CAPTURE - timedelta(hours=index * 7 + rng.randint(0, 6), minutes=rng.randint(0, 59))
-        fixture = fixtures[index % len(fixtures)]
-        store_pdf(root, titled_copy(fixture, title), request, f"{identifier}.pdf", captured_at)
+        (root / f"{identifier}.pdf").write_bytes(embed_provenance(original, provenance))
 
 
 if __name__ == "__main__":

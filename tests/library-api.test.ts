@@ -99,7 +99,7 @@ test("the library lists every stored PDF with the provenance read back from the 
   const listed = items.get("lattices");
   expect(listed?.provenance).toEqual(lattices.provenance);
   expect(listed?.title).toBe("Lattices and Codes");
-  expect(listed?.url).toBe(lattices.provenance.source_url);
+  expect(listed?.url).toBe(`https://www.math.example.edu/~author/lattices.pdf.html`);
   expect(listed?.dateAdded).toBe(lattices.provenance.captured_at);
   expect(listed?.file).toEqual({
     path: join(bucket.root, "lattices.pdf"),
@@ -336,42 +336,68 @@ test("settings report the served root, its filing file and the pinned PDF.js ver
   });
 });
 
-test("a PDF saved from the reader replaces the stored file only while it keeps the item's provenance", async () => {
+test("a reader save replaces the stored PDF only when made from the stored bytes and keeping the item's provenance", async () => {
   const bucket = await emptyBucket();
   const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
   const stored = join(bucket.root, "lattices.pdf");
   const before = readFileSync(stored);
-  const put = (key: string, body: Uint8Array<ArrayBuffer>) =>
+  const put = (key: string, body: Uint8Array<ArrayBuffer>, ifMatch: string | null) =>
     bucket.request(`/api/items/${key}/pdf`, {
       method: "PUT",
-      headers: { "Content-Type": "application/pdf" },
+      headers: {
+        "Content-Type": "application/pdf",
+        ...(ifMatch === null ? {} : { "If-Match": ifMatch }),
+      },
       body,
     });
+  const tag = (bytes: Uint8Array) => `"${createHash("sha256").update(bytes).digest("hex")}"`;
+
+  // The PDF's URL names what it serves: the entity tag is the stored bytes' SHA-256.
+  const served = await bucket.request("/pdf/lattices.pdf");
+  expect(served.headers.get("ETag")).toBe(tag(before));
 
   // An incremental update, as PDF.js writes one: the stored bytes with objects appended.
   const annotated = new Uint8Array([
     ...before,
     ...new TextEncoder().encode("\n% an incremental update\n"),
   ]);
-  const saved = await put("lattices", annotated);
+  const saved = await put("lattices", annotated, tag(before));
   expect(saved.status).toBe(200);
+  expect(saved.headers.get("ETag")).toBe(tag(annotated));
   expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
   expect(byId((await library(bucket)).items).get("lattices")?.provenance).toEqual(
     lattices.provenance,
   );
 
+  // A second view still holding the first bytes: its save is refused, and the answer names
+  // the stored bytes it would have to be made from.
+  const secondView = new Uint8Array([
+    ...before,
+    ...new TextEncoder().encode("\n% another view's annotation\n"),
+  ]);
+  const stale = await put("lattices", secondView, tag(before));
+  expect(stale.status).toBe(412);
+  expect(await errorKind(stale)).toBe("stale_pdf");
+  expect(stale.headers.get("ETag")).toBe(tag(annotated));
+  expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
+
+  // A save that names no stored bytes is not taken.
+  expect((await put("lattices", secondView, null)).status).toBe(428);
+
   // Another item's PDF carries another provenance; bytes that are no PDF carry none.
   const foreign = await put(
     "lattices",
     new Uint8Array(readFileSync(join(bucket.root, "problems.pdf"))),
+    tag(annotated),
   );
   expect(foreign.status).toBe(409);
   expect(await errorKind(foreign)).toBe("provenance_mismatch");
-  const junk = await put("lattices", new TextEncoder().encode("not a pdf"));
+  const junk = await put("lattices", new TextEncoder().encode("not a pdf"), tag(annotated));
   expect(junk.status).toBe(400);
+  expect(await errorKind(junk)).toBe("not_a_pdf");
   expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
-  expect((await put("missing", annotated)).status).toBe(404);
+  expect((await put("missing", annotated, tag(annotated))).status).toBe(404);
 });
 
 test("the reader's last viewed page is recorded per item without counting as a filing change", async () => {

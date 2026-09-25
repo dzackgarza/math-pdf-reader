@@ -18,6 +18,8 @@ workspace = true
 [dependencies]
 askama = "0.16.1"
 axum = { version = "0.8.9", features = ["multipart", "macros"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+axum-range = "1.0.0"
 base64 = "0.23.1"
 biblatex = "0.12.0"
 chrono = "0.4.45"
@@ -26,18 +28,21 @@ dirs = "7.0.0"
 futures = "0.3.34"
 hex = "0.4.3"
 lol_html = "3.0.1"
-nix = { version = "0.31.3", features = ["fs"] }
+nix = { version = "0.31.3", features = ["fs", "process", "signal"] }
 percent-encoding = "2.3.2"
 regex = "1.13.1"
 regress = "0.12.0"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json"] }
+sanitize-filename = "0.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
+tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "process", "fs", "sync", "time", "signal", "io-util", "io-std", "net"] }
 tokio-stream = { version = "0.1.19", features = ["sync"] }
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.1", features = ["fs"] }
+trash = "5.2.9"
 url = "2.5.8"
 uuid = { version = "1.26.1", features = ["serde", "v4"] }
 walkdir = "2.5.0"

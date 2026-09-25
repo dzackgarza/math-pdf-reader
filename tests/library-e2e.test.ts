@@ -4,13 +4,13 @@
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,14 +29,23 @@ const fixtures = join(import.meta.dir, "fixtures");
 const screenshots = join(tmpdir(), "pdf-bucket-library-e2e");
 const viewport = { width: 1400, height: 900 };
 
-// Items captured through the real capture endpoint: key, fixture file, link text.
+// The bytes of a committed fixture PDF.
+const fixture = (file: string) => new Uint8Array(readFileSync(join(fixtures, file)));
+// The ten-page notes with a comment after their end: the same pages as another PDF, so the
+// store keeps it as its own item.
+const readingCopy = new Uint8Array([
+  ...fixture("ten-page-notes.pdf"),
+  ...new TextEncoder().encode("% the reading copy\n"),
+]);
+
+// Items captured through the real capture endpoint: key, PDF bytes, link text.
 const CAPTURES = [
-  ["lattices", "lecture-notes.pdf", "Lectures on integral lattices"],
-  ["problems", "problem-set.pdf", "Problem set on quadratic forms"],
-  ["notes", "ten-page-notes.pdf", "Ten lectures on lattice theory"],
-  ["reading", "ten-page-notes.pdf", "Ten lectures, the reading copy"],
+  ["lattices", fixture("lecture-notes.pdf"), "Lectures on integral lattices"],
+  ["problems", fixture("problem-set.pdf"), "Problem set on quadratic forms"],
+  ["notes", fixture("ten-page-notes.pdf"), "Ten lectures on lattice theory"],
+  ["reading", readingCopy, "Ten lectures, the reading copy"],
   // Its catalog asks viewers to open its outline (/PageMode /UseOutlines).
-  ["outlined", "outlined-notes.pdf", "Ten lectures with an outline"],
+  ["outlined", fixture("outlined-notes.pdf"), "Ten lectures with an outline"],
 ] as const;
 
 function executable(name: string): string {
@@ -53,10 +62,7 @@ function sha256(bytes: Uint8Array): string {
 
 // The publisher the fixtures were captured from: what each path serves right now.
 const served = new Map<string, Uint8Array<ArrayBuffer>>(
-  CAPTURES.map(([key, file]) => [
-    `/~author/${key}.pdf`,
-    new Uint8Array(readFileSync(join(fixtures, file))),
-  ]),
+  CAPTURES.map(([key, bytes]) => [`/~author/${key}.pdf`, bytes]),
 );
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
@@ -88,9 +94,9 @@ async function startBucket() {
     indexExport,
   });
   const origin = app.origin;
-  for (const [key, file, linkText] of CAPTURES) {
+  for (const [key, bytes, linkText] of CAPTURES) {
     const form = new FormData();
-    form.set("pdf", new File([readFileSync(join(fixtures, file))], `${key}.pdf`));
+    form.set("pdf", new File([bytes], `${key}.pdf`));
     form.set("pdf_url", published(`/~author/${key}.pdf`));
     form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", linkText);
@@ -455,6 +461,83 @@ describe("library window", () => {
     expect(contents).toContain(note);
   });
 
+  test("a note saved over a PDF changed elsewhere shows the conflict and keeps the tab until the copy is saved over it", async () => {
+    await openLibrary();
+    await page.click(row("reading"), { count: 2 });
+    const { reader, viewer } = await shownReader("reading");
+    // Another window saves the PDF after this reader loaded it.
+    const stored = await fetch(`${bucket.origin}/pdf/reading.pdf`);
+    const tag = stored.headers.get("ETag");
+    if (tag === null) {
+      throw new Error("the stored PDF carries no entity tag");
+    }
+    const elsewhere = new Uint8Array([
+      ...new Uint8Array(await stored.arrayBuffer()),
+      ...new TextEncoder().encode("\n% saved in another window\n"),
+    ]);
+    const other = await fetch(`${bucket.origin}/api/items/reading/pdf`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf", "If-Match": tag },
+      body: elsewhere,
+    });
+    expect(other.status).toBe(200);
+
+    await viewer.waitForFunction(
+      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
+    );
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
+    );
+    const layer = await viewer.waitForSelector(
+      '.page[data-page-number="1"] .annotationEditorLayer',
+    );
+    const refused = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
+    );
+    await layer?.click({ offset: { x: 120, y: 160 } });
+    await viewer.waitForSelector(".freeTextEditor .internal");
+    const note = `Written over a stale PDF ${Date.now()}`;
+    await page.keyboard.type(note);
+    await page.keyboard.press("Escape");
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
+    );
+    expect((await refused).status()).toBe(412);
+    await reader.waitForSelector("#conflict", { visible: true });
+    await shot("reader-save-conflict");
+
+    // The tab stays while the conflict is open.
+    await page.click(`${tab("reading")} button[aria-label^="Close"]`);
+    await page.waitForSelector(`${tab("reading")}[data-state="active"]`);
+    expect(await openTabKeys()).toContain("reading");
+
+    const kept = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
+    );
+    await reader.click("#keep-mine");
+    expect((await kept).status()).toBe(200);
+    await reader.waitForSelector("#conflict", { hidden: true });
+    await page.click(`${tab("reading")} button[aria-label^="Close"]`);
+    await page.waitForFunction(`!document.querySelector('${tab("reading")}')`);
+
+    await page.goto(`${bucket.origin}/read/reading`);
+    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
+    if (reopened === undefined || reopened === null) {
+      throw new Error("the reader has no viewer frame");
+    }
+    await reopened.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
+    const contents = z
+      .array(z.string())
+      .parse(
+        await reopened.evaluate(
+          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
+        ),
+      );
+    expect(contents).toContain(note);
+  });
+
   test("a capture made while the library is open opens its PDF in a tab", async () => {
     await openLibrary();
     const form = new FormData();
@@ -746,7 +829,14 @@ describe("library window", () => {
     await page.waitForSelector(row("imported"));
 
     const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-folder-"));
-    copyFileSync(join(fixtures, "problem-set.pdf"), join(folder, "folder notes.pdf"));
+    // A PDF the library does not hold yet: the problem set with a comment after its end.
+    writeFileSync(
+      join(folder, "folder notes.pdf"),
+      new Uint8Array([
+        ...fixture("problem-set.pdf"),
+        ...new TextEncoder().encode("% the folder copy\n"),
+      ]),
+    );
     await page.click('button[aria-label="Add Folder"]');
     await page.type('[role="dialog"] input', folder);
     await page.keyboard.press("Enter");

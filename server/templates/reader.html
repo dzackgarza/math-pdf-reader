@@ -22,7 +22,9 @@ Zotero Connector save the page.
     <meta name="citation_author" content="{{ author }}" />
     {%- endfor %}
     <meta name="citation_pdf_url" content="{{ origin }}{{ pdf_path }}" />
+    {%- if let Some(source_url) = source_url %}
     <meta name="citation_abstract_html_url" content="{{ source_url }}" />
+    {%- endif %}
     {#
        Runs before the viewer frame loads. PDF.js dispatches `webviewerloaded` on the embedding
        document before it initializes, for the embedder to set options. A viewer in a frame counts
@@ -79,7 +81,7 @@ document.addEventListener("webviewerloaded", (event) => {
       :root[data-theme="dark"] { color-scheme: dark; }
       * { box-sizing: border-box; }
       html, body { margin: 0; height: 100%; }
-      body { display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--surface); }
+      body { display: flex; flex-direction: column; background: var(--surface); }
       header {
         display: flex; align-items: center; gap: 0.25rem; min-width: 0;
         padding: 0.25rem 0.5rem; background: var(--panel); border-bottom: 1px solid var(--line);
@@ -105,7 +107,16 @@ document.addEventListener("webviewerloaded", (event) => {
         flex: 1; min-width: 0; margin: 0 0.5rem; overflow: hidden;
         font-size: 0.875rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis;
       }
-      iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--surface); }
+      iframe { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: var(--surface); }
+      #conflict {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.375rem 0.75rem;
+        font-size: 0.8125rem; color: var(--danger); background: var(--panel); border-bottom: 1px solid var(--line);
+      }
+      #conflict[hidden], #conflict button[hidden] { display: none; }
+      #conflict button {
+        width: auto; height: 1.75rem; padding: 0 0.625rem; border: 1px solid var(--line);
+        color: var(--ink); font-size: 0.8125rem;
+      }
     </style>
   </head>
   <body
@@ -125,16 +136,26 @@ document.addEventListener("webviewerloaded", (event) => {
       <span id="save-status" role="status"></span>
       <button id="copy-link" type="button" aria-label="Copy link to this view" title="Copy link to this view"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
     </header>
+    <div id="conflict" role="alert" hidden>
+      <span>This PDF was saved elsewhere after this reader opened it. The stored PDF is reloaded; your unsaved annotations are kept in a copy.</span>
+      <button id="show-mine" type="button">Show my copy</button>
+      <button id="show-stored" type="button" hidden>Show the stored PDF</button>
+      <button id="keep-mine" type="button">Save my copy over it</button>
+      <button id="discard-mine" type="button">Discard my copy</button>
+    </div>
     <iframe src="{{ viewer }}" title="{{ title }}"></iframe>
     {#
        Runs in the reader page. The viewer is same-origin, so the page reads PDF.js's event bus.
        Back and forward are PDF.js's PDFHistory: the positions left by following links, outline
        entries and page jumps in this PDF. PDFHistory.back and forward do nothing at either end, so
-       they never leave the document. Every view change (page, zoom, scroll) replaces the address's
-       fragment with PDF.js's own open parameters. The fragment the page was opened with goes to the
-       viewer as a same-document replace, which PDF.js's hashchange handler applies (as the initial
-       view if the document is still loading) and which adds no history entry. An address without
-       a fragment opens at the page last viewed.
+       they never leave the document. The frame's history state (History API) carries PDFHistory's
+       position number, `uid`: a popstate moves to an older or newer one; any other change of it is a
+       new position, which drops the newer ones. The buttons are enabled from that record. Every
+       view change (page, zoom, scroll) replaces the address's fragment with PDF.js's own open
+       parameters. The fragment the page was opened with goes to the viewer as a same-document
+       replace, which PDF.js's hashchange handler applies (as the initial view if the document is
+       still loading) and which adds no history entry. An address without a fragment opens at the
+       page last viewed.
 
        Reading: a second after the page changes, the page and the page count go to
        /api/items/<key>/reading, which records them as the item's last viewed page.
@@ -145,18 +166,29 @@ document.addEventListener("webviewerloaded", (event) => {
        moment read, seconds per page) goes to /api/reading-sessions every 30 seconds, on each page
        change, and as a beacon when the page is left; nothing is sent until a page is read.
 
-       Saving: the annotation storage reports its first change after each save (onSetModified,
-       wrapped so PDF.js's own callback still runs); a short pause later, PDFDocumentProxy.saveDocument
-       writes the PDF with every annotation as an incremental update of the loaded file, and the page
-       PUTs it to the server, which keeps it only while it carries the item's provenance. Saves run
-       one after another; the Library link waits for a pending save.
+       Saving (RFC 9110 conditional requests): the page keeps the SHA-256 of the bytes the viewer
+       loaded, the stored PDF's entity tag. The annotation storage reports its first change after
+       each save (onSetModified, wrapped so PDF.js's own callback still runs); a short pause later,
+       PDFDocumentProxy.saveDocument writes the PDF with every annotation as an incremental update
+       of the loaded bytes, and the page PUTs it with `If-Match` naming them. The server keeps it
+       while the stored file still holds those bytes and the new ones carry the item's provenance,
+       and answers the new entity tag. Saves run one after another; a failed save shows the
+       server's message and leaves later saves to run. When the stored PDF changed since it was
+       loaded (412), the page keeps its bytes as the user's copy, reloads the stored PDF, and shows
+       the conflict: the user's copy can be shown, saved over the stored PDF, or discarded.
+
+       The page's state: `failure` (the last save's error text, until a save succeeds) and `mine`
+       (the user's copy while a conflict is open). window.readerControl.settle sends the reading
+       session, runs any pending save and waits for every save; it rejects while a save has failed
+       or a conflict is open. The Library link and a closing tab wait for it and stay when it
+       rejects.
 
        In a library tab the tab strip holds the Library tab, so the page hides its Library link.
-       A frame's document stays visible while its tab is hidden: the page counts as hidden when
-       its frame is invisible, and the tab strip dispatches `visibilitychange` on it at each
-       switch. Closing the tab first awaits window.settleReader, which does what the Library link
-       does before it leaves. The page passes its focus to the viewer, so a shown tab scrolls with
-       the keyboard.
+       Once the viewer is up the page dispatches `reader-ready` on its frame element; the tab strip
+       then reads window.readerControl. A frame's document stays visible while its tab is hidden:
+       the page counts as hidden when its frame is invisible, and the tab strip dispatches
+       `visibilitychange` on it at each switch. The page passes its focus to the viewer, so a shown
+       tab scrolls with the keyboard.
     #}
     <script type="module">{% raw %}
 const frame = document.querySelector("iframe");
@@ -174,6 +206,7 @@ const shown = () =>
 window.addEventListener("focus", () => frame.contentWindow.focus());
 const saveStatus = document.getElementById("save-status");
 const itemPath = document.body.dataset.itemPath;
+const pdfPath = document.querySelector('meta[name="citation_pdf_url"]').content;
 const openAt = location.hash === "" ? document.body.dataset.resumeHash : location.hash;
 const copy = document.getElementById("copy-link");
 copy.addEventListener("click", async () => {
@@ -181,6 +214,31 @@ copy.addEventListener("click", async () => {
   copy.dataset.copied = "";
   setTimeout(() => delete copy.dataset.copied, 1500);
 });
+
+// The text of a failed answer: the error envelope's message, else the HTTP status.
+const failureText = async (response) => {
+  const type = response.headers.get("Content-Type") ?? "";
+  if (type.startsWith("application/json")) {
+    const body = await response.json();
+    if (typeof body?.error?.message === "string") {
+      return body.error.message;
+    }
+  }
+  return `HTTP ${response.status} ${response.statusText}`;
+};
+const showFailure = (text) => {
+  saveStatus.textContent = text;
+  saveStatus.dataset.failed = "";
+};
+const clearStatus = () => {
+  saveStatus.textContent = "";
+  delete saveStatus.dataset.failed;
+};
+const entityTag = async (bytes) => {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return `"${Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")}"`;
+};
+
 frame.addEventListener("load", async () => {
   const inner = frame.contentWindow.location;
   if (openAt !== "" && inner.hash !== openAt) {
@@ -189,13 +247,20 @@ frame.addEventListener("load", async () => {
   const viewer = frame.contentWindow.PDFViewerApplication;
   await viewer.initializedPromise;
   const history = viewer.pdfHistory;
-  // PDFHistory's own bounds: the frame's history state carries the position's uid, and
-  // _maxUid is the newest position recorded.
-  const showBounds = () => {
-    const uid = frame.contentWindow.history.state?.uid;
-    backButton.disabled = !(uid > 0);
-    forwardButton.disabled = !(uid < history._maxUid);
+  const positionOf = () => {
+    const state = frame.contentWindow.history.state;
+    return state === null ? 0 : state.uid;
   };
+  let position = positionOf();
+  let newest = position;
+  const showBounds = () => {
+    backButton.disabled = position <= 0;
+    forwardButton.disabled = position >= newest;
+  };
+  frame.contentWindow.addEventListener("popstate", () => {
+    position = positionOf();
+    showBounds();
+  });
   const navigate = (event) => {
     if (event.altKey && event.key === "ArrowLeft") { event.preventDefault(); history.back(); }
     if (event.altKey && event.key === "ArrowRight") { event.preventDefault(); history.forward(); }
@@ -206,63 +271,144 @@ frame.addEventListener("load", async () => {
   forwardButton.addEventListener("click", () => history.forward());
   let recordedPage = null;
   let pendingRecord = null;
-  const recordReading = () => {
+  const recordReading = async () => {
     const reading = { page: viewer.page, pages: viewer.pagesCount };
     if (reading.page === recordedPage) {
       return;
     }
     recordedPage = reading.page;
-    fetch(itemPath + "/reading", {
+    const response = await fetch(itemPath + "/reading", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(reading),
-    }).then(async (response) => {
-      if (!response.ok) {
-        saveStatus.textContent = "Page not recorded: " + (await response.json()).error.message;
-        saveStatus.dataset.failed = "";
-      }
     });
+    if (!response.ok) {
+      showFailure("Page not recorded: " + (await failureText(response)));
+    }
   };
   viewer.eventBus.on("updateviewarea", ({ location: view }) => {
     window.history.replaceState(window.history.state, "", view.pdfOpenParams);
+    const now = positionOf();
+    if (now !== position) {
+      position = now;
+      newest = now;
+    }
     showBounds();
     clearTimeout(pendingRecord);
-    pendingRecord = setTimeout(recordReading, 1000);
+    pendingRecord = setTimeout(() => recordReading().catch((error) => showFailure("Page not recorded: " + error.message)), 1000);
   });
-  frame.contentWindow.addEventListener("popstate", showBounds);
 
+  // The stored PDF's entity tag as last loaded or saved; the user's copy while a conflict is
+  // open, and whether the viewer shows it; the last save's error text.
+  let storedTag = null;
+  let mine = null;
+  let showingMine = false;
+  let failure = null;
   let pendingSave = null;
   let saves = Promise.resolve();
-  const save = async () => {
-    saveStatus.textContent = "Saving…";
-    const bytes = await viewer.pdfDocument.saveDocument();
-    const response = await fetch(itemPath + "/pdf", {
+  const conflictBar = document.getElementById("conflict");
+  const showMineButton = document.getElementById("show-mine");
+  const showStoredButton = document.getElementById("show-stored");
+  const showConflict = () => {
+    conflictBar.hidden = mine === null;
+    showMineButton.hidden = showingMine;
+    showStoredButton.hidden = !showingMine;
+  };
+  const loadStored = async () => {
+    showingMine = false;
+    await viewer.open({ url: pdfPath });
+  };
+  const put = (bytes, tag) =>
+    fetch(itemPath + "/pdf", {
       method: "PUT",
-      headers: { "Content-Type": "application/pdf" },
+      headers: { "Content-Type": "application/pdf", "If-Match": tag },
       body: bytes,
     });
-    if (response.ok) {
-      saveStatus.textContent = "";
-      delete saveStatus.dataset.failed;
-      annotationsSaved = pendingSave === null;
+  const save = async () => {
+    if (mine !== null) {
       return;
     }
-    saveStatus.textContent = "Not saved: " + (await response.json()).error.message;
-    saveStatus.dataset.failed = "";
+    saveStatus.textContent = "Saving…";
+    delete saveStatus.dataset.failed;
+    const bytes = await viewer.pdfDocument.saveDocument();
+    const response = await put(bytes, storedTag);
+    if (response.status === 412) {
+      mine = bytes;
+      storedTag = response.headers.get("ETag");
+      failure = "Not saved: the PDF changed elsewhere after it was opened.";
+      showFailure(failure);
+      await loadStored();
+      showConflict();
+      return;
+    }
+    if (!response.ok) {
+      throw new Error("Not saved: " + (await failureText(response)));
+    }
+    storedTag = response.headers.get("ETag");
+    failure = null;
+    clearStatus();
+    annotationsSaved = pendingSave === null;
   };
   const startSave = () => {
     pendingSave = null;
-    saves = saves.then(save);
+    saves = saves.then(save).catch((error) => {
+      failure = error.message;
+      showFailure(failure);
+    });
   };
-  viewerDocumentLoaded.then(() => {
+  showMineButton.addEventListener("click", async () => {
+    showingMine = true;
+    showConflict();
+    await viewer.open({ data: mine.slice() });
+  });
+  showStoredButton.addEventListener("click", async () => {
+    await loadStored();
+    showConflict();
+  });
+  document.getElementById("keep-mine").addEventListener("click", async () => {
+    // Annotations made while the copy was shown belong to it.
+    if (showingMine) {
+      mine = await viewer.pdfDocument.saveDocument();
+    }
+    const response = await put(mine, storedTag);
+    if (!response.ok) {
+      showFailure("Not saved: " + (await failureText(response)));
+      return;
+    }
+    mine = null;
+    failure = null;
+    clearStatus();
+    showConflict();
+    await loadStored();
+  });
+  document.getElementById("discard-mine").addEventListener("click", async () => {
+    mine = null;
+    failure = null;
+    clearStatus();
+    showConflict();
+    await loadStored();
+  });
+
+  // Each document the viewer loads (the stored PDF, or the user's copy) sets the entity tag of
+  // what it holds and reports its annotation changes.
+  const loaded = async () => {
     const storage = viewer.pdfDocument.annotationStorage;
     const ownCallback = storage.onSetModified;
     storage.onSetModified = () => {
-      ownCallback?.();
+      if (ownCallback !== null) {
+        ownCallback.call(storage);
+      }
       annotationsSaved = false;
       clearTimeout(pendingSave);
       pendingSave = setTimeout(startSave, 700);
     };
+    if (!showingMine) {
+      storedTag = await entityTag(await viewer.pdfDocument.getData());
+    }
+  };
+  viewerDocumentLoaded.then(() => {
+    loaded();
+    viewer.eventBus.on("documentloaded", loaded);
   });
   const IDLE_MS = Number(document.body.dataset.idleMinutes) * 60 * 1000;
   const MIN_PAGE_MS = Number(document.body.dataset.minPageSeconds) * 1000;
@@ -296,27 +442,27 @@ frame.addEventListener("load", async () => {
     const read = [...pages].map(([page, ms]) => ({ page, seconds: Math.round(ms / 1000) }));
     return JSON.stringify({ ...session, lastSeenAt: new Date(until).toISOString(), pages: read });
   };
-  const sendSession = (asBeacon) => {
+  const sendSession = async (asBeacon) => {
     const body = sessionReport();
     if (body === null) {
-      return Promise.resolve();
+      return;
     }
     if (asBeacon) {
       navigator.sendBeacon("/api/reading-sessions", new Blob([body], { type: "application/json" }));
-      return Promise.resolve();
+      return;
     }
-    return fetch("/api/reading-sessions", {
+    const response = await fetch("/api/reading-sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
       keepalive: true,
-    }).then(async (response) => {
-      if (!response.ok) {
-        saveStatus.textContent = "Reading not recorded: " + (await response.json()).error.message;
-        saveStatus.dataset.failed = "";
-      }
     });
+    if (!response.ok) {
+      showFailure("Reading not recorded: " + (await failureText(response)));
+    }
   };
+  const sendSessionShowingFailure = () =>
+    sendSession(false).catch((error) => showFailure("Reading not recorded: " + error.message));
   const onInput = () => {
     if (Date.now() - lastInput > IDLE_MS) {
       endStretch();
@@ -335,7 +481,7 @@ frame.addEventListener("load", async () => {
   viewer.eventBus.on("pagechanging", ({ pageNumber }) => {
     endStretch();
     startStretch(pageNumber);
-    sendSession(false);
+    sendSessionShowingFailure();
   });
   document.addEventListener("visibilitychange", () => {
     if (shown()) {
@@ -345,21 +491,31 @@ frame.addEventListener("load", async () => {
       sendSession(true);
     }
   });
-  setInterval(() => sendSession(false), 30000);
+  setInterval(sendSessionShowingFailure, 30000);
   window.addEventListener("pagehide", () => sendSession(true));
 
-  window.settleReader = async () => {
+  const settle = async () => {
     await sendSession(false);
     if (pendingSave !== null) {
       clearTimeout(pendingSave);
       startSave();
     }
     await saves;
+    if (mine !== null || failure !== null) {
+      throw new Error(failure);
+    }
   };
-  libraryLink.addEventListener("click", async (event) => {
+  window.readerControl = { settle };
+  if (inTab) {
+    window.frameElement.dispatchEvent(new Event("reader-ready"));
+  }
+  // The page stays, with the failure shown, while the reader cannot settle.
+  libraryLink.addEventListener("click", (event) => {
     event.preventDefault();
-    await window.settleReader();
-    location.assign(libraryLink.href);
+    settle().then(
+      () => location.assign(libraryLink.href),
+      (error) => showFailure(error.message),
+    );
   });
 });
 {% endraw %}</script>

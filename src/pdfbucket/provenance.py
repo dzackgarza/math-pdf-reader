@@ -14,12 +14,14 @@ from io import BytesIO
 from pathlib import Path
 
 import pikepdf
+from pydantic import TypeAdapter
 
-from pdfbucket.models import CaptureProvenance, ItemTitle, StoredItem
+from pdfbucket.models import ItemTitle, NonEmpty, PdfRecord, Provenance
 
 XMP_NAMESPACE = "https://github.com/dzackgarza/math-pdf-reader/ns/provenance/1.0/"
 
-# Document-information key for each provenance field.
+# Document-information key for each provenance field. Every field but `source_url` is required;
+# a PDF captured with no known linking page carries no `/PDFBucketSourceURL`.
 DOCINFO_KEYS = {
     "pdf_url": "/PDFBucketPDFURL",
     "source_url": "/PDFBucketSourceURL",
@@ -42,13 +44,24 @@ ABSTRACT_KEY = "/PDFBucketAbstract"
 # ExifTool convention), which the fallback read splits again.
 AUTHOR_SEPARATOR = "; "
 
-
-def provenance_values(provenance: CaptureProvenance) -> dict[str, str]:
-    values = provenance.model_dump(mode="json")
-    return {field: str(value) for field, value in values.items()}
+AUTHOR_LIST: TypeAdapter[list[NonEmpty]] = TypeAdapter(list[NonEmpty])
+YEAR: TypeAdapter[int] = TypeAdapter(int)
 
 
-def embed_provenance(pdf_bytes: bytes, provenance: CaptureProvenance) -> bytes:
+def provenance_values(provenance: Provenance) -> dict[str, str]:
+    """The provenance fields to embed, each as the exact text given; an unknown source page is left out."""
+    values = {
+        "pdf_url": provenance.pdf_url,
+        "captured_at": provenance.captured_at,
+        "original_sha256": provenance.original_sha256,
+        "title_hint": provenance.title_hint,
+    }
+    if provenance.source_url is not None:
+        values["source_url"] = provenance.source_url
+    return values
+
+
+def embed_provenance(pdf_bytes: bytes, provenance: Provenance) -> bytes:
     values = provenance_values(provenance)
     output = BytesIO()
     with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
@@ -62,10 +75,10 @@ def embed_provenance(pdf_bytes: bytes, provenance: CaptureProvenance) -> bytes:
 
 
 class MissingProvenanceError(ValueError):
-    """A PDF under the store root that does not carry the bucket's provenance keys."""
+    """A PDF that does not carry the bucket's required provenance keys."""
 
     def __init__(self, path: Path, missing: list[str]) -> None:
-        super().__init__(f"{path} carries no embedded provenance for {', '.join(missing)}")
+        super().__init__(f"{path.name} carries no embedded provenance for {', '.join(missing)}")
 
 
 def own_metadata_title(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> str | None:
@@ -77,8 +90,8 @@ def own_metadata_title(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> str | None:
     return title or None
 
 
-def read_title(pdf: pikepdf.Pdf, docinfo: dict[str, str], key: str, title_hint: str) -> ItemTitle:
-    """The recorded title; else, best first, the PDF's own metadata title, the capture's hint, the filename."""
+def read_title(pdf: pikepdf.Pdf, docinfo: dict[str, str], filename: str, title_hint: str) -> ItemTitle:
+    """The recorded title; else, best first, the PDF's own metadata title, the capture's hint, the file name."""
     if TITLE_KEY in docinfo:
         return ItemTitle.model_validate({"text": docinfo[TITLE_KEY], "source": docinfo[TITLE_SOURCE_KEY]})
     own = own_metadata_title(pdf, docinfo)
@@ -86,13 +99,13 @@ def read_title(pdf: pikepdf.Pdf, docinfo: dict[str, str], key: str, title_hint: 
         return ItemTitle(text=own, source="pdf-metadata")
     if title_hint.strip():
         return ItemTitle(text=title_hint.strip(), source="capture-hint")
-    return ItemTitle(text=f"{key}.pdf", source="filename")
+    return ItemTitle(text=filename, source="filename")
 
 
 def read_authors(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> list[str]:
-    """The recorded authors; else the PDF's own XMP `dc:creator`, else its `/Author` split at ";"."""
+    """The recorded authors (a JSON list of names); else the PDF's own XMP `dc:creator`, else its `/Author` split at ";"."""
     if AUTHORS_KEY in docinfo:
-        return [str(name) for name in json.loads(docinfo[AUTHORS_KEY])]
+        return AUTHOR_LIST.validate_json(docinfo[AUTHORS_KEY])
     with pdf.open_metadata(set_pikepdf_as_editor=False) as xmp:
         creators = [str(name).strip() for name in xmp.get("dc:creator", [])]
     if any(creators):
@@ -100,35 +113,24 @@ def read_authors(pdf: pikepdf.Pdf, docinfo: dict[str, str]) -> list[str]:
     return [name.strip() for name in docinfo.get("/Author", "").split(";") if name.strip()]
 
 
-def embedded_provenance(pdf_bytes: bytes) -> CaptureProvenance | None:
-    """The provenance embedded in PDF_BYTES, or None when the bytes carry none."""
-    with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
-        docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
-    if any(key not in docinfo for key in DOCINFO_KEYS.values()):
-        return None
-    return CaptureProvenance.model_validate({field: docinfo[key] for field, key in DOCINFO_KEYS.items()})
-
-
-def read_stored_item(path: Path) -> StoredItem:
+def read_record(path: Path) -> PdfRecord:
+    """Everything the PDF at PATH says about itself; raises MissingProvenanceError without the bucket's keys."""
     with pikepdf.open(path) as pdf:
         docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
-        missing = [field for field, key in DOCINFO_KEYS.items() if key not in docinfo]
+        missing = [field for field, key in DOCINFO_KEYS.items() if field != "source_url" and key not in docinfo]
         if missing:
             raise MissingProvenanceError(path, missing)
-        provenance = CaptureProvenance.model_validate({field: docinfo[key] for field, key in DOCINFO_KEYS.items()})
-        title = read_title(pdf, docinfo, path.stem, provenance.title_hint)
+        provenance = Provenance.model_validate({field: docinfo.get(key) for field, key in DOCINFO_KEYS.items()})
+        title = read_title(pdf, docinfo, path.name, provenance.title_hint)
         authors = read_authors(pdf, docinfo)
-    year = int(docinfo[YEAR_KEY]) if YEAR_KEY in docinfo else None
-    abstract = docinfo.get(ABSTRACT_KEY)
-    return StoredItem(key=path.stem, provenance=provenance, title=title, authors=authors, year=year, abstract=abstract)
+        pages = len(pdf.pages)
+    year = YEAR.validate_python(docinfo[YEAR_KEY]) if YEAR_KEY in docinfo else None
+    return PdfRecord(provenance=provenance, title=title, authors=authors, year=year, abstract=docinfo.get(ABSTRACT_KEY), pages=pages)
 
 
-def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int | None, abstract: str | None) -> None:
-    """Record TITLE, AUTHORS, YEAR and ABSTRACT in the stored PDF at PATH; the file is replaced only complete.
-
-    A year or abstract of None removes one recorded before.
-    """
-    partial = path.with_suffix(".partial")
+def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int | None, abstract: str | None) -> bytes:
+    """The PDF at PATH with TITLE, AUTHORS, YEAR and ABSTRACT recorded; a year or abstract of None removes one recorded before."""
+    output = BytesIO()
     with pikepdf.open(path) as pdf:
         with pdf.open_metadata() as metadata:
             metadata["dc:title"] = title.text
@@ -149,5 +151,23 @@ def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int |
                 pdf.docinfo[key] = str(value)
             elif key in pdf.docinfo:
                 del pdf.docinfo[key]
-        pdf.save(partial)
-    partial.replace(path)
+        pdf.save(output)
+    return output.getvalue()
+
+
+# Identifiers publishers embed: arXiv's generated PDFs carry `/arXivID` and `/DOI` in the
+# document-information dictionary, and publishers following PRISM carry `prism:doi` and
+# `prism:isbn` in XMP.
+DOCINFO_IDENTIFIER_KEYS = ("/arXivID", "/DOI")
+PRISM = "http://prismstandard.org/namespaces/basic/2.0/"
+PRISM_IDENTIFIER_KEYS = (f"{{{PRISM}}}doi", f"{{{PRISM}}}isbn")
+
+
+def embedded_identifiers(path: Path) -> list[str]:
+    """The identifiers embedded in the PDF at PATH, document-information keys first."""
+    with pikepdf.open(path) as document:
+        docinfo = {str(key): str(value) for key, value in document.docinfo.items()}
+        embedded = [docinfo[key] for key in DOCINFO_IDENTIFIER_KEYS if key in docinfo]
+        with document.open_metadata(set_pikepdf_as_editor=False) as xmp:
+            embedded.extend(str(xmp[key]) for key in PRISM_IDENTIFIER_KEYS if key in xmp)
+    return [identifier.strip() for identifier in embedded]

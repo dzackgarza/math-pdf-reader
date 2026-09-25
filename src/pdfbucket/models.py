@@ -1,37 +1,43 @@
-"""Capture and store contracts shared by the CLI and the server."""
+"""The documents the pikepdf commands read and print, matching src/contract/store.ts."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AnyUrl, AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, UrlConstraints
+from pydantic import AfterValidator, AnyUrl, BaseModel, ConfigDict, Field, StringConstraints
 
-# Where a PDF came from: a web page and PDF URL for a browser capture or a URL import, a
-# `file:` URL for a PDF added from a folder on this computer.
-type SourceUrl = Annotated[AnyUrl, UrlConstraints(allowed_schemes=["http", "https", "file"], host_required=False)]
-
-SOURCE_URL: TypeAdapter[SourceUrl] = TypeAdapter(SourceUrl)
+type NonEmpty = Annotated[str, StringConstraints(min_length=1)]
+type Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
-class CaptureRequest(BaseModel):
+def _url(text: str) -> str:
+    AnyUrl(text)
+    return text
+
+
+def _timestamp(text: str) -> str:
+    if datetime.fromisoformat(text).tzinfo is None:
+        raise ValueError(f"{text} carries no UTC offset")
+    return text
+
+
+# A URL or timestamp is checked and kept as the exact text given: provenance is embedded and
+# read back byte for byte, never normalized.
+type Url = Annotated[str, AfterValidator(_url)]
+type Timestamp = Annotated[str, AfterValidator(_timestamp)]
+
+
+class Provenance(BaseModel):
+    """What every stored PDF carries inside the file. `source_url` is absent when no linking page is known."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    pdf_url: SourceUrl
-    source_url: SourceUrl
-    title_hint: str
-
-
-class CaptureProvenance(BaseModel):
-    """What every stored PDF carries inside the file."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    pdf_url: SourceUrl
-    source_url: SourceUrl
-    captured_at: AwareDatetime
-    original_sha256: str
-    title_hint: str
+    pdf_url: Url
+    source_url: Url | None
+    captured_at: Timestamp
+    original_sha256: Sha256
+    title_hint: NonEmpty
 
 
 # Where an item's title came from, best first: an identifier resolver, the PDF's own metadata,
@@ -42,37 +48,47 @@ type TitleSource = Literal["resolver", "pdf-metadata", "capture-hint", "filename
 class ItemTitle(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    text: str = Field(min_length=1)
+    text: NonEmpty
     source: TitleSource
 
 
-class StoredItem(BaseModel):
-    """A stored PDF as read back from the file alone."""
+class PdfRecord(BaseModel):
+    """What a stored PDF says about itself, read from the file alone."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    key: str
-    provenance: CaptureProvenance
+    provenance: Provenance
     title: ItemTitle
-    authors: list[str]
+    authors: list[NonEmpty]
     # Recorded from a resolver; None when none gave them.
     year: int | None
-    abstract: str | None
+    abstract: NonEmpty | None
+    pages: Annotated[int, Field(ge=1)]
 
 
-class CaptureResult(BaseModel):
+class Read(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    item: StoredItem
-    stored_sha256: str
-    existing: bool
+    status: Literal["read"] = "read"
+    record: PdfRecord
 
 
-def provenance_for(request: CaptureRequest, captured_at: datetime, original_sha256: str) -> CaptureProvenance:
-    return CaptureProvenance(
-        pdf_url=request.pdf_url,
-        source_url=request.source_url,
-        captured_at=captured_at,
-        original_sha256=original_sha256,
-        title_hint=request.title_hint,
-    )
+class Unreadable(BaseModel):
+    """A file pikepdf cannot open, or one without the bucket's provenance."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["unreadable"] = "unreadable"
+    message: NonEmpty
+
+
+type ReadOutcome = Annotated[Read | Unreadable, Field(discriminator="status")]
+
+
+class StoreFailure(BaseModel):
+    """Why a command on one PDF could not do its work; printed with exit status 3."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    kind: Literal["unreadable_pdf", "missing_provenance", "invalid_metadata"]
+    message: NonEmpty

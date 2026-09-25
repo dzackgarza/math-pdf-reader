@@ -11,6 +11,17 @@ export const SCRATCH_DATA_HOME = mkdtempSync(join(tmpdir(), "pdf-bucket-test-dat
 process.env.XDG_DATA_HOME = SCRATCH_DATA_HOME;
 process.env.XDG_CACHE_HOME = mkdtempSync(join(tmpdir(), "pdf-bucket-test-cache-"));
 
+// `pdf-bucket serve` runs the checkout's Python environment (.venv), which uv brings in line
+// with the lock file.
+const synced = Bun.spawnSync(["uv", "sync", "--locked", "--quiet"], {
+  cwd: REPO_ROOT,
+  stdout: "inherit",
+  stderr: "inherit",
+});
+if (synced.exitCode !== 0) {
+  throw new Error(`uv could not sync the checkout's Python environment (exit ${synced.exitCode})`);
+}
+
 // The suites drive the app's server over HTTP through `pdf-bucket serve` (tests/bucket.ts);
 // cargo rebuilds it only when its sources changed.
 const built = Bun.spawnSync(

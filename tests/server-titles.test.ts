@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { z } from "zod";
+import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { LibraryPayloadSchema, RetrieveMetadataResponseSchema } from "../src/contract/library";
 import { type Bucket, EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
@@ -273,4 +274,89 @@ test("Retrieve metadata on an item with no identifier reports it unidentified; a
     "capture-hint",
   ]);
   expect((await app.request(`/api/items/missing/metadata`, { method: "POST" })).status).toBe(404);
+});
+
+// Captures BYTES as the extension does and answers the capture's metadata outcome.
+async function captureOutcome(
+  app: Bucket,
+  bytes: Buffer,
+  filename: string,
+  pdf: string,
+  source: string | null,
+) {
+  const form = new FormData();
+  form.set("pdf", new File([new Uint8Array(bytes)], filename, { type: "application/pdf" }));
+  form.set("pdf_url", pdf);
+  if (source !== null) {
+    form.set("source_url", source);
+  }
+  form.set("title_hint", "View PDF");
+  const response = await app.request("/capture-bytes", { method: "POST", body: form });
+  expect(response.status).toBe(200);
+  return CaptureResponseSchema.parse(await response.json());
+}
+
+test("an arXiv PDF from an author's homepage resolves through the arXiv id embedded in it", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
+
+  const captured = await captureOutcome(
+    app,
+    arxivPdf,
+    "cyclicity.pdf",
+    "https://www.math.example.edu/~author/cyclicity.pdf",
+    "https://www.math.example.edu/~author/papers.html",
+  );
+
+  expect(captured.metadata).toEqual({
+    status: "resolved",
+    pluginId: "arxiv",
+    identifier: "https://arxiv.org/abs/2609.21174v1",
+    title: "On The Cyclicity of Algebraic Lattices",
+  });
+});
+
+test("a source page on a resolver's host wins over the identifiers inside the PDF", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
+
+  const captured = await captureOutcome(
+    app,
+    arxivPdf,
+    "sphere-packing.pdf",
+    "https://www.math.example.edu/~author/sphere-packing.pdf",
+    "https://doi.org/10.4007/annals.2017.185.3.7",
+  );
+
+  expect(captured.metadata).toMatchObject({
+    status: "resolved",
+    pluginId: "doi",
+    identifier: "https://doi.org/10.4007/annals.2017.185.3.7",
+  });
+});
+
+test("a capture with no linking page stores no source page, and its PDF URL is still a candidate", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
+
+  const captured = await captureOutcome(app, arxivPdf, "2609.21174v1", arxiv.pdf, null);
+
+  expect(captured.provenance.source_url).toBeNull();
+  expect(captured.metadata).toMatchObject({ status: "resolved", identifier: arxiv.pdf });
+  const listed = await item(app, captured.key);
+  expect([listed.url, listed.provenance.source_url]).toEqual([arxiv.pdf, null]);
+  const { document } = parseHTML(await (await app.request(`/read/${captured.key}`)).text());
+  expect(document.querySelector('meta[name="citation_abstract_html_url"]')).toBeNull();
+});
+
+test("an existing PDF's capture runs no resolver and reports no metadata outcome", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
+  const first = await captureOutcome(app, lectureNotes, "notes.pdf", arxiv.pdf, null);
+
+  const again = await captureOutcome(
+    app,
+    lectureNotes,
+    "other-name.pdf",
+    "https://mirror.example.org/notes.pdf",
+    null,
+  );
+
+  expect([again.existing, again.key, again.metadata]).toEqual([true, first.key, null]);
 });

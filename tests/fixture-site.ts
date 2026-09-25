@@ -5,8 +5,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const fixtures = join(import.meta.dir, "fixtures");
-export const lectureNotes = new Uint8Array(readFileSync(join(fixtures, "lecture-notes.pdf")));
-export const problemSet = new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf")));
+const lectureNotes = new Uint8Array(readFileSync(join(fixtures, "lecture-notes.pdf")));
+const problemSet = new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf")));
+
+// The PDF served at ROUTE: a fixture with a comment after its end naming the route, so no two
+// routes serve the same bytes (the store keeps identical bytes as one item).
+function servedAt(route: string, fixture: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
+  return new Uint8Array([...fixture, ...new TextEncoder().encode(`% served at ${route}\n`)]);
+}
 
 type Pdf = { bytes: Uint8Array<ArrayBuffer>; headers: Record<string, string> };
 
@@ -17,19 +23,19 @@ const inline = (bytes: Uint8Array<ArrayBuffer>): Pdf => ({
 
 const pdfs: Record<string, Pdf> = {
   // arXiv serves `/pdf/<id>` without a `.pdf` suffix.
-  "/pdf/2401.00001": inline(problemSet),
-  "/notes/lecture-notes.pdf": inline(lectureNotes),
-  "/notes/survey.pdf": inline(problemSet),
+  "/pdf/2401.00001": inline(servedAt("/pdf/2401.00001", problemSet)),
+  "/notes/lecture-notes.pdf": inline(servedAt("/notes/lecture-notes.pdf", lectureNotes)),
+  "/notes/survey.pdf": inline(servedAt("/notes/survey.pdf", problemSet)),
   "/download?id=problem-set": {
-    bytes: problemSet,
+    bytes: servedAt("/download?id=problem-set", problemSet),
     headers: {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": 'attachment; filename="problem-set.pdf"',
     },
   },
-  "/embedded/figure.pdf": inline(lectureNotes),
-  "/frames/preview.pdf": inline(problemSet),
-  "/frames/chapter.pdf": inline(lectureNotes),
+  "/embedded/figure.pdf": inline(servedAt("/embedded/figure.pdf", lectureNotes)),
+  "/frames/preview.pdf": inline(servedAt("/frames/preview.pdf", problemSet)),
+  "/frames/chapter.pdf": inline(servedAt("/frames/chapter.pdf", lectureNotes)),
 };
 
 const pages: Record<string, { title: string; body: string }> = {
@@ -66,6 +72,15 @@ const pages: Record<string, { title: string; body: string }> = {
     body: '<iframe src="/frames/chapter.pdf" style="width: 1000px; height: 700px"></iframe>',
   },
 };
+
+// The bytes the site serves at the PDF route PATH.
+export function pdfBytes(path: string): Uint8Array<ArrayBuffer> {
+  const pdf = pdfs[path];
+  if (pdf === undefined) {
+    throw new Error(`the fixture site serves no PDF at ${path}`);
+  }
+  return pdf.bytes;
+}
 
 export type LoggedRequest = { method: string; path: string };
 

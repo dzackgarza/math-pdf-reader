@@ -21,6 +21,7 @@ const fixture = (name: string) =>
   new Uint8Array(readFileSync(join(import.meta.dir, "fixtures", name)));
 const lectureNotes = fixture("lecture-notes.pdf");
 const problemSet = fixture("problem-set.pdf");
+const outlinedNotes = fixture("outlined-notes.pdf");
 
 // The publisher: what each path serves right now; a path with nothing serves 404.
 const served = new Map<string, Uint8Array<ArrayBuffer>>();
@@ -124,7 +125,7 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
   const { root, request, capture, library, item } = await bucket(exportFile);
   await capture(lectureNotes, "kept-url", at("/notes/kept-url.pdf"));
   await capture(problemSet, "moved", at("/notes/moved.pdf"));
-  await capture(lectureNotes, "lost", at("/gone/lost.pdf"));
+  await capture(outlinedNotes, "lost", at("/gone/lost.pdf"));
   await recordMetadata(root, "kept-url", "resolver", {
     title: "Integral Lattices",
     authors: ["Maryna Viazovska"],
@@ -154,6 +155,7 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
   expect(await rebuild("kept-url")).toMatchObject({
     status: "restored",
     from: at("/notes/kept-url.pdf"),
+    metadata: { status: "recorded" },
   });
   expect(await rebuild("moved")).toMatchObject({
     status: "restored",

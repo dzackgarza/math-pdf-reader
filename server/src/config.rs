@@ -1,6 +1,6 @@
 //! Where the bucket's settings come from: pdf-bucket.config.json (compiled in), the checkout
-//! this binary was built from (the PDF.js viewer, the library bundle, the Python store and the
-//! plugin manifests live there), the XDG directories, and the tunables below.
+//! this binary was built from (the PDF.js viewer, the library bundle and the plugin manifests
+//! live there), the installed Python environment, the XDG directories, and the tunables below.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
@@ -27,6 +27,30 @@ pub const ACTIVITY_KEPT: usize = 500;
 
 /// Thumbnail renders at once: each is a store process, and a grid of new items asks for many.
 pub const THUMBNAIL_RENDERS: usize = 2;
+
+/// The longest name a file system allows for one path component (Linux NAME_MAX).
+pub const NAME_MAX: usize = 255;
+
+/// The suffix of a stored item's extraction directory, the longest suffix a key's files carry.
+pub const EXTRACTION_SUFFIX: &str = ".extraction";
+
+/// Bytes a key may take, so every file named after it fits NAME_MAX.
+pub const MAX_KEY_BYTES: usize = NAME_MAX - EXTRACTION_SUFFIX.len();
+
+/// Hex digits of the original SHA-256 that tell apart two PDFs offered under one name.
+pub const KEY_HASH_PREFIX: usize = 12;
+
+/// Bytes at the start of a file within which a PDF's `%PDF-` header may begin (ISO 32000-2,
+/// 7.5.2, and the implementation note that readers accept it there).
+pub const PDF_HEADER_WINDOW: usize = 1024;
+
+/// What an extraction plugin writes in its output directory: the Markdown, and optionally a
+/// directory of further artifacts.
+pub const EXTRACTION_MARKDOWN: &str = "extraction.md";
+pub const EXTRACTION_ARTIFACTS: &str = "artifacts";
+
+/// Exit status of a `pdfbucket` command that could not read its PDF (src/pdfbucket/cli.py).
+pub const STORE_REFUSED_EXIT: i32 = 3;
 
 /// Widths a thumbnail may be asked for, in pixels.
 pub const THUMBNAIL_WIDTHS: std::ops::RangeInclusive<u32> = 16..=2000;
@@ -59,11 +83,17 @@ pub fn resolvers_manifest() -> PathBuf {
     checkout().join("plugins/manifests/resolvers.json")
 }
 
-/// The Python store package owns provenance embedding and the folder layout.
-pub fn store_command() -> Vec<String> {
-    ["uv", "run", "--project", CHECKOUT, "--locked", "pdfbucket"]
-        .map(String::from)
-        .to_vec()
+/// The checkout's Python environment (`uv sync --locked`), whose bin directory holds
+/// `pdfbucket` and the extraction plugins' entry points: what `pdf-bucket serve` and the
+/// maintenance commands run.
+pub fn checkout_python_bin() -> PathBuf {
+    checkout().join(".venv/bin")
+}
+
+/// The installed app's own Python environment, which `just provision` builds from a wheel of
+/// the package; switching the checkout's branch leaves it as installed.
+pub fn app_python_bin() -> PathBuf {
+    xdg_data_home().join("pdf-bucket-app/venv/bin")
 }
 
 /// Permanent data (stored PDFs, the filing) lives in the XDG data directory:
@@ -109,6 +139,9 @@ pub struct BucketConfig {
     /// The index export the server rewrites after every change, or `None` for a bucket whose
     /// changes are not exported (tests, evidence runs).
     pub index_export: Option<PathBuf>,
+    /// The bin directory of the Python environment the store's commands and the plugins run
+    /// from.
+    pub python_bin: PathBuf,
     pub app: AppConfig,
     pub process_env: ProcessEnv,
 }
@@ -126,6 +159,7 @@ impl BucketConfig {
             extractions_manifest: extractions_manifest(),
             resolvers_manifest: resolvers_manifest(),
             index_export: Some(index_export_file()),
+            python_bin: app_python_bin(),
             app,
             process_env,
         }
@@ -136,8 +170,8 @@ impl BucketConfig {
 /// page's seconds (MIN_PAGE_SECONDS in src/contract/library.ts), which typify does not check.
 pub const MIN_PAGE_SECONDS: f64 = 5.0;
 
-/// The characters JavaScript's `encodeURIComponent` leaves as they are, so thumbnail file names
-/// match the ones the cache already holds.
+/// The characters JavaScript's `encodeURIComponent` leaves as they are, so the PDF and reader
+/// paths the server writes match the ones the library builds.
 pub const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')

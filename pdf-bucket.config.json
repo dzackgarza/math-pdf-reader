@@ -17,5 +17,12 @@
   "rebuild": {
     "concurrent_downloads": 4,
     "download_timeout_seconds": 120
+  },
+  "plugins": {
+    "extraction_timeout_seconds": 1800,
+    "resolver_timeout_seconds": 60
+  },
+  "store": {
+    "command_timeout_seconds": 120
   }
 }

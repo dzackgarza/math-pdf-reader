@@ -24,6 +24,8 @@ import tempfile
 import time
 import uuid
 from contextlib import ExitStack
+from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -449,7 +451,7 @@ def main(out: Path) -> None:
 
         started = time.perf_counter()
         subprocess.run(
-            ["uv", "run", "--locked", "pdfbucket", "list", str(roots["seeded"])],
+            ["uv", "run", "--locked", "pdfbucket", "read", "--", *sorted(str(path) for path in roots["seeded"].glob("*.pdf"))],
             cwd=REPO,
             check=True,
             env=project_env(),
@@ -479,8 +481,12 @@ def main(out: Path) -> None:
 
 
 def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, source_url: str, title: str) -> None:
-    command = ["uv", "run", "--locked", "pdfbucket", "capture", str(root), f"tests/fixtures/{fixture}", f"{key}.pdf", pdf_url, source_url, title]
-    subprocess.run(command, cwd=REPO, check=True, env=project_env(), stdout=subprocess.DEVNULL)
+    """Store the fixture under KEY with its provenance embedded by the store's pikepdf command."""
+    original = (REPO / "tests/fixtures" / fixture).read_bytes()
+    provenance = [f"--pdf-url={pdf_url}", f"--source-url={source_url}", f"--captured-at={datetime.now(UTC).isoformat()}", f"--original-sha256={sha256(original).hexdigest()}", f"--title-hint={title}"]
+    command = ["uv", "run", "--locked", "pdfbucket", "embed-provenance", *provenance]
+    embedded = subprocess.run(command, cwd=REPO, check=True, env=project_env(), input=original, stdout=subprocess.PIPE)
+    (root / f"{key}.pdf").write_bytes(embedded.stdout)
 
 
 def record_sent(root: Path, key: str) -> None:

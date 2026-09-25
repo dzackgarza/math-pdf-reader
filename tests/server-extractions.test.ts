@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ExtractionOutcomeSchema,
@@ -10,6 +10,7 @@ import {
 } from "../src/contract/extraction";
 import { ApiErrorSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { SCRATCH_DATA_HOME } from "./preload";
 
 const config = loadAppConfig(CONFIG_PATH);
 const fixture = join(import.meta.dir, "fixtures/ten-page-notes.pdf");
@@ -156,4 +157,71 @@ test("unknown items and unknown plugins are not found", async () => {
     ),
   );
   expect(kinds).toEqual(["unknown_item", "unknown_plugin"]);
+});
+
+// The desktop trash entry (freedesktop.org trash specification) holding what was at PATH.
+function trashed(path: string): string {
+  const trash = join(SCRATCH_DATA_HOME, "Trash");
+  for (const info of readdirSync(join(trash, "info"))) {
+    const lines = readFileSync(join(trash, "info", info), "utf8").split("\n");
+    if (lines.includes(`Path=${encodeURI(path)}`) || lines.includes(`Path=${path}`)) {
+      return join(trash, "files", info.slice(0, -".trashinfo".length));
+    }
+  }
+  throw new Error(`nothing from ${path} is in the trash`);
+}
+
+test("a run gets the stored PDF and an empty output directory staged in the root, removed after", async () => {
+  const { root, app } = await bucketWithExtractors([{ mode: "record", maxPages: 20 }]);
+
+  await app.request(`/api/items/lattices/extractions/record`, { method: "POST" });
+
+  const [mode, pdf, output] = readFileSync(join(root, "lattices.md"), "utf8").trim().split("\n");
+  if (output === undefined) {
+    throw new Error("the plugin recorded no output directory");
+  }
+  expect([mode, pdf]).toEqual(["record", join(root, "lattices.pdf")]);
+  expect(dirname(dirname(output))).toBe(root);
+  expect(basename(dirname(output))).toStartWith(".extracting-");
+  expect(existsSync(dirname(output))).toBe(false);
+});
+
+test("a later run moves the whole previous extraction to the trash; a failed run keeps it", async () => {
+  const { root, app } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20 },
+    { mode: "markdown", maxPages: 20 },
+    { mode: "fail", maxPages: 20 },
+  ]);
+  await app.request(`/api/items/lattices/extractions/record`, { method: "POST" });
+  const recorded = readFileSync(join(root, "lattices.md"), "utf8");
+
+  const later = await app.request(`/api/items/lattices/extractions/markdown`, { method: "POST" });
+
+  expect(later.status).toBe(200);
+  expect(readdirSync(root).sort()).toEqual(["lattices.md", "lattices.pdf"]);
+  expect(readFileSync(join(root, "lattices.md"), "utf8")).toBe(
+    "# Extracted by the markdown mode\n",
+  );
+  expect(readFileSync(trashed(join(root, "lattices.md")), "utf8")).toBe(recorded);
+  expect(sha256(readFileSync(join(trashed(join(root, "lattices.extraction")), "source.pdf")))).toBe(
+    sha256(readFileSync(join(root, "lattices.pdf"))),
+  );
+
+  const failed = await app.request(`/api/items/lattices/extractions/fail`, { method: "POST" });
+  expect(failed.status).toBe(502);
+  expect(readFileSync(join(root, "lattices.md"), "utf8")).toBe(
+    "# Extracted by the markdown mode\n",
+  );
+});
+
+test("a plugin that exits 0 without writing extraction.md answers 502 plugin_contract_broken", async () => {
+  const { root, app } = await bucketWithExtractors([{ mode: "misnamed", maxPages: 20 }]);
+
+  const response = await app.request(`/api/items/lattices/extractions/misnamed`, {
+    method: "POST",
+  });
+
+  expect(response.status).toBe(502);
+  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("plugin_contract_broken");
+  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
 });

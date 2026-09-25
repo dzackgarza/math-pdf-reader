@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -95,6 +96,7 @@ test("an upload that is not a PDF is refused and nothing is stored", async () =>
   });
 
   expect(response.status).toBe(400);
+  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("not_a_pdf");
   expect(readdirSync(root)).toEqual([]);
 });
 
@@ -110,4 +112,93 @@ test("keys that name no stored PDF are not found, including encoded traversal", 
   expect((await app.request(`/pdf/missing.pdf`)).status).toBe(404);
   expect((await app.request(`/pdf/..%2F..%2Fetc%2Fpasswd.pdf`)).status).toBe(404);
   expect((await app.request(`/read/..%2Foutside`)).status).toBe(404);
+});
+
+test("PDFs captured at once under one file name all land, each under its own key", async () => {
+  const { root, app } = await bucket();
+  const pdfs = ["lecture-notes.pdf", "problem-set.pdf", "ten-page-notes.pdf"].map((name) =>
+    readFileSync(join(import.meta.dir, "fixtures", name)),
+  );
+
+  const responses = await Promise.all(
+    pdfs.map((bytes) =>
+      app.request(`/capture-bytes`, {
+        method: "POST",
+        body: captureForm(bytes, "download.pdf", "Download"),
+      }),
+    ),
+  );
+
+  const results = await Promise.all(
+    responses.map(async (response) => CaptureResponseSchema.parse(await response.json())),
+  );
+  const keys = results.map((result) => result.key);
+  expect(new Set(keys).size).toBe(3);
+  expect(keys).toContain("download");
+  // The files hold the PDFs that were offered, one each.
+  expect(results.map((result) => result.provenance.original_sha256)).toEqual(
+    pdfs.map((bytes) => sha256(bytes)),
+  );
+  for (const result of results) {
+    expect(sha256(readFileSync(join(root, `${result.key}.pdf`)))).toBe(result.stored_sha256);
+  }
+  expect(readdirSync(root).sort()).toEqual(keys.map((key) => `${key}.pdf`).sort());
+});
+
+test("the same PDF captured from another URL under another name is the item already stored", async () => {
+  const { root, app } = await bucket();
+  const bytes = readFileSync(fixture);
+  const first = CaptureResponseSchema.parse(
+    await (
+      await app.request(`/capture-bytes`, {
+        method: "POST",
+        body: captureForm(bytes, "lattices.pdf", "Lattices"),
+      })
+    ).json(),
+  );
+
+  const form = captureForm(bytes, "fulltext.pdf", "Full text");
+  form.set("pdf_url", "https://mirror.example.org/fulltext.pdf");
+  const again = CaptureResponseSchema.parse(
+    await (await app.request(`/capture-bytes`, { method: "POST", body: form })).json(),
+  );
+
+  expect([again.existing, again.key, again.provenance]).toEqual([
+    true,
+    first.key,
+    first.provenance,
+  ]);
+  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+});
+
+test("a file name with no usable stem keys the PDF by its hash, and the library still lists it", async () => {
+  const { app } = await bucket();
+  const bytes = readFileSync(fixture);
+
+  const response = await app.request(`/capture-bytes`, {
+    method: "POST",
+    body: captureForm(bytes, "..pdf", "Dots"),
+  });
+
+  const result = CaptureResponseSchema.parse(await response.json());
+  expect(result.key).toBe(sha256(bytes).slice(0, 12));
+  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  expect(library.items.map((item) => item.id)).toEqual([result.key]);
+});
+
+test("a foreign or torn PDF in the root is named in the library beside the items it can read", async () => {
+  const { root, app } = await bucket();
+  await app.request(`/capture-bytes`, {
+    method: "POST",
+    body: captureForm(readFileSync(fixture), "lattices.pdf", "Lattices"),
+  });
+  copyFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"), join(root, "foreign.pdf"));
+  writeFileSync(join(root, "torn.pdf"), readFileSync(join(root, "lattices.pdf")).subarray(0, 300));
+
+  const response = await app.request("/api/library");
+
+  expect(response.status).toBe(200);
+  const library = LibraryPayloadSchema.parse(await response.json());
+  expect(library.items.map((item) => item.id)).toEqual(["lattices"]);
+  expect(library.unreadable.map((file) => file.file)).toEqual(["foreign.pdf", "torn.pdf"]);
 });

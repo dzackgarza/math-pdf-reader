@@ -121,9 +121,9 @@ code and note the mockup term once in the plan's Decision Log.
 These constrain every milestone, child plan, and commit. A change that satisfies its task
 but breaks one of these is wrong.
 
-1. **Provenance travels with the PDF.** Every stored PDF carries PDF URL, source page URL,
-   capture time and original SHA-256 inside the file. The index is derivable from the
-   files; a sidecar-only record is not provenance.
+1. **Provenance travels with the PDF.** Every stored PDF carries PDF URL, source page URL when
+   one is known, capture time and original SHA-256 inside the file. The index is derivable
+   from the files; a sidecar-only record is not provenance.
 2. **Everything is a URL.** Every PDF and every reader page is reachable at a stable
    `http://127.0.0.1:<port>/...` URL while the bucket runs. Reader pages carry Highwire
    `citation_*` meta tags so the unmodified Zotero Connector works on them from any browser.

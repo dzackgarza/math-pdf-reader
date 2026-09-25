@@ -11,7 +11,7 @@ use futures::future::{join_all, try_join_all};
 use url::Url;
 
 use crate::contract::{
-    ApiErrorErrorKind, LibraryPayload, MirrorRequest, RebuildOutcome, Timestamp,
+    ApiErrorErrorKind, ExportedItem, LibraryPayload, MirrorRequest, RebuildOutcome, Timestamp,
 };
 use crate::error::{AppError, AppResult};
 use crate::export::recoverable;
@@ -68,7 +68,7 @@ async fn verify(State(state): State<Shared>, Path(key): Path<String>) -> Payload
 }
 
 async fn verify_all(State(state): State<Shared>) -> Payload {
-    let indexed = state.index.items().await?;
+    let indexed = state.store.items().await?;
     try_join_all(indexed.iter().map(|item| verify_item(&state, item))).await?;
     Ok(Json(state.payload().await?))
 }
@@ -119,52 +119,55 @@ async fn remove(
         .await
 }
 
-async fn rebuild_one(state: &Shared, key: &str) -> AppResult<Option<RebuildOutcome>> {
-    let indexed = state.index.items().await?;
-    let missing = state.missing(&indexed).await?;
-    let Some((item, _)) = missing.into_iter().find(|(item, _)| *item.key == key) else {
-        return Ok(None);
-    };
-    let outcome =
-        rebuild_item(&state.store, &recoverable(&item), &state.config.app.rebuild).await?;
+/// The items the index export holds whose PDF the store has lost, read once.
+async fn lost(state: &Shared) -> AppResult<Vec<ExportedItem>> {
+    let indexed = state.store.items().await?;
+    Ok(state
+        .missing(&indexed)
+        .await?
+        .into_iter()
+        .map(|(item, _)| item)
+        .collect())
+}
+
+// Rebuilds one lost item; a restored PDF rewrites the index export.
+async fn rebuild_lost(state: &Shared, item: &ExportedItem) -> RebuildOutcome {
+    let outcome = rebuild_item(&state.store, &recoverable(item), &state.config.app.rebuild).await;
     if let RebuildOutcome::Restored { .. } = outcome {
         state.stored();
     }
-    Ok(Some(outcome))
+    outcome
 }
 
 async fn rebuild(
     State(state): State<Shared>,
     Path(key): Path<String>,
 ) -> AppResult<Json<RebuildOutcome>> {
-    match rebuild_one(&state, &key).await? {
-        Some(outcome) => Ok(Json(outcome)),
-        None => Err(AppError::api(
+    let lost = lost(&state).await?;
+    let Some(item) = lost.iter().find(|item| *item.key == key) else {
+        return Err(AppError::api(
             StatusCode::NOT_FOUND,
             ApiErrorErrorKind::UnknownItem,
             format!("the index export lists no lost PDF with key {key}"),
-        )),
-    }
+        ));
+    };
+    Ok(Json(rebuild_lost(&state, item).await))
 }
 
+/// Every lost item's outcome, each download taking a slot of the shared limit; one item's
+/// failure is that item's outcome and leaves the others'.
 async fn rebuild_all(State(state): State<Shared>) -> AppResult<Json<Vec<RebuildOutcome>>> {
-    let indexed = state.index.items().await?;
-    let keys: Vec<String> = state
-        .missing(&indexed)
-        .await?
-        .into_iter()
-        .map(|(item, _)| item.key.to_string())
-        .collect();
-    let outcomes = try_join_all(keys.iter().map(|key| async {
+    let lost = lost(&state).await?;
+    let outcomes = join_all(lost.iter().map(|item| async {
         let _slot = state
             .downloads
             .acquire()
             .await
             .expect("the semaphore stays open");
-        rebuild_one(&state, key).await
+        rebuild_lost(&state, item).await
     }))
-    .await?;
-    Ok(Json(outcomes.into_iter().flatten().collect()))
+    .await;
+    Ok(Json(outcomes))
 }
 
 pub fn routes() -> Router<Shared> {

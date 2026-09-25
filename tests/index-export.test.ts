@@ -24,7 +24,7 @@ const config = loadAppConfig(CONFIG_PATH);
 // A collection's own fields as a new one has them.
 const PLAIN = { description: "", pinned: false, keepOffline: false };
 
-// Every capture and restore runs the Python store in its own process.
+// Every capture and restore runs a server or a pikepdf command in its own process.
 setDefaultTimeout(30_000);
 
 function fixture(name: string): Uint8Array<ArrayBuffer> {
@@ -35,6 +35,7 @@ const lectureNotes = fixture("lecture-notes.pdf");
 const problemSet = fixture("problem-set.pdf");
 const tenPageNotes = fixture("ten-page-notes.pdf");
 const longNotes = fixture("long-notes.pdf");
+const outlinedNotes = fixture("outlined-notes.pdf");
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -84,14 +85,18 @@ async function capture(
   filename: string,
   url: string,
 ) {
-  const result = await captureBytes(root, {
+  const key = await captureBytes(root, {
     bytes,
     filename,
     pdfUrl: url,
     sourceUrl: at("/teaching.html"),
     titleHint: `Notes from ${filename}`,
   });
-  return result.item;
+  const [item] = await listItems(root, [key]);
+  if (item === undefined) {
+    throw new Error(`${key} was not stored`);
+  }
+  return item;
 }
 
 async function exportIndex(home: string, exportFile: string) {
@@ -114,7 +119,7 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
   await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
   await capture(root, tenPageNotes, "ten-page-notes.pdf", at("/teaching/ten-page-notes.pdf"));
   await capture(root, longNotes, "long-notes.pdf", at("/gone/long-notes.pdf"));
-  await capture(root, lectureNotes, "revised.pdf", at("/revised/notes.pdf"));
+  await capture(root, outlinedNotes, "revised.pdf", at("/revised/notes.pdf"));
   await exportIndex(home, exportFile);
   const exported = readIndexExport(exportFile);
   if (exported === null) {
@@ -135,12 +140,14 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
       status: "restored",
       from: at("/pdf/2401.00001"),
       stored_sha256: sha256(readFileSync(join(root, "2401.00001.pdf"))),
+      metadata: { status: "from_pdf" },
     },
     {
       key: "lecture-notes",
       status: "restored",
       from: at("/notes/lecture-notes.pdf"),
       stored_sha256: sha256(readFileSync(join(root, "lecture-notes.pdf"))),
+      metadata: { status: "from_pdf" },
     },
     {
       key: "long-notes",

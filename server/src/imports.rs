@@ -11,23 +11,18 @@ use percent_encoding::percent_decode_str;
 use url::Url;
 
 use crate::contract::AppConfigRebuild;
+use crate::layout::is_pdf;
 use crate::store::Upload;
 
-pub fn is_pdf(bytes: &[u8]) -> bool {
-    bytes.starts_with(b"%PDF-")
-}
-
-/// The name the store keys a PDF under: the URL's last path segment.
-fn url_filename(url: &Url) -> String {
+/// The name a URL offers its PDF under: the URL's last path segment, or None when the path
+/// ends in `/` (the store then keys the PDF by its hash).
+fn url_filename(url: &Url) -> Option<String> {
     let segment = url
         .path()
         .rsplit('/')
         .next()
         .expect("rsplit yields a last part");
-    if segment.is_empty() {
-        return "download.pdf".to_string();
-    }
-    percent_decode_str(segment).decode_utf8_lossy().into_owned()
+    (!segment.is_empty()).then(|| percent_decode_str(segment).decode_utf8_lossy().into_owned())
 }
 
 /// Why a URL gave no PDF to store; its text is the message Import URL shows.
@@ -145,7 +140,8 @@ fn page_tags(url: &Url, html: &str) -> Result<PageTags, NoPdf> {
     Ok(tags.into_inner())
 }
 
-/// The PDF at URL, or on the page at URL; a failure says why there is none.
+/// The PDF at URL, or on the page at URL; a failure says why there is none. A PDF URL given
+/// directly has no linking page; a page's PDF was linked from that page.
 pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild) -> Result<Upload, NoPdf> {
     let page_url = Url::parse(url).map_err(|reason| NoPdf::BadUrl {
         url: url.to_string(),
@@ -153,13 +149,16 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild) -> Result<Uploa
     })?;
     let html = match get(&page_url, settings).await? {
         Answer::Bytes(bytes) if is_pdf(&bytes) => {
-            let name = url_filename(&page_url);
+            let filename = url_filename(&page_url);
             return Ok(Upload {
                 bytes,
-                filename: name.clone(),
+                title_hint: match &filename {
+                    Some(name) => name.clone(),
+                    None => url.to_string(),
+                },
+                filename,
                 pdf_url: url.to_string(),
-                source_url: url.to_string(),
-                title_hint: name,
+                source_url: None,
             });
         }
         Answer::Bytes(_) => return Err(NoPdf::NotPdf { url: page_url }),
@@ -179,28 +178,25 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild) -> Result<Uploa
         Answer::Bytes(bytes) if is_pdf(&bytes) => bytes,
         _ => return Err(NoPdf::NotPdf { url: pdf_url }),
     };
-    // The page's citation title, else its <title>, else the PDF's file name.
+    // The page's citation title, else its <title>, else the PDF URL.
     let named = [tags.citation_title.trim(), tags.title.trim()]
         .into_iter()
         .find(|hint| !hint.is_empty());
     let title_hint = match named {
         Some(hint) => hint.to_string(),
-        None => url_filename(&pdf_url),
+        None => pdf_url.to_string(),
     };
     Ok(Upload {
         bytes,
         filename: url_filename(&pdf_url),
         pdf_url: pdf_url.to_string(),
-        source_url: url.to_string(),
+        source_url: Some(url.to_string()),
         title_hint,
     })
 }
 
-/// The PDFs directly inside FOLDER, by name, as uploads with `file:` URLs for provenance.
-pub async fn pdfs_in_folder(folder: &Path) -> std::io::Result<Vec<Upload>> {
-    let folder_url = Url::from_directory_path(folder).map_err(|()| {
-        std::io::Error::other(format!("{} is not an absolute path", folder.display()))
-    })?;
+/// The files directly inside FOLDER whose names end in `.pdf` (any case), in name order.
+pub async fn pdf_names_in_folder(folder: &Path) -> std::io::Result<Vec<String>> {
     let mut names = Vec::new();
     let mut entries = tokio::fs::read_dir(folder).await?;
     while let Some(entry) = entries.next_entry().await? {
@@ -210,23 +206,33 @@ pub async fn pdfs_in_folder(folder: &Path) -> std::io::Result<Vec<Upload>> {
         }
     }
     names.sort();
-    let mut uploads = Vec::new();
-    for name in names {
-        let path = folder.join(&name);
-        let bytes = tokio::fs::read(&path).await?;
-        if !is_pdf(&bytes) {
-            continue;
-        }
-        let pdf_url = Url::from_file_path(&path).map_err(|()| {
-            std::io::Error::other(format!("{} is not an absolute path", path.display()))
-        })?;
-        uploads.push(Upload {
-            bytes,
-            title_hint: name[..name.len() - ".pdf".len()].to_string(),
-            filename: name,
-            pdf_url: pdf_url.to_string(),
-            source_url: folder_url.to_string(),
-        });
+    Ok(names)
+}
+
+/// One file of a folder, read.
+pub enum FolderFile {
+    Pdf(Upload),
+    /// A `.pdf` name on bytes with no PDF header.
+    NotPdf,
+}
+
+/// The file NAME in FOLDER as an upload, with `file:` URLs for its provenance: the file's own
+/// URL, linked from the folder's.
+pub async fn folder_upload(folder: &Path, name: &str) -> std::io::Result<FolderFile> {
+    let path = folder.join(name);
+    let bytes = tokio::fs::read(&path).await?;
+    if !is_pdf(&bytes) {
+        return Ok(FolderFile::NotPdf);
     }
-    Ok(uploads)
+    let absolute =
+        |path: &Path| std::io::Error::other(format!("{} is not an absolute path", path.display()));
+    let pdf_url = Url::from_file_path(&path).map_err(|()| absolute(&path))?;
+    let folder_url = Url::from_directory_path(folder).map_err(|()| absolute(folder))?;
+    Ok(FolderFile::Pdf(Upload {
+        bytes,
+        title_hint: name[..name.len() - ".pdf".len()].to_string(),
+        filename: Some(name.to_string()),
+        pdf_url: pdf_url.to_string(),
+        source_url: Some(folder_url.to_string()),
+    }))
 }

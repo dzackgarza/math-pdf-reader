@@ -30,6 +30,14 @@ export const AppConfigSchema = z.strictObject({
     concurrent_downloads: z.number().int().positive(),
     download_timeout_seconds: z.number().int().positive(),
   }),
+  // How long an extraction or resolver plugin may run before it is killed and its run reported
+  // as timed out.
+  plugins: z.strictObject({
+    extraction_timeout_seconds: z.number().int().positive(),
+    resolver_timeout_seconds: z.number().int().positive(),
+  }),
+  // How long one pikepdf command (`pdfbucket <command>`) may run before it is killed.
+  store: z.strictObject({ command_timeout_seconds: z.number().int().positive() }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -38,6 +46,6 @@ export function loadAppConfig(configPath: string): AppConfig {
   return AppConfigSchema.parse(JSON.parse(readFileSync(configPath, "utf8")));
 }
 
-// The Python store package owns provenance embedding and the folder layout; the server runs
-// this command, and tests that set up a bucket below its HTTP API run it too.
+// The pikepdf commands (`pdfbucket <command>`) in the checkout's Python environment; tests that
+// read or set up a bucket below its HTTP API run them.
 export const STORE_COMMAND = ["uv", "run", "--project", REPO_ROOT, "--locked", "pdfbucket"];
