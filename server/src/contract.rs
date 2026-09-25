@@ -63,9 +63,6 @@ mod generated {
 
 pub use generated::*;
 
-/// The JSON Schema every contract type is generated from.
-const SCHEMA: &str = include_str!(concat!(env!("OUT_DIR"), "/contract-schema.json"));
-
 /// A contract type read from JSON: `DEF` names its definition under `$defs` in the schema.
 pub trait Contract: serde::de::DeserializeOwned {
     const DEF: &'static str;
@@ -100,24 +97,17 @@ contract_types!(
     Sessions,
 );
 
-type Validators = std::collections::HashMap<&'static str, std::sync::Arc<jsonschema::Validator>>;
-
-static VALIDATORS: std::sync::LazyLock<std::sync::Mutex<Validators>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(Validators::new()));
-
-fn validator(def: &'static str) -> std::sync::Arc<jsonschema::Validator> {
-    let mut validators = VALIDATORS.lock().expect("never poisoned");
-    let entry = validators.entry(def).or_insert_with(|| {
-        let mut schema: serde_json::Value =
-            serde_json::from_str(SCHEMA).expect("the contract schema is JSON");
-        schema["$ref"] = serde_json::Value::String(format!("#/$defs/{def}"));
-        std::sync::Arc::new(
-            jsonschema::options()
-                .build(&schema)
-                .expect("the contract schema compiles"),
-        )
-    });
-    std::sync::Arc::clone(entry)
+/// The validator of the definition DEF: the whole contract schema, entered at `#/$defs/DEF`.
+fn validator(def: &str) -> jsonschema::Validator {
+    let mut schema: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("OUT_DIR"),
+        "/contract-schema.json"
+    )))
+    .expect("the contract schema is JSON");
+    schema["$ref"] = serde_json::Value::String(format!("#/$defs/{def}"));
+    jsonschema::options()
+        .build(&schema)
+        .expect("the contract schema compiles")
 }
 
 /// Why a document is not the contract type it should be: its first violation of the schema.

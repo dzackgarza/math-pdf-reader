@@ -275,7 +275,9 @@ test("filing refuses unknown items, unknown collections, and blank or untrimmed 
     expect(response.status).toBe(400);
     expect(await errorKind(response)).toBe("invalid_request");
   }
-  expect((await send(bucket, "POST", "/api/bulk/tags", { keys: [], add: ["x"], remove: [] })).status).toBe(400);
+  expect(
+    (await send(bucket, "POST", "/api/bulk/tags", { keys: [], add: ["x"], remove: [] })).status,
+  ).toBe(400);
 
   expect(byId((await library(bucket)).items).get("lattices")?.tags).toEqual([]);
 });
@@ -302,7 +304,11 @@ test("tag and collection edits are deltas, so two edits made from the same stale
 
   // Two windows that both saw ["to-read", "survey"] and [forms]: one reads it, the other tags it.
   const [read, tagged, moved] = await Promise.all([
-    send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices"], add: ["read"], remove: ["to-read"] }),
+    send(bucket, "POST", "/api/bulk/tags", {
+      keys: ["lattices"],
+      add: ["read"],
+      remove: ["to-read"],
+    }),
     send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices"], add: ["E8"], remove: [] }),
     send(bucket, "POST", "/api/bulk/collections", {
       keys: ["lattices"],
@@ -672,9 +678,7 @@ test("deleting a collection repairs every saved search naming it or a subcollect
     unread,
     { field: "collection", operator: "is not", value: forms.id },
   ]);
-  await search("Only forms", "all", [
-    { field: "collection", operator: "is not", value: forms.id },
-  ]);
+  await search("Only forms", "all", [{ field: "collection", operator: "is not", value: forms.id }]);
 
   const deleted = await bucket.request(`/api/collections/${forms.id}`, { method: "DELETE" });
   expect(deleted.status).toBe(200);
