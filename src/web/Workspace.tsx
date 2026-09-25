@@ -228,10 +228,7 @@ export default function Workspace({
   const searchField = useRef<HTMLInputElement>(null);
   const tabs = useReaderTabs();
 
-  const fail = useCallback(
-    (failure: ActionFailure) => setToast({ kind: "failure", failure }),
-    [],
-  );
+  const fail = useCallback((failure: ActionFailure) => setToast({ kind: "failure", failure }), []);
   const context: ActionContext = useMemo(
     () => ({
       api,
