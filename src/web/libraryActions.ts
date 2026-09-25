@@ -22,6 +22,7 @@ import {
   SavedSearchSchema,
   SendResponseSchema,
 } from "../contract/library";
+import { type ActionFailure, type ActionRejection, actionFailure } from "./actionFailure";
 import type { ConfirmRequest } from "./components/ConfirmDialog";
 import type { ItemFilingActions } from "./components/InspectorPanel";
 import type { NameRequest } from "./components/NameDialog";
@@ -39,17 +40,19 @@ export type ActionContext = {
   navigate: (path: string) => void;
   askName: (request: NameRequest) => void;
   confirm: (request: ConfirmRequest) => void;
-  // A failed call leaves the library as the server holds it; this says why.
+  // A failed call leaves the library as the server holds it; this says what refused it.
+  fail: (failure: ActionFailure) => void;
+  // What a call that succeeded could not do (a PDF not restored, no identifier found).
   report: (message: string) => void;
   // What a call that succeeded did, when the library does not show it by itself.
   notify: (message: string) => void;
 };
 
 // Runs a call whose failure no dialog shows: the window reports it.
-function run<T>(context: ActionContext, action: Promise<T>): void {
+export function run<T>(context: ActionContext, action: Promise<T>): void {
   action.then(
     () => undefined,
-    (error: Error) => context.report(error.message),
+    (rejection: ActionRejection) => context.fail(actionFailure(rejection)),
   );
 }
 

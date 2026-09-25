@@ -1,5 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useState } from "react";
+import { type ActionFailure, type ActionRejection, actionFailure } from "../actionFailure";
+import FailureText from "./FailureText";
 
 export type NameRequest = {
   title: string;
@@ -26,7 +28,7 @@ export default function NameDialog({
 }) {
   const [name, setName] = useState(request.initialName);
   const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<ActionFailure | null>(null);
   const submittable = request.allowEmpty === true || name.trim().length > 0;
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -42,9 +44,9 @@ export default function NameDialog({
               event.preventDefault();
               setSaving(true);
               setFailure(null);
-              request.onSubmit(name.trim()).then(onClose, (error: Error) => {
+              request.onSubmit(name.trim()).then(onClose, (rejection: ActionRejection) => {
                 setSaving(false);
-                setFailure(error.message);
+                setFailure(actionFailure(rejection));
               });
             }}
             className="mt-4 space-y-4"
@@ -63,7 +65,7 @@ export default function NameDialog({
                     onClick={() => {
                       request.browse?.().then(
                         (chosen) => chosen !== null && setName(chosen),
-                        (error: Error) => setFailure(error.message),
+                        (rejection: ActionRejection) => setFailure(actionFailure(rejection)),
                       );
                     }}
                     className="rounded-lg border border-line px-3 py-2 font-medium hover:bg-surface"
@@ -75,7 +77,7 @@ export default function NameDialog({
             </label>
             {failure !== null && (
               <p role="alert" className="text-sm break-words text-danger">
-                {failure}
+                <FailureText failure={failure} />
               </p>
             )}
             <div className="flex justify-end gap-2 text-sm">
