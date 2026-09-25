@@ -62,10 +62,7 @@ function sha256(bytes: Uint8Array): string {
 
 // The publisher the fixtures were captured from: what each path serves right now.
 const served = new Map<string, Uint8Array<ArrayBuffer>>(
-  CAPTURES.map(([key, bytes]) => [
-    `/~author/${key}.pdf`,
-    bytes,
-  ]),
+  CAPTURES.map(([key, bytes]) => [`/~author/${key}.pdf`, bytes]),
 );
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
