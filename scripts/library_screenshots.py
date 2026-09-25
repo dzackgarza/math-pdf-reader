@@ -448,6 +448,10 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     row.click()
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
     driver.save_screenshot(str(out / "webkit-dark-library-populated.png"))
+    driver.get(f"{origins['seeded']}/read/{quote(filed['reader'])}")
+    wait.until(lambda d: d.execute_script("return document.querySelector('iframe').contentDocument?.querySelector('.page canvas') != null"))
+    time.sleep(0.5)
+    driver.save_screenshot(str(out / "webkit-dark-reader.png"))
     call(origins["seeded"], "PATCH", "/api/preferences", {"theme": "system"})
     driver.quit()
 
