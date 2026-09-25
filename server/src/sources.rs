@@ -169,8 +169,15 @@ pub async fn rebuild_item(
     settings: &AppConfigRebuild,
 ) -> RebuildOutcome {
     let key: NonEmpty = nonempty(item.key.clone());
-    if store.pdf_path(&item.key).is_some() {
-        return RebuildOutcome::Present { key };
+    match store.pdf_path(&item.key) {
+        Ok(Some(_)) => return RebuildOutcome::Present { key },
+        Ok(None) => {}
+        Err(error) => {
+            return RebuildOutcome::Failed {
+                key,
+                message: nonempty(error.to_string()),
+            }
+        }
     }
     let mut attempts = Vec::new();
     let urls = std::iter::once(&item.provenance.pdf_url).chain(&item.mirrors);

@@ -34,7 +34,7 @@ async fn thumbnail(
     }
     let pdf = state
         .store
-        .pdf_path(&key)
+        .pdf_path(&key)?
         .ok_or_else(|| AppError::unknown_item(&key))?;
     let png = state
         .config
