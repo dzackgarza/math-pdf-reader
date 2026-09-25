@@ -183,14 +183,16 @@ export const ExtractionSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
-// The steps of a send after Zotero has created the item: set its URL and access date, attach
-// the PDF, attach the extraction Markdown when the item has one.
-export const SEND_STEPS = ["fields", "pdf", "markdown"] as const;
+// The steps of a send once the Zotero item exists: set its URL and access date, attach the
+// bucket's PDF, attach the extraction Markdown when the item has one, and add each of the
+// item's notes as a Zotero child note. `notes` is owed while any note has no `note` step.
+export const SEND_STEPS = ["fields", "pdf", "markdown", "notes"] as const;
 
 export const SendStepSchema = z.discriminatedUnion("step", [
   z.strictObject({ step: z.literal("fields") }),
   z.strictObject({ step: z.literal("pdf"), attachmentKey: NonEmptySchema }),
   z.strictObject({ step: z.literal("markdown"), attachmentKey: NonEmptySchema }),
+  z.strictObject({ step: z.literal("note"), noteId: NonEmptySchema, noteKey: NonEmptySchema }),
 ]);
 
 // How the Zotero item's metadata was found: a resolver plugin on an identifier, or, for an
@@ -204,7 +206,7 @@ export const SendSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("manuscript") }),
 ]);
 
-// The Zotero item a send created, and the steps done on it so far.
+// The Zotero item a send goes to, and the steps done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
   itemKey: NonEmptySchema,
   sentAt: z.iso.datetime({ offset: true }),
@@ -224,6 +226,8 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
 ]);
 
 // The answer to a send: the Zotero item and the steps this send performed.
+// `created`: this send made the Zotero item; false when it finished an earlier send, or found
+// the work already in Zotero (by its DOI, or by the page URL a send writes) and sent to that item.
 // `kept`: the item stays in the bucket because a collection holding it keeps its items offline.
 export const SendResponseSchema = z.strictObject({
   itemKey: NonEmptySchema,
@@ -396,6 +400,8 @@ export const API_ERROR_KINDS = [
   "resolver_failed",
   "zotero_failed",
   "storage_check_failed",
+  "cross_origin_request",
+  "unsupported_media_type",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({

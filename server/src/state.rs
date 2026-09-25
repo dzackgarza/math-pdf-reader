@@ -6,7 +6,8 @@ use std::sync::Arc;
 use axum::body::Bytes;
 use axum::Json;
 use serde::de::DeserializeOwned;
-use tokio::sync::{Mutex, Semaphore};
+use lockable::LockPool;
+use tokio::sync::Semaphore;
 
 use crate::config::{store_command, BucketConfig, THUMBNAIL_RENDERS};
 use crate::contract::{
@@ -38,8 +39,9 @@ pub struct AppState {
     pub downloads: Semaphore,
     /// Thumbnail renders at once.
     pub renders: Semaphore,
-    /// One send or removal at a time, so two clicks never create two Zotero items.
-    pub sends: Mutex<()>,
+    /// One send or removal of an item at a time, so two clicks never create two Zotero items;
+    /// sends of different items run side by side.
+    pub sends: LockPool<String>,
 }
 
 impl AppState {
@@ -62,7 +64,7 @@ impl AppState {
             events: Events::new(),
             downloads: Semaphore::new(concurrency(&config.app.rebuild)),
             renders: Semaphore::new(THUMBNAIL_RENDERS),
-            sends: Mutex::new(()),
+            sends: LockPool::new(),
             exporter,
             store,
             config,
@@ -158,7 +160,8 @@ pub fn bucket_item(indexed: &IndexedItem, organization: &Organization) -> AppRes
     let stored = &indexed.stored;
     let provenance = &stored.provenance;
     let filing = filing_of(organization, &stored.key, &provenance.captured_at);
-    let zotero: ZoteroStatus = zotero_status(filing.zotero.as_ref(), &indexed.extraction);
+    let zotero: ZoteroStatus =
+        zotero_status(filing.zotero.as_ref(), &indexed.extraction, &filing.notes);
     Ok(BucketItem {
         id: stored.key.clone(),
         title: stored.title.text.clone(),
