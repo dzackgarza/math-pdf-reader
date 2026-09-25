@@ -7,6 +7,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { OpenReaderSchema } from "../contract/capture";
+import { onBucketEvent } from "./bucketEvents";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import { ReaderTabsContext } from "./readerTabs";
 import { readerPath } from "./routes";
@@ -20,6 +21,11 @@ declare global {
   interface Window {
     // Set by a reader page just before it dispatches `reader-ready` on its frame element.
     readerControl: ReaderControl | undefined;
+  }
+  interface WindowEventMap {
+    // The desktop app's tray Quit (desktop/src-tauri/src/follow-open-events.js): the app quits
+    // once every promise handed to waitUntil settles, and asks first when one rejects.
+    "pdf-bucket-quit": CustomEvent<{ waitUntil(settled: Promise<void>): void }>;
   }
 }
 
@@ -167,6 +173,18 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     [closeReader],
   );
 
+  // Quitting waits for every open reader to settle; one that cannot rejects the quit's wait.
+  useEffect(() => {
+    const quitting = (event: WindowEventMap["pdf-bucket-quit"]) => {
+      const settling = [...readers.current.values()].map((reader) =>
+        reader.status === "ready" ? reader.control.settle() : Promise.resolve(),
+      );
+      event.detail.waitUntil(Promise.all(settling).then(() => undefined));
+    };
+    window.addEventListener("pdf-bucket-quit", quitting);
+    return () => window.removeEventListener("pdf-bucket-quit", quitting);
+  }, []);
+
   // One handler for the window and every reader frame, which receive their own keys.
   const shownRef = useRef(state.shown);
   shownRef.current = state.shown;
@@ -206,12 +224,10 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const events = new EventSource("/api/events");
-    events.addEventListener("open-reader", (event: MessageEvent<string>) => {
+    return onBucketEvent("open-reader", (event) => {
       const { reader_url, title } = OpenReaderSchema.parse(JSON.parse(event.data));
       openReader(readerKey(reader_url), title);
     });
-    return () => events.close();
   }, [openReader]);
 
   const retitle = (key: string) => (title: string) =>

@@ -19,7 +19,7 @@
     {
       "id": "mineru-precise",
       "name": "MinerU Precise",
-      "command": ["pdfbucket-mineru-precise", "$pdf", "$output"],
+      "command": ["pdfbucket-mineru-precise", "$pdf", "$output", "https://mineru.net/api/v4"],
       "accepted_inputs": [{ "kind": "pdf", "id": "pdf", "label": "PDF of any length", "limits": [] }]
     },
     {

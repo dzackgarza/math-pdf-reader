@@ -27,6 +27,9 @@ clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 futures = "0.3.34"
 hex = "0.4.3"
+html-escape = "0.2.15"
+jsonschema = { version = "0.57.0", default-features = false }
+lockable = "0.2.0"
 lol_html = "3.0.1"
 nix = { version = "0.31.3", features = ["fs", "process", "signal"] }
 percent-encoding = "2.3.2"

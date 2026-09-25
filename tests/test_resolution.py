@@ -13,6 +13,7 @@ from pathlib import Path
 import bibtexparser
 import pikepdf
 import pytest
+from bibtexparser.middlewares import LatexDecodingMiddleware
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CAPTURES = FIXTURES / "resolvers"
@@ -61,7 +62,7 @@ def resolve(plugin_id: str, identifier: str, upstream: str) -> subprocess.Comple
 
 
 def fields(bibtex: str) -> dict[str, str]:
-    library = bibtexparser.parse_string(bibtex)
+    library = bibtexparser.parse_string(bibtex, append_middleware=[LatexDecodingMiddleware()])
     assert len(library.entries) == 1, bibtex
     entry = library.entries[0]
     return {"ENTRYTYPE": entry.entry_type, **{field.key.lower(): field.value for field in entry.fields}}
@@ -76,6 +77,10 @@ def test_the_arxiv_resolver_gives_biblatex_eprint_fields(replay: str) -> None:
     # arXiv's natbib `archivePrefix` arrives as biblatex `eprinttype`, which Zotero's BibTeX import keeps.
     assert (entry["eprinttype"], entry["eprint"], entry["eprintclass"]) == ("arXiv", "2609.21174", "math.NT")
     assert "archiveprefix" not in entry
+    # arXiv's BibTeX export has no abstract; it comes from the summary of the API's Atom entry.
+    assert entry["abstract"].startswith("This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices.")
+    # arXiv's BibTeX export has no abstract; it comes from the summary of the API's Atom entry.
+    assert entry["abstract"].startswith("This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices.")
 
 
 def test_the_doi_resolver_gives_the_publisher_article(replay: str) -> None:
@@ -94,7 +99,7 @@ def test_the_zbmath_resolver_builds_an_article_from_the_zbmath_record(replay: st
     assert entry["ENTRYTYPE"] == "article"
     assert (entry["title"], entry["author"], entry["year"]) == ("Fuzzy sets", "Zadeh, L. A.", "1965")
     # Journal, volume and DOI come from the series entry and the link list of the zbMATH record.
-    assert (entry["journal"], entry["volume"], entry["pages"]) == ("Information and Control", "8", "338--353")
+    assert (entry["journal"], entry["volume"], entry["pages"]) == ("Information and Control", "8", "338–353")
     assert entry["doi"] == "10.1016/S0019-9958(65)90241-X"
 
 
@@ -104,7 +109,42 @@ def test_the_isbn_resolver_builds_a_book_from_the_edition_and_author_records(rep
     assert resolved.returncode == 0, resolved.stderr
     entry = fields(resolved.stdout)
     assert entry["ENTRYTYPE"] == "book"
-    assert (entry["author"], entry["publisher"], entry["year"], entry["isbn"]) == ("{Robin Hartshorne}", "Springer", "1997", "9780387902449")
+    assert (entry["author"], entry["publisher"], entry["year"], entry["isbn"]) == ("Robin Hartshorne", "Springer", "1997", "9780387902449")
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        (
+            "@article{first, title={Sphere packing}}\n@article{second, title={Sphere packing}}",
+            "expected exactly one BibTeX entry, got 2",
+        ),
+        ("@article{viazovska, title={The sphere packing problem in dimension 8}", "BibTeX does not parse"),
+        ("<html><body>Sign in to continue</body></html>", "expected exactly one BibTeX entry, got 0"),
+    ],
+)
+def test_a_resolver_fails_when_the_upstream_answer_is_not_exactly_one_well_formed_bibtex_entry(answer: str, reason: str) -> None:
+    class Answer(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = answer.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-bibtex")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt: str, *args: str | int) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Answer)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    completed = resolve("doi", "10.4007/annals.2017.185.3.7", f"http://127.0.0.1:{server.server_address[1]}")
+    server.shutdown()
+
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert completed.stderr.startswith(reason)
 
 
 def test_an_upstream_refusal_is_a_non_zero_exit(replay: str) -> None:

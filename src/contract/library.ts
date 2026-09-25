@@ -183,14 +183,16 @@ export const ExtractionSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
-// The steps of a send after Zotero has created the item: set its URL and access date, attach
-// the PDF, attach the extraction Markdown when the item has one.
-export const SEND_STEPS = ["fields", "pdf", "markdown"] as const;
+// The steps of a send once the Zotero item exists: set its URL and access date, attach the
+// bucket's PDF, attach the extraction Markdown when the item has one, and add each of the
+// item's notes as a Zotero child note. `notes` is owed while any note has no `note` step.
+export const SEND_STEPS = ["fields", "pdf", "markdown", "notes"] as const;
 
 export const SendStepSchema = z.discriminatedUnion("step", [
   z.strictObject({ step: z.literal("fields") }),
   z.strictObject({ step: z.literal("pdf"), attachmentKey: NonEmptySchema }),
   z.strictObject({ step: z.literal("markdown"), attachmentKey: NonEmptySchema }),
+  z.strictObject({ step: z.literal("note"), noteId: NonEmptySchema, noteKey: NonEmptySchema }),
 ]);
 
 // How the Zotero item's metadata was found: a resolver plugin on an identifier, or, for an
@@ -204,7 +206,7 @@ export const SendSourceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("manuscript") }),
 ]);
 
-// The Zotero item a send created, and the steps done on it so far.
+// The Zotero item a send goes to, and the steps done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
   itemKey: NonEmptySchema,
   sentAt: z.iso.datetime({ offset: true }),
@@ -224,6 +226,8 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
 ]);
 
 // The answer to a send: the Zotero item and the steps this send performed.
+// `created`: this send made the Zotero item; false when it finished an earlier send, or found
+// the work already in Zotero (by its DOI, or by the page URL a send writes) and sent to that item.
 // `kept`: the item stays in the bucket because a collection holding it keeps its items offline.
 export const SendResponseSchema = z.strictObject({
   itemKey: NonEmptySchema,
@@ -424,6 +428,8 @@ export const API_ERROR_KINDS = [
   "plugin_contract_broken",
   // A fault in the bucket itself.
   "internal",
+  "cross_origin_request",
+  "unsupported_media_type",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({
@@ -431,33 +437,44 @@ export const ApiErrorSchema = z.strictObject({
 });
 
 // Request bodies.
-export const TagsRequestSchema = z.strictObject({ tags: z.array(TrimmedSchema) });
-export const CollectionsRequestSchema = z.strictObject({ collections: z.array(NonEmptySchema) });
 export const NoteRequestSchema = z.strictObject({ note: TrimmedSchema });
-// Tags or collections added to every item listed, each keeping what it had.
+// A filing change to every item listed: `remove` is taken away first, then `add` goes after
+// what each item keeps. Either array may be empty.
 const BulkKeysSchema = z.array(NonEmptySchema).min(1);
 export const BulkTagsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
-  add: z.array(TrimmedSchema).min(1),
+  add: z.array(TrimmedSchema),
+  remove: z.array(TrimmedSchema),
 });
 export const BulkCollectionsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
-  add: z.array(NonEmptySchema).min(1),
+  add: z.array(NonEmptySchema),
+  remove: z.array(NonEmptySchema),
 });
 export const NewCollectionRequestSchema = z.strictObject({
   name: NameSchema,
   parentId: NonEmptySchema.optional(),
 });
+// A partial update names at least one field: the refinement checks it in TypeScript, and the
+// `minProperties` it carries into the JSON Schema checks it in the server.
+function changingSomething<T extends z.ZodObject>(update: T) {
+  return update
+    .refine((fields) => Object.keys(fields).length > 0, "the update changes nothing")
+    .meta({ minProperties: 1 });
+}
 // Any of a collection's own fields; the others stay as they are.
-export const CollectionUpdateRequestSchema = z
-  .strictObject({
-    name: NameSchema,
-    description: z.string(),
-    pinned: z.boolean(),
-    keepOffline: z.boolean(),
-  })
-  .partial()
-  .refine((update) => Object.keys(update).length > 0, "the update changes nothing");
+export const CollectionUpdateRequestSchema = changingSomething(
+  z
+    .strictObject({
+      name: NameSchema,
+      description: z.string(),
+      pinned: z.boolean(),
+      keepOffline: z.boolean(),
+    })
+    .partial(),
+);
+// Any of the preferences; the others stay as they are.
+export const PreferencesUpdateRequestSchema = changingSomething(PreferencesSchema.partial());
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
 export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({ id: true });
 

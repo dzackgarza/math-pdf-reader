@@ -7,7 +7,7 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 
 | Path | What it is |
 | --- | --- |
-| `server/` | Rust (axum) bucket server: capture endpoint, PDF and reader URLs, library API, index export, the store's file layout and every write to it, the plugin runners; `pdf-bucket` CLI (`serve`, `export-index`, `import-index`, `rebuild-cache`) |
+| `server/` | Rust (axum) bucket server: capture endpoint, PDF and reader URLs, library API, index export, the store's file layout and every write to it, the plugin runners; `pdf-bucket` CLI (`serve`, `export-index`, `import-index`, `rebuild-cache`, `forget`) |
 | `src/contract` | zod contracts for the API, the store's answers, the config and the documents; the server's Rust types are generated from them |
 | `src/web` | React library UI served by the server |
 | `src/extension` | WXT WebExtension, built for Chrome and Firefox |
@@ -20,12 +20,16 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 
 ## Data
 
-Stored PDFs and the filing (`organization.json`) live in `$XDG_DATA_HOME/pdf-bucket` (`~/.local/share/pdf-bucket` when `XDG_DATA_HOME` is unset).
-The index export lives beside it, in `$XDG_DATA_HOME/pdf-bucket-export/index.json`: every stored item's provenance and filing, and the collections and saved searches, in key order with a fixed field order, so two exports diff line by line.
-The app rewrites it after every capture and filing change; `just export-index` writes it on demand.
+Stored PDFs, the filing (`organization.json`), the reading sessions (`reading-sessions.json`) and the keys removed on purpose (`removed.json`) live in `$XDG_DATA_HOME/pdf-bucket` (`~/.local/share/pdf-bucket` when `XDG_DATA_HOME` is unset).
+The index export lives beside it, in `$XDG_DATA_HOME/pdf-bucket-export/index.json`: every stored item's provenance, filing and a record of its extraction files, and the collections, saved searches and reading sessions, in key order with a fixed field order, so two exports diff line by line.
+The app rewrites it after every capture, filing change and reading session; `just export-index` writes it on demand, safely while the app runs.
+
+The export never drops an item whose PDF went missing without being deleted or sent: it refuses, and the library's status bar says so and names the items.
+Rebuild them, or forget an item that is gone for good (`DELETE /api/missing/<key>`, or `just forget <key>`), which drops its filing and lets the export go on.
+A delete or send records its key in `removed.json` before the PDF goes to the trash, so an export written after a quit or a crash still drops it.
 
 If PDFs are lost, `just rebuild-cache` downloads each one the export lists from its recorded PDF URL into the same key, and stores it only when it hashes to the recorded original SHA-256. It prints one outcome per item (`present`, `restored`, `dead` with the HTTP status or network error, `changed` with both hashes) and exits 1 when any item was not restored.
-If the whole data root is lost, `just import-index` restores the filing into the empty root first, then `just rebuild-cache` restores the PDFs.
+If the whole data root is lost, `just import-index` restores the filing and the reading sessions into the new root first (the app may already have started there: an `organization.json` with no collections, saved searches, item filing or activity counts as empty), then `just rebuild-cache` restores the PDFs.
 
 ## Running
 

@@ -3,7 +3,9 @@ import { z } from "zod";
 
 export const NonEmptySchema = z.string().min(1);
 
-// Names, tags and notes: surrounding whitespace is dropped, and nothing may remain empty.
-export const TrimmedSchema = z.string().trim().min(1);
+// Names, tags and notes: not empty, and no whitespace before the first or after the last
+// character. A pattern rather than a trim, so every reader of the contract (typify's Rust types,
+// the server's JSON Schema check) enforces it; clients trim what the user typed.
+export const TrimmedSchema = z.string().regex(/^\S(?:[\s\S]*\S)?$/);
 
 export const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);

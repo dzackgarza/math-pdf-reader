@@ -159,6 +159,23 @@ describe("library window", () => {
     page.$$eval("[data-tab-key]", (tabs) =>
       tabs.map((element) => element.getAttribute("data-tab-key")),
     );
+  // What the desktop app's tray Quit hears back from the library (follow-open-events.js).
+  const quitOutcome = () =>
+    page.evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          const pending: Promise<void>[] = [];
+          window.dispatchEvent(
+            new CustomEvent("pdf-bucket-quit", {
+              detail: { waitUntil: (settled: Promise<void>) => pending.push(settled) },
+            }),
+          );
+          Promise.all(pending).then(
+            () => resolve("settled"),
+            () => resolve("failed"),
+          );
+        }),
+    );
   // The PDF tab for KEY, once it is the tab shown and its viewer has the PDF's pages: the
   // reader page it frames and that page's PDF.js viewer.
   const shownReader = async (key: string) => {
@@ -511,6 +528,8 @@ describe("library window", () => {
     await page.click(`${tab("reading")} button[aria-label^="Close"]`);
     await page.waitForSelector(`${tab("reading")}[data-state="active"]`);
     expect(await openTabKeys()).toContain("reading");
+    // The desktop tray's Quit waits for the readers, and hears that one cannot settle.
+    expect(await quitOutcome()).toBe("failed");
 
     const kept = page.waitForResponse(
       (response) =>
@@ -519,6 +538,7 @@ describe("library window", () => {
     await reader.click("#keep-mine");
     expect((await kept).status()).toBe(200);
     await reader.waitForSelector("#conflict", { hidden: true });
+    expect(await quitOutcome()).toBe("settled");
     await page.click(`${tab("reading")} button[aria-label^="Close"]`);
     await page.waitForFunction(`!document.querySelector('${tab("reading")}')`);
 

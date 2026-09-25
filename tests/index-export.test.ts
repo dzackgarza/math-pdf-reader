@@ -1,15 +1,23 @@
 // The index export and its maintenance commands (`pdf-bucket export-index`, `import-index`,
-// `rebuild-cache`) over the configured data root, $XDG_DATA_HOME/pdf-bucket, and the running
-// server's rewrite of the export after every change.
+// `rebuild-cache`, `forget`) over the configured data root, $XDG_DATA_HOME/pdf-bucket, and the
+// running server's rewrite of the export after every change.
 import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { type IndexExportState, ServerStatusSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
-import type { IndexExport } from "../src/contract/files";
-import { RebuildOutcomeSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { type IndexExport, RemovedKeysSchema, SessionsSchema } from "../src/contract/files";
+import { LibraryPayloadSchema, RebuildOutcomeSchema } from "../src/contract/library";
+import { type Bucket, EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 import {
   bucketCommand,
   captureBytes,
@@ -342,10 +350,14 @@ test("the running server rewrites the index export after a capture, a filing cha
   expect(afterCapture.items[0]?.key).toBe("lecture-notes");
   expect(afterCapture.items[0]?.provenance.original_sha256).toBe(sha256(lectureNotes));
 
-  const tagged = await app.request("/api/items/lecture-notes/tags", {
-    method: "PUT",
+  const tagged = await app.request("/api/bulk/tags", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tags: ["lattices", "topic:quadratic forms"] }),
+    body: JSON.stringify({
+      keys: ["lecture-notes"],
+      add: ["lattices", "topic:quadratic forms"],
+      remove: [],
+    }),
   });
   expect(tagged.status).toBe(200);
   const afterTagging = await exported((index) => index.items[0]?.filing.tags.length === 2);
@@ -355,4 +367,244 @@ test("the running server rewrites the index export after a capture, a filing cha
   expect(deleted.status).toBe(200);
   const afterDelete = await exported((index) => index.items.length === 0);
   expect(afterDelete.items).toEqual([]);
+});
+
+// A server over ROOT that rewrites EXPORT_FILE.
+function serve(root: string, exportFile: string) {
+  return serveBucket({
+    root,
+    zoteroUrl: config.zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
+    indexExport: exportFile,
+  });
+}
+
+// The export at FILE once DONE holds for it; the export lands after the response.
+async function exportedWhen(file: string, done: (index: IndexExport) => boolean) {
+  for (;;) {
+    const index = readIndexExport(file);
+    if (index !== null && done(index)) {
+      return index;
+    }
+    await Bun.sleep(50);
+  }
+}
+
+async function captureOver(app: Bucket, bytes: Uint8Array<ArrayBuffer>, filename: string) {
+  const form = new FormData();
+  form.set("pdf", new File([bytes], filename, { type: "application/pdf" }));
+  form.set("pdf_url", at(`/notes/${filename}`));
+  form.set("source_url", at("/teaching.html"));
+  form.set("title_hint", `Notes from ${filename}`);
+  const captured = await app.request("/capture-bytes", { method: "POST", body: form });
+  expect(captured.status).toBe(200);
+}
+
+async function exportState(app: Bucket, status: IndexExportState["status"]) {
+  for (;;) {
+    const read = ServerStatusSchema.parse(await (await app.request("/status")).json());
+    if (read.index_export.status === status) {
+      return read.index_export;
+    }
+    await Bun.sleep(50);
+  }
+}
+
+test("an item deleted in the app stays removed for an export written after the app quit", async () => {
+  const { home, root } = dataHome();
+  const exportFile = join(temporaryDirectory("export"), "index.json");
+  const first = await serve(root, exportFile);
+  await captureOver(first, lectureNotes, "lattices.pdf");
+  await captureOver(first, problemSet, "packing.pdf");
+  await exportedWhen(exportFile, (index) => index.items.length === 2);
+  await first.stop();
+
+  // The app deletes one item and quits before it rewrites this export.
+  const second = await serve(root, join(temporaryDirectory("other-export"), "index.json"));
+  expect((await second.request("/api/items/lattices", { method: "DELETE" })).status).toBe(200);
+  await second.stop();
+  expect(readIndexExport(exportFile)?.items.map((item) => item.key)).toEqual([
+    "lattices",
+    "packing",
+  ]);
+
+  const exported = await bucketCommand(home, ["export-index", exportFile]);
+
+  expect(exported.exitCode).toBe(0);
+  expect(readIndexExport(exportFile)?.items.map((item) => item.key)).toEqual(["packing"]);
+});
+
+test("a refused export shows in /status until the missing item is rebuilt or forgotten", async () => {
+  const { root } = dataHome();
+  const exportFile = join(temporaryDirectory("export"), "index.json");
+  const app = await serve(root, exportFile);
+  await captureOver(app, lectureNotes, "lattices.pdf");
+  await captureOver(app, problemSet, "packing.pdf");
+  await exportedWhen(exportFile, (index) => index.items.length === 2);
+  unlinkSync(join(root, "packing.pdf"));
+  const before = readFileSync(exportFile, "utf8");
+
+  await app.request("/api/bulk/tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keys: ["lattices"], add: ["codes"], remove: [] }),
+  });
+
+  expect(await exportState(app, "refused")).toEqual({
+    status: "refused",
+    file: exportFile,
+    missing: ["packing"],
+  });
+  expect(readFileSync(exportFile, "utf8")).toBe(before);
+  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  expect(library.missing.map((item) => item.key)).toEqual(["packing"]);
+
+  const stored = await app.request("/api/missing/lattices", { method: "DELETE" });
+  expect(stored.status).toBe(400);
+  expect((await app.request("/api/missing/nothing", { method: "DELETE" })).status).toBe(404);
+  const forgotten = await app.request("/api/missing/packing", { method: "DELETE" });
+  expect(forgotten.status).toBe(200);
+  expect(LibraryPayloadSchema.parse(await forgotten.json()).missing).toEqual([]);
+
+  expect(await exportState(app, "written")).toMatchObject({ file: exportFile, items: 1 });
+  expect(readIndexExport(exportFile)?.items.map((item) => [item.key, item.filing.tags])).toEqual([
+    ["lattices", ["codes"]],
+  ]);
+});
+
+test("`pdf-bucket forget` drops a missing item and writes the export without it", async () => {
+  const { home, root } = dataHome();
+  const exportFile = join(temporaryDirectory("export"), "index.json");
+  await capture(root, lectureNotes, "lattices.pdf", at("/notes/lecture-notes.pdf"));
+  await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
+  await exportIndex(home, exportFile);
+  unlinkSync(join(root, "2401.00001.pdf"));
+  expect((await bucketCommand(home, ["export-index", exportFile])).exitCode).toBe(1);
+
+  const forgotten = await bucketCommand(home, ["forget", "2401.00001", exportFile]);
+
+  expect(forgotten.exitCode).toBe(0);
+  expect(readIndexExport(exportFile)?.items.map((item) => item.key)).toEqual(["lattices"]);
+  expect((await bucketCommand(home, ["forget", "lattices", exportFile])).exitCode).toBe(1);
+  expect((await bucketCommand(home, ["export-index", exportFile])).exitCode).toBe(0);
+});
+
+test("the export carries reading sessions and extraction records, and imports into the empty filing a new app writes", async () => {
+  const original = dataHome();
+  const lattices = await capture(
+    original.root,
+    lectureNotes,
+    "lattices.pdf",
+    at("/notes/lecture-notes.pdf"),
+  );
+  writeOrganization(original.root, {
+    version: 2,
+    collections: [{ ...PLAIN, id: "forms", name: "Quadratic forms" }],
+    savedSearches: [],
+    items: {
+      [lattices.key]: { ...unfiled(lattices.provenance), collections: ["forms"], tags: ["E8"] },
+    },
+    activity: [],
+    preferences: { outlineOnOpen: true, theme: "dark" },
+  });
+  const sessions = SessionsSchema.parse({
+    version: 1,
+    sessions: [
+      {
+        id: "8a6f0b1e-2c1d-4d5e-9f00-1a2b3c4d5e6f",
+        key: "lattices",
+        openedAt: "2026-09-25T09:00:00.000Z",
+        lastSeenAt: "2026-09-25T09:05:00.000Z",
+        pages: [{ page: 1, seconds: 42 }],
+        item: {
+          title: lattices.title.text,
+          authors: [],
+          year: null,
+          abstract: null,
+          sourceUrl: lattices.provenance.source_url,
+        },
+      },
+    ],
+  });
+  writeFileSync(join(original.root, "reading-sessions.json"), JSON.stringify(sessions));
+  mkdirSync(join(original.root, "lattices.extraction"));
+  writeFileSync(join(original.root, "lattices.extraction/content_list.json"), "[1]");
+  writeFileSync(join(original.root, "lattices.md"), "# Lattices\n");
+  const exportFile = join(temporaryDirectory("export"), "index.json");
+  await exportIndex(original.home, exportFile);
+
+  const exported = readIndexExport(exportFile);
+  expect(exported?.sessions).toEqual(sessions.sessions);
+  expect(exported?.items[0]?.extraction).toEqual({
+    status: "extracted",
+    markdown: { name: "lattices.md", sizeBytes: 11 },
+    files: [{ name: "lattices.extraction/content_list.json", sizeBytes: 3 }],
+  });
+
+  // The app starts at login on the wiped root and saves a preference: its filing holds nothing.
+  const restored = dataHome();
+  const app = await serve(restored.root, join(temporaryDirectory("app-export"), "index.json"));
+  const themed = await app.request("/api/preferences", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme: "light" }),
+  });
+  expect(themed.status).toBe(200);
+  await app.stop();
+
+  const imported = await bucketCommand(restored.home, ["import-index", exportFile]);
+
+  expect(imported.exitCode).toBe(0);
+  expect(readOrganization(restored.root)).toEqual(readOrganization(original.root));
+  expect(
+    SessionsSchema.parse(
+      JSON.parse(readFileSync(join(restored.root, "reading-sessions.json"), "utf8")),
+    ),
+  ).toEqual(sessions);
+});
+
+test("a new capture under a key removed earlier starts unfiled, even when the removal was cut short", async () => {
+  const { root } = dataHome();
+  const lattices = await capture(
+    root,
+    lectureNotes,
+    "lattices.pdf",
+    at("/notes/lecture-notes.pdf"),
+  );
+  // The app trashed the PDF of a key it recorded as removed, and stopped before its filing went.
+  writeOrganization(root, {
+    version: 2,
+    collections: [],
+    savedSearches: [],
+    items: {
+      [lattices.key]: {
+        ...unfiled(lattices.provenance),
+        tags: ["old"],
+        notes: [
+          {
+            id: "note-1",
+            note: "About the old PDF.",
+            dateAdded: lattices.provenance.captured_at,
+            dateModified: lattices.provenance.captured_at,
+          },
+        ],
+      },
+    },
+    activity: [],
+    preferences: { outlineOnOpen: false, theme: "system" },
+  });
+  writeFileSync(
+    join(root, "removed.json"),
+    JSON.stringify(RemovedKeysSchema.parse({ version: 1, keys: [lattices.key] })),
+  );
+  unlinkSync(join(root, "lattices.pdf"));
+  const app = await serve(root, join(temporaryDirectory("export"), "index.json"));
+
+  await captureOver(app, problemSet, "lattices.pdf");
+
+  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  const item = library.items.find((listed) => listed.id === "lattices");
+  expect(item?.provenance.original_sha256).toBe(sha256(problemSet));
+  expect([item?.tags, item?.notes]).toEqual([[], []]);
 });
