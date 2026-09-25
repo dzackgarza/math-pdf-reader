@@ -23,7 +23,8 @@ use crate::contract::{
     ServerStatusService, ServerStatusServiceName, ServerStatusStorage,
 };
 use crate::error::{AppError, AppResult};
-use crate::events::{self, OpenReader};
+use crate::contract::OpenReader;
+use crate::events;
 use crate::imports::{find_pdf_at, is_pdf, pdfs_in_folder};
 use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};

@@ -42,7 +42,7 @@ On Hyprland, the session target starts it: `just provision` adds a drop-in to `h
 
 After a capture the window asks for focus.
 By default Hyprland only marks it urgent.
-To bring the window to the front on the reader page, load the shipped window rule from the Hyprland Lua config (for example `~/.config/hypr/confs/windowrules.lua`):
+To bring the window to the front with the captured PDF's tab, load the shipped window rule from the Hyprland Lua config (for example `~/.config/hypr/confs/windowrules.lua`):
 
 ```lua
 dofile("<checkout>/desktop/hyprland/pdf-bucket.lua")

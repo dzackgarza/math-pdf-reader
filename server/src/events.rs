@@ -1,22 +1,18 @@
-//! Server-sent events for the desktop window: after every capture, new or existing, the window
-//! moves to the item's reader page (desktop/src-tauri follows `open-reader`).
+//! Server-sent events for the library: after every capture, new or existing, each open library
+//! opens the item's reader in a tab (src/web/tabs.tsx), and the desktop window comes to the
+//! front (desktop/src-tauri follows `open-reader`).
 use std::convert::Infallible;
 
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
 use futures::StreamExt;
-use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::config::EVENT_KEEPALIVE;
+use crate::contract::OpenReader;
 use crate::state::Shared;
-
-#[derive(Clone, Serialize)]
-pub struct OpenReader {
-    pub reader_url: String,
-}
 
 pub struct Events {
     open_reader: broadcast::Sender<OpenReader>,
@@ -28,7 +24,7 @@ impl Events {
         Self { open_reader }
     }
 
-    /// Tells every open window to show the reader.
+    /// Tells every open library to show the reader.
     pub fn publish_open_reader(&self, event: OpenReader) {
         match self.open_reader.send(event) {
             Ok(_windows) => {}

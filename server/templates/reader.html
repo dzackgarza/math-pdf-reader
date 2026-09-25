@@ -1,9 +1,10 @@
 {#
 Reader page: the prebuilt PDF.js viewer over the stored PDF, full width, under a bar with a
-Library button, back and forward, and a link to the current view. The page's address carries
-PDF.js's view parameters (`#page=…&zoom=…`, PDF.js's open parameters), so reloading or sharing
-it opens the same view. Annotations made with PDF.js's editors are saved into the stored PDF.
-The Highwire `citation_*` tags let the Zotero Connector save the page.
+Library button (only when the page is not in a library tab), back and forward, and a link to
+the current view. The page's address carries PDF.js's view parameters (`#page=…&zoom=…`,
+PDF.js's open parameters), so reloading or sharing it opens the same view. Annotations made
+with PDF.js's editors are saved into the stored PDF. The Highwire `citation_*` tags let the
+Zotero Connector save the page.
 -#}
 <!doctype html>
 <html
@@ -28,11 +29,12 @@ The Highwire `citation_*` tags let the Zotero Connector save the page.
        itself embedded and keeps no navigation history (PDFViewerApplication._initializeViewerComponents
        creates PDFHistory only when not embedded). The frame is this page's whole document, so the
        viewer is told it is not embedded, and external links keep leaving through the top window, as
-       they do for an embedded viewer. PDF.js's comment tool, off by default, is turned on beside
-       its highlight, text, ink and image tools. The viewer takes the theme preference
-       (viewerCssTheme). The sidebar opens as the preferences say, never as the PDF's /PageMode
-       asks (sidebarViewOnLoad set to a view overrides the page mode and PDF.js's remembered
-       sidebar). The viewer's event bus exists once its
+       they do for an embedded viewer; in a library tab, whose top window is the library, they open
+       a new window instead (the desktop window hands it to the default browser). PDF.js's comment
+       tool, off by default, is turned on beside its highlight, text, ink and image tools. The
+       viewer takes the theme preference (viewerCssTheme). The sidebar opens as the preferences
+       say, never as the PDF's /PageMode asks (sidebarViewOnLoad set to a view overrides the page
+       mode and PDF.js's remembered sidebar). The viewer's event bus exists once its
        initializedPromise settles, which happens before it opens the PDF, so a listener added then
        cannot miss `documentloaded`. PDF.js refuses to unload while the document holds any
        annotation (onBeforeUnload with _hasChanges), since it expects a download to keep them; here
@@ -40,6 +42,8 @@ The Highwire `citation_*` tags let the Zotero Connector save the page.
        change is saved.
     #}
     <script>{% raw %}
+// Framed by the library's tab (src/web/tabs.tsx) rather than open on its own.
+const inTab = window.frameElement !== null;
 let annotationsSaved = true;
 let documentLoaded;
 const viewerDocumentLoaded = new Promise((resolve) => { documentLoaded = resolve; });
@@ -54,7 +58,7 @@ document.addEventListener("webviewerloaded", (event) => {
   app.isViewerEmbedded = false;
   const { LinkTarget } = viewerWindow.PDFViewerApplicationConstants;
   const options = viewerWindow.PDFViewerApplicationOptions;
-  options.set("externalLinkTarget", LinkTarget.TOP);
+  options.set("externalLinkTarget", inTab ? LinkTarget.BLANK : LinkTarget.TOP);
   options.set("enableComment", true);
   options.set("sidebarViewOnLoad", Number(document.documentElement.dataset.sidebarViewOnLoad));
   options.set("viewerCssTheme", Number(document.documentElement.dataset.viewerCssTheme));
@@ -91,6 +95,7 @@ document.addEventListener("webviewerloaded", (event) => {
         font-size: 0.8125rem; font-weight: 500; text-decoration: none;
         border-right: 1px solid var(--line); border-radius: 0.375rem 0 0 0.375rem;
       }
+      #library[hidden] { display: none; }
       button:hover:enabled, #library:hover { background: var(--surface); color: var(--ink); }
       button:disabled { opacity: 0.35; cursor: default; }
       #copy-link[data-copied] { color: var(--accent); }
@@ -145,15 +150,28 @@ document.addEventListener("webviewerloaded", (event) => {
        writes the PDF with every annotation as an incremental update of the loaded file, and the page
        PUTs it to the server, which keeps it only while it carries the item's provenance. Saves run
        one after another; the Library link waits for a pending save.
+
+       In a library tab the tab strip holds the Library tab, so the page hides its Library link.
+       A frame's document stays visible while its tab is hidden: the page counts as hidden when
+       its frame is invisible, and the tab strip dispatches `visibilitychange` on it at each
+       switch. Closing the tab first awaits window.settleReader, which does what the Library link
+       does before it leaves. The page passes its focus to the viewer, so a shown tab scrolls with
+       the keyboard.
     #}
     <script type="module">{% raw %}
 const frame = document.querySelector("iframe");
 const backButton = document.getElementById("back");
 const forwardButton = document.getElementById("forward");
+const libraryLink = document.getElementById("library");
+libraryLink.hidden = inTab;
 const libraryView = sessionStorage.getItem(document.body.dataset.libraryViewKey);
 if (libraryView !== null) {
-  document.getElementById("library").href = "/" + libraryView;
+  libraryLink.href = "/" + libraryView;
 }
+const shown = () =>
+  document.visibilityState === "visible" &&
+  (window.frameElement === null || window.frameElement.checkVisibility({ visibilityProperty: true }));
+window.addEventListener("focus", () => frame.contentWindow.focus());
 const saveStatus = document.getElementById("save-status");
 const itemPath = document.body.dataset.itemPath;
 const openAt = location.hash === "" ? document.body.dataset.resumeHash : location.hash;
@@ -263,7 +281,7 @@ frame.addEventListener("load", async () => {
     stretch = null;
   };
   const startStretch = (page) => {
-    stretch = document.visibilityState === "visible" ? { page, since: Date.now() } : null;
+    stretch = shown() ? { page, since: Date.now() } : null;
   };
   const sessionReport = () => {
     const pages = new Map(readMs);
@@ -320,25 +338,28 @@ frame.addEventListener("load", async () => {
     sendSession(false);
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
+    if (shown()) {
+      startStretch(viewer.page);
+    } else {
       endStretch();
       sendSession(true);
-    } else {
-      startStretch(viewer.page);
     }
   });
   setInterval(() => sendSession(false), 30000);
   window.addEventListener("pagehide", () => sendSession(true));
 
-  document.getElementById("library").addEventListener("click", async (event) => {
-    event.preventDefault();
+  window.settleReader = async () => {
     await sendSession(false);
     if (pendingSave !== null) {
       clearTimeout(pendingSave);
       startSave();
     }
     await saves;
-    location.assign(event.currentTarget.href);
+  };
+  libraryLink.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await window.settleReader();
+    location.assign(libraryLink.href);
   });
 });
 {% endraw %}</script>

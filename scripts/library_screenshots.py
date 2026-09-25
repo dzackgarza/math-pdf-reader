@@ -31,6 +31,7 @@ from urllib.request import Request, urlopen
 from cyclopts import App
 from playwright.sync_api import Page, Route, sync_playwright
 from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.wait import WebDriverWait
@@ -315,6 +316,18 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.frame_locator("iframe").locator(".page canvas").first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "reader")
+
+        # Two PDFs open in tabs after the Library tab, the second one shown.
+        page.goto(origins["seeded"])
+        first = page.locator(f"tbody tr:not([data-item-id='{filed['reader']}'])").first
+        first_key = first.get_attribute("data-item-id")
+        first.dblclick()
+        page.frame_locator(f"iframe[data-reader-key='{first_key}']").frame_locator("iframe").locator(".page canvas").first.wait_for()
+        page.get_by_role("tab", name="Library", exact=True).click()
+        page.locator(f"tr[data-item-id='{filed['reader']}']").dblclick()
+        page.frame_locator(f"iframe[data-reader-key='{filed['reader']}']").frame_locator("iframe").locator(".page canvas").first.wait_for()
+        page.wait_for_timeout(500)
+        shoot(page, out, "tabs")
         dark_screens(browser.new_page(viewport=VIEWPORT, color_scheme="dark"), out, origins, filed)
         browser.close()
     return timings
@@ -399,6 +412,15 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     wait.until(lambda d: d.execute_script("return document.querySelector('iframe').contentDocument?.querySelector('.page canvas') != null"))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-reader.png"))
+
+    # The same PDF opened from the library, in its tab.
+    driver.get(origins["seeded"])
+    reader_cell = f"//tbody/tr[@data-item-id={json.dumps(filed['reader'])}]/td[@data-column='title']"
+    ActionChains(driver).double_click(wait.until(expected_conditions.element_to_be_clickable((By.XPATH, reader_cell)))).perform()
+    tab_canvas = f"return document.querySelector(\"iframe[data-reader-key='{filed['reader']}']\")?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.page canvas') != null"
+    wait.until(lambda d: d.execute_script(tab_canvas))
+    time.sleep(0.5)
+    driver.save_screenshot(str(out / "webkit-tabs.png"))
 
     # The Dark preference over the light GTK theme.
     call(origins["seeded"], "PUT", "/api/preferences", {"outlineOnOpen": False, "theme": "dark"})

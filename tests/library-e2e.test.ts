@@ -145,6 +145,35 @@ describe("library window", () => {
     await page.goto(`${bucket.origin}/`);
     await page.waitForSelector("nav a");
   };
+  const tab = (key: string) => `[data-tab-key="${key}"]`;
+  // True in the window once the PDF.js viewer of the reader page in FRAME has the PDF's pages.
+  const pdfLoadedIn = (frame: string) =>
+    `document.querySelector('${frame}')?.contentDocument?.querySelector("iframe")?.contentWindow?.PDFViewerApplication?.pdfViewer?.pagesCount > 0`;
+  const openTabKeys = () =>
+    page.$$eval("[data-tab-key]", (tabs) =>
+      tabs.map((element) => element.getAttribute("data-tab-key")),
+    );
+  // The PDF tab for KEY, once it is the tab shown and its viewer has the PDF's pages: the
+  // reader page it frames and that page's PDF.js viewer.
+  const shownReader = async (key: string) => {
+    await page.waitForSelector(`${tab(key)}[data-state="active"]`);
+    // A frame handle taken while a new tab's frame still holds its initial empty document can
+    // detach when the reader page replaces it, so the handles are taken once the PDF is up.
+    const frameSelector = `iframe[data-reader-key="${key}"]`;
+    await page.waitForFunction(pdfLoadedIn(frameSelector));
+    const reader = await (
+      await page.waitForSelector(frameSelector, { visible: true })
+    )?.contentFrame();
+    if (reader === undefined || reader === null) {
+      throw new Error(`the tab of ${key} frames no reader`);
+    }
+    const viewer = await (await reader.waitForSelector("iframe"))?.contentFrame();
+    if (viewer === undefined || viewer === null) {
+      throw new Error("the reader has no viewer frame");
+    }
+    await viewer.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount > 0");
+    return { reader, viewer };
+  };
 
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
@@ -271,11 +300,10 @@ describe("library window", () => {
     await page.waitForFunction(() => location.hash === "#/unfiled");
   });
 
-  test("reader back and forward walk the positions visited in the PDF and stay in it; Library returns to the view the PDF was opened from", async () => {
+  test("reader back and forward walk the positions visited in the PDF and stay in it; on its own, the reader's Library returns to the view the library last showed", async () => {
     await page.goto(`${bucket.origin}/#/unfiled`);
     await page.waitForSelector(row("reading"));
-    await page.click(row("reading"), { count: 2 });
-    await page.waitForFunction(() => location.pathname === "/read/reading");
+    await page.goto(`${bucket.origin}/read/reading`);
     const viewer = await (await page.waitForSelector("iframe"))?.contentFrame();
     if (viewer === undefined || viewer === null) {
       throw new Error("the reader has no viewer frame");
@@ -321,6 +349,122 @@ describe("library window", () => {
     await page.setViewport({ width: 700, height: 900 });
     await shot("reader-narrow");
     await page.setViewport(viewport);
+  });
+
+  test("each PDF opens in its own tab after the Library tab, which keeps its selection; opening an open PDF shows its tab; Ctrl+Tab steps through the tabs and Ctrl+W closes the one shown", async () => {
+    const payload = LibraryPayloadSchema.parse(
+      await (await fetch(`${bucket.origin}/api/library`)).json(),
+    );
+    const titleOf = (key: string) => {
+      const item = payload.items.find((candidate) => candidate.id === key);
+      if (item === undefined) {
+        throw new Error(`the library holds no ${key}`);
+      }
+      return item.title;
+    };
+    await openLibrary();
+    await page.click(row("problems"), { count: 2 });
+    // The Library tab is shown again, and the PDF loads while its tab is hidden.
+    await page.waitForSelector(`${tab("problems")}[data-state="active"]`);
+    await (await byRole("tab", "Library")).click();
+    await page.waitForSelector(`${row("problems")}[aria-selected="true"]`, { visible: true });
+    expect(new URL(page.url()).pathname).toBe("/");
+    await page.waitForFunction(pdfLoadedIn('iframe[data-reader-key="problems"]'));
+    await page.keyboard.press("Enter");
+    const problems = await shownReader("problems");
+    expect(await openTabKeys()).toEqual(["problems"]);
+    // Loaded while hidden, the PDF still draws its pages once its tab is shown.
+    await problems.viewer.waitForFunction(
+      `document.querySelector('.page[data-page-number="1"] canvas')?.width > 0`,
+    );
+    expect(await page.$eval(tab("problems"), (element) => element.textContent)).toBe(
+      titleOf("problems"),
+    );
+    // The tab strip holds the way back, so the reader in a tab shows no Library link.
+    expect(await problems.reader.$eval("#library", (link) => link.checkVisibility())).toBe(false);
+    await shot("tabs-reader");
+
+    await (await byRole("tab", "Library")).click();
+    await page.click(row("reading"));
+    await page.keyboard.press("Enter");
+    const reading = await shownReader("reading");
+    expect(await openTabKeys()).toEqual(["problems", "reading"]);
+    await shot("tabs-two");
+
+    // Keys pressed while reading reach the tab strip from inside the PDF.
+    await reading.viewer.click("#viewerContainer");
+    await page.keyboard.down("Control");
+    await page.keyboard.press("Tab");
+    await page.waitForSelector(row("reading"), { visible: true });
+    await page.keyboard.down("Shift");
+    await page.keyboard.press("Tab");
+    await page.keyboard.up("Shift");
+    await shownReader("reading");
+    await page.keyboard.press("w");
+    await page.keyboard.up("Control");
+    await shownReader("problems");
+    expect(await openTabKeys()).toEqual(["problems"]);
+
+    await page.click(`${tab("problems")} button[aria-label^="Close"]`);
+    await page.waitForSelector(row("problems"), { visible: true });
+    expect(await openTabKeys()).toEqual([]);
+  });
+
+  test("closing a PDF's tab right after a note is written saves the note into the PDF first", async () => {
+    await openLibrary();
+    await page.click(row("outlined"), { count: 2 });
+    const { viewer } = await shownReader("outlined");
+    await viewer.waitForFunction(
+      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
+    );
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
+    );
+    const layer = await viewer.waitForSelector(
+      '.page[data-page-number="1"] .annotationEditorLayer',
+    );
+    await layer?.click({ offset: { x: 120, y: 160 } });
+    await viewer.waitForSelector(".freeTextEditor .internal");
+    const note = `Closed at once ${Date.now()}`;
+    await page.keyboard.type(note);
+    await page.keyboard.press("Escape");
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
+    );
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/outlined/pdf") && response.request().method() === "PUT",
+    );
+    await page.click(`${tab("outlined")} button[aria-label^="Close"]`);
+    expect((await saved).status()).toBe(200);
+    await page.waitForSelector(row("outlined"), { visible: true });
+
+    await page.goto(`${bucket.origin}/read/outlined`);
+    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
+    if (reopened === undefined || reopened === null) {
+      throw new Error("the reader has no viewer frame");
+    }
+    await reopened.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
+    const contents = z
+      .array(z.string())
+      .parse(
+        await reopened.evaluate(
+          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
+        ),
+      );
+    expect(contents).toContain(note);
+  });
+
+  test("a capture made while the library is open opens its PDF in a tab", async () => {
+    await openLibrary();
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(join(fixtures, "problem-set.pdf"))], "problems.pdf"));
+    form.set("pdf_url", published("/~author/problems.pdf"));
+    form.set("source_url", published("/~author/teaching.html"));
+    form.set("title_hint", "Problem set on quadratic forms");
+    const response = await fetch(`${bucket.origin}/capture-bytes`, { method: "POST", body: form });
+    expect(response.status).toBe(200);
+    await shownReader("problems");
   });
 
   test("a PDF that asks for its outline opens with the outline closed, unless the setting opens it", async () => {
@@ -484,7 +628,7 @@ describe("library window", () => {
     await reopened.waitForFunction("PDFViewerApplication.page === 4");
   });
 
-  test("the Timeline shows a reading session with the pages read for at least five seconds, and its title reopens the PDF", async () => {
+  test("the Timeline shows a reading session with the pages read for at least five seconds, and its title reopens the PDF in a tab", async () => {
     await page.goto(`${bucket.origin}/read/reading`);
     const viewer = await (await page.waitForSelector("iframe"))?.contentFrame();
     if (viewer === undefined || viewer === null) {
@@ -500,8 +644,10 @@ describe("library window", () => {
     const reported = page.waitForResponse((response) =>
       response.url().endsWith("/api/reading-sessions"),
     );
+    // The link leaves once the session is reported and every annotation saved.
     await page.click('a[aria-label="Library"]');
     expect((await reported).status()).toBe(200);
+    await page.waitForSelector("nav a");
 
     await page.goto(`${bucket.origin}/#/timeline`);
     await page.waitForSelector('select[aria-label="Shortest reading"]');
@@ -512,10 +658,11 @@ describe("library window", () => {
     expect(await entry?.evaluate((element) => element.textContent)).toContain("pp. 1–2");
     await shot("timeline");
     await page.click('[data-timeline-key="reading"] a');
-    await page.waitForFunction(() => location.pathname === "/read/reading");
+    await shownReader("reading");
+    expect(new URL(page.url()).hash).toBe("#/timeline");
   });
 
-  test("the grid view shows each PDF's first page, and a double-click opens the reader", async () => {
+  test("the grid view shows each PDF's first page, and a double-click opens the reader in a tab", async () => {
     await openLibrary();
     const keys = (await rowKeys()).sort();
     await page.click('button[aria-label="Grid view"]');
@@ -543,7 +690,7 @@ describe("library window", () => {
         document.querySelector<HTMLImageElement>('aside img[alt="First page"]')?.naturalWidth ?? 0,
     );
     await page.click('[data-card-id="reading"]', { count: 2 });
-    await page.waitForFunction(() => location.pathname === "/read/reading");
+    await shownReader("reading");
 
     // The layout is kept for the next visit; the list comes back only when chosen.
     await openRoot();
