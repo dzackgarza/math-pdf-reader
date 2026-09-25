@@ -40,7 +40,15 @@ fn from_extension(headers: &HeaderMap) -> bool {
 /// browser), a missing `Origin` passes and an `Origin` whose host and port are the `Host`
 /// header's passes.
 fn same_origin(headers: &HeaderMap) -> bool {
-    match header_text(headers, header::HeaderName::from_static("sec-fetch-site")) {
+    let sec_fetch_site = header::HeaderName::from_static("sec-fetch-site");
+    // A browser writes both headers as ASCII; one that is not text is not a browser's.
+    let unreadable = [&sec_fetch_site, &header::ORIGIN]
+        .into_iter()
+        .any(|name| headers.get(name).is_some_and(|value| value.to_str().is_err()));
+    if unreadable {
+        return false;
+    }
+    match header_text(headers, sec_fetch_site) {
         Some("same-origin" | "none") => return true,
         Some(_) => return from_extension(headers),
         None => {}
