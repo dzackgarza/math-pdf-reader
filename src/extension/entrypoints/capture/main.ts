@@ -7,7 +7,12 @@ import { browser } from "wxt/browser";
 import type { CaptureResponse } from "../../../contract/capture";
 import { bucketBuild } from "../../bucket-config";
 import { pdfUrlFromCaptureQuery } from "../../interception";
-import { type CaptureOutcome, CaptureOutcomeSchema, type RuntimeMessage } from "../../messages";
+import {
+  type CaptureOutcome,
+  CaptureOutcomeSchema,
+  metadataFailure,
+  type RuntimeMessage,
+} from "../../messages";
 
 function element(id: string): HTMLElement {
   const found = document.getElementById(id);
@@ -56,14 +61,9 @@ function renderStoredInFrame(response: CaptureResponse): void {
   const reader = link(response.reader_url, response.provenance.title_hint);
   reader.target = "_blank";
   element("heading").replaceChildren(reader);
-  const { metadata } = response;
-  if (metadata?.status === "failed") {
-    element("details").replaceChildren(
-      ...detail(
-        "Metadata",
-        `${metadata.pluginId} failed for ${metadata.identifier}: ${metadata.message}`,
-      ),
-    );
+  const failure = metadataFailure(response);
+  if (failure !== null) {
+    element("details").replaceChildren(...detail("Metadata", failure));
   }
 }
 

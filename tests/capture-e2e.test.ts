@@ -424,8 +424,13 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
   test("a sub-frame large enough to read in is captured", async () => {
     await page.goto(`${site.origin}/frame-large.html`);
+    // Chromium replaces the iframe's frame when it commits the capture page, so a handle to the
+    // frame that still shows the PDF URL detaches; Firefox keeps one frame and reports no URL
+    // change into it.
     const frame = await page.waitForFrame(
-      (candidate) => candidate.parentFrame() === page.mainFrame(),
+      (candidate) =>
+        candidate.parentFrame() === page.mainFrame() &&
+        (engine === "firefox" || candidate.url().startsWith(extensionOrigin)),
     );
     await captureState(frame, "stored");
     await shot("large-frame");

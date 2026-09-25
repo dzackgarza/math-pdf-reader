@@ -2,7 +2,7 @@
 // fetch (with the browser's cookies), the post to the bucket, the link-origin record and
 // the exemptions. The sender's tab comes from the runtime, never from the message.
 import { z } from "zod";
-import { CaptureResponseSchema } from "../contract/capture";
+import { type CaptureResponse, CaptureResponseSchema } from "../contract/capture";
 
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
 
@@ -38,3 +38,16 @@ export const CaptureOutcomeSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type CaptureOutcome = z.infer<typeof CaptureOutcomeSchema>;
+
+// Why a stored capture has no retrieved metadata, or null when nothing went wrong.
+export function metadataFailure(response: CaptureResponse): string | null {
+  const { metadata } = response;
+  switch (metadata?.status) {
+    case "failed":
+      return `${metadata.pluginId} failed for ${metadata.identifier}: ${metadata.message}`;
+    case "error":
+      return metadata.message;
+    default:
+      return null;
+  }
+}
