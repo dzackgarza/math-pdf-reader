@@ -224,10 +224,11 @@ describe("library window", () => {
     page = await browser.newPage();
   }, 60_000);
 
+  // Runs also when a test or the setup fails; closing the browser removes its profile.
   afterAll(async () => {
-    await browser.close();
-    await bucket.stop();
     publisher.stop(true);
+    await bucket.stop();
+    await browser.close();
   });
 
   test("typing a new collection name in the details files the item into that new collection", async () => {
