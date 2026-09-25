@@ -34,12 +34,12 @@ document.addEventListener("contextmenu", (event) => {
 
 createRoot(root).render(
   <StrictMode>
-    <ErrorBoundary>
-      <Router hook={useHashLocation}>
-        <ReaderTabs>
+    <Router hook={useHashLocation}>
+      <ReaderTabs>
+        <ErrorBoundary>
           <App />
-        </ReaderTabs>
-      </Router>
-    </ErrorBoundary>
+        </ErrorBoundary>
+      </ReaderTabs>
+    </Router>
   </StrictMode>,
 );
