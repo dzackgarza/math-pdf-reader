@@ -1,8 +1,8 @@
 """Mistral OCR extraction: Markdown with a `<!-- page N -->` anchor before every page.
 
 The PDF is uploaded to Mistral's files API, OCR runs on its signed URL, and the upload is
-deleted afterwards. One OCR request takes at most 1000 pages, so longer PDFs go in chunks.
-Reads `MISTRAL_API_KEY` from the environment.
+deleted afterwards, whether OCR succeeded or failed. One OCR request takes at most 1000
+pages, so longer PDFs go in chunks. Reads `MISTRAL_API_KEY` from the environment.
 """
 
 from __future__ import annotations
@@ -30,9 +30,11 @@ def ocr_markdown(client: Mistral, pdf: Path, first_page: int) -> str:
     """Markdown for PDF, whose first page is page FIRST_PAGE (1-based) of the whole document."""
     with pdf.open("rb") as content:
         uploaded = client.files.upload(file={"file_name": pdf.name, "content": content}, purpose="ocr")
-    signed = client.files.get_signed_url(file_id=uploaded.id)
-    response = client.ocr.process(model=MODEL, document={"type": "document_url", "document_url": signed.url})
-    client.files.delete(file_id=uploaded.id)
+    try:
+        signed = client.files.get_signed_url(file_id=uploaded.id)
+        response = client.ocr.process(model=MODEL, document={"type": "document_url", "document_url": signed.url})
+    finally:
+        client.files.delete(file_id=uploaded.id)
     return "\n\n".join(f"<!-- page {first_page + page.index} -->\n\n{page.markdown}" for page in response.pages)
 
 
