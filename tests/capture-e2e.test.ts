@@ -15,6 +15,7 @@ import puppeteer, {
 } from "puppeteer-core";
 import { build } from "wxt";
 import { z } from "zod";
+import { OpenReaderSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { extensionDefine } from "../wxt.config";
@@ -153,7 +154,7 @@ async function subscribeToCaptures(bucketOrigin: string) {
         const announced = /event: open-reader\ndata: (.+)\n/.exec(received)?.[1];
         if (announced !== undefined) {
           await reader.cancel();
-          return z.object({ reader_url: z.url() }).parse(JSON.parse(announced)).reader_url;
+          return OpenReaderSchema.parse(JSON.parse(announced)).reader_url;
         }
       }
     },

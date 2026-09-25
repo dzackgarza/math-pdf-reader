@@ -11,8 +11,9 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use tauri::ipc::CapabilityBuilder;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::webview::PageLoadEvent;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_opener::OpenerExt;
 
 // Unhide, unminimize and focus the main window: the tray's Show item and a second launch.
 // Pattern: Tauri's system-tray guide (tauri-apps/tauri-docs, learn/system-tray.mdx).
@@ -157,8 +158,19 @@ pub fn run() -> tauri::Result<()> {
                 .expect("tauri.conf.json declares the main window")
                 .clone();
             window_config.url = WebviewUrl::App("index.html".into());
+            // A link that asks for a new window (a PDF's external link in a reader tab, a
+            // source page on the Timeline) opens in the default browser; the window keeps its
+            // tabs.
+            let opener = app.handle().clone();
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(follower)
+                .on_new_window(move |url, _features| {
+                    opener
+                        .opener()
+                        .open_url(url.as_str(), None::<&str>)
+                        .expect("the default browser opens a link");
+                    NewWindowResponse::Deny
+                })
                 .on_page_load(move |window, payload| {
                     if payload.event() != PageLoadEvent::Finished {
                         return;

@@ -22,8 +22,9 @@ use crate::contract::{
     ImportUrlRequest, ImportUrlResponse, ServerStatus, ServerStatusCapabilities,
     ServerStatusService, ServerStatusServiceName, ServerStatusStorage,
 };
+use crate::contract::{OpenReader, RetrieveMetadataOutcome, StoredItemTitle, TitleSource};
 use crate::error::{AppError, AppResult};
-use crate::events::{self, OpenReader};
+use crate::events;
 use crate::imports::{find_pdf_at, is_pdf, pdfs_in_folder};
 use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
@@ -43,16 +44,26 @@ fn origin(headers: &HeaderMap) -> AppResult<String> {
 }
 
 /// Stores an upload; a new item takes its title from a resolver when one knows its identifier,
-/// and a resolver that fails leaves the title the PDF itself gives.
+/// and a resolver that fails leaves the title the PDF itself gives. The result carries the
+/// item's title as stored once that is done.
 async fn store(state: &Shared, upload: &Upload) -> AppResult<crate::contract::CaptureResult> {
-    let result = state.store.capture(upload).await?;
+    let mut result = state.store.capture(upload).await?;
     if !result.existing {
-        retrieve_metadata(
+        match retrieve_metadata(
             &state.store,
             &result.item.key,
             &state.config.resolvers_manifest,
         )
-        .await?;
+        .await?
+        {
+            RetrieveMetadataOutcome::Resolved { title, .. } => {
+                result.item.title = StoredItemTitle {
+                    text: title,
+                    source: TitleSource::Resolver,
+                };
+            }
+            RetrieveMetadataOutcome::Unidentified | RetrieveMetadataOutcome::Failed { .. } => {}
+        }
     }
     state.stored();
     Ok(result)
@@ -171,6 +182,7 @@ async fn capture_bytes(
     };
     state.events.publish_open_reader(OpenReader {
         reader_url: response.reader_url.clone(),
+        title: result.item.title.text,
     });
     Ok(Json(response).into_response())
 }

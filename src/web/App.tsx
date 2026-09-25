@@ -53,7 +53,8 @@ import {
   sourceActions,
 } from "./libraryActions";
 import { type LibraryView, reconcileView, relatedItems, visibleItems } from "./librarySelectors";
-import { entryView, type Screen, screenAt } from "./routes";
+import { useReaderTabs } from "./readerTabs";
+import { entryView, readerPath, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import TimelineScreen from "./screens/TimelineScreen";
@@ -64,10 +65,6 @@ import { useExtractionPlugins } from "./useExtractionPlugins";
 import { useKeyedAttempts } from "./useKeyedAttempts";
 import { type LibraryApi, useLibraryApi } from "./useLibraryApi";
 import { resetColumnLayout, useLibraryTable } from "./useLibraryTable";
-
-function readerUrl(key: string): string {
-  return `/read/${encodeURIComponent(key)}`;
-}
 
 // List or grid, kept in this browser for the next visit.
 const LAYOUT_STORAGE_KEY = "pdf-bucket:layout";
@@ -186,10 +183,17 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
   const saveCurrentSearch = () =>
     saveSearch(context, search, () => setSearch(defaultSearchSettings()));
 
-  const openReader = (key: string) => window.location.assign(readerUrl(key));
-  const readerHref = (key: string) => new URL(readerUrl(key), window.location.origin).href;
-  const reveal = showInFolder();
+  const tabs = useReaderTabs();
   const itemById = (key: string) => payload.items.find((item) => item.id === key);
+  const openReader = (key: string) => {
+    const item = itemById(key);
+    if (item === undefined) {
+      throw new Error(`the library holds no item ${key}`);
+    }
+    tabs.openReader(key, item.title);
+  };
+  const readerHref = (key: string) => new URL(readerPath(key), window.location.origin).href;
+  const reveal = showInFolder();
   const deselect = () => setSelectedId(null);
   // Runs an action outside the page; a failure shows as a toast.
   const attempt = (action: Promise<void>): void => {
@@ -199,9 +203,13 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
     );
   };
 
-  // Ctrl+F finds in the table; Enter opens and Delete deletes the selected PDF.
+  // Ctrl+F finds in the table; Enter opens and Delete deletes the selected PDF. Off while a PDF's
+  // tab is shown.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!tabs.libraryShown) {
+        return;
+      }
       if (matchesShortcut(event, KEYBOARD_SHORTCUTS.focusSearch)) {
         event.preventDefault();
         searchField.current?.focus();
@@ -406,7 +414,7 @@ function Workspace({ payload, read, screen, api, initialLayout }: WorkspaceProps
           )}
         </main>
         {selected !== undefined && screen.kind !== "settings" && screen.kind !== "timeline" && (
-          <div className="w-[22rem] shrink-0 max-xl:fixed max-xl:top-0 max-xl:bottom-6 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
+          <div className="w-[22rem] shrink-0 max-xl:absolute max-xl:top-0 max-xl:bottom-6 max-xl:right-0 max-xl:z-30 max-xl:shadow-2xl">
             <InspectorPanel
               key={selected.id}
               item={selected}

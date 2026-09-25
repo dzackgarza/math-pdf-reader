@@ -1,11 +1,13 @@
 // The Timeline: what was read and when, newest first, as daisyUI's vertical timeline with the
 // icon snapped to the start. Each entry is one paper's reading (reopenings within half an hour
-// joined), with its title linking back to the reader, authors, year, the pages read and the
+// joined), with its title opening the reader in a tab, authors, year, the pages read and the
 // abstract when known. A minimum reading time hides short looks.
 import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type ReadingSession, ReadingSessionSchema } from "../../contract/library";
 import { dateTime } from "../format";
+import { useReaderTabs } from "../readerTabs";
+import { readerPath } from "../routes";
 import { pageRanges, timelineEntries } from "../timeline";
 
 const MINIMUMS: [number, string][] = [
@@ -29,7 +31,7 @@ function timeRange(openedAt: string, lastSeenAt: string): string {
 }
 
 type TimelineScreenProps = {
-  // Keys of the PDFs the bucket holds; a title links to the reader for these, to the source
+  // Keys of the PDFs the bucket holds; a title opens the reader for these, links to the source
   // page for a PDF that has left.
   stored: ReadonlySet<string>;
   onError: (message: string) => void;
@@ -38,6 +40,7 @@ type TimelineScreenProps = {
 export default function TimelineScreen({ stored, onError }: TimelineScreenProps) {
   const [sessions, setSessions] = useState<ReadingSession[] | null>(null);
   const [minimum, setMinimum] = useState(30);
+  const tabs = useReaderTabs();
   useEffect(() => {
     fetch("/api/reading-sessions")
       .then(async (response) => ReadingSessionSchema.array().parse(await response.json()))
@@ -71,9 +74,27 @@ export default function TimelineScreen({ stored, onError }: TimelineScreenProps)
       <ul className="timeline timeline-snap-icon timeline-vertical max-md:timeline-compact">
         {entries.map((entry, index) => {
           const side = index % 2 === 0 ? "timeline-start md:text-end" : "timeline-end";
-          const href = stored.has(entry.key)
-            ? `/read/${encodeURIComponent(entry.key)}`
-            : entry.item.sourceUrl;
+          const title = stored.has(entry.key) ? (
+            <a
+              href={readerPath(entry.key)}
+              onClick={(event) => {
+                event.preventDefault();
+                tabs.openReader(entry.key, entry.item.title);
+              }}
+              className="block text-base font-semibold text-ink hover:text-accent"
+            >
+              {entry.item.title}
+            </a>
+          ) : (
+            <a
+              href={entry.item.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block text-base font-semibold text-ink hover:text-accent"
+            >
+              {entry.item.title}
+            </a>
+          );
           const byline = [entry.item.authors.join(", "), entry.item.year]
             .filter((part) => part !== null && part !== "")
             .join(" · ");
@@ -87,9 +108,7 @@ export default function TimelineScreen({ stored, onError }: TimelineScreenProps)
                 <time dateTime={entry.openedAt} className="font-mono text-xs text-muted italic">
                   {timeRange(entry.openedAt, entry.lastSeenAt)}
                 </time>
-                <a href={href} className="block text-base font-semibold text-ink hover:text-accent">
-                  {entry.item.title}
-                </a>
+                {title}
                 {byline !== "" && <p className="text-sm text-ink/80">{byline}</p>}
                 <p className="text-xs text-muted">
                   Read {duration(entry.seconds)} · pp. {pageRanges(entry.pages)}

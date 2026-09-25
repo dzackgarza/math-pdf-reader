@@ -23,6 +23,11 @@ export const CaptureResponseSchema = z.strictObject({
 
 export type CaptureResponse = z.infer<typeof CaptureResponseSchema>;
 
+// `GET /api/events` sends one `open-reader` event per capture, new or existing: the library
+// opens the item's reader in a tab under the item's title, and the desktop window comes to the
+// front.
+export const OpenReaderSchema = z.strictObject({ reader_url: z.url(), title: NonEmptySchema });
+
 export const SERVICE_NAME = "pdf-bucket";
 
 // `GET /status`: the capture extension and the library read it to tell whether the bucket is

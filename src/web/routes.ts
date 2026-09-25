@@ -45,6 +45,11 @@ export function screenAt(path: string): Screen | null {
   };
 }
 
+// The reader page of a stored PDF (server/src/reader.rs), which a reader tab frames.
+export function readerPath(key: string): string {
+  return `/read/${encodeURIComponent(key)}`;
+}
+
 export function organizationPath(tab: OrganizationTab, entry?: string): string {
   return entry === undefined
     ? `/organization/${tab}`

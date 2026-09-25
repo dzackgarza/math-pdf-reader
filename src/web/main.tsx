@@ -6,6 +6,7 @@ import { LIBRARY_VIEW_KEY } from "../contract/library";
 import "./index.css";
 import App from "./App.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";
+import { ReaderTabs } from "./tabs.tsx";
 
 const root = document.getElementById("root");
 if (root === null) {
@@ -35,7 +36,9 @@ createRoot(root).render(
   <StrictMode>
     <ErrorBoundary>
       <Router hook={useHashLocation}>
-        <App />
+        <ReaderTabs>
+          <App />
+        </ReaderTabs>
       </Router>
     </ErrorBoundary>
   </StrictMode>,
