@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import type { AdvancedSearchSettings, BucketItem, LibraryPayload } from "../contract/library";
+import type { ActionFailure } from "./actionFailure";
 import { type ColumnLayout, type LibraryLayout, writeLibraryLayout } from "./columnModel";
 import { createAppCommands } from "./commands";
 import AdvancedSearchModal from "./components/AdvancedSearchModal";
@@ -41,6 +42,7 @@ import {
   organizationActions,
   rebuildAllLost,
   rebuildLost,
+  run,
   type SendAttempt,
   saveSearch,
   saveSmartCollection,
@@ -226,7 +228,10 @@ export default function Workspace({
   const searchField = useRef<HTMLInputElement>(null);
   const tabs = useReaderTabs();
 
-  const report = useCallback((message: string) => setToast({ kind: "failure", message }), []);
+  const fail = useCallback(
+    (failure: ActionFailure) => setToast({ kind: "failure", failure }),
+    [],
+  );
   const context: ActionContext = useMemo(
     () => ({
       api,
@@ -237,10 +242,11 @@ export default function Workspace({
         setNameRequest({ key: dialogsOpened.current, request });
       },
       confirm: setConfirmRequest,
-      report,
+      fail,
+      report: (message) => setToast({ kind: "shortfall", message }),
       notify: (message) => setToast({ kind: "notice", message }),
     }),
-    [api, tabs.closeReader, navigate, report],
+    [api, tabs.closeReader, navigate, fail],
   );
 
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
@@ -268,12 +274,7 @@ export default function Workspace({
   const reveal = showInFolder();
   const deselect = () => setSelectedId(null);
   // Runs an action outside the page; a failure shows as a toast.
-  const attempt = (action: Promise<void>): void => {
-    action.then(
-      () => undefined,
-      (error: Error) => report(error.message),
-    );
-  };
+  const attempt = (action: Promise<void>): void => run(context, action);
   const send = (key: string) =>
     sendToZotero(context, key, (sending) => setSendAttempt(key, sending));
   const extract = (key: string, pluginId: string) =>
@@ -452,13 +453,13 @@ export default function Workspace({
           {screen.kind === "timeline" && (
             <TimelineScreen
               stored={new Set(payload.items.map((item) => item.id))}
-              onError={report}
+              onFailure={fail}
             />
           )}
           {screen.kind === "settings" && (
             <SettingsScreen
               read={read}
-              onError={report}
+              onFailure={fail}
               preferences={payload.preferences}
               onPreferences={(update) => updatePreferences(context, update)}
             />

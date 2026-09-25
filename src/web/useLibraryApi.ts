@@ -38,6 +38,10 @@ export class BucketRequestError extends Error {
   }
 }
 
+// A request the bucket server did not answer: fetch rejected (the server is down, or the
+// connection dropped) with the browser's reason.
+export class BucketUnreachableError extends Error {}
+
 export async function requestError(response: Response): Promise<BucketRequestError> {
   const text = await response.text();
   const type = response.headers.get("Content-Type");
@@ -62,6 +66,8 @@ export async function request<T extends z.ZodType>(
     method,
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+  }).catch((reason: TypeError) => {
+    throw new BucketUnreachableError(reason.message);
   });
   if (!response.ok) {
     throw await requestError(response);

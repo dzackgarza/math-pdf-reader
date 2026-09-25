@@ -5,6 +5,7 @@
 import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type ReadingSession, ReadingSessionSchema } from "../../contract/library";
+import { type ActionFailure, type ActionRejection, actionFailure } from "../actionFailure";
 import { dateTime } from "../format";
 import { useReaderTabs } from "../readerTabs";
 import { readerPath } from "../routes";
@@ -35,19 +36,19 @@ type TimelineScreenProps = {
   // Keys of the PDFs the bucket holds; a title opens the reader for these, links to the source
   // page for a PDF that has left.
   stored: ReadonlySet<string>;
-  onError: (message: string) => void;
+  onFailure: (failure: ActionFailure) => void;
 };
 
-export default function TimelineScreen({ stored, onError }: TimelineScreenProps) {
+export default function TimelineScreen({ stored, onFailure }: TimelineScreenProps) {
   const [sessions, setSessions] = useState<ReadingSession[] | null>(null);
   const [minimum, setMinimum] = useState(30);
   const tabs = useReaderTabs();
   useEffect(() => {
     request(ReadingSessionSchema.array(), "GET", "/api/reading-sessions").then(
       setSessions,
-      (error: Error) => onError(error.message),
+      (rejection: ActionRejection) => onFailure(actionFailure(rejection)),
     );
-  }, [onError]);
+  }, [onFailure]);
   const entries = sessions === null ? [] : timelineEntries(sessions, minimum);
 
   return (

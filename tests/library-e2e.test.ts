@@ -1065,6 +1065,22 @@ describe("library window", () => {
     expect(await rowsNow(either.length)).toEqual(either);
   });
 
+  test("an action run while the bucket is down says the bucket did not answer", async () => {
+    const downed = await startBucket();
+    await page.goto(`${downed.origin}/`);
+    await page.waitForSelector(row("lattices"));
+    await downed.stop();
+    await page.keyboard.down("Control");
+    await page.keyboard.down("Shift");
+    await page.keyboard.press("p");
+    await page.keyboard.up("Shift");
+    await page.keyboard.up("Control");
+    await page.keyboard.type("Verify All Sources");
+    await page.keyboard.press("Enter");
+    await shows('[role="alert"] strong', "The bucket did not answer");
+    await shot("action-bucket-down");
+  });
+
   test("the library at a narrow width", async () => {
     await openLibrary();
     await page.click(row("lattices"));

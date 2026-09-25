@@ -7,6 +7,7 @@ import {
   type Theme,
   ThemeSchema,
 } from "../../contract/library";
+import { type ActionFailure, type ActionRejection, actionFailure } from "../actionFailure";
 import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
 import type { BucketStatus, StatusRead } from "../useBucketStatus";
@@ -28,10 +29,10 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 function LibraryFolder({
   settings,
-  onError,
+  onFailure,
 }: {
   settings: Settings;
-  onError: (message: string) => void;
+  onFailure: (failure: ActionFailure) => void;
 }) {
   const reveal = showInFolder();
   return (
@@ -47,7 +48,7 @@ function LibraryFolder({
           onClick={() => {
             reveal(settings.root).then(
               () => undefined,
-              (error: Error) => onError(error.message),
+              (rejection: ActionRejection) => onFailure(actionFailure(rejection)),
             );
           }}
           className="rounded p-1 text-muted hover:bg-surface hover:text-ink"
@@ -84,12 +85,12 @@ function Reported({
 
 export default function SettingsScreen({
   read,
-  onError,
+  onFailure,
   preferences,
   onPreferences,
 }: {
   read: StatusRead;
-  onError: (message: string) => void;
+  onFailure: (failure: ActionFailure) => void;
   preferences: Preferences;
   // Changes the preferences it names; the others stay as the bucket holds them.
   onPreferences: (update: Partial<Preferences>) => void;
@@ -100,7 +101,7 @@ export default function SettingsScreen({
         <Row label="Library folder">
           <Reported
             read={read}
-            value={(status) => <LibraryFolder settings={status.settings} onError={onError} />}
+            value={(status) => <LibraryFolder settings={status.settings} onFailure={onFailure} />}
           />
         </Row>
         <Row label="Reader">
