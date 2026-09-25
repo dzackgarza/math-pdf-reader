@@ -22,6 +22,10 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// server drop a subscriber whose window went away.
 pub const EVENT_KEEPALIVE: Duration = Duration::from_secs(5);
 
+/// How long the desktop app's Quit waits for the open readers to save their annotations before
+/// it asks whether to quit anyway.
+pub const QUIT_SAVE_WAIT: Duration = Duration::from_secs(30);
+
 /// Filing changes kept per bucket, newest last.
 pub const ACTIVITY_KEPT: usize = 500;
 
