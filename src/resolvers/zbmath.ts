@@ -54,9 +54,10 @@ function zblNumber(input: string): string {
   return query.replace(AN_PREFIX, "").trim();
 }
 
-// A present, non-blank optional field, normalized; absent or blank stays absent.
+// zbMATH marks a field it does not have with null or leaves it out; a present field is text
+// and, like every metadata field, must not be blank.
 function optionalText(value: string | null | undefined): string | undefined {
-  return value === null || value === undefined || value.trim() === "" ? undefined : text(value);
+  return value === null || value === undefined ? undefined : text(value);
 }
 
 function articleBibtex(document: ZbmathDocument, zbl: string): string {

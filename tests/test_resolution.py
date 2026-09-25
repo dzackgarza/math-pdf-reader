@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import bibtexparser
+from bibtexparser.middlewares import LatexDecodingMiddleware
 import pikepdf
 import pytest
 from pydantic import TypeAdapter
@@ -85,7 +86,7 @@ def resolve(capsys: pytest.CaptureFixture[str], root: Path, key: str, manifest: 
 
 
 def fields(bibtex: str) -> dict[str, str]:
-    library = bibtexparser.parse_string(bibtex)
+    library = bibtexparser.parse_string(bibtex, append_middleware=[LatexDecodingMiddleware()])
     assert len(library.entries) == 1, bibtex
     entry = library.entries[0]
     return {"ENTRYTYPE": entry.entry_type, **{field.key.lower(): field.value for field in entry.fields}}
@@ -105,6 +106,8 @@ def test_an_arxiv_pdf_from_an_author_homepage_resolves_through_the_id_arxiv_embe
     # arXiv's natbib `archivePrefix` arrives as biblatex `eprinttype`, which Zotero's BibTeX import keeps.
     assert (entry["eprinttype"], entry["eprint"], entry["eprintclass"]) == ("arXiv", "2609.21174", "math.NT")
     assert "archiveprefix" not in entry
+    # arXiv's BibTeX export has no abstract; it comes from the summary of the API's Atom entry.
+    assert entry["abstract"].startswith("This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices.")
 
 
 def test_a_source_url_on_a_resolver_host_wins_over_the_identifiers_inside_the_pdf(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
@@ -133,7 +136,7 @@ def test_a_zbmath_source_page_resolves_to_an_article_built_from_the_zbmath_recor
     assert entry["ENTRYTYPE"] == "article"
     assert (entry["title"], entry["author"], entry["year"]) == ("Fuzzy sets", "Zadeh, L. A.", "1965")
     # Journal, volume and DOI come from the series entry and the link list of the zbMATH record.
-    assert (entry["journal"], entry["volume"], entry["pages"]) == ("Information and Control", "8", "338--353")
+    assert (entry["journal"], entry["volume"], entry["pages"]) == ("Information and Control", "8", "338–353")
     assert entry["doi"] == "10.1016/S0019-9958(65)90241-X"
 
 
@@ -156,7 +159,7 @@ def test_a_book_pdf_carrying_prism_isbn_resolves_to_a_book_from_the_edition_and_
     assert (outcome.plugin_id, outcome.identifier) == ("isbn", "978-0-387-90244-9")
     entry = fields(outcome.bibtex)
     assert entry["ENTRYTYPE"] == "book"
-    assert (entry["author"], entry["publisher"], entry["year"], entry["isbn"]) == ("{Robin Hartshorne}", "Springer", "1997", "9780387902449")
+    assert (entry["author"], entry["publisher"], entry["year"], entry["isbn"]) == ("Robin Hartshorne", "Springer", "1997", "9780387902449")
 
 
 def test_a_pdf_with_no_identifier_is_unidentified_and_no_plugin_runs(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
@@ -179,6 +182,43 @@ def test_an_upstream_refusal_is_a_failed_outcome_carrying_the_plugin_exit(capsys
     assert isinstance(outcome, ResolverFailed)
     assert (outcome.plugin_id, outcome.identifier) == ("arxiv", "https://arxiv.org/abs/2609.99999")
     assert outcome.exit_code != 0
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        (
+            "@article{first, title={Sphere packing}}\n@article{second, title={Sphere packing}}",
+            "expected exactly one BibTeX entry, got 2",
+        ),
+        ("@article{viazovska, title={The sphere packing problem in dimension 8}", "BibTeX does not parse"),
+        ("<html><body>Sign in to continue</body></html>", "expected exactly one BibTeX entry, got 0"),
+    ],
+)
+def test_a_resolver_fails_when_the_upstream_answer_is_not_exactly_one_well_formed_bibtex_entry(answer: str, reason: str) -> None:
+    class Answer(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = answer.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-bibtex")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt: str, *args: str | int) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Answer)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    doi = next(plugin for plugin in load_manifest(MANIFEST).plugins if plugin.id == "doi")
+    command = [doi.command[0], str((MANIFEST.parent / doi.command[1]).resolve()), f"http://127.0.0.1:{server.server_address[1]}"]
+
+    completed = subprocess.run(command, input="10.4007/annals.2017.185.3.7", capture_output=True, text=True, check=False)
+    server.shutdown()
+
+    assert completed.returncode == 1
+    assert completed.stdout == ""
+    assert completed.stderr.startswith(reason)
 
 
 def test_every_shipped_resolver_command_resolves_from_the_manifest_directory() -> None:
