@@ -20,10 +20,11 @@ use url::Url;
 
 use crate::config::VERSION;
 use crate::contract::{
-    ApiErrorErrorKind, CaptureDownloadRequest, CaptureResponse, FolderImportRequest, FolderImportResponse,
-    FolderImportResponseFilesItem, ImportUrlRequest, ImportUrlResponse, NonEmpty, OpenReader,
-    RetrieveMetadataOutcome, ServerStatus, ServerStatusCapabilities, ServerStatusService,
-    ServerStatusServiceName, ServerStatusStorage, StoredItemTitle, TitleSource,
+    ApiErrorErrorKind, CaptureDownloadRequest, CaptureResponse, FolderImportRequest,
+    FolderImportResponse, FolderImportResponseFilesItem, ImportUrlRequest, ImportUrlResponse,
+    NonEmpty, OpenReader, RetrieveMetadataOutcome, ServerStatus, ServerStatusCapabilities,
+    ServerStatusService, ServerStatusServiceName, ServerStatusStorage, StoredItemTitle,
+    TitleSource,
 };
 use crate::error::{AppError, AppResult};
 use crate::events;
