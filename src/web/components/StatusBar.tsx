@@ -65,7 +65,12 @@ function ExportIndicator() {
   const [color, title] = exportSummary(state);
   const failing = state.status === "refused" || state.status === "failed";
   return (
-    <span role="status" aria-label={title} title={title} className={`flex min-w-0 items-center gap-1.5 ${color}`}>
+    <span
+      role="status"
+      aria-label={title}
+      title={title}
+      className={`flex min-w-0 items-center gap-1.5 ${color}`}
+    >
       <Archive aria-hidden className="h-3.5 w-3.5 shrink-0" />
       {failing && <span className="truncate">{title}</span>}
     </span>
