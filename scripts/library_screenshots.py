@@ -46,6 +46,7 @@ FILED_COUNT = 300
 SHIPPED_EXTRACTIONS = REPO / "plugins/manifests/extractions.json"
 SHIPPED_RESOLVERS = REPO / "plugins/manifests/resolvers.json"
 SERVER = REPO / "target/debug/pdf-bucket"
+CONFIG = REPO / "pdf-bucket.config.json"
 
 app = App()
 
@@ -70,7 +71,7 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
     subprocess.run(["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"], cwd=REPO, check=True)
     index_export = root.parent / f"{root.name}-export" / "index.json"
     process = subprocess.Popen(
-        [SERVER, "serve", root, zotero_url, extractions, SHIPPED_RESOLVERS, "--index-export", index_export],
+        [SERVER, "serve", root, zotero_url, extractions, SHIPPED_RESOLVERS, "--index-export", index_export, "--config", CONFIG],
         cwd=REPO,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,

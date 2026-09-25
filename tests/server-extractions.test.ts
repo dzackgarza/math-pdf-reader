@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { type AppConfig, CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
@@ -22,7 +22,10 @@ function sha256(bytes: Uint8Array): string {
 
 // A bucket holding the 10-page fixture under key `lattices`, served over a manifest whose
 // plugins are the fixture extractor in the given modes.
-async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[]) {
+async function bucketWithExtractors(
+  plugins: { mode: string; maxPages: number }[],
+  appConfig: AppConfig = config,
+) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-extract-"));
   const manifestPath = join(
     mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-")),
@@ -44,6 +47,7 @@ async function bucketWithExtractors(plugins: { mode: string; maxPages: number }[
     zoteroUrl: config.zotero.url,
     extractionsManifest: manifestPath,
     resolversManifest: RESOLVERS_MANIFEST,
+    config: appConfig,
   });
   const form = new FormData();
   form.set("pdf", new File([readFileSync(fixture)], "lattices.pdf", { type: "application/pdf" }));
@@ -138,6 +142,30 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
 
   expect(readdirSync(root)).toEqual(["lattices.pdf"]);
 });
+
+test("a plugin past its time limit is killed with its children and answers 504 timed_out, placing nothing", async () => {
+  const { root, app } = await bucketWithExtractors([{ mode: "hang", maxPages: 20 }], {
+    ...config,
+    plugins: { ...config.plugins, extraction_timeout_seconds: 1 },
+  });
+  const started = performance.now();
+
+  const response = await app.request(`/api/items/lattices/extractions/hang`, { method: "POST" });
+  const answeredAfter = performance.now() - started;
+
+  expect(response.status).toBe(504);
+  expect(ExtractionOutcomeSchema.parse(await response.json())).toEqual({
+    status: "timed_out",
+    key: "lattices",
+    plugin_id: "hang",
+    seconds: 1,
+  });
+  // The answer comes at the limit, not when the plugin's 3 s sleep would have ended.
+  expect(answeredAfter).toBeLessThan(3000);
+  // Past the end of that sleep: a surviving plugin would have written beside the PDF by now.
+  await Bun.sleep(3500 - answeredAfter);
+  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+}, 15_000);
 
 test("unknown items and unknown plugins are not found", async () => {
   const { app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);

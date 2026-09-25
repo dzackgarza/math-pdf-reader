@@ -555,11 +555,12 @@ impl OrganizationStore {
         change: impl FnOnce(Organization) -> AppResult<Organization>,
     ) -> AppResult<Organization> {
         self.try_update(|org| {
-            let unstored: Vec<&str> = items
-                .iter()
-                .copied()
-                .filter(|key| self.store.pdf_path(key).is_none())
-                .collect();
+            let mut unstored: Vec<&str> = Vec::new();
+            for key in items {
+                if self.store.pdf_path(key)?.is_none() {
+                    unstored.push(key);
+                }
+            }
             if !unstored.is_empty() {
                 return Err(AppError::unknown_item(&unstored.join(", ")));
             }
@@ -587,7 +588,7 @@ impl OrganizationStore {
     /// Forgets an item whose PDF is gone: it counts as removed on purpose, and its filing goes.
     pub async fn forget(&self, key: &str) -> AppResult<Organization> {
         let _locked = self.lock().await?;
-        if self.store.pdf_path(key).is_some() {
+        if self.store.pdf_path(key)?.is_some() {
             return Err(AppError::invalid(format!(
                 "{key} has a stored PDF; delete the item instead"
             )));
@@ -627,10 +628,12 @@ impl OrganizationStore {
         removed.retain(|key| !dropped.contains(key));
         self.write_removed(removed).await?;
         let org = self.read().await?;
-        let stale: Vec<&String> = dropped
-            .iter()
-            .filter(|key| filing(&org, key).is_some() && self.store.pdf_path(key).is_none())
-            .collect();
+        let mut stale: Vec<&String> = Vec::new();
+        for key in dropped {
+            if filing(&org, key).is_some() && self.store.pdf_path(key)?.is_none() {
+                stale.push(key);
+            }
+        }
         if !stale.is_empty() {
             let next = stale
                 .into_iter()

@@ -5,7 +5,7 @@
 //! lock. The pikepdf work (embedding provenance and metadata, reading a PDF) runs in the Python
 //! commands (python.rs) on bytes and paths the store hands them.
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -197,18 +197,37 @@ impl Store {
         &self.inner.python
     }
 
-    /// The stored PDF for a key, or `None` when the text is no key or names no stored PDF.
-    pub fn pdf_path(&self, key: &str) -> Option<PathBuf> {
-        let key = Key::parse(key)?;
+    /// The stored PDF for a key, or `None` when the text is no key or names no stored PDF. Only
+    /// the operating system's answer that no file is there (ENOENT, ENOTDIR from stat(2), or a
+    /// stat of something else) is `None`; any other error is a failure of the check.
+    pub fn pdf_path(&self, key: &str) -> AppResult<Option<PathBuf>> {
+        Ok(self
+            .stored_key(key)?
+            .map(|key| layout::pdf_path(self.root(), &key)))
+    }
+
+    fn stored_key(&self, key: &str) -> AppResult<Option<Key>> {
+        let Some(key) = Key::parse(key) else {
+            return Ok(None);
+        };
         let path = layout::pdf_path(self.root(), &key);
-        path.is_file().then_some(path)
+        match std::fs::metadata(&path) {
+            Ok(metadata) => Ok(metadata.is_file().then_some(key)),
+            Err(error)
+                if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(AppError::store_failed(format!(
+                "cannot check the stored PDF {}: stat: {error}",
+                path.display()
+            ))),
+        }
     }
 
     fn existing_key(&self, key: &str) -> AppResult<Key> {
-        match Key::parse(key) {
-            Some(parsed) if layout::pdf_path(self.root(), &parsed).is_file() => Ok(parsed),
-            _ => Err(AppError::unknown_item(key)),
-        }
+        self.stored_key(key)?
+            .ok_or_else(|| AppError::unknown_item(key))
     }
 
     /// Held for every change to KEY's files.

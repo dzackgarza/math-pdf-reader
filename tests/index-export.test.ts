@@ -8,6 +8,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -471,6 +472,30 @@ test("a refused export shows in /status until the missing item is rebuilt or for
   expect(readIndexExport(exportFile)?.items.map((item) => [item.key, item.filing.tags])).toEqual([
     ["lattices", ["codes"]],
   ]);
+});
+
+test("a stored PDF whose check fails is neither forgotten nor not found: the operating system's error answers", async () => {
+  const { root } = dataHome();
+  const exportFile = join(temporaryDirectory("export"), "index.json");
+  const app = await serve(root, exportFile);
+  await captureOver(app, lectureNotes, "lattices.pdf");
+  await exportedWhen(exportFile, (index) => index.items.length === 1);
+  const stored = join(root, "lattices.pdf");
+  unlinkSync(stored);
+  symlinkSync(stored, stored);
+  // ELOOP is errno 40 on Linux: the message carries the operating system's own answer.
+  const failedCheck = {
+    error: { kind: "store_failed", message: expect.stringContaining("(os error 40)") },
+  };
+
+  const thumbnail = await app.request("/api/items/lattices/thumbnail?width=160");
+  const forgotten = await app.request("/api/missing/lattices", { method: "DELETE" });
+
+  expect(thumbnail.status).toBe(500);
+  expect(await thumbnail.json()).toEqual(failedCheck);
+  expect(forgotten.status).toBe(500);
+  expect(await forgotten.json()).toEqual(failedCheck);
+  expect(readIndexExport(exportFile)?.items.map((item) => item.key)).toEqual(["lattices"]);
 });
 
 test("`pdf-bucket forget` drops a missing item and writes the export without it", async () => {

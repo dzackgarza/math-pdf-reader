@@ -69,8 +69,10 @@ macro_rules! contract_types {
     };
 }
 
-// The documents the server reads: request bodies and the files beside the stored PDFs.
+// The documents the server reads: request bodies, the files beside the stored PDFs, and the app
+// config `pdf-bucket serve` is given.
 contract_types!(
+    AppConfig,
     BulkCollectionsRequest,
     BulkTagsRequest,
     CaptureDownloadRequest,

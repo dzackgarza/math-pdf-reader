@@ -4,6 +4,8 @@
 #   markdown  Markdown only.
 #   misnamed  Markdown under the PDF's own name instead of extraction.md.
 #   fail      partial Markdown and artifacts, a message on stderr, exit 3.
+#   hang      sleeps 3 s, then writes Markdown and `hang-survived` beside the PDF: a run
+#             killed at its time limit leaves neither.
 set -eu
 mode=$1
 pdf=$2
@@ -25,5 +27,10 @@ fail)
 	mkdir "$output/artifacts"
 	printf 'provider quota exhausted for this token\n' >&2
 	exit 3
+	;;
+hang)
+	sleep 3
+	printf '# Extracted after the time limit\n' >"$output/extraction.md"
+	: >"$(dirname "$pdf")/hang-survived"
 	;;
 esac

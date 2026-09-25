@@ -144,7 +144,7 @@ extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
     root=$(mktemp -d --suffix=-pdf-bucket-evidence)
     key=$(basename "{{fixture}}" .pdf)
     # The server serves until its standard input, this script's coprocess pipe, closes.
-    coproc server { target/debug/pdf-bucket serve "$root" "$(jq -r .zotero.url pdf-bucket.config.json)" plugins/manifests/extractions.json plugins/manifests/resolvers.json; }
+    coproc server { target/debug/pdf-bucket serve "$root" "$(jq -r .zotero.url pdf-bucket.config.json)" plugins/manifests/extractions.json plugins/manifests/resolvers.json --index-export "$root-export/index.json" --config pdf-bucket.config.json; }
     read -r origin <&"${server[0]}"
     curl --fail-with-body --silent --show-error -o /dev/null \
         -F "pdf=@{{fixture}};filename=$key.pdf;type=application/pdf" \
