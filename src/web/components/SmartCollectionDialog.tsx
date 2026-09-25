@@ -1,19 +1,23 @@
 // The smart collection editor: a name, whether an item must meet all rules or any, and the
 // rules, each a field, an operator and a value; the count of PDFs matching updates as they change.
+// The dialog closes once the server has stored the collection; a refusal shows in the dialog,
+// which keeps what was typed.
 import * as Dialog from "@radix-ui/react-dialog";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import {
+  AVAILABILITIES,
   type LibraryPayload,
   READING_STATES,
   RULE_FIELDS,
   type Rule,
-  RuleSchema,
   type SavedSearch,
+  SavedSearchSchema,
 } from "../../contract/library";
-import { isTopic, pdfCount, RULE_FIELD_LABELS, sourceDomain, topicName } from "../format";
-import { itemsMatching, tagCounts } from "../librarySelectors";
-import { newRule, OPERATORS } from "../smartRules";
+import { pdfCount, RULE_FIELD_LABELS } from "../format";
+import { itemsMatching } from "../librarySelectors";
+import { choices, complete, firstRule, newRule, OPERATORS, withOperator } from "../smartRules";
 
 export type SmartCollectionDraft = Omit<SavedSearch, "id">;
 
@@ -21,15 +25,16 @@ type SmartCollectionDialogProps = {
   payload: LibraryPayload;
   initial: SmartCollectionDraft;
   title: string;
-  onSave: (draft: SmartCollectionDraft) => void;
+  onSave: (draft: SmartCollectionDraft) => Promise<void>;
   onClose: () => void;
 };
 
 const READING_LABELS = { unread: "Unread", reading: "Being read", finished: "Finished" } as const;
+const AVAILABILITY_LABELS = { cached: "Cached", offline: "Offline" } as const;
 const INPUT =
   "min-w-0 rounded-md border border-line bg-panel px-2 py-1.5 text-sm outline-none focus:border-accent";
 
-function Options({ values }: { values: [string, string][] }) {
+function Options({ values }: { values: readonly (readonly [string, string])[] }) {
   return values.map(([value, label]) => (
     <option key={value} value={value}>
       {label}
@@ -48,7 +53,6 @@ function RuleValue({
   label: string;
   onChange: (rule: Rule) => void;
 }) {
-  const tags = tagCounts(payload.items).map(([tag]) => tag);
   switch (rule.field) {
     case "text":
       return (
@@ -91,19 +95,10 @@ function RuleValue({
     case "topic":
     case "collection":
     case "source": {
-      const choices: [string, string][] = {
-        tag: tags.filter((tag) => !isTopic(tag)).map((tag): [string, string] => [tag, tag]),
-        topic: tags
-          .filter(isTopic)
-          .map((tag): [string, string] => [topicName(tag), topicName(tag)]),
-        collection: payload.collections.map((collection): [string, string] => [
-          collection.id,
-          collection.name,
-        ]),
-        source: [...new Set(payload.items.map((item) => sourceDomain(item.url)))]
-          .sort()
-          .map((domain): [string, string] => [domain, domain]),
-      }[rule.field];
+      const offered = choices(payload, rule.field);
+      // A value no item carries any more stays shown; a collection deleted since is named so
+      // until another is chosen.
+      const absent = !offered.some(([value]) => value === rule.value);
       return (
         <select
           aria-label={label}
@@ -111,7 +106,12 @@ function RuleValue({
           onChange={(event) => onChange({ ...rule, value: event.target.value })}
           className={`${INPUT} flex-1`}
         >
-          <Options values={choices} />
+          {absent && (
+            <option value={rule.value} disabled>
+              {rule.field === "collection" ? "Deleted collection" : rule.value}
+            </option>
+          )}
+          <Options values={offered} />
         </select>
       );
     }
@@ -120,12 +120,9 @@ function RuleValue({
         <select
           aria-label={label}
           value={rule.value}
-          onChange={(event) => {
-            const value = READING_STATES.find((state) => state === event.target.value);
-            if (value !== undefined) {
-              onChange({ ...rule, value });
-            }
-          }}
+          onChange={(event) =>
+            onChange({ ...rule, value: z.enum(READING_STATES).parse(event.target.value) })
+          }
           className={`${INPUT} flex-1`}
         >
           <Options values={READING_STATES.map((state) => [state, READING_LABELS[state]])} />
@@ -137,26 +134,49 @@ function RuleValue({
           aria-label={label}
           value={rule.value}
           onChange={(event) =>
-            onChange({ ...rule, value: event.target.value === "cached" ? "cached" : "offline" })
+            onChange({ ...rule, value: z.enum(AVAILABILITIES).parse(event.target.value) })
           }
           className={`${INPUT} flex-1`}
         >
-          <Options
-            values={[
-              ["cached", "Cached"],
-              ["offline", "Offline"],
-            ]}
-          />
+          <Options values={AVAILABILITIES.map((state) => [state, AVAILABILITY_LABELS[state]])} />
         </select>
       );
   }
 }
 
-function complete(rule: Rule): boolean {
-  if (rule.field === "text") {
-    return rule.search.query.trim() !== "";
-  }
-  return typeof rule.value === "number" || rule.value.trim() !== "";
+// The field chooser of one rule; a field the library offers no value for cannot be chosen.
+function FieldSelect({
+  payload,
+  rule,
+  label,
+  onChange,
+}: {
+  payload: LibraryPayload;
+  rule: Rule;
+  label: string;
+  onChange: (rule: Rule) => void;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={rule.field}
+      onChange={(event) => {
+        const field = z.enum(RULE_FIELDS).parse(event.target.value);
+        const changed = newRule(payload, field);
+        if (changed === null) {
+          throw new Error(`the ${field} field was offered with no value to choose`);
+        }
+        onChange(changed);
+      }}
+      className={INPUT}
+    >
+      {RULE_FIELDS.map((field) => (
+        <option key={field} value={field} disabled={newRule(payload, field) === null}>
+          {RULE_FIELD_LABELS[field]}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 export default function SmartCollectionDialog({
@@ -167,9 +187,14 @@ export default function SmartCollectionDialog({
   onClose,
 }: SmartCollectionDialogProps) {
   const [draft, setDraft] = useState<SmartCollectionDraft>(initial);
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const setRule = (index: number, rule: Rule) =>
     setDraft({ ...draft, rules: draft.rules.map((old, at) => (at === index ? rule : old)) });
-  const ready = draft.name.trim() !== "" && draft.rules.length > 0 && draft.rules.every(complete);
+  const ready =
+    draft.name.trim() !== "" &&
+    draft.rules.length > 0 &&
+    draft.rules.every((rule) => complete(payload, rule));
   const matching = ready ? itemsMatching(payload, { ...draft, id: "draft" }).length : 0;
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -183,8 +208,12 @@ export default function SmartCollectionDialog({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              onSave({ ...draft, name: draft.name.trim() });
-              onClose();
+              setSaving(true);
+              setRefusal(null);
+              onSave(draft).then(onClose, (error: Error) => {
+                setSaving(false);
+                setRefusal(error.message);
+              });
             }}
             className="mt-4 space-y-4 text-sm"
           >
@@ -203,7 +232,10 @@ export default function SmartCollectionDialog({
                 aria-label="Match"
                 value={draft.match}
                 onChange={(event) =>
-                  setDraft({ ...draft, match: event.target.value === "any" ? "any" : "all" })
+                  setDraft({
+                    ...draft,
+                    match: SavedSearchSchema.shape.match.parse(event.target.value),
+                  })
                 }
                 className={INPUT}
               >
@@ -214,35 +246,16 @@ export default function SmartCollectionDialog({
             <ol className="space-y-2">
               {draft.rules.map((rule, index) => (
                 <li key={`${index}-${rule.field}`} className="flex items-center gap-2">
-                  <select
-                    aria-label={`Rule ${index + 1} field`}
-                    value={rule.field}
-                    onChange={(event) => {
-                      const field = RULE_FIELDS.find(
-                        (candidate) => candidate === event.target.value,
-                      );
-                      if (field !== undefined) {
-                        setRule(index, newRule(payload, field));
-                      }
-                    }}
-                    className={INPUT}
-                  >
-                    <Options
-                      values={RULE_FIELDS.map((field) => [field, RULE_FIELD_LABELS[field]])}
-                    />
-                  </select>
+                  <FieldSelect
+                    payload={payload}
+                    rule={rule}
+                    label={`Rule ${index + 1} field`}
+                    onChange={(changed) => setRule(index, changed)}
+                  />
                   <select
                     aria-label={`Rule ${index + 1} operator`}
                     value={rule.operator}
-                    onChange={(event) => {
-                      const changed = RuleSchema.safeParse({
-                        ...rule,
-                        operator: event.target.value,
-                      });
-                      if (changed.success) {
-                        setRule(index, changed.data);
-                      }
-                    }}
+                    onChange={(event) => setRule(index, withOperator(rule, event.target.value))}
                     className={INPUT}
                   >
                     <Options
@@ -271,13 +284,16 @@ export default function SmartCollectionDialog({
             <button
               type="button"
               aria-label="Add rule"
-              onClick={() =>
-                setDraft({ ...draft, rules: [...draft.rules, newRule(payload, "collection")] })
-              }
+              onClick={() => setDraft({ ...draft, rules: [...draft.rules, firstRule(payload)] })}
               className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 font-medium hover:bg-surface"
             >
               <Plus className="h-4 w-4" /> Add Rule
             </button>
+            {refusal !== null && (
+              <p role="alert" className="text-danger">
+                {refusal}
+              </p>
+            )}
             <div className="flex items-center justify-end gap-2">
               <span className="mr-auto text-muted" role="status">
                 {ready
@@ -289,10 +305,10 @@ export default function SmartCollectionDialog({
               </Dialog.Close>
               <button
                 type="submit"
-                disabled={!ready}
+                disabled={!ready || saving}
                 className="rounded-lg bg-accent px-3.5 py-2 font-medium text-white disabled:opacity-40"
               >
-                Save
+                {saving ? "Saving…" : "Save"}
               </button>
             </div>
           </form>

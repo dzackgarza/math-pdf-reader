@@ -8,7 +8,7 @@ import { type ColumnKey, columnKey } from "../columnModel";
 import { authorList, readingText, shortDate, sourceCheckText, sourceDomain } from "../format";
 import { availability } from "../librarySelectors";
 import { orderedLeafColumns, reorderColumn, resetColumnLayout } from "../useLibraryTable";
-import { Chip, TagChip } from "./Chips";
+import { CollectionChip, TagChip } from "./Chips";
 
 type LibraryTableProps = {
   table: Table<BucketItem>;
@@ -110,7 +110,7 @@ const CELL_RENDERERS: Record<
   collections: (item, names) => (
     <Chips hidden={item.collections.length - VISIBLE_CHIPS}>
       {item.collections.slice(0, VISIBLE_CHIPS).map((id) => (
-        <Chip key={id} label={names.get(id) ?? id} kind="collection" />
+        <CollectionChip key={id} id={id} names={names} />
       ))}
     </Chips>
   ),

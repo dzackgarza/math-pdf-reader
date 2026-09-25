@@ -65,19 +65,23 @@ const TextRule = z.strictObject({
   operator: z.literal("matches"),
   search: AdvancedSearchSettingsSchema,
 });
+export const CONTAINS_OPERATORS = ["contains", "does not contain"] as const;
+export const IS_OPERATORS = ["is", "is not"] as const;
 const containsRule = <F extends string>(field: F) =>
   z.strictObject({
     field: z.literal(field),
-    operator: z.enum(["contains", "does not contain"]),
+    operator: z.enum(CONTAINS_OPERATORS),
     value: TrimmedSchema,
   });
 const isRule = <F extends string>(field: F) =>
   z.strictObject({
     field: z.literal(field),
-    operator: z.enum(["is", "is not"]),
+    operator: z.enum(IS_OPERATORS),
     value: TrimmedSchema,
   });
 export const READING_STATES = ["unread", "reading", "finished"] as const;
+// Whether an item's PDF can still be fetched from where it came from.
+export const AVAILABILITIES = ["cached", "offline"] as const;
 export const RuleSchema = z.discriminatedUnion("field", [
   TextRule,
   containsRule("title"),
@@ -95,13 +99,13 @@ export const RuleSchema = z.discriminatedUnion("field", [
   }),
   z.strictObject({
     field: z.literal("reading"),
-    operator: z.enum(["is", "is not"]),
+    operator: z.enum(IS_OPERATORS),
     value: z.enum(READING_STATES),
   }),
   z.strictObject({
     field: z.literal("status"),
-    operator: z.enum(["is", "is not"]),
-    value: z.enum(["cached", "offline"]),
+    operator: z.enum(IS_OPERATORS),
+    value: z.enum(AVAILABILITIES),
   }),
 ]);
 

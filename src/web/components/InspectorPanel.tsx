@@ -13,7 +13,13 @@ import {
 } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
-import type { BucketItem, Collection, Extraction, SourceCheck } from "../../contract/library";
+import type {
+  BucketItem,
+  Collection,
+  Extraction,
+  ItemNote,
+  SourceCheck,
+} from "../../contract/library";
 import {
   dateTime,
   isTopic,
@@ -26,18 +32,26 @@ import {
 } from "../format";
 import type { ItemSourceActions, SendAttempt } from "../libraryActions";
 import type { Related } from "../librarySelectors";
-import { Chip, TagChip } from "./Chips";
+import { CollectionChip, TagChip } from "./Chips";
 import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
 import { FilingPicker } from "./FilingEditors";
 
 export type ItemFilingActions = {
-  setTags: (tags: string[]) => void;
-  setCollections: (collections: string[]) => void;
+  addTag: (tag: string) => void;
+  removeTag: (tag: string) => void;
+  fileIn: (collectionId: string) => void;
+  unfile: (collectionId: string) => void;
   // Creates a collection with this name and files the item in it.
   fileInNewCollection: (name: string) => void;
-  addNote: (note: string) => void;
-  deleteNote: (noteId: string) => void;
+  // Resolves once the server has stored the note.
+  addNote: (note: string) => Promise<void>;
+  // Asks first; the note is gone once confirmed.
+  deleteNote: (note: ItemNote) => void;
 };
+
+// The unsent text of the item's new note, kept by the window per item so it outlives the
+// Notes tab and the selection.
+export type NoteDraft = { text: string; onChange: (text: string) => void };
 
 export type ItemSendActions = {
   attempt: SendAttempt | undefined;
@@ -51,6 +65,7 @@ type InspectorPanelProps = {
   collections: Collection[];
   knownTags: string[];
   filing: ItemFilingActions;
+  noteDraft: NoteDraft;
   sources: ItemSourceActions & { verifying: boolean };
   send: ItemSendActions;
   extraction: ItemExtractionActions;
@@ -134,6 +149,7 @@ function SourceLine({
 // The PDF URL and the mirrors, a field to add a mirror, and Verify.
 function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelProps["sources"] }) {
   const [draft, setDraft] = useState("");
+  const [failure, setFailure] = useState<string | null>(null);
   return (
     <div className="w-full space-y-2">
       <ul className="space-y-1">
@@ -150,8 +166,11 @@ function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelP
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          sources.addMirror(draft.trim());
-          setDraft("");
+          setFailure(null);
+          sources.addMirror(draft).then(
+            () => setDraft(""),
+            (error: Error) => setFailure(error.message),
+          );
         }}
       >
         <input
@@ -163,6 +182,11 @@ function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelP
           className="w-full rounded-md border border-line px-2 py-1 text-xs outline-none placeholder:text-faint focus:border-accent"
         />
       </form>
+      {failure !== null && (
+        <p role="alert" className="text-xs break-words text-danger">
+          {failure}
+        </p>
+      )}
       <button
         type="button"
         aria-label="Verify sources"
@@ -196,17 +220,10 @@ function Details({
   filing,
   extraction,
   ...props
-}: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose">) {
+}: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose" | "noteDraft">) {
   const names = new Map(collections.map((collection) => [collection.id, collection.name]));
   const topics = item.tags.filter(isTopic);
   const tags = item.tags.filter((tag) => !isTopic(tag));
-  const without = (tag: string) =>
-    filing.setTags(item.tags.filter((candidate) => candidate !== tag));
-  const addTag = (tag: string) => {
-    if (!item.tags.includes(tag)) {
-      filing.setTags([...item.tags, tag]);
-    }
-  };
   const asOptions = (values: string[]) => values.map((value) => ({ id: value, name: value }));
 
   return (
@@ -220,25 +237,18 @@ function Details({
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
         <Row label="Collections">
           {item.collections.map((id) => (
-            <Chip
-              key={id}
-              label={names.get(id) ?? id}
-              kind="collection"
-              onRemove={() =>
-                filing.setCollections(item.collections.filter((candidate) => candidate !== id))
-              }
-            />
+            <CollectionChip key={id} id={id} names={names} onRemove={() => filing.unfile(id)} />
           ))}
           <FilingPicker
             label="collection"
             options={collections.filter((collection) => !item.collections.includes(collection.id))}
-            onPick={(id) => filing.setCollections([...item.collections, id])}
+            onPick={filing.fileIn}
             onCreate={filing.fileInNewCollection}
           />
         </Row>
         <Row label="Topics">
           {topics.map((tag) => (
-            <TagChip key={tag} tag={tag} onRemove={() => without(tag)} />
+            <TagChip key={tag} tag={tag} onRemove={() => filing.removeTag(tag)} />
           ))}
           <FilingPicker
             label="topic"
@@ -248,19 +258,19 @@ function Details({
                 .filter((tag) => !topics.includes(tag))
                 .map(topicName),
             )}
-            onPick={(name) => addTag(topicTag(name))}
-            onCreate={(name) => addTag(topicTag(name))}
+            onPick={(name) => filing.addTag(topicTag(name))}
+            onCreate={(name) => filing.addTag(topicTag(name))}
           />
         </Row>
         <Row label="Tags">
           {tags.map((tag) => (
-            <TagChip key={tag} tag={tag} onRemove={() => without(tag)} />
+            <TagChip key={tag} tag={tag} onRemove={() => filing.removeTag(tag)} />
           ))}
           <FilingPicker
             label="tag"
             options={asOptions(knownTags.filter((tag) => !isTopic(tag) && !tags.includes(tag)))}
-            onPick={addTag}
-            onCreate={addTag}
+            onPick={filing.addTag}
+            onCreate={filing.addTag}
           />
         </Row>
         <Row label="Sources">
@@ -277,8 +287,17 @@ function Details({
   );
 }
 
-function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }) {
-  const [draft, setDraft] = useState("");
+function Notes({
+  item,
+  filing,
+  draft,
+}: {
+  item: BucketItem;
+  filing: ItemFilingActions;
+  draft: NoteDraft;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   return (
     <div className="space-y-3 px-4 py-4">
       {item.notes.map((note) => (
@@ -289,7 +308,7 @@ function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }
             <button
               type="button"
               aria-label="Delete note"
-              onClick={() => filing.deleteNote(note.id)}
+              onClick={() => filing.deleteNote(note)}
               className="rounded p-1 opacity-0 group-hover:opacity-100 hover:bg-note-hover"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -300,21 +319,33 @@ function Notes({ item, filing }: { item: BucketItem; filing: ItemFilingActions }
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          filing.addNote(draft);
-          setDraft("");
+          setSaving(true);
+          setFailure(null);
+          filing
+            .addNote(draft.text)
+            .then(
+              () => draft.onChange(""),
+              (error: Error) => setFailure(error.message),
+            )
+            .finally(() => setSaving(false));
         }}
         className="space-y-2"
       >
         <textarea
           aria-label="New note"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          value={draft.text}
+          onChange={(event) => draft.onChange(event.target.value)}
           rows={3}
           className="w-full resize-y rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent"
         />
+        {failure !== null && (
+          <p role="alert" className="text-sm break-words text-danger">
+            {failure}
+          </p>
+        )}
         <button
           type="submit"
-          disabled={draft.trim().length === 0}
+          disabled={draft.text.trim().length === 0 || saving}
           className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
         >
           Add note
@@ -360,7 +391,7 @@ function RelatedList({
                 </span>
               ))}
               {entry.collections.map((id) => (
-                <Chip key={id} label={names.get(id) ?? id} kind="collection" />
+                <CollectionChip key={id} id={id} names={names} />
               ))}
               {entry.tags.map((tag) => (
                 <TagChip key={tag} tag={tag} />
@@ -460,7 +491,7 @@ export default function InspectorPanel(props: InspectorPanelProps) {
             <Details {...props} />
           </Tabs.Content>
           <Tabs.Content value="notes">
-            <Notes item={item} filing={props.filing} />
+            <Notes item={item} filing={props.filing} draft={props.noteDraft} />
           </Tabs.Content>
           <Tabs.Content value="related">
             <RelatedList

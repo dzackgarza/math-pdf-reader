@@ -4,14 +4,13 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Table } from "@tanstack/react-table";
 import { ArrowDownUp, Check, LayoutGrid, List } from "lucide-react";
 import type { BucketItem, LibraryPayload } from "../../contract/library";
+import type { LibraryLayout } from "../columnModel";
 import {
   type LibraryView,
   QUICK_FILTERS,
   quickFilterCount,
   quickFilterName,
 } from "../librarySelectors";
-
-export type LibraryLayout = "list" | "grid";
 
 type LibraryBarProps = {
   payload: LibraryPayload;

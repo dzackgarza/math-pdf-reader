@@ -107,6 +107,33 @@ export function writeColumnLayout(layout: ColumnLayout): void {
   localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(layout));
 }
 
+// Whether the library shows its items as a list (the table) or a grid of first pages, kept in
+// this browser for the next visit; a list until one is chosen.
+const LAYOUT_STORAGE_KEY = "pdf-bucket:layout";
+
+export const LibraryLayoutSchema = z.enum(["list", "grid"]);
+
+export type LibraryLayout = z.infer<typeof LibraryLayoutSchema>;
+
+export type LibraryLayoutRead =
+  | { status: "ready"; layout: LibraryLayout }
+  | { status: "invalid"; reason: string };
+
+export function readLibraryLayout(): LibraryLayoutRead {
+  const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
+  if (raw === null) {
+    return { status: "ready", layout: "list" };
+  }
+  const stored = LibraryLayoutSchema.safeParse(raw);
+  return stored.success
+    ? { status: "ready", layout: stored.data }
+    : { status: "invalid", reason: stored.error.message };
+}
+
+export function writeLibraryLayout(layout: LibraryLayout): void {
+  localStorage.setItem(LAYOUT_STORAGE_KEY, layout);
+}
+
 // The text each column shows and sorts by.
 const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   title: (item) => item.title,

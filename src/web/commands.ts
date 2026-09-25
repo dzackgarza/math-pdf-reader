@@ -30,32 +30,10 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
     category: "Go to",
     action: () => actions.navigate(path),
   });
-  const reader: Command[] =
-    actions.openSelectedInReader === null
-      ? []
-      : [
-          {
-            id: "open-reader",
-            name: "Open Selected PDF",
-            category: "Library",
-            action: actions.openSelectedInReader,
-          },
-        ];
   // A command on the selected PDF, present only while one is selected (and, for Show in
   // Folder, only where a file manager is reachable).
   const onSelected = (id: string, name: string, action: (() => void) | null): Command[] =>
     action === null ? [] : [{ id, name, category: "Library", action }];
-  const send: Command[] =
-    actions.sendSelectedToZotero === null
-      ? []
-      : [
-          {
-            id: "send-zotero",
-            name: "Send Selected PDF to Zotero",
-            category: "Library",
-            action: actions.sendSelectedToZotero,
-          },
-        ];
   return [
     goTo("go-library", "Library", "/"),
     ...QUICK_FILTERS.map((filter) =>
@@ -66,10 +44,10 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
     goTo("go-tags", "Tags", "/organization/tags"),
     goTo("go-saved", "Saved Searches", "/organization/saved"),
     goTo("go-settings", "Settings", "/settings"),
-    ...reader,
+    ...onSelected("open-reader", "Open Selected PDF", actions.openSelectedInReader),
     ...onSelected("open-browser", "Open Selected PDF in Browser", actions.openSelectedInBrowser),
     ...onSelected("show-folder", "Show Selected PDF in Folder", actions.showSelectedInFolder),
-    ...send,
+    ...onSelected("send-zotero", "Send Selected PDF to Zotero", actions.sendSelectedToZotero),
     {
       id: "new-collection",
       name: "New Collection",

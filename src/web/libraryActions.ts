@@ -1,5 +1,9 @@
 // What the window's filing controls do: each asks for what it needs (a name, a
 // confirmation), calls the library API, and moves to the result.
+//
+// Tags and collections change through the bulk add/remove routes, one item or many: a change
+// names only what it adds or removes, so two changes made from stale copies of the library both
+// land. Every text the user typed is trimmed before it is sent.
 
 import type { ExtractionOutcome } from "../contract/extraction";
 import {
@@ -10,7 +14,8 @@ import {
   type CollectionUpdate,
   FolderImportResponseSchema,
   ImportUrlResponseSchema,
-  LibraryPayloadSchema,
+  type Preferences,
+  type RebuildOutcome,
   RebuildOutcomeSchema,
   RetrieveMetadataResponseSchema,
   type SavedSearch,
@@ -23,13 +28,14 @@ import type { NameRequest } from "./components/NameDialog";
 import { topicTag } from "./format";
 import { organizationPath } from "./routes";
 import type { OrganizationActions } from "./screens/OrganizationScreen";
+import { trimmedRule } from "./smartRules";
 import { runExtraction } from "./useExtractionPlugins";
-import { BucketRequestError, type Mutate } from "./useLibraryApi";
+import { BucketRequestError, type LibraryApi, request } from "./useLibraryApi";
 
 export type ActionContext = {
-  mutate: Mutate;
-  // Reads the library again, for a failed call that may still have changed it.
-  refresh: () => void;
+  api: LibraryApi;
+  // Settles KEY's open reader and closes its tab (ReaderTabsApi.closeReader).
+  closeReader: (key: string) => Promise<void>;
   navigate: (path: string) => void;
   askName: (request: NameRequest) => void;
   confirm: (request: ConfirmRequest) => void;
@@ -39,6 +45,7 @@ export type ActionContext = {
   notify: (message: string) => void;
 };
 
+// Runs a call whose failure no dialog shows: the window reports it.
 function run<T>(context: ActionContext, action: Promise<T>): void {
   action.then(
     () => undefined,
@@ -46,28 +53,43 @@ function run<T>(context: ActionContext, action: Promise<T>): void {
   );
 }
 
+const done = () => undefined;
+
 function itemPath(key: string): string {
   return `/api/items/${encodeURIComponent(key)}`;
 }
 
-function newCollection(context: ActionContext, name: string) {
-  return context.mutate(CollectionSchema, "POST", "/api/collections", { name });
+function newCollection(context: ActionContext, name: string, parentId?: string) {
+  return context.api.call(CollectionSchema, "POST", "/api/collections", { name, parentId });
 }
 
-function fileIn(context: ActionContext, item: BucketItem, collectionId: string) {
-  return context.mutate(LibraryPayloadSchema, "PUT", `${itemPath(item.id)}/collections`, {
-    collections: [...item.collections, collectionId],
-  });
+// Creates a collection and files KEYS in it; the filing change answers with the library, which
+// then holds the new collection too.
+function fileInNew(context: ActionContext, keys: string[], name: string) {
+  return request(CollectionSchema, "POST", "/api/collections", { name }).then((collection) =>
+    changeCollections(context, keys, [collection.id], []),
+  );
 }
 
-function setTags(context: ActionContext, item: BucketItem, tags: string[]) {
-  return context.mutate(LibraryPayloadSchema, "PUT", `${itemPath(item.id)}/tags`, { tags });
+// Adds ADD to and takes REMOVE from the tags of every item in KEYS.
+function changeTags(context: ActionContext, keys: string[], add: string[], remove: string[]) {
+  return context.api.change("POST", "/api/bulk/tags", { keys, add, remove });
+}
+
+// Files every item in KEYS into ADD and out of REMOVE.
+function changeCollections(
+  context: ActionContext,
+  keys: string[],
+  add: string[],
+  remove: string[],
+) {
+  return context.api.change("POST", "/api/bulk/collections", { keys, add, remove });
 }
 
 // What the details panel does with the item's sources.
 export type ItemSourceActions = {
   verify: () => void;
-  addMirror: (url: string) => void;
+  addMirror: (url: string) => Promise<void>;
   removeMirror: (url: string) => void;
 };
 
@@ -82,56 +104,85 @@ export function sourceActions(
       onVerifying(true);
       run(
         context,
-        context
-          .mutate(LibraryPayloadSchema, "POST", `${path}/verify`)
-          .finally(() => onVerifying(false)),
+        context.api.change("POST", `${path}/verify`).finally(() => onVerifying(false)),
       );
     },
     addMirror: (url) =>
-      run(context, context.mutate(LibraryPayloadSchema, "POST", `${path}/mirrors`, { url })),
+      context.api.change("POST", `${path}/mirrors`, { url: url.trim() }).then(done),
     removeMirror: (url) =>
-      run(
-        context,
-        context.mutate(
-          LibraryPayloadSchema,
-          "DELETE",
-          `${path}/mirrors?url=${encodeURIComponent(url)}`,
-        ),
-      ),
+      run(context, context.api.change("DELETE", `${path}/mirrors?url=${encodeURIComponent(url)}`)),
   };
 }
 
-// Rebuilds one lost PDF; one that no URL serves any more is reported with each URL tried.
+// What Rebuild did, for the items no URL serves any more: each URL tried and what it served.
+function reportUnrestored(context: ActionContext, outcomes: RebuildOutcome[]): void {
+  const failures = outcomes.flatMap((outcome) => {
+    switch (outcome.status) {
+      case "unrestored": {
+        const tried = outcome.attempts.map((attempt) => `${attempt.url}: ${attempt.detail}`);
+        return [`${outcome.key} was not restored. ${tried.join("; ")}`];
+      }
+      case "failed":
+        return [`${outcome.key} was not restored: ${outcome.message}`];
+      case "restored":
+      case "present":
+        return [];
+    }
+  });
+  if (failures.length > 0) {
+    context.report(failures.join("\n"));
+  }
+}
+
+// Rebuilds one lost PDF.
 export function rebuildLost(context: ActionContext, key: string, onDone: () => void): void {
   run(
     context,
-    context
-      .mutate(RebuildOutcomeSchema, "POST", `${itemPath(key)}/rebuild`)
-      .then((outcome) => {
-        context.refresh();
-        if (outcome.status === "unrestored") {
-          const tried = outcome.attempts.map((attempt) => `${attempt.url}: ${attempt.detail}`);
-          context.report(`${key} was not restored. ${tried.join("; ")}`);
-        }
-      })
+    context.api
+      .call(RebuildOutcomeSchema, "POST", `${itemPath(key)}/rebuild`)
+      .then((outcome) => reportUnrestored(context, [outcome]))
+      .finally(onDone),
+  );
+}
+
+// Rebuilds every lost PDF in one request.
+export function rebuildAllLost(context: ActionContext, onDone: () => void): void {
+  run(
+    context,
+    context.api
+      .call(RebuildOutcomeSchema.array(), "POST", "/api/rebuild")
+      .then((outcomes) => reportUnrestored(context, outcomes))
       .finally(onDone),
   );
 }
 
 export function filingActions(context: ActionContext, item: BucketItem): ItemFilingActions {
-  const change = (method: "PUT" | "POST" | "DELETE", path: string, body?: object) =>
-    run(context, context.mutate(LibraryPayloadSchema, method, `${itemPath(item.id)}${path}`, body));
+  const keys = [item.id];
+  const notes = `${itemPath(item.id)}/notes`;
   return {
-    setTags: (tags) => change("PUT", "/tags", { tags }),
-    setCollections: (collections) => change("PUT", "/collections", { collections }),
-    fileInNewCollection: (name) =>
-      run(
-        context,
-        newCollection(context, name).then((collection) => fileIn(context, item, collection.id)),
-      ),
-    addNote: (note) => change("POST", "/notes", { note }),
-    deleteNote: (noteId) => change("DELETE", `/notes/${encodeURIComponent(noteId)}`),
+    addTag: (tag) => run(context, changeTags(context, keys, [tag.trim()], [])),
+    removeTag: (tag) => run(context, changeTags(context, keys, [], [tag])),
+    fileIn: (collectionId) => run(context, changeCollections(context, keys, [collectionId], [])),
+    unfile: (collectionId) => run(context, changeCollections(context, keys, [], [collectionId])),
+    fileInNewCollection: (name) => run(context, fileInNew(context, keys, name.trim())),
+    addNote: (note) => context.api.change("POST", notes, { note: note.trim() }).then(done),
+    deleteNote: (note) =>
+      context.confirm({
+        title: "Delete this note?",
+        description: note.note,
+        confirmLabel: "Delete note",
+        onConfirm: () =>
+          run(context, context.api.change("DELETE", `${notes}/${encodeURIComponent(note.id)}`)),
+      }),
   };
+}
+
+// Closes KEY's reader tab once its annotations are saved, then deletes the item.
+function deleteItem(context: ActionContext, key: string): Promise<void> {
+  return context
+    .closeReader(key)
+    .then(() => context.api.change("DELETE", itemPath(key)))
+    .then(done);
 }
 
 // What the row context menu does to one item.
@@ -148,15 +199,15 @@ export function itemMenuActions(
   item: BucketItem,
   onDeleted: () => void,
 ): ItemMenuActions {
+  const keys = [item.id];
   return {
     // Zotero's "Retrieve Metadata": the title from an identifier resolver, else the PDF.
     retrieveMetadata: () =>
       run(
         context,
-        context
-          .mutate(RetrieveMetadataResponseSchema, "POST", `${itemPath(item.id)}/metadata`)
+        context.api
+          .call(RetrieveMetadataResponseSchema, "POST", `${itemPath(item.id)}/metadata`)
           .then(({ outcome }) => {
-            context.refresh();
             if (outcome.status === "unidentified") {
               context.report("No identifier found");
             }
@@ -165,18 +216,14 @@ export function itemMenuActions(
             }
           }),
       ),
-    fileIn: (collectionId) => run(context, fileIn(context, item, collectionId)),
+    fileIn: (collectionId) => run(context, changeCollections(context, keys, [collectionId], [])),
     fileInNewCollection: () =>
       context.askName({
         title: "New collection",
         label: "Name",
         submitLabel: "Create",
         initialName: "",
-        onSubmit: (name) =>
-          run(
-            context,
-            newCollection(context, name).then((collection) => fileIn(context, item, collection.id)),
-          ),
+        onSubmit: (name) => fileInNew(context, keys, name).then(done),
       }),
     addTag: () =>
       context.askName({
@@ -184,19 +231,14 @@ export function itemMenuActions(
         label: "Name",
         submitLabel: "Add",
         initialName: "",
-        onSubmit: (name) =>
-          run(context, setTags(context, item, [...new Set([...item.tags, name])])),
+        onSubmit: (name) => changeTags(context, keys, [name], []).then(done),
       }),
     delete: () =>
       context.confirm({
         title: `Delete “${item.title}”?`,
         description: "The PDF moves to the trash.",
         confirmLabel: "Delete",
-        onConfirm: () =>
-          run(
-            context,
-            context.mutate(LibraryPayloadSchema, "DELETE", itemPath(item.id)).then(onDeleted),
-          ),
+        onConfirm: () => run(context, deleteItem(context, item.id).then(onDeleted)),
       }),
   };
 }
@@ -209,11 +251,6 @@ export type BulkActions = {
 };
 
 export function bulkActions(context: ActionContext, keys: string[]): BulkActions {
-  const file = (collectionId: string) =>
-    context.mutate(LibraryPayloadSchema, "POST", "/api/bulk/collections", {
-      keys,
-      add: [collectionId],
-    });
   return {
     tag: () =>
       context.askName({
@@ -221,24 +258,16 @@ export function bulkActions(context: ActionContext, keys: string[]): BulkActions
         label: "Name",
         submitLabel: "Add",
         initialName: "",
-        onSubmit: (name) =>
-          run(
-            context,
-            context.mutate(LibraryPayloadSchema, "POST", "/api/bulk/tags", { keys, add: [name] }),
-          ),
+        onSubmit: (name) => changeTags(context, keys, [name], []).then(done),
       }),
-    file: (collectionId) => run(context, file(collectionId)),
+    file: (collectionId) => run(context, changeCollections(context, keys, [collectionId], [])),
     fileInNew: () =>
       context.askName({
         title: "New collection",
         label: "Name",
         submitLabel: "Create",
         initialName: "",
-        onSubmit: (name) =>
-          run(
-            context,
-            newCollection(context, name).then((collection) => file(collection.id)),
-          ),
+        onSubmit: (name) => fileInNew(context, keys, name).then(done),
       }),
   };
 }
@@ -252,12 +281,9 @@ export function importUrl(context: ActionContext, onImported: (key: string) => v
     submitLabel: "Import",
     initialName: "",
     onSubmit: (url) =>
-      run(
-        context,
-        context
-          .mutate(ImportUrlResponseSchema, "POST", "/api/import-url", { url })
-          .then(({ key }) => onImported(key)),
-      ),
+      context.api
+        .call(ImportUrlResponseSchema, "POST", "/api/import-url", { url })
+        .then(({ key }) => onImported(key)),
   });
 }
 
@@ -272,18 +298,15 @@ export function addFolder(
     initialName: "",
     ...(browse === null ? {} : { browse }),
     onSubmit: (path) =>
-      run(
-        context,
-        context
-          .mutate(FolderImportResponseSchema, "POST", "/api/import-folder", { path })
-          .then(({ files }) => {
-            const count = (status: string) => files.filter((file) => file.status === status).length;
-            const stored = count("stored");
-            context.notify(
-              `Added ${stored} ${stored === 1 ? "PDF" : "PDFs"}; ${count("existing")} already in the library; ${count("not_a_pdf")} not PDFs; ${count("failed")} failed`,
-            );
-          }),
-      ),
+      context.api
+        .call(FolderImportResponseSchema, "POST", "/api/import-folder", { path })
+        .then(({ files }) => {
+          const count = (status: string) => files.filter((file) => file.status === status).length;
+          const stored = count("stored");
+          context.notify(
+            `Added ${stored} ${stored === 1 ? "PDF" : "PDFs"}; ${count("existing")} already in the library; ${count("not_a_pdf")} not PDFs; ${count("failed")} failed`,
+          );
+        }),
   });
 }
 
@@ -294,11 +317,8 @@ export function createCollection(context: ActionContext, parentId?: string): voi
     submitLabel: "Create",
     initialName: "",
     onSubmit: (name) =>
-      run(
-        context,
-        context
-          .mutate(CollectionSchema, "POST", "/api/collections", { name, parentId })
-          .then((collection) => context.navigate(organizationPath("collections", collection.id))),
+      newCollection(context, name, parentId).then((collection) =>
+        context.navigate(organizationPath("collections", collection.id)),
       ),
   });
 }
@@ -314,19 +334,16 @@ export function saveSearch(
     submitLabel: "Save",
     initialName: search.query.trim(),
     onSubmit: (name) =>
-      run(
-        context,
-        context
-          .mutate(SavedSearchSchema, "POST", "/api/saved-searches", {
-            name,
-            match: "all",
-            rules: [{ field: "text", operator: "matches", search }],
-          })
-          .then((saved) => {
-            onSaved();
-            context.navigate(organizationPath("saved", saved.id));
-          }),
-      ),
+      context.api
+        .call(SavedSearchSchema, "POST", "/api/saved-searches", {
+          name,
+          match: "all",
+          rules: [{ field: "text", operator: "matches", search }],
+        })
+        .then((saved) => {
+          onSaved();
+          context.navigate(organizationPath("saved", saved.id));
+        }),
   });
 }
 
@@ -342,7 +359,7 @@ function deleteAndLeave(
     onConfirm: () =>
       run(
         context,
-        context.mutate(LibraryPayloadSchema, "DELETE", path).then(() => context.navigate(leaveTo)),
+        context.api.change("DELETE", path).then(() => context.navigate(leaveTo)),
       ),
   });
 }
@@ -352,25 +369,20 @@ export function saveSmartCollection(
   context: ActionContext,
   id: string | null,
   draft: Omit<SavedSearch, "id">,
-): void {
+): Promise<void> {
+  const sent = { ...draft, name: draft.name.trim(), rules: draft.rules.map(trimmedRule) };
   if (id !== null) {
-    run(
-      context,
-      context.mutate(
-        LibraryPayloadSchema,
-        "PUT",
-        `/api/saved-searches/${encodeURIComponent(id)}`,
-        draft,
-      ),
-    );
-    return;
+    return context.api
+      .change("PUT", `/api/saved-searches/${encodeURIComponent(id)}`, sent)
+      .then(done);
   }
-  run(
-    context,
-    context
-      .mutate(SavedSearchSchema, "POST", "/api/saved-searches", draft)
-      .then((saved) => context.navigate(organizationPath("saved", saved.id))),
-  );
+  return context.api
+    .call(SavedSearchSchema, "POST", "/api/saved-searches", sent)
+    .then((saved) => context.navigate(organizationPath("saved", saved.id)));
+}
+
+export function updatePreferences(context: ActionContext, update: Partial<Preferences>): void {
+  run(context, context.api.change("PATCH", "/api/preferences", update));
 }
 
 export function organizationActions(
@@ -378,25 +390,20 @@ export function organizationActions(
   chosen: string[],
   smart: Pick<OrganizationActions, "newSmartCollection" | "editSmartCollection">,
 ): OrganizationActions {
+  const collectionPath = (collection: Collection) =>
+    `/api/collections/${encodeURIComponent(collection.id)}`;
   const updateCollection = (collection: Collection, update: CollectionUpdate) =>
-    run(
-      context,
-      context.mutate(
-        LibraryPayloadSchema,
-        "PATCH",
-        `/api/collections/${encodeURIComponent(collection.id)}`,
-        update,
-      ),
-    );
+    context.api.change("PATCH", collectionPath(collection), update).then(done);
   return {
     newCollection: () => createCollection(context),
-    updateCollection,
+    updateCollection: (collection, update) => run(context, updateCollection(collection, update)),
     editDescription: (collection) =>
       context.askName({
         title: `Description of “${collection.name}”`,
         label: "Description",
         submitLabel: "Save",
         initialName: collection.description,
+        allowEmpty: true,
         onSubmit: (description) => updateCollection(collection, { description }),
       }),
     newTopic: () =>
@@ -405,14 +412,7 @@ export function organizationActions(
         label: "Topic",
         submitLabel: "Add",
         initialName: "",
-        onSubmit: (name) =>
-          run(
-            context,
-            context.mutate(LibraryPayloadSchema, "POST", "/api/bulk/tags", {
-              keys: chosen,
-              add: [topicTag(name)],
-            }),
-          ),
+        onSubmit: (name) => changeTags(context, chosen, [topicTag(name)], []).then(done),
       }),
     bulkTag: bulkActions(context, chosen).tag,
     ...smart,
@@ -423,16 +423,7 @@ export function organizationActions(
         label: "Name",
         submitLabel: "Rename",
         initialName: collection.name,
-        onSubmit: (name) =>
-          run(
-            context,
-            context.mutate(
-              LibraryPayloadSchema,
-              "PATCH",
-              `/api/collections/${encodeURIComponent(collection.id)}`,
-              { name },
-            ),
-          ),
+        onSubmit: (name) => updateCollection(collection, { name }),
       }),
     deleteCollection: (collection) =>
       deleteAndLeave(
@@ -443,7 +434,7 @@ export function organizationActions(
             "The collection and its subcollections are deleted. The PDFs in them stay in the library with their tags and notes.",
           confirmLabel: "Delete collection",
         },
-        `/api/collections/${encodeURIComponent(collection.id)}`,
+        collectionPath(collection),
         organizationPath("collections"),
       ),
     deleteSavedSearch: (saved) =>
@@ -467,25 +458,24 @@ export type SendAttempt =
   | { kind: "refused"; message: string }
   | { kind: "failed"; message: string };
 
+// Closes the item's reader tab once its annotations are saved, so the send carries them, then
+// sends.
 export function sendToZotero(
   context: ActionContext,
   key: string,
   onAttempt: (attempt: SendAttempt | null) => void,
 ): void {
   onAttempt({ kind: "sending" });
-  context.mutate(SendResponseSchema, "POST", `${itemPath(key)}/zotero`).then(
-    () => {
-      onAttempt(null);
-      // The item is in Zotero now and no longer in the bucket.
-      context.refresh();
-    },
-    (error: Error) => {
-      // A failed send may have recorded its Zotero item before the failing step.
-      context.refresh();
-      const refused = error instanceof BucketRequestError && error.kind === "already_sent";
-      onAttempt({ kind: refused ? "refused" : "failed", message: error.message });
-    },
-  );
+  context
+    .closeReader(key)
+    .then(() => context.api.call(SendResponseSchema, "POST", `${itemPath(key)}/zotero`))
+    .then(
+      () => onAttempt(null),
+      (error: Error) => {
+        const refused = error instanceof BucketRequestError && error.kind === "already_sent";
+        onAttempt({ kind: refused ? "refused" : "failed", message: error.message });
+      },
+    );
 }
 
 // An extraction run on an item: in progress, answered with its outcome, or refused by the
@@ -505,7 +495,7 @@ export function extractWith(
   runExtraction(key, pluginId).then(
     (outcome) => {
       // A succeeded run placed files beside the PDF; the item's extraction is derived from them.
-      context.refresh();
+      context.api.refresh();
       onAttempt({ kind: "finished", outcome });
     },
     (error: Error) => onAttempt({ kind: "error", message: error.message }),

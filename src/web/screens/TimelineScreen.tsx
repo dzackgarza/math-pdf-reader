@@ -9,6 +9,7 @@ import { dateTime } from "../format";
 import { useReaderTabs } from "../readerTabs";
 import { readerPath } from "../routes";
 import { pageRanges, timelineEntries } from "../timeline";
+import { request } from "../useLibraryApi";
 
 const MINIMUMS: [number, string][] = [
   [5, "Any page read"],
@@ -42,9 +43,10 @@ export default function TimelineScreen({ stored, onError }: TimelineScreenProps)
   const [minimum, setMinimum] = useState(30);
   const tabs = useReaderTabs();
   useEffect(() => {
-    fetch("/api/reading-sessions")
-      .then(async (response) => ReadingSessionSchema.array().parse(await response.json()))
-      .then(setSessions, (error: Error) => onError(error.message));
+    request(ReadingSessionSchema.array(), "GET", "/api/reading-sessions").then(
+      setSessions,
+      (error: Error) => onError(error.message),
+    );
   }, [onError]);
   const entries = sessions === null ? [] : timelineEntries(sessions, minimum);
 

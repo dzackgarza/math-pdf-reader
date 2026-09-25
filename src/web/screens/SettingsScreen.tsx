@@ -1,9 +1,15 @@
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
-import { type Preferences, THEMES, type Theme, ThemeSchema } from "../../contract/library";
+import {
+  type Preferences,
+  type Settings,
+  THEMES,
+  type Theme,
+  ThemeSchema,
+} from "../../contract/library";
 import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
-import type { StatusRead } from "../useBucketStatus";
+import type { BucketStatus, StatusRead } from "../useBucketStatus";
 
 const THEME_LABELS: Record<Theme, string> = {
   system: "Match the system",
@@ -20,6 +26,62 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function LibraryFolder({
+  settings,
+  onError,
+}: {
+  settings: Settings;
+  onError: (message: string) => void;
+}) {
+  const reveal = showInFolder();
+  return (
+    <>
+      <span className="min-w-0 truncate font-mono text-xs" title={settings.root}>
+        {settings.root}
+      </span>
+      {reveal !== null && (
+        <button
+          type="button"
+          aria-label="Show in folder"
+          title="Show in folder"
+          onClick={() => {
+            reveal(settings.root).then(
+              () => undefined,
+              (error: Error) => onError(error.message),
+            );
+          }}
+          className="rounded p-1 text-muted hover:bg-surface hover:text-ink"
+        >
+          <FolderOpen className="h-4 w-4" />
+        </button>
+      )}
+    </>
+  );
+}
+
+// What the bucket's /status report says for one row: the value once read, a spinner while it is
+// being read, and why it could not be read.
+function Reported({
+  read,
+  value,
+}: {
+  read: StatusRead;
+  value: (status: BucketStatus) => ReactNode;
+}) {
+  switch (read.kind) {
+    case "checking":
+      return <LoaderCircle aria-label="Checking" className="h-4 w-4 animate-spin text-muted" />;
+    case "failed":
+      return (
+        <span role="alert" className="text-danger">
+          The bucket's status could not be read: {read.message}
+        </span>
+      );
+    case "read":
+      return value(read.status);
+  }
+}
+
 export default function SettingsScreen({
   read,
   onError,
@@ -29,42 +91,23 @@ export default function SettingsScreen({
   read: StatusRead;
   onError: (message: string) => void;
   preferences: Preferences;
-  onPreferences: (preferences: Preferences) => void;
+  // Changes the preferences it names; the others stay as the bucket holds them.
+  onPreferences: (update: Partial<Preferences>) => void;
 }) {
-  if (read.kind !== "read") {
-    return null;
-  }
-  const { settings, service } = read.status;
-  const reveal = showInFolder();
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
       <dl className="max-w-2xl text-sm">
         <Row label="Library folder">
-          <span className="min-w-0 truncate font-mono text-xs" title={settings.root}>
-            {settings.root}
-          </span>
-          {reveal !== null && (
-            <button
-              type="button"
-              aria-label="Show in folder"
-              title="Show in folder"
-              onClick={() => {
-                reveal(settings.root).then(
-                  () => undefined,
-                  (error: Error) => onError(error.message),
-                );
-              }}
-              className="rounded p-1 text-muted hover:bg-surface hover:text-ink"
-            >
-              <FolderOpen className="h-4 w-4" />
-            </button>
-          )}
+          <Reported
+            read={read}
+            value={(status) => <LibraryFolder settings={status.settings} onError={onError} />}
+          />
         </Row>
         <Row label="Reader">
           <Switch
             label="Open the outline when a PDF opens"
             on={preferences.outlineOnOpen}
-            onChange={(outlineOnOpen) => onPreferences({ ...preferences, outlineOnOpen })}
+            onChange={(outlineOnOpen) => onPreferences({ outlineOnOpen })}
           />
           <span>Open the outline when a PDF opens</span>
         </Row>
@@ -72,9 +115,7 @@ export default function SettingsScreen({
           <select
             aria-label="Theme"
             value={preferences.theme}
-            onChange={(event) =>
-              onPreferences({ ...preferences, theme: ThemeSchema.parse(event.target.value) })
-            }
+            onChange={(event) => onPreferences({ theme: ThemeSchema.parse(event.target.value) })}
             className="rounded-md border border-line bg-panel px-2 py-1 text-ink"
           >
             {THEMES.map((theme) => (
@@ -84,7 +125,9 @@ export default function SettingsScreen({
             ))}
           </select>
         </Row>
-        <Row label="Version">{service.version}</Row>
+        <Row label="Version">
+          <Reported read={read} value={(status) => status.service.version} />
+        </Row>
       </dl>
     </div>
   );
