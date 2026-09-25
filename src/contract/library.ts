@@ -409,33 +409,44 @@ export const ApiErrorSchema = z.strictObject({
 });
 
 // Request bodies.
-export const TagsRequestSchema = z.strictObject({ tags: z.array(TrimmedSchema) });
-export const CollectionsRequestSchema = z.strictObject({ collections: z.array(NonEmptySchema) });
 export const NoteRequestSchema = z.strictObject({ note: TrimmedSchema });
-// Tags or collections added to every item listed, each keeping what it had.
+// A filing change to every item listed: `remove` is taken away first, then `add` goes after
+// what each item keeps. Either array may be empty.
 const BulkKeysSchema = z.array(NonEmptySchema).min(1);
 export const BulkTagsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
-  add: z.array(TrimmedSchema).min(1),
+  add: z.array(TrimmedSchema),
+  remove: z.array(TrimmedSchema),
 });
 export const BulkCollectionsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
-  add: z.array(NonEmptySchema).min(1),
+  add: z.array(NonEmptySchema),
+  remove: z.array(NonEmptySchema),
 });
 export const NewCollectionRequestSchema = z.strictObject({
   name: NameSchema,
   parentId: NonEmptySchema.optional(),
 });
+// A partial update names at least one field: the refinement checks it in TypeScript, and the
+// `minProperties` it carries into the JSON Schema checks it in the server.
+function changingSomething<T extends z.ZodObject>(update: T) {
+  return update
+    .refine((fields) => Object.keys(fields).length > 0, "the update changes nothing")
+    .meta({ minProperties: 1 });
+}
 // Any of a collection's own fields; the others stay as they are.
-export const CollectionUpdateRequestSchema = z
-  .strictObject({
-    name: NameSchema,
-    description: z.string(),
-    pinned: z.boolean(),
-    keepOffline: z.boolean(),
-  })
-  .partial()
-  .refine((update) => Object.keys(update).length > 0, "the update changes nothing");
+export const CollectionUpdateRequestSchema = changingSomething(
+  z
+    .strictObject({
+      name: NameSchema,
+      description: z.string(),
+      pinned: z.boolean(),
+      keepOffline: z.boolean(),
+    })
+    .partial(),
+);
+// Any of the preferences; the others stay as they are.
+export const PreferencesUpdateRequestSchema = changingSomething(PreferencesSchema.partial());
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
 export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({ id: true });
 

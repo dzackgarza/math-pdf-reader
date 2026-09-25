@@ -1,6 +1,7 @@
 //! Server-sent events for the library: after every capture, new or existing, each open library
 //! opens the item's reader in a tab (src/web/tabs.tsx), and the desktop window comes to the
-//! front (desktop/src-tauri follows `open-reader`).
+//! front (desktop/src-tauri follows `open-reader`); and each new state of the index export
+//! (`index-export`, the current one first), which the library's status bar shows.
 use std::convert::Infallible;
 
 use axum::extract::State;
@@ -8,7 +9,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
 use futures::StreamExt;
 use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::{BroadcastStream, WatchStream};
 
 use crate::config::EVENT_KEEPALIVE;
 use crate::contract::OpenReader;
@@ -40,21 +41,26 @@ impl Default for Events {
     }
 }
 
+fn event(name: &str, data: &impl serde::Serialize) -> Event {
+    Event::default()
+        .event(name)
+        .data(serde_json::to_string(data).expect("an event serializes"))
+}
+
 pub async fn stream(
     State(state): State<Shared>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let events = BroadcastStream::new(state.events.open_reader.subscribe()).filter_map(
+    let readers = BroadcastStream::new(state.events.open_reader.subscribe()).filter_map(
         |received| async move {
             // A subscriber that fell behind the channel skips what it missed.
-            let event = match received {
-                Ok(event) => event,
-                Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(_)) => {
-                    return None
-                }
-            };
-            let data = serde_json::to_string(&event).expect("an event serializes");
-            Some(Ok(Event::default().event("open-reader").data(data)))
+            match received {
+                Ok(opened) => Some(Ok(event("open-reader", &opened))),
+                Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(_)) => None,
+            }
         },
     );
-    Sse::new(events).keep_alive(KeepAlive::new().interval(EVENT_KEEPALIVE).text("keepalive"))
+    let exports = WatchStream::new(state.exporter.subscribe())
+        .map(|exported| Ok(event("index-export", &exported)));
+    Sse::new(futures::stream::select(readers, exports))
+        .keep_alive(KeepAlive::new().interval(EVENT_KEEPALIVE).text("keepalive"))
 }

@@ -62,3 +62,75 @@ mod generated {
 }
 
 pub use generated::*;
+
+/// A contract type read from JSON: `DEF` names its definition under `$defs` in the schema.
+pub trait Contract: serde::de::DeserializeOwned {
+    const DEF: &'static str;
+}
+
+macro_rules! contract_types {
+    ($($name:ident),* $(,)?) => {
+        $(impl Contract for $name {
+            const DEF: &'static str = stringify!($name);
+        })*
+    };
+}
+
+// The documents the server reads: request bodies and the files beside the stored PDFs.
+contract_types!(
+    BulkCollectionsRequest,
+    BulkTagsRequest,
+    CollectionUpdateRequest,
+    FolderImportRequest,
+    ImportUrlRequest,
+    IndexExport,
+    MirrorRequest,
+    NewCollectionRequest,
+    NewSavedSearchRequest,
+    NoteRequest,
+    Organization,
+    PreferencesUpdateRequest,
+    ReadingRequest,
+    ReadingSessionReport,
+    RemovedKeys,
+    SavedSearchUpdateRequest,
+    Sessions,
+);
+
+/// The validator of the definition DEF: the whole contract schema, entered at `#/$defs/DEF`.
+fn validator(def: &str) -> jsonschema::Validator {
+    let mut schema: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("OUT_DIR"),
+        "/contract-schema.json"
+    )))
+    .expect("the contract schema is JSON");
+    schema["$ref"] = serde_json::Value::String(format!("#/$defs/{def}"));
+    jsonschema::options()
+        .build(&schema)
+        .expect("the contract schema compiles")
+}
+
+/// Why a document is not the contract type it should be: its first violation of the schema.
+#[derive(Debug)]
+pub struct ContractViolation(String);
+
+impl fmt::Display for ContractViolation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// TEXT as the contract type T: checked against every constraint of T's schema (including those
+/// typify cannot type, such as `minItems`, `minimum` and `minProperties`), then typed.
+pub fn from_json<T: Contract>(text: &[u8]) -> Result<T, ContractViolation> {
+    let value: serde_json::Value =
+        serde_json::from_slice(text).map_err(|error| ContractViolation(error.to_string()))?;
+    if let Err(error) = validator(T::DEF).validate(&value) {
+        return Err(ContractViolation(format!(
+            "{} at {}: {error}",
+            T::DEF,
+            error.instance_path()
+        )));
+    }
+    serde_json::from_value(value).map_err(|error| ContractViolation(error.to_string()))
+}

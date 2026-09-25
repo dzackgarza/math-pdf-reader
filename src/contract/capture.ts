@@ -30,8 +30,29 @@ export const OpenReaderSchema = z.strictObject({ reader_url: z.url(), title: Non
 
 export const SERVICE_NAME = "pdf-bucket";
 
+// The index export the running server rewrites after every change (`file`): not yet written
+// since the server started; written, with how many items; refused, because it lists items whose
+// PDFs the store lost and nobody removed (Rebuild restores them; forgetting one drops it); or
+// failed for another reason. `GET /api/events` sends an `index-export` event with each new state,
+// and the current one first.
+export const IndexExportStateSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("pending"), file: NonEmptySchema }),
+  z.strictObject({
+    status: z.literal("written"),
+    file: NonEmptySchema,
+    written_at: z.iso.datetime({ offset: true }),
+    items: z.int().nonnegative(),
+  }),
+  z.strictObject({
+    status: z.literal("refused"),
+    file: NonEmptySchema,
+    missing: z.array(NonEmptySchema).min(1),
+  }),
+  z.strictObject({ status: z.literal("failed"), file: NonEmptySchema, message: NonEmptySchema }),
+]);
+
 // `GET /status`: the capture extension and the library read it to tell whether the bucket is
-// up and able to store captures.
+// up and able to store captures, and whether its index export is current.
 export const ServerStatusSchema = z.strictObject({
   backend_url: z.url(),
   root: NonEmptySchema,
@@ -39,6 +60,8 @@ export const ServerStatusSchema = z.strictObject({
   storage: z.strictObject({ root_exists: z.boolean(), root_writable: z.boolean() }),
   capabilities: z.strictObject({ capture: z.boolean() }),
   ready: z.boolean(),
+  index_export: IndexExportStateSchema,
 });
 
+export type IndexExportState = z.infer<typeof IndexExportStateSchema>;
 export type ServerStatus = z.infer<typeof ServerStatusSchema>;

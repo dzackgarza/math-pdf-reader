@@ -3,6 +3,12 @@
 // $OUT_DIR/contract.rs, which src/contract.rs includes. Every `format: date-time` string maps
 // to `crate::contract::Timestamp`, which keeps the text it was given; records are BTreeMaps, so
 // a document is written in key order.
+//
+// typify types what JSON Schema can type and drops the rest (array `minItems`, number bounds;
+// typify-impl's convert_array and convert_number, oxidecomputer/typify#169), so the schema
+// itself is written to $OUT_DIR/contract-schema.json, and src/contract.rs checks every document
+// against it before typing it. Constants the server needs from the contract are read out of the
+// same schema here.
 use std::path::Path;
 use std::process::Command;
 
@@ -29,8 +35,13 @@ fn main() {
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
+    let out_dir = std::env::var("OUT_DIR").expect("cargo sets OUT_DIR");
+    let out = Path::new(&out_dir);
+    std::fs::write(out.join("contract-schema.json"), &output.stdout).expect("OUT_DIR is writable");
+    let document: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("the contract schema is JSON");
     let schema: RootSchema =
-        serde_json::from_slice(&output.stdout).expect("the contract schema is JSON Schema");
+        serde_json::from_value(document.clone()).expect("the contract schema is JSON Schema");
 
     let date_time = SchemaObject {
         instance_type: Some(SingleOrVec::Single(Box::new(InstanceType::String))),
@@ -41,6 +52,7 @@ fn main() {
     settings
         .with_struct_builder(false)
         .with_map_type("::std::collections::BTreeMap")
+        .with_derive("PartialEq".to_string())
         .with_conversion(
             date_time,
             "crate::contract::Timestamp",
@@ -51,6 +63,16 @@ fn main() {
         .add_root_schema(schema)
         .expect("typify accepts the contract schema");
     let file = syn::parse2::<syn::File>(space.to_stream()).expect("typify emits Rust items");
-    let out = Path::new(&std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join("contract.rs");
-    std::fs::write(out, prettyplease::unparse(&file)).expect("OUT_DIR is writable");
+    let mut types = prettyplease::unparse(&file);
+
+    // The seconds a page must be read to count in a reading session: the `minimum` of a reported
+    // page's seconds (MIN_PAGE_SECONDS in src/contract/library.ts).
+    let min_page_seconds = document
+        .pointer("/$defs/ReadingSessionReport/properties/pages/items/properties/seconds/minimum")
+        .and_then(serde_json::Value::as_f64)
+        .expect("a reported page's seconds have a minimum");
+    types.push_str(&format!(
+        "\npub const MIN_PAGE_SECONDS: f64 = {min_page_seconds:?};\n"
+    ));
+    std::fs::write(out.join("contract.rs"), types).expect("OUT_DIR is writable");
 }

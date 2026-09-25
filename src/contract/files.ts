@@ -1,5 +1,6 @@
 // The documents the bucket keeps beside the stored PDFs: the filing (`organization.json`), the
-// reading sessions (`reading-sessions.json`), and the index export that can rebuild both.
+// reading sessions (`reading-sessions.json`), the keys removed on purpose (`removed.json`), and
+// the index export that can rebuild them.
 // None of them holds the only copy of provenance: deleting them leaves every stored PDF with its own.
 import { z } from "zod";
 import {
@@ -46,22 +47,55 @@ export const SessionsSchema = z.strictObject({
   sessions: z.array(ReadingSessionSchema),
 });
 
-// A stored item as the export holds it: what its PDF carries, and its filing.
-export const ExportedItemSchema = StoredItemSchema.extend({ filing: ItemFilingSchema });
+// Keys the user took out of the bucket on purpose (a delete, a send to Zotero, forgetting a
+// missing item). The key is recorded before its PDF goes, so an index export that still lists it
+// drops it instead of refusing, across a restart too; a key leaves once an export has dropped it
+// or a new capture takes it.
+export const RemovedKeysSchema = z.strictObject({
+  version: z.literal(1),
+  keys: z.array(NonEmptySchema),
+});
 
-// Every stored item's embedded provenance with its filing, plus the collections and saved
-// searches, as one deterministic JSON document (items in key order).
+// A file an extraction left beside the stored PDF, by its name under the bucket root.
+const ExtractionFileRecordSchema = z.strictObject({
+  name: NonEmptySchema,
+  sizeBytes: z.int().nonnegative(),
+});
+
+// What an item's extraction left in the bucket when the export was written: the Markdown
+// (`<key>.md`) and the artifacts under `<key>.extraction/`.
+export const ExtractionRecordSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("none") }),
+  z.strictObject({
+    status: z.literal("extracted"),
+    markdown: ExtractionFileRecordSchema,
+    files: z.array(ExtractionFileRecordSchema),
+  }),
+]);
+
+// A stored item as the export holds it: what its PDF carries, its filing, and its extraction.
+export const ExportedItemSchema = StoredItemSchema.extend({
+  filing: ItemFilingSchema,
+  extraction: ExtractionRecordSchema,
+});
+
+// Every stored item's embedded provenance with its filing and extraction record, plus the
+// collections, saved searches and reading sessions, as one deterministic JSON document (items in
+// key order).
 export const IndexExportSchema = z.strictObject({
-  version: z.literal(2),
+  version: z.literal(3),
   collections: z.array(CollectionSchema),
   savedSearches: z.array(SavedSearchSchema),
   activity: z.array(ActivitySchema),
   preferences: PreferencesSchema,
+  sessions: z.array(ReadingSessionSchema),
   items: z.array(ExportedItemSchema),
 });
 
 export type ItemFiling = z.infer<typeof ItemFilingSchema>;
 export type Organization = z.infer<typeof OrganizationSchema>;
 export type Sessions = z.infer<typeof SessionsSchema>;
+export type RemovedKeys = z.infer<typeof RemovedKeysSchema>;
+export type ExtractionRecord = z.infer<typeof ExtractionRecordSchema>;
 export type ExportedItem = z.infer<typeof ExportedItemSchema>;
 export type IndexExport = z.infer<typeof IndexExportSchema>;
