@@ -2,14 +2,12 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { z } from "zod";
-import { CaptureResponseSchema } from "../src/contract/capture";
+import { CaptureResponseSchema, OpenReaderSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { LibraryPayloadSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const config = loadAppConfig(CONFIG_PATH);
-
-const OpenReaderSchema = z.strictObject({ reader_url: z.url() });
 
 // Server-sent events off a response body, one parsed `open-reader` payload per call.
 function openReaderEvents(response: Response) {
@@ -36,7 +34,7 @@ function openReaderEvents(response: Response) {
   };
 }
 
-test("every capture, new or existing, broadcasts its reader URL to event subscribers", async () => {
+test("every capture, new or existing, broadcasts its reader URL and stored title to event subscribers", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-events-"));
   const app = await serveBucket({
     root,
@@ -61,11 +59,21 @@ test("every capture, new or existing, broadcasts its reader URL to event subscri
 
   const first = await capture();
   expect(first.existing).toBe(false);
-  expect(await events.next()).toEqual({ reader_url: `${app.origin}/read/problem-set` });
+  const announced = await events.next();
+  // The title the library shows for the item, whichever source gave it.
+  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  const stored = library.items.find((item) => item.id === "problem-set");
+  if (stored === undefined) {
+    throw new Error("the library holds no problem-set");
+  }
+  expect(announced).toEqual({ reader_url: `${app.origin}/read/problem-set`, title: stored.title });
 
   const second = await capture();
   expect(second.existing).toBe(true);
-  expect(await events.next()).toEqual({ reader_url: `${app.origin}/read/problem-set` });
+  expect(await events.next()).toEqual({
+    reader_url: `${app.origin}/read/problem-set`,
+    title: stored.title,
+  });
 
   await events.close();
 });

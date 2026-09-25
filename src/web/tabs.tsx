@@ -157,9 +157,8 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   useEffect(() => {
     const events = new EventSource("/api/events");
     events.addEventListener("open-reader", (event: MessageEvent<string>) => {
-      const { reader_url } = OpenReaderSchema.parse(JSON.parse(event.data));
-      const key = readerKey(reader_url);
-      openReader(key, key);
+      const { reader_url, title } = OpenReaderSchema.parse(JSON.parse(event.data));
+      openReader(readerKey(reader_url), title);
     });
     return () => events.close();
   }, [openReader]);
