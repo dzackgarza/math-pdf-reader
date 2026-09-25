@@ -10,7 +10,7 @@ use axum::{Json, Router};
 
 use crate::config::{ARXIV_PREFIX, ARXIV_URL, PDF_SUFFIX};
 use crate::contract::{
-    ApiErrorErrorKind, Extraction, LibraryPayload, Organization, Resolution, SendResponse,
+    ApiErrorErrorKind, Extraction, LibraryPayload, Organization, SendResponse,
     SendResponsePerformedItem, SendSource, SendStep, Timestamp, ZoteroRecord, ZoteroStatus,
     ZoteroStatusSentPendingItem,
 };
@@ -18,6 +18,7 @@ use crate::error::{AppError, AppResult};
 use crate::index::IndexedItem;
 use crate::organization::{filing, kept_offline, non_empty, remove_item, set_zotero_record};
 use crate::state::Shared;
+use crate::titles::{resolve, Resolution};
 use crate::zotero::ExistingPdf;
 
 /// A step of a send after Zotero has created the item.
@@ -97,17 +98,13 @@ fn resolver_failure(resolution: &Resolution) -> Option<AppError> {
         Resolution::Failed {
             plugin_id,
             identifier,
-            exit_code,
-            stderr,
-            ..
+            message,
         } => Some(AppError::api(
             StatusCode::BAD_GATEWAY,
             ApiErrorErrorKind::ResolverFailed,
             format!(
-                "resolver {} failed on {} (exit {exit_code}): {}",
-                **plugin_id,
-                **identifier,
-                stderr.trim()
+                "resolver {} failed on {}: {}",
+                **plugin_id, **identifier, **message
             ),
         )),
         _ => None,
@@ -119,10 +116,7 @@ fn resolver_failure(resolution: &Resolution) -> Option<AppError> {
 // confirmed the id against arXiv. DOI, ISBN and zbMATH BibTeX map to their right types.
 async fn create(state: &Shared, indexed: &IndexedItem) -> AppResult<ZoteroRecord> {
     let key = indexed.stored.key.as_str();
-    let resolution = state
-        .store
-        .resolve(key, &state.config.resolvers_manifest)
-        .await?;
+    let resolution = resolve(state, key).await?;
     if let Some(error) = resolver_failure(&resolution) {
         return Err(error);
     }
@@ -176,7 +170,14 @@ async fn perform(
         Step::Fields => {
             state
                 .zotero
-                .set_url_and_access_date(item_key, &provenance.source_url, &provenance.captured_at)
+                .set_url_and_access_date(
+                    item_key,
+                    match &provenance.source_url {
+                        Some(page) => page,
+                        None => &provenance.pdf_url,
+                    },
+                    &provenance.captured_at,
+                )
                 .await?;
             SendStep::Fields
         }

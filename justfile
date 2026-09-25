@@ -2,8 +2,9 @@
 #
 # One Cargo workspace: server/ is the bucket server (axum), desktop/src-tauri the Tauri app that
 # runs it in its own process. One Bun package: src/contract (the zod contracts the server's types
-# are generated from), src/web (Vite + React), src/extension (WXT), tests/. src/pdfbucket is the
-# Python store and plugin package. QC delegates to the global ai-review-ci bun-python profile;
+# are generated from), src/web (Vite + React), src/extension (WXT), tests/. src/pdfbucket holds the
+# pikepdf commands the server runs on stored PDFs, src/pdfbucket_extractors the extraction
+# plugins. QC delegates to the global ai-review-ci bun-python profile;
 # cargo, bun, uv, wxt, vite and tauri are implementation details.
 
 # ai-review-ci contract variables consumed by doctor and workflow installers.
@@ -38,6 +39,7 @@ provision: fetch-pdfjs
 # provenance and filing, and the collections and saved searches. Refuses to drop an item whose
 # PDF is missing.
 export-index:
+    @uv sync --locked --quiet
     @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- export-index
 
 # Restore the filing (collections, tags, notes, saved searches) from an index export into a data
@@ -48,6 +50,7 @@ import-index file="":
 # Re-download every PDF the index export lists and the data root lacks, into the same key; prints
 # each item's outcome and fails when a URL is dead or now serves different bytes.
 rebuild-cache:
+    @uv sync --locked --quiet
     @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- rebuild-cache
 
 # Unpack the pinned prebuilt PDF.js viewer release into vendor/ (version and hash in pdf-bucket.config.json).
@@ -130,12 +133,20 @@ ci-setup:
 extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
     #!/usr/bin/env bash
     set -euo pipefail
+    uv sync --locked --quiet
+    cargo build --quiet --package pdf-bucket --bin pdf-bucket
     root=$(mktemp -d --suffix=-pdf-bucket-evidence)
     key=$(basename "{{fixture}}" .pdf)
-    uv run --locked pdfbucket capture "$root" "{{fixture}}" "$key.pdf" \
-        "https://www.math.example.edu/~author/$key.pdf" "https://www.math.example.edu/~author/teaching.html" "$key" >/dev/null
+    # The server serves until its standard input, this script's coprocess pipe, closes.
+    coproc server { target/debug/pdf-bucket serve "$root" "$(jq -r .zotero.url pdf-bucket.config.json)" plugins/manifests/extractions.json plugins/manifests/resolvers.json; }
+    read -r origin <&"${server[0]}"
+    curl --fail-with-body --silent --show-error -o /dev/null \
+        -F "pdf=@{{fixture}};filename=$key.pdf;type=application/pdf" \
+        -F "pdf_url=https://www.math.example.edu/~author/$key.pdf" \
+        -F "source_url=https://www.math.example.edu/~author/teaching.html" \
+        -F "title_hint=$key" "$origin/capture-bytes"
     echo "root: $root"
-    uv run --locked pdfbucket extract "$root" "$key" plugins/manifests/extractions.json "{{plugin}}"
+    curl --silent --show-error -X POST "$origin/api/items/$key/extractions/{{plugin}}"
 
 # Seed empty, broken and 1,000-PDF bucket stores; screenshot every library state into docs/m2 (Chromium at
 # 1600x1000, WebKitGTK on a headless 1400x900 display, the desktop window size) and print the load timings.

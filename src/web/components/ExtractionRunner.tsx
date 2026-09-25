@@ -71,6 +71,16 @@ function Outcome({
       </div>
     );
   }
+  if (outcome.status === "timed_out") {
+    return (
+      <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+        <p className="flex items-center gap-2 font-medium">
+          <AlertTriangle aria-hidden className="h-4 w-4 shrink-0" /> {name} ran past its{" "}
+          {outcome.seconds} s limit and was stopped; nothing was written
+        </p>
+      </div>
+    );
+  }
   return (
     <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
       <p className="flex items-center gap-2 font-medium">

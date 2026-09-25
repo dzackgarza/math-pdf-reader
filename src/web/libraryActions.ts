@@ -276,11 +276,13 @@ export function addFolder(
         context,
         context
           .mutate(FolderImportResponseSchema, "POST", "/api/import-folder", { path })
-          .then(({ stored, existing }) =>
+          .then(({ files }) => {
+            const count = (status: string) => files.filter((file) => file.status === status).length;
+            const stored = count("stored");
             context.notify(
-              `Added ${stored.length} ${stored.length === 1 ? "PDF" : "PDFs"}; ${existing.length} already in the library`,
-            ),
-          ),
+              `Added ${stored} ${stored === 1 ? "PDF" : "PDFs"}; ${count("existing")} already in the library; ${count("not_a_pdf")} not PDFs; ${count("failed")} failed`,
+            );
+          }),
       ),
   });
 }

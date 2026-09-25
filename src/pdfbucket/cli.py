@@ -1,92 +1,87 @@
-"""Command line the server calls: `pdfbucket <command>`, JSON on stdout."""
+"""Command line the server calls: `pdfbucket <command>`, the pikepdf and MuPDF work on one PDF.
+
+The server owns the store's layout and every write: these commands read the files or bytes it
+names and print what they make on stdout (a PDF, a PNG, or one JSON document). A command that
+cannot read its PDF prints a StoreFailure document and exits with status 3.
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import sys
 from pathlib import Path
 
+import pikepdf
 from cyclopts import App
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
-from pdfbucket.extraction import plugin_by_id, run_extraction
-from pdfbucket.manifest import load_manifest
-from pdfbucket.models import SOURCE_URL, CaptureProvenance, CaptureRequest, ItemTitle, StoredItem, TitleSource
-from pdfbucket.provenance import embed_metadata, read_stored_item
-from pdfbucket.resolution import resolve as resolve_item
-from pdfbucket.store import pdf_path, remove_item, replace_pdf, restore_pdf, store_pdf, stored_keys
+from pdfbucket.models import ItemTitle, NonEmpty, Provenance, Read, ReadOutcome, StoreFailure, TitleSource, Unreadable
+from pdfbucket.provenance import MissingProvenanceError, embed_metadata, embed_provenance, embedded_identifiers, read_record
 from pdfbucket.thumbnails import render_first_page
 
-app = App(help="PDF Bucket store")
+app = App(help="PDF Bucket's pikepdf and MuPDF commands")
+
+READ_OUTCOMES: TypeAdapter[list[ReadOutcome]] = TypeAdapter(list[ReadOutcome])
+IDENTIFIERS: TypeAdapter[list[NonEmpty]] = TypeAdapter(list[NonEmpty])
+
+# Exit status of a command whose PDF could not be read; stdout then holds a StoreFailure.
+FAILED = 3
+
+
+def write_bytes(data: bytes) -> None:
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
+
+
+@app.command(name="embed-provenance")
+def embed_provenance_command(*, pdf_url: str, captured_at: str, original_sha256: str, title_hint: str, source_url: str | None = None) -> None:
+    """Print the PDF read from stdin with the provenance embedded."""
+    provenance = Provenance(pdf_url=pdf_url, source_url=source_url, captured_at=captured_at, original_sha256=original_sha256, title_hint=title_hint)
+    write_bytes(embed_provenance(sys.stdin.buffer.read(), provenance))
+
+
+@app.command(name="embed-metadata")
+def embed_metadata_command(pdf: Path, text: str, source: TitleSource, *, author: tuple[str, ...] = (), year: int | None = None, abstract: str | None = None) -> None:
+    """Print PDF with TEXT, from SOURCE, as its title, each AUTHOR in order, YEAR and ABSTRACT recorded."""
+    write_bytes(embed_metadata(pdf, ItemTitle(text=text, source=source), list(author), year, abstract))
+
+
+def read_one(path: Path) -> ReadOutcome:
+    # A torn or foreign file is one file's outcome, not a failure of the whole read.
+    try:
+        return Read(record=read_record(path))
+    except (pikepdf.PdfError, MissingProvenanceError, ValidationError) as error:
+        return Unreadable(message=str(error))
 
 
 @app.command
-def capture(root: Path, pdf: Path, filename: str, pdf_url: str, source_url: str, title_hint: str) -> None:
-    """Store the PDF at PDF under ROOT with its provenance embedded; print the result."""
-    request = CaptureRequest(pdf_url=SOURCE_URL.validate_python(pdf_url), source_url=SOURCE_URL.validate_python(source_url), title_hint=title_hint)
-    result = store_pdf(root, pdf.read_bytes(), request, filename, datetime.now(UTC))
-    print(result.model_dump_json())
+def read(*paths: Path) -> None:
+    """Print, for each PATH in order, what the PDF says about itself or why it cannot be read."""
+    print(READ_OUTCOMES.dump_json([read_one(path) for path in paths]).decode())
 
 
 @app.command
-def restore(root: Path, pdf: Path, key: str, pdf_url: str, source_url: str, captured_at: datetime, original_sha256: str, title_hint: str) -> None:
-    """Store the re-downloaded PDF at PDF under KEY with its recorded provenance; print the result."""
-    provenance = CaptureProvenance(
-        pdf_url=SOURCE_URL.validate_python(pdf_url),
-        source_url=SOURCE_URL.validate_python(source_url),
-        captured_at=captured_at,
-        original_sha256=original_sha256,
-        title_hint=title_hint,
-    )
-    print(restore_pdf(root, key, pdf.read_bytes(), provenance).model_dump_json())
+def identifiers(pdf: Path) -> None:
+    """Print the identifiers the publisher embedded in PDF, as a JSON list."""
+    print(IDENTIFIERS.dump_json(embedded_identifiers(pdf)).decode())
 
 
 @app.command
-def replace(root: Path, key: str, pdf: Path) -> None:
-    """Replace KEY's stored PDF under ROOT with the PDF at PDF when it carries the same embedded provenance; print the outcome."""
-    print(replace_pdf(root, key, pdf.read_bytes()).model_dump_json())
+def thumbnail(pdf: Path, width: int) -> None:
+    """Print PDF's first page, WIDTH pixels wide, as a PNG."""
+    write_bytes(render_first_page(pdf, width))
 
 
-@app.command
-def thumbnail(root: Path, key: str, out: Path, width: int) -> None:
-    """Render KEY's first page under ROOT, WIDTH pixels wide, as a PNG at OUT."""
-    render_first_page(pdf_path(root, key), out, width)
-
-
-@app.command
-def describe(root: Path, key: str) -> None:
-    """Print the stored item for KEY, read from the PDF alone."""
-    print(read_stored_item(pdf_path(root, key)).model_dump_json())
-
-
-@app.command
-def metadata(root: Path, key: str, text: str, source: TitleSource, *, author: tuple[str, ...] = (), year: int | None = None, abstract: str | None = None) -> None:
-    """Record TEXT, from SOURCE, as KEY's title, each AUTHOR in order, YEAR and ABSTRACT inside its stored PDF under ROOT; print the stored item."""
-    path = pdf_path(root, key)
-    embed_metadata(path, ItemTitle(text=text, source=source), list(author), year, abstract)
-    print(read_stored_item(path).model_dump_json())
-
-
-@app.command(name="list")
-def list_items(root: Path, *keys: str) -> None:
-    """Print the stored items for KEYS, or for every PDF under ROOT, read from the PDFs alone."""
-    items = [read_stored_item(pdf_path(root, key)) for key in keys or stored_keys(root)]
-    print(TypeAdapter(list[StoredItem]).dump_json(items).decode())
-
-
-@app.command
-def extract(root: Path, key: str, manifest: Path, plugin_id: str) -> None:
-    """Run the extraction plugin PLUGIN_ID listed in MANIFEST on KEY under ROOT; print the outcome."""
-    plugin = plugin_by_id(load_manifest(manifest), plugin_id)
-    print(run_extraction(root, key, plugin).model_dump_json())
-
-
-@app.command
-def resolve(root: Path, key: str, manifest: Path) -> None:
-    """Find an identifier for KEY under ROOT and resolve it to BibTeX with a plugin listed in MANIFEST; print the outcome."""
-    print(resolve_item(root, key, load_manifest(manifest), manifest.parent).model_dump_json())
-
-
-@app.command
-def remove(root: Path, key: str) -> None:
-    """Move KEY's stored PDF and extraction under ROOT to the desktop trash; print what moved."""
-    print(remove_item(root, key).model_dump_json())
+def main() -> None:
+    """Run one command; a PDF it cannot read becomes a StoreFailure the server tells apart."""
+    try:
+        app()
+    except pikepdf.PdfError as error:
+        failure = StoreFailure(kind="unreadable_pdf", message=str(error))
+    except MissingProvenanceError as error:
+        failure = StoreFailure(kind="missing_provenance", message=str(error))
+    except ValidationError as error:
+        failure = StoreFailure(kind="invalid_metadata", message=str(error))
+    else:
+        return
+    print(failure.model_dump_json())
+    sys.exit(FAILED)

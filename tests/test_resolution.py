@@ -1,5 +1,8 @@
+"""The shipped resolver plugins, run as the server runs them (the identifier on stdin, in the
+manifest's directory) against a replay of the upstream responses they were captured from, and
+the identifiers the pikepdf command finds embedded in a publisher's PDF."""
+
 import json
-import os
 import subprocess
 import sys
 import threading
@@ -10,21 +13,13 @@ from pathlib import Path
 import bibtexparser
 import pikepdf
 import pytest
-from pydantic import TypeAdapter
-
-from pdfbucket.cli import app
-from pdfbucket.manifest import PluginManifest, load_manifest
-from pdfbucket.models import StoredItem
-from pdfbucket.resolution import Resolved, ResolverFailed, Unidentified
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CAPTURES = FIXTURES / "resolvers"
 MANIFEST = Path(__file__).resolve().parents[1] / "plugins" / "manifests" / "resolvers.json"
 ARXIV_PDF = FIXTURES / "arxiv-2609.21174v1.pdf"
 LECTURE_NOTES = FIXTURES / "lecture-notes.pdf"
-HOMEPAGE = "https://www.math.example.edu/~author/"
-
-type Outcome = Resolved | Unidentified | ResolverFailed
+PDFBUCKET = Path(sys.executable).with_name("pdfbucket")
 
 
 class ReplayHandler(BaseHTTPRequestHandler):
@@ -58,30 +53,11 @@ def replay() -> Iterator[str]:
     server.shutdown()
 
 
-@pytest.fixture
-def replay_manifest(replay: str, tmp_path: Path) -> Path:
-    """The shipped manifest with each plugin's upstream base URL pointed at the replay server.
-
-    The shipped commands resolve their scripts against the shipped manifest's directory, so
-    the copy carries them as absolute paths.
-    """
-    shipped = load_manifest(MANIFEST)
-    plugins = [plugin.model_copy(update={"command": [plugin.command[0], str((MANIFEST.parent / plugin.command[1]).resolve()), replay]}) for plugin in shipped.plugins]
-    path = tmp_path / "manifests" / "resolvers.json"
-    path.parent.mkdir()
-    path.write_text(PluginManifest(plugins=plugins).model_dump_json())
-    return path
-
-
-def capture(capsys: pytest.CaptureFixture[str], root: Path, pdf: Path, name: str, source_url: str) -> str:
-    app(["capture", str(root), str(pdf), f"{name}.pdf", f"{HOMEPAGE}{name}.pdf", source_url, name], result_action="return_value")
-    capsys.readouterr()
-    return name
-
-
-def resolve(capsys: pytest.CaptureFixture[str], root: Path, key: str, manifest: Path) -> Outcome:
-    app(["resolve", str(root), key, str(manifest)], result_action="return_value")
-    return TypeAdapter(Outcome).validate_json(capsys.readouterr().out)
+def resolve(plugin_id: str, identifier: str, upstream: str) -> subprocess.CompletedProcess[str]:
+    """The shipped plugin's command with its upstream base URL pointed at UPSTREAM."""
+    [plugin] = [plugin for plugin in json.loads(MANIFEST.read_text())["plugins"] if plugin["id"] == plugin_id]
+    runner, script, _upstream = plugin["command"]
+    return subprocess.run([runner, script, upstream], input=identifier, cwd=MANIFEST.parent, capture_output=True, text=True, check=False)
 
 
 def fields(bibtex: str) -> dict[str, str]:
@@ -91,45 +67,30 @@ def fields(bibtex: str) -> dict[str, str]:
     return {"ENTRYTYPE": entry.entry_type, **{field.key.lower(): field.value for field in entry.fields}}
 
 
-def test_an_arxiv_pdf_from_an_author_homepage_resolves_through_the_id_arxiv_embedded_in_it(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
-    root = tmp_path / "bucket"
-    root.mkdir()
-    key = capture(capsys, root, ARXIV_PDF, "cyclicity", f"{HOMEPAGE}papers.html")
+def test_the_arxiv_resolver_gives_biblatex_eprint_fields(replay: str) -> None:
+    resolved = resolve("arxiv", "https://arxiv.org/abs/2609.21174v1", replay)
 
-    outcome = resolve(capsys, root, key, replay_manifest)
-
-    assert isinstance(outcome, Resolved)
-    assert (outcome.plugin_id, outcome.identifier) == ("arxiv", "https://arxiv.org/abs/2609.21174v1")
-    entry = fields(outcome.bibtex)
+    assert resolved.returncode == 0, resolved.stderr
+    entry = fields(resolved.stdout)
     assert entry["title"] == "On The Cyclicity of Algebraic Lattices"
     # arXiv's natbib `archivePrefix` arrives as biblatex `eprinttype`, which Zotero's BibTeX import keeps.
     assert (entry["eprinttype"], entry["eprint"], entry["eprintclass"]) == ("arXiv", "2609.21174", "math.NT")
     assert "archiveprefix" not in entry
 
 
-def test_a_source_url_on_a_resolver_host_wins_over_the_identifiers_inside_the_pdf(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
-    root = tmp_path / "bucket"
-    root.mkdir()
-    key = capture(capsys, root, ARXIV_PDF, "sphere-packing", "https://doi.org/10.4007/annals.2017.185.3.7")
+def test_the_doi_resolver_gives_the_publisher_article(replay: str) -> None:
+    resolved = resolve("doi", "https://doi.org/10.4007/annals.2017.185.3.7", replay)
 
-    outcome = resolve(capsys, root, key, replay_manifest)
-
-    assert isinstance(outcome, Resolved)
-    assert (outcome.plugin_id, outcome.identifier) == ("doi", "https://doi.org/10.4007/annals.2017.185.3.7")
-    entry = fields(outcome.bibtex)
+    assert resolved.returncode == 0, resolved.stderr
+    entry = fields(resolved.stdout)
     assert (entry["ENTRYTYPE"], entry["doi"], entry["journal"]) == ("article", "10.4007/annals.2017.185.3.7", "Annals of Mathematics")
 
 
-def test_a_zbmath_source_page_resolves_to_an_article_built_from_the_zbmath_record(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
-    root = tmp_path / "bucket"
-    root.mkdir()
-    key = capture(capsys, root, LECTURE_NOTES, "fuzzy-sets", "https://zbmath.org/?q=an:0139.24606")
+def test_the_zbmath_resolver_builds_an_article_from_the_zbmath_record(replay: str) -> None:
+    resolved = resolve("zbmath", "https://zbmath.org/?q=an:0139.24606", replay)
 
-    outcome = resolve(capsys, root, key, replay_manifest)
-
-    assert isinstance(outcome, Resolved)
-    assert outcome.plugin_id == "zbmath"
-    entry = fields(outcome.bibtex)
+    assert resolved.returncode == 0, resolved.stderr
+    entry = fields(resolved.stdout)
     assert entry["ENTRYTYPE"] == "article"
     assert (entry["title"], entry["author"], entry["year"]) == ("Fuzzy sets", "Zadeh, L. A.", "1965")
     # Journal, volume and DOI come from the series entry and the link list of the zbMATH record.
@@ -137,71 +98,33 @@ def test_a_zbmath_source_page_resolves_to_an_article_built_from_the_zbmath_recor
     assert entry["doi"] == "10.1016/S0019-9958(65)90241-X"
 
 
-def test_a_book_pdf_carrying_prism_isbn_resolves_to_a_book_from_the_edition_and_author_records(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path
-) -> None:
+def test_the_isbn_resolver_builds_a_book_from_the_edition_and_author_records(replay: str) -> None:
+    resolved = resolve("isbn", "978-0-387-90244-9", replay)
+
+    assert resolved.returncode == 0, resolved.stderr
+    entry = fields(resolved.stdout)
+    assert entry["ENTRYTYPE"] == "book"
+    assert (entry["author"], entry["publisher"], entry["year"], entry["isbn"]) == ("{Robin Hartshorne}", "Springer", "1997", "9780387902449")
+
+
+def test_an_upstream_refusal_is_a_non_zero_exit(replay: str) -> None:
+    assert resolve("arxiv", "https://arxiv.org/abs/2609.99999", replay).returncode != 0
+
+
+def identifiers(pdf: Path) -> list[str]:
+    listed = subprocess.run([PDFBUCKET, "identifiers", "--", pdf], capture_output=True, text=True, check=True)
+    found: list[str] = json.loads(listed.stdout)
+    return found
+
+
+def test_the_identifiers_a_publisher_embeds_are_read_from_the_pdf(tmp_path: Path) -> None:
     # A publisher's book PDF: its XMP names the ISBN under PRISM.
     book = tmp_path / "hartshorne.pdf"
     with pikepdf.open(LECTURE_NOTES) as pdf:
         with pdf.open_metadata() as xmp:
             xmp["{http://prismstandard.org/namespaces/basic/2.0/}isbn"] = "978-0-387-90244-9"
         pdf.save(book)
-    root = tmp_path / "bucket"
-    root.mkdir()
-    key = capture(capsys, root, book, "hartshorne", f"{HOMEPAGE}books.html")
 
-    outcome = resolve(capsys, root, key, replay_manifest)
-
-    assert isinstance(outcome, Resolved)
-    assert (outcome.plugin_id, outcome.identifier) == ("isbn", "978-0-387-90244-9")
-    entry = fields(outcome.bibtex)
-    assert entry["ENTRYTYPE"] == "book"
-    assert (entry["author"], entry["publisher"], entry["year"], entry["isbn"]) == ("{Robin Hartshorne}", "Springer", "1997", "9780387902449")
-
-
-def test_a_pdf_with_no_identifier_is_unidentified_and_no_plugin_runs(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
-    root = tmp_path / "bucket"
-    root.mkdir()
-    key = capture(capsys, root, LECTURE_NOTES, "lecture-notes", f"{HOMEPAGE}teaching.html")
-
-    outcome = resolve(capsys, root, key, replay_manifest)
-
-    assert outcome == Unidentified(key=key, candidates=[f"{HOMEPAGE}teaching.html", f"{HOMEPAGE}lecture-notes.pdf"])
-
-
-def test_an_upstream_refusal_is_a_failed_outcome_carrying_the_plugin_exit(capsys: pytest.CaptureFixture[str], tmp_path: Path, replay_manifest: Path) -> None:
-    root = tmp_path / "bucket"
-    root.mkdir()
-    key = capture(capsys, root, LECTURE_NOTES, "unknown-preprint", "https://arxiv.org/abs/2609.99999")
-
-    outcome = resolve(capsys, root, key, replay_manifest)
-
-    assert isinstance(outcome, ResolverFailed)
-    assert (outcome.plugin_id, outcome.identifier) == ("arxiv", "https://arxiv.org/abs/2609.99999")
-    assert outcome.exit_code != 0
-
-
-def test_every_shipped_resolver_command_resolves_from_the_manifest_directory() -> None:
-    for plugin in load_manifest(MANIFEST).plugins:
-        assert (MANIFEST.parent / plugin.command[1]).resolve().is_file(), plugin.id
-
-
-def test_remove_moves_the_pdf_and_its_extraction_to_the_desktop_trash(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    root = tmp_path / "bucket"
-    root.mkdir()
-    removed = capture(capsys, root, LECTURE_NOTES, "lecture-notes", f"{HOMEPAGE}teaching.html")
-    kept = capture(capsys, root, ARXIV_PDF, "cyclicity", f"{HOMEPAGE}papers.html")
-    (root / f"{removed}.md").write_text("# Lattices\n")
-    (root / f"{removed}.extraction").mkdir()
-    (root / f"{removed}.extraction" / "content_list.json").write_text("[]")
-
-    # The desktop trash of a data home on the bucket's own file system.
-    data_home = tmp_path / "data"
-    pdfbucket = Path(sys.executable).with_name("pdfbucket")
-    subprocess.run([pdfbucket, "remove", root, removed], env={**os.environ, "XDG_DATA_HOME": str(data_home)}, check=True, capture_output=True)
-
-    trash = data_home / "Trash" / "files"
-    assert sorted(path.name for path in trash.iterdir()) == ["lecture-notes.extraction", "lecture-notes.md", "lecture-notes.pdf"]
-    assert (trash / "lecture-notes.pdf").read_bytes().startswith(b"%PDF-")
-    app(["list", str(root)], result_action="return_value")
-    assert [item.key for item in TypeAdapter(list[StoredItem]).validate_json(capsys.readouterr().out)] == [kept]
+    assert identifiers(ARXIV_PDF) == ["https://arxiv.org/abs/2609.21174v1", "https://doi.org/10.48550/arXiv.2609.21174"]
+    assert identifiers(book) == ["978-0-387-90244-9"]
+    assert identifiers(LECTURE_NOTES) == []

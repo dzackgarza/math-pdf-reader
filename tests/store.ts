@@ -1,8 +1,10 @@
-// A bucket below its HTTP API, for tests that set one up or inspect it: the Python store the
-// server runs, the documents beside the stored PDFs, and the `pdf-bucket` maintenance commands.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// A bucket below its HTTP API, for tests that set one up or inspect it: the stored PDFs read
+// back by the pikepdf commands (`pdfbucket`), the documents beside them, and the `pdf-bucket`
+// maintenance commands.
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { STORE_COMMAND } from "../src/contract/config";
+import { CaptureResponseSchema } from "../src/contract/capture";
+import { CONFIG_PATH, loadAppConfig, STORE_COMMAND } from "../src/contract/config";
 import {
   type IndexExport,
   IndexExportSchema,
@@ -11,24 +13,18 @@ import {
   OrganizationSchema,
 } from "../src/contract/files";
 import type { Provenance, TitleSource } from "../src/contract/library";
-import {
-  type CaptureResult,
-  CaptureResultSchema,
-  type StoredItem,
-  StoredItemListSchema,
-  StoredItemSchema,
-} from "../src/contract/store";
-import { SERVER_BINARY } from "./bucket";
+import { ReadOutcomeListSchema, type StoredItem } from "../src/contract/store";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, SERVER_BINARY, serveBucket } from "./bucket";
 
-async function runStore(args: string[], stdin: Uint8Array<ArrayBuffer> | null): Promise<string> {
+async function runStore(args: string[]): Promise<Uint8Array> {
   const store = Bun.spawn([...STORE_COMMAND, ...args], {
-    stdin: stdin === null ? "ignore" : new Blob([stdin]),
+    stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
     env: process.env,
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(store.stdout).text(),
+    new Response(store.stdout).bytes(),
     new Response(store.stderr).text(),
     store.exited,
   ]);
@@ -46,28 +42,57 @@ export type Upload = {
   titleHint: string;
 };
 
-export async function captureBytes(root: string, upload: Upload): Promise<CaptureResult> {
-  const args = ["capture", "--", root, "/dev/stdin", upload.filename, upload.pdfUrl];
-  const stdout = await runStore([...args, upload.sourceUrl, upload.titleHint], upload.bytes);
-  return CaptureResultSchema.parse(JSON.parse(stdout));
+// Captures an upload into ROOT through a server of its own, as the extension does; answers the
+// key it was stored under.
+export async function captureBytes(root: string, upload: Upload): Promise<string> {
+  const server = await serveBucket({
+    root,
+    zoteroUrl: loadAppConfig(CONFIG_PATH).zotero.url,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
+  });
+  const form = new FormData();
+  form.set("pdf", new File([upload.bytes], upload.filename, { type: "application/pdf" }));
+  form.set("pdf_url", upload.pdfUrl);
+  form.set("source_url", upload.sourceUrl);
+  form.set("title_hint", upload.titleHint);
+  const response = await server.request("/capture-bytes", { method: "POST", body: form });
+  const text = await response.text();
+  await server.stop();
+  if (!response.ok) {
+    throw new Error(`the capture of ${upload.filename} failed (${response.status}): ${text}`);
+  }
+  return CaptureResponseSchema.parse(JSON.parse(text)).key;
 }
 
 // The stored items for KEYS, read from the PDFs alone.
 export async function listItems(root: string, keys: string[]): Promise<StoredItem[]> {
-  const stdout = await runStore(["list", root, "--", ...keys], null);
-  return StoredItemListSchema.parse(JSON.parse(stdout));
+  const paths = keys.map((key) => join(root, `${key}.pdf`));
+  const stdout = await runStore(["read", "--", ...paths]);
+  const outcomes = ReadOutcomeListSchema.parse(JSON.parse(new TextDecoder().decode(stdout)));
+  return keys.map((key, index) => {
+    const outcome = outcomes[index];
+    if (outcome === undefined || outcome.status === "unreadable") {
+      throw new Error(`${key}.pdf cannot be read: ${JSON.stringify(outcome)}`);
+    }
+    const { provenance, title, authors, year, abstract } = outcome.record;
+    return { key, provenance, title, authors, year, abstract };
+  });
 }
 
+// Records resolver metadata inside a stored PDF, as a resolver's answer does.
 export async function recordMetadata(
   root: string,
   key: string,
   source: TitleSource,
   metadata: { title: string; authors: string[]; year: number },
-): Promise<StoredItem> {
-  const authors = metadata.authors.flatMap((author) => ["--author", author]);
-  const args = ["metadata", ...authors, "--year", String(metadata.year)];
-  const stdout = await runStore([...args, "--", root, key, metadata.title, source], null);
-  return StoredItemSchema.parse(JSON.parse(stdout));
+): Promise<void> {
+  const path = join(root, `${key}.pdf`);
+  const authors = metadata.authors.map((author) => `--author=${author}`);
+  const args = ["embed-metadata", ...authors, `--year=${metadata.year}`];
+  const bytes = await runStore([...args, "--", path, metadata.title, source]);
+  writeFileSync(`${path}.recorded`, bytes);
+  renameSync(`${path}.recorded`, path);
 }
 
 export function organizationFile(root: string): string {

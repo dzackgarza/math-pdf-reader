@@ -100,7 +100,10 @@ async fn report(State(state): State<Shared>, body: Bytes) -> AppResult<Json<Reco
             authors: stored.authors,
             year: stored.year,
             abstract_: stored.abstract_,
-            source_url: stored.provenance.source_url,
+            source_url: match stored.provenance.source_url {
+                Some(page) => page,
+                None => stored.provenance.pdf_url,
+            },
         },
     };
     state.sessions.upsert(session).await?;

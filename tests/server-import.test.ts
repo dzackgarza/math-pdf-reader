@@ -78,7 +78,7 @@ async function bucket() {
   return { post, items };
 }
 
-test("Import URL stores a PDF URL as it is, and follows an abstract page's citation_pdf_url", async () => {
+test("Import URL stores a PDF URL, with no linking page, and follows an abstract page's citation_pdf_url", async () => {
   const { post, items } = await bucket();
 
   const direct = await post("/api/import-url", { url: at("/papers/lattices.pdf") });
@@ -86,16 +86,21 @@ test("Import URL stores a PDF URL as it is, and follows an abstract page's citat
   expect(ImportUrlResponseSchema.parse(await direct.json())).toEqual({
     key: "lattices",
     existing: false,
+    metadata: { status: "unidentified" },
   });
   const fromPage = ImportUrlResponseSchema.parse(
     await (await post("/api/import-url", { url: at("/abs/2401.00001") })).json(),
   );
-  expect(fromPage).toEqual({ key: "2401.00001", existing: false });
+  expect(fromPage).toEqual({
+    key: "2401.00001",
+    existing: false,
+    metadata: { status: "unidentified" },
+  });
 
   const byKey = new Map((await items()).map((item) => [item.id, item]));
   expect(byKey.get("lattices")?.provenance).toMatchObject({
     pdf_url: at("/papers/lattices.pdf"),
-    source_url: at("/papers/lattices.pdf"),
+    source_url: null,
   });
   expect(byKey.get("2401.00001")?.provenance).toMatchObject({
     pdf_url: at("/pdf/2401.00001"),
@@ -107,6 +112,7 @@ test("Import URL stores a PDF URL as it is, and follows an abstract page's citat
   expect(ImportUrlResponseSchema.parse(await again.json())).toEqual({
     key: "lattices",
     existing: true,
+    metadata: null,
   });
   const noPdf = await post("/api/import-url", { url: at("/blog.html") });
   expect(noPdf.status).toBe(422);
@@ -115,18 +121,32 @@ test("Import URL stores a PDF URL as it is, and follows an abstract page's citat
   expect(gone.status).toBe(422);
 });
 
-test("Add Folder stores every PDF in the folder with file URLs as provenance, once", async () => {
+test("Add Folder stores every PDF in the folder with file URLs as provenance, once, with one outcome per file", async () => {
   const { post, items } = await bucket();
   const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-import-folder-"));
   copyFileSync(join(fixtures, "lecture-notes.pdf"), join(folder, "Lectures on Lattices.pdf"));
   copyFileSync(join(fixtures, "problem-set.pdf"), join(folder, "problem-set.pdf"));
   writeFileSync(join(folder, "notes.txt"), "not a PDF");
+  writeFileSync(join(folder, "paywall.pdf"), "<!doctype html><title>Access denied</title>");
 
   const response = await post("/api/import-folder", { path: folder });
   expect(response.status).toBe(200);
   const imported = FolderImportResponseSchema.parse(await response.json());
-  expect(imported.stored.sort()).toEqual(["Lectures on Lattices", "problem-set"]);
-  expect(imported.existing).toEqual([]);
+  expect(imported.files).toEqual([
+    {
+      file: "Lectures on Lattices.pdf",
+      status: "stored",
+      key: "Lectures on Lattices",
+      metadata: { status: "unidentified" },
+    },
+    { file: "paywall.pdf", status: "not_a_pdf" },
+    {
+      file: "problem-set.pdf",
+      status: "stored",
+      key: "problem-set",
+      metadata: { status: "unidentified" },
+    },
+  ]);
 
   const byKey = new Map((await items()).map((item) => [item.id, item]));
   expect(byKey.get("problem-set")?.provenance).toMatchObject({
@@ -138,8 +158,10 @@ test("Add Folder stores every PDF in the folder with file URLs as provenance, on
   const again = FolderImportResponseSchema.parse(
     await (await post("/api/import-folder", { path: folder })).json(),
   );
-  expect(again.stored).toEqual([]);
-  expect(again.existing.sort()).toEqual(["Lectures on Lattices", "problem-set"]);
+  expect(again.files.filter((file) => file.status === "existing")).toEqual([
+    { file: "Lectures on Lattices.pdf", status: "existing", key: "Lectures on Lattices" },
+    { file: "problem-set.pdf", status: "existing", key: "problem-set" },
+  ]);
   // A folder item's file URL is checked on disk: present, then gone.
   const verified = LibraryPayloadSchema.parse(
     await (await post("/api/items/problem-set/verify", {})).json(),

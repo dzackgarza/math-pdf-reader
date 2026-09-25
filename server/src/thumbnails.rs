@@ -1,5 +1,6 @@
 //! First-page thumbnails: rendered by the store (MuPDF) into the cache directory, one PNG per
 //! item and width, drawn again whenever the PDF is newer than its PNG (a reader save, a rebuild).
+//! A PNG is named after the SHA-256 of its key, so every name fits NAME_MAX whatever the key.
 use std::collections::HashMap;
 
 use axum::extract::{Path, Query, State};
@@ -7,11 +8,12 @@ use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use percent_encoding::utf8_percent_encode;
 
-use crate::config::{THUMBNAIL_WIDTHS, URI_COMPONENT};
+use crate::config::THUMBNAIL_WIDTHS;
 use crate::error::{AppError, AppResult};
+use crate::sources::sha256;
 use crate::state::Shared;
+use crate::store::write_file;
 
 async fn thumbnail(
     State(state): State<Shared>,
@@ -34,12 +36,11 @@ async fn thumbnail(
         .store
         .pdf_path(&key)
         .ok_or_else(|| AppError::unknown_item(&key))?;
-    let directory = state.config.cache_dir.join("thumbnails");
-    tokio::fs::create_dir_all(&directory).await?;
-    let png = directory.join(format!(
-        "{}-{width}.png",
-        utf8_percent_encode(&key, URI_COMPONENT)
-    ));
+    let png = state
+        .config
+        .cache_dir
+        .join("thumbnails")
+        .join(format!("{}-{width}.png", sha256(key.as_bytes())));
     let stale = match tokio::fs::metadata(&png).await {
         Ok(drawn) => drawn.modified()? < tokio::fs::metadata(&pdf).await?.modified()?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
@@ -51,15 +52,8 @@ async fn thumbnail(
             .acquire()
             .await
             .expect("the semaphore stays open");
-        let args = [
-            "thumbnail".to_string(),
-            "--".to_string(),
-            state.config.root.to_string_lossy().into_owned(),
-            key,
-            png.to_string_lossy().into_owned(),
-            width.to_string(),
-        ];
-        state.store.run(&args, None).await?;
+        let drawn = state.store.thumbnail(&key, width).await?;
+        write_file(png.clone(), drawn).await?;
     }
     Ok((
         [(header::CONTENT_TYPE, "image/png")],

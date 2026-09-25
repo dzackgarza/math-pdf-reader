@@ -10,12 +10,14 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use pdf_bucket::config::{self, BucketConfig, ProcessEnv};
 use pdf_bucket::contract::RebuildOutcome;
 use pdf_bucket::error::AppError;
 use pdf_bucket::export::{export_index, import_index, rebuild_cache};
+use pdf_bucket::python::Python;
 use pdf_bucket::store::Store;
 
 #[derive(Parser)]
@@ -52,11 +54,15 @@ fn export_file(file: Option<PathBuf>) -> PathBuf {
     }
 }
 
+/// The store over the configured data root, running the checkout's Python environment.
 fn configured_store() -> Store {
     Store::new(
         config::data_root(),
-        config::store_command(),
-        ProcessEnv::new(),
+        Python::new(
+            config::checkout_python_bin(),
+            ProcessEnv::new(),
+            Duration::from_secs(config::app_config().store.command_timeout_seconds.get()),
+        ),
     )
 }
 
@@ -121,6 +127,7 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 extractions_manifest,
                 resolvers_manifest,
                 index_export,
+                python_bin: config::checkout_python_bin(),
                 process_env: ProcessEnv::new(),
                 app: app.clone(),
             };

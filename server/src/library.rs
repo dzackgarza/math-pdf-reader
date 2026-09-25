@@ -3,17 +3,18 @@ use std::collections::BTreeSet;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 
 use crate::contract::{
-    Activity, ApiErrorErrorKind, BucketItem, BulkCollectionsRequest, BulkTagsRequest, Collection,
+    Activity, ApiErrorErrorKind, BulkCollectionsRequest, BulkTagsRequest, Collection,
     CollectionUpdateRequest, CollectionsRequest, ItemNote, LibraryPayload, NewCollectionRequest,
     NewSavedSearchRequest, NewSavedSearchRequestMatch, NonEmpty, NoteRequest, Organization,
-    Preferences, Reading, ReadingRequest, ReplaceOutcome, RetrieveMetadataResponse, Rule,
-    SavedSearch, SavedSearchMatch, SavedSearchUpdateRequest, SavedSearchUpdateRequestMatch,
-    Settings, TagsRequest, Timestamp, Trimmed,
+    Preferences, Reading, ReadingRequest, RetrieveMetadataResponse, Rule, SavedSearch,
+    SavedSearchMatch, SavedSearchUpdateRequest, SavedSearchUpdateRequestMatch, Settings,
+    TagsRequest, Timestamp, Trimmed,
 };
 use crate::error::{AppError, AppResult};
 use crate::organization::{
@@ -22,7 +23,9 @@ use crate::organization::{
     organization_file, replace_saved_search, set_collections, set_reading, set_tags,
     update_collection,
 };
+use crate::sources::sha256;
 use crate::state::{bucket_item, parse_body, Shared};
+use crate::store::Replacement;
 use crate::titles::retrieve_metadata;
 
 type Payload = AppResult<Json<LibraryPayload>>;
@@ -162,13 +165,13 @@ async fn settings(State(state): State<Shared>) -> Json<Settings> {
 }
 
 /// "Retrieve metadata": run the identifier resolvers again and answer with the item as it now
-/// stands; a resolver that fails leaves the title as it was.
+/// stands; any outcome but a resolved one leaves the title as it was.
 async fn metadata(
     State(state): State<Shared>,
     Path(key): Path<String>,
 ) -> AppResult<Json<RetrieveMetadataResponse>> {
     state.require(&key).await?;
-    let outcome = retrieve_metadata(&state.store, &key, &state.config.resolvers_manifest).await?;
+    let outcome = retrieve_metadata(&state, &key).await;
     let indexed = state.indexed(&key).await?.ok_or_else(|| {
         AppError::internal(format!(
             "{key} left the store while its metadata was retrieved"
@@ -178,30 +181,78 @@ async fn metadata(
     Ok(Json(RetrieveMetadataResponse { outcome, item }))
 }
 
-/// The reader's save: the PDF with its annotations written in by PDF.js.
+/// The SHA-256 an `If-Match: "<sha256>"` header names (RFC 9110, 13.1.1): the stored bytes a
+/// save was made from. A save without one is refused with 428 Precondition Required (RFC 6585).
+fn if_match(headers: &HeaderMap) -> AppResult<String> {
+    let Some(value) = headers.get(header::IF_MATCH) else {
+        return Err(AppError::api(
+            StatusCode::PRECONDITION_REQUIRED,
+            ApiErrorErrorKind::InvalidRequest,
+            "a save names the stored PDF it was made from in If-Match",
+        ));
+    };
+    let tag = value
+        .to_str()
+        .map_err(|error| AppError::invalid(format!("If-Match is not text: {error}")))?;
+    match tag
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    {
+        Some(sha256)
+            if sha256.len() == 64 && sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            Ok(sha256.to_ascii_lowercase())
+        }
+        _ => Err(AppError::invalid(format!(
+            "If-Match {tag} is not one quoted SHA-256 entity tag"
+        ))),
+    }
+}
+
+/// The entity tag of a stored PDF: its SHA-256, quoted.
+pub fn entity_tag(sha256: &str) -> HeaderValue {
+    HeaderValue::from_str(&format!("\"{sha256}\"")).expect("a hex digest is a header value")
+}
+
+/// The reader's save: the PDF with its annotations written in by PDF.js, made from the stored
+/// bytes its If-Match names. A stored file that changed since answers 412 with its current
+/// entity tag; the answer to a save carries the new file's.
 async fn replace_pdf(
     State(state): State<Shared>,
     Path(key): Path<String>,
+    headers: HeaderMap,
     body: Bytes,
-) -> AppResult<Json<BucketItem>> {
-    state.require(&key).await?;
-    if !body.starts_with(b"%PDF-") {
-        return Err(AppError::invalid("the request body is not a PDF"));
-    }
-    if let ReplaceOutcome::ProvenanceMismatch { .. } = state.store.replace(&key, &body).await? {
-        return Err(AppError::api(
+) -> AppResult<Response> {
+    let base = if_match(&headers)?;
+    let saved = sha256(&body);
+    match state.store.replace(&key, body.to_vec(), &base).await? {
+        Replacement::Stale { stored_sha256 } => {
+            let mut refused = AppError::api(
+                StatusCode::PRECONDITION_FAILED,
+                ApiErrorErrorKind::StalePdf,
+                format!(
+                    "{key} changed after this reader loaded it (another window or Retrieve metadata saved it)"
+                ),
+            )
+            .into_response();
+            refused
+                .headers_mut()
+                .insert(header::ETAG, entity_tag(&stored_sha256));
+            Ok(refused)
+        }
+        Replacement::ProvenanceMismatch => Err(AppError::api(
             StatusCode::CONFLICT,
             ApiErrorErrorKind::ProvenanceMismatch,
             format!("the PDF does not carry the provenance embedded in {key}"),
-        ));
+        )),
+        Replacement::Replaced => {
+            let indexed = state.indexed(&key).await?.ok_or_else(|| {
+                AppError::internal(format!("{key} left the store while its PDF was replaced"))
+            })?;
+            let item = bucket_item(&indexed, &state.organizations.read().await?)?;
+            Ok(([(header::ETAG, entity_tag(&saved))], Json(item)).into_response())
+        }
     }
-    let indexed = state.indexed(&key).await?.ok_or_else(|| {
-        AppError::internal(format!("{key} left the store while its PDF was replaced"))
-    })?;
-    Ok(Json(bucket_item(
-        &indexed,
-        &state.organizations.read().await?,
-    )?))
 }
 
 async fn reading(State(state): State<Shared>, Path(key): Path<String>, body: Bytes) -> Payload {
@@ -307,7 +358,7 @@ async fn delete_item_note(
 
 async fn unstored(state: &Shared, keys: &[NonEmpty]) -> AppResult<()> {
     let stored: BTreeSet<String> = state
-        .index
+        .store
         .items()
         .await?
         .into_iter()

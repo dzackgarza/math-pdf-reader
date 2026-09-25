@@ -7,12 +7,12 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 
 | Path | What it is |
 | --- | --- |
-| `server/` | Rust (axum) bucket server: capture endpoint, PDF and reader URLs, library API, index export; `pdf-bucket` CLI (`serve`, `export-index`, `import-index`, `rebuild-cache`) |
+| `server/` | Rust (axum) bucket server: capture endpoint, PDF and reader URLs, library API, index export, the store's file layout and every write to it, the plugin runners; `pdf-bucket` CLI (`serve`, `export-index`, `import-index`, `rebuild-cache`) |
 | `src/contract` | zod contracts for the API, the store's answers, the config and the documents; the server's Rust types are generated from them |
 | `src/web` | React library UI served by the server |
 | `src/extension` | WXT WebExtension, built for Chrome and Firefox |
 | `desktop/` | Tauri app: the window, the tray, and the bucket server in the same process |
-| `src/pdfbucket` | Python package: provenance embedding, PDF store, plugin manifest contract, extraction and resolver runners |
+| `src/pdfbucket` | Python package: the pikepdf and MuPDF commands the server runs (embed provenance and metadata, read a PDF's record and identifiers, render a thumbnail) |
 | `plugins/manifests` | Shipped extraction and resolver plugin manifests |
 | `src/resolvers` | Resolver plugins: an identifier or URL on stdin, one BibTeX entry on stdout |
 | `tests/` | Bun tests (`*.test.ts`) and Python tests (`test_*.py`) |

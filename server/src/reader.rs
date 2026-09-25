@@ -42,7 +42,8 @@ struct ReaderPage {
     authors: Vec<String>,
     origin: String,
     pdf_path: String,
-    source_url: String,
+    /// The page the PDF was linked from, when one is known.
+    source_url: Option<String>,
     key: String,
     library_view_key: String,
     idle_minutes: u32,

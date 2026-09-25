@@ -57,6 +57,7 @@ export default function ItemContextMenu({
   commands: ItemCommands;
 }) {
   const unfiledIn = collections.filter((collection) => !item.collections.includes(collection.id));
+  const sourcePage = item.provenance.source_url;
   return (
     <ContextMenu.Content className={PANEL}>
       <Item onSelect={commands.open}>Open</Item>
@@ -76,7 +77,7 @@ export default function ItemContextMenu({
       <Item onSelect={commands.retrieveMetadata}>Retrieve Metadata</Item>
       <Item onSelect={commands.send}>Send to Zotero</Item>
       <Submenu label="Copy Link">
-        <Item onSelect={() => commands.copy(item.provenance.source_url)}>Source Page</Item>
+        {sourcePage !== null && <Item onSelect={() => commands.copy(sourcePage)}>Source Page</Item>}
         <Item onSelect={() => commands.copy(item.provenance.pdf_url)}>PDF</Item>
       </Submenu>
       {commands.showInFolder !== null && (

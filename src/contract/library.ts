@@ -1,7 +1,7 @@
 // The library API contract: what `/api/library` and the filing mutations send and accept.
 // Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
-import { ProvenanceSchema } from "./capture";
+import { ProvenanceSchema, RetrieveMetadataOutcomeSchema } from "./capture";
 import { NonEmptySchema, Sha256Schema, TrimmedSchema } from "./text";
 
 export const SEARCH_FIELDS = ["title", "source", "pdfUrl", "tags", "notes", "key"] as const;
@@ -248,6 +248,8 @@ export const BucketItemSchema = z.strictObject({
   // From a resolver; null when none gave them.
   year: z.int().nullable(),
   abstract: NonEmptySchema.nullable(),
+  // The item's URL, as a reference manager's URL field: the page the PDF was linked from, or
+  // the PDF's own URL when no linking page is known.
   url: z.url(),
   tags: z.array(NonEmptySchema),
   collections: z.array(NonEmptySchema),
@@ -262,25 +264,6 @@ export const BucketItemSchema = z.strictObject({
   extraction: ExtractionSchema,
   zotero: ZoteroStatusSchema,
 });
-
-// The outcome of "Retrieve metadata": the resolver that answered and the title it gave; no
-// identifier the resolvers know; or the resolver that failed, whose failure leaves the
-// item's title as it was.
-export const RetrieveMetadataOutcomeSchema = z.discriminatedUnion("status", [
-  z.strictObject({
-    status: z.literal("resolved"),
-    pluginId: NonEmptySchema,
-    identifier: NonEmptySchema,
-    title: NonEmptySchema,
-  }),
-  z.strictObject({ status: z.literal("unidentified") }),
-  z.strictObject({
-    status: z.literal("failed"),
-    pluginId: NonEmptySchema,
-    identifier: NonEmptySchema,
-    message: NonEmptySchema,
-  }),
-]);
 
 export const RetrieveMetadataResponseSchema = z.strictObject({
   outcome: RetrieveMetadataOutcomeSchema,
@@ -319,6 +302,7 @@ export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
     authors: z.array(NonEmptySchema),
     year: z.int().nullable(),
     abstract: NonEmptySchema.nullable(),
+    // The item's URL: its source page, or its PDF URL when no page is known.
     sourceUrl: z.url(),
   }),
 });
@@ -341,10 +325,17 @@ export const LibraryPayloadSchema = z.strictObject({
   savedSearches: z.array(SavedSearchSchema),
   activity: z.array(ActivitySchema),
   preferences: PreferencesSchema,
+  // Files named `<key>.pdf` in the root that the store cannot read (torn, foreign, without
+  // the bucket's provenance): the library lists every other item and names these.
+  unreadable: z.array(z.strictObject({ file: NonEmptySchema, message: NonEmptySchema })),
 });
 
 // What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
-// or a mirror and matched the recorded original; or every URL was tried and none served it.
+// or a mirror and matched the recorded original; every URL was tried and none served it; or
+// the rebuild failed in the bucket itself (the store could not write the PDF).
+// A restored PDF's metadata: the title and authors a resolver gave, recorded again; none to
+// record, since the item's title was read from the PDF; or a recording that failed, which
+// leaves the PDF restored with the title it carries.
 export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ key: NonEmptySchema, status: z.literal("present") }),
   z.strictObject({
@@ -352,7 +343,13 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
     status: z.literal("restored"),
     from: z.url(),
     stored_sha256: Sha256Schema,
+    metadata: z.discriminatedUnion("status", [
+      z.strictObject({ status: z.literal("recorded") }),
+      z.strictObject({ status: z.literal("from_pdf") }),
+      z.strictObject({ status: z.literal("failed"), message: NonEmptySchema }),
+    ]),
   }),
+  z.strictObject({ key: NonEmptySchema, status: z.literal("failed"), message: NonEmptySchema }),
   z.strictObject({
     key: NonEmptySchema,
     status: z.literal("unrestored"),
@@ -368,16 +365,35 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
 
 // Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF.
 export const ImportUrlRequestSchema = z.strictObject({ url: HttpUrlSchema });
+// `metadata` as in a capture: the resolvers' outcome for a new PDF, null for one already stored.
 export const ImportUrlResponseSchema = z.strictObject({
   key: NonEmptySchema,
   existing: z.boolean(),
+  metadata: RetrieveMetadataOutcomeSchema.nullable(),
 });
 
-// Add Folder: every PDF directly inside the folder; the keys newly stored and those already held.
+// Add Folder: one outcome per file directly inside the folder whose name ends in `.pdf`, in
+// name order: stored under a new key, already held, not a PDF (no `%PDF-` header), or failed
+// in the store. One file's failure never discards the others'.
 export const FolderImportRequestSchema = z.strictObject({ path: NonEmptySchema });
 export const FolderImportResponseSchema = z.strictObject({
-  stored: z.array(NonEmptySchema),
-  existing: z.array(NonEmptySchema),
+  files: z.array(
+    z.discriminatedUnion("status", [
+      z.strictObject({
+        file: NonEmptySchema,
+        status: z.literal("stored"),
+        key: NonEmptySchema,
+        metadata: RetrieveMetadataOutcomeSchema,
+      }),
+      z.strictObject({ file: NonEmptySchema, status: z.literal("existing"), key: NonEmptySchema }),
+      z.strictObject({ file: NonEmptySchema, status: z.literal("not_a_pdf") }),
+      z.strictObject({
+        file: NonEmptySchema,
+        status: z.literal("failed"),
+        message: NonEmptySchema,
+      }),
+    ]),
+  ),
 });
 
 export const API_ERROR_KINDS = [
@@ -396,6 +412,18 @@ export const API_ERROR_KINDS = [
   "resolver_failed",
   "zotero_failed",
   "storage_check_failed",
+  // The store could not do its work: a write failed, or its pikepdf command failed.
+  "store_failed",
+  // A PDF the store cannot read (torn, encrypted, not a PDF inside).
+  "unreadable_pdf",
+  // Bytes that carry no `%PDF-` header in their first 1024 bytes.
+  "not_a_pdf",
+  // A reader save whose If-Match names bytes the stored file no longer holds (HTTP 412).
+  "stale_pdf",
+  // A plugin that exited 0 without writing what its contract names.
+  "plugin_contract_broken",
+  // A fault in the bucket itself.
+  "internal",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({

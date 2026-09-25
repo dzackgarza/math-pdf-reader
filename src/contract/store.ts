@@ -1,67 +1,42 @@
-// What the Python store (`pdfbucket <command>`) prints on stdout, one JSON document per call.
-// The store owns provenance embedding and the folder layout; the server reads these answers.
+// What the pikepdf commands (`pdfbucket <command>`) print on stdout. The server owns the store's
+// layout and every write; these commands read the PDFs and bytes it names.
 import { z } from "zod";
 import { ProvenanceSchema } from "./capture";
 import { TitleSourceSchema } from "./library";
-import { NonEmptySchema, Sha256Schema } from "./text";
+import { NonEmptySchema } from "./text";
 
-// A stored PDF as read back from the file alone (`pdfbucket list`, `describe`, `metadata`).
-export const StoredItemSchema = z.strictObject({
-  key: NonEmptySchema,
+// What a stored PDF says about itself, read from the file alone (`pdfbucket read`).
+export const PdfRecordSchema = z.strictObject({
   provenance: ProvenanceSchema,
   title: z.strictObject({ text: NonEmptySchema, source: TitleSourceSchema }),
   authors: z.array(NonEmptySchema),
   year: z.int().nullable(),
   abstract: NonEmptySchema.nullable(),
+  pages: z.int().min(1),
 });
 
-export const StoredItemListSchema = z.array(StoredItemSchema);
+// `pdfbucket read`: per path, in order, the record or why the file cannot be read.
+export const ReadOutcomeListSchema = z.array(
+  z.discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("read"), record: PdfRecordSchema }),
+    z.strictObject({ status: z.literal("unreadable"), message: NonEmptySchema }),
+  ]),
+);
 
-// `pdfbucket capture` and `restore`.
-export const CaptureResultSchema = z.strictObject({
-  item: StoredItemSchema,
-  stored_sha256: Sha256Schema,
-  existing: z.boolean(),
+// `pdfbucket identifiers`: the identifiers the publisher embedded in the PDF.
+export const IdentifierListSchema = z.array(NonEmptySchema);
+
+// What a command on one PDF prints, with exit status 3, when it cannot read that PDF.
+export const StoreFailureSchema = z.strictObject({
+  kind: z.enum(["unreadable_pdf", "missing_provenance", "invalid_metadata"]),
+  message: NonEmptySchema,
 });
 
-// `pdfbucket resolve`: an identifier found and resolved to BibTeX, no identifier a resolver
-// accepts, or the resolver that failed.
-export const ResolutionSchema = z.discriminatedUnion("status", [
-  z.strictObject({
-    status: z.literal("resolved"),
-    key: NonEmptySchema,
-    plugin_id: NonEmptySchema,
-    identifier: NonEmptySchema,
-    bibtex: z.string().startsWith("@"),
-  }),
-  z.strictObject({
-    status: z.literal("unidentified"),
-    key: NonEmptySchema,
-    candidates: z.array(z.string()),
-  }),
-  z.strictObject({
-    status: z.literal("failed"),
-    key: NonEmptySchema,
-    plugin_id: NonEmptySchema,
-    identifier: NonEmptySchema,
-    exit_code: z.int(),
-    stderr: z.string(),
-  }),
-]);
-
-// `pdfbucket replace`: the store keeps the new bytes only when they carry the embedded provenance.
-export const ReplaceOutcomeSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("replaced"), item: StoredItemSchema }),
-  z.strictObject({ status: z.literal("provenance_mismatch"), key: NonEmptySchema }),
-]);
-
-// `pdfbucket remove`: the paths moved to the desktop trash.
-export const RemovalSchema = z.strictObject({
+// A stored item as the library and the index export hold it: its key, which the server derives
+// from the file name, and what its PDF says about it.
+export const StoredItemSchema = PdfRecordSchema.omit({ pages: true }).extend({
   key: NonEmptySchema,
-  trashed: z.array(z.string()).min(1),
 });
 
+export type PdfRecord = z.infer<typeof PdfRecordSchema>;
 export type StoredItem = z.infer<typeof StoredItemSchema>;
-export type CaptureResult = z.infer<typeof CaptureResultSchema>;
-export type Resolution = z.infer<typeof ResolutionSchema>;
-export type ReplaceOutcome = z.infer<typeof ReplaceOutcomeSchema>;

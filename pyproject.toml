@@ -1,22 +1,20 @@
 [project]
 name = "pdfbucket"
 version = "0.1.0"
-description = "PDF Bucket store: provenance embedding, capture storage, plugin manifests."
+description = "PDF Bucket: pikepdf and MuPDF commands the server runs on stored PDFs, and the extraction plugins."
 requires-python = ">=3.14"
 dependencies = [
     "cyclopts>=4.25.3",
     "httpx>=0.28.1",
     "mistralai>=2.10.1",
-    "pathvalidate>=3.3.1",
     "pikepdf>=10.13.0.post1",
     "pydantic>=2.10",
     "pymupdf>=1.28.2",
-    "send2trash>=2.1.0",
     "tenacity>=9.1.4",
 ]
 
 [project.scripts]
-pdfbucket = "pdfbucket.cli:app"
+pdfbucket = "pdfbucket.cli:main"
 pdfbucket-mineru-precise = "pdfbucket_extractors.mineru_precise:app"
 pdfbucket-mistral-ocr = "pdfbucket_extractors.mistral_ocr:app"
 
@@ -24,7 +22,6 @@ pdfbucket-mistral-ocr = "pdfbucket_extractors.mistral_ocr:app"
 dev = [
     "bibtexparser>=2.0.1",
     "pytest>=8",
-    "types-send2trash>=2.1.0.20260408",
 ]
 
 [build-system]

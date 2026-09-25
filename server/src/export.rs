@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use futures::future::try_join_all;
+use futures::future::join_all;
 use tokio::sync::{Notify, Semaphore};
 
 use crate::contract::{
@@ -37,7 +37,12 @@ pub async fn export_index(
     export_file: &Path,
     removed: &BTreeSet<String>,
 ) -> AppResult<IndexExport> {
-    let stored = store.list(&[]).await?;
+    let stored: Vec<_> = store
+        .items()
+        .await?
+        .into_iter()
+        .map(|indexed| indexed.stored)
+        .collect();
     if tokio::fs::try_exists(export_file).await? {
         let keys: BTreeSet<&str> = stored.iter().map(|item| item.key.as_str()).collect();
         let previous = read_index_export(export_file).await?;
@@ -153,11 +158,11 @@ pub async fn rebuild_cache(
     tokio::fs::create_dir_all(store.root()).await?;
     let index = read_index_export(export_file).await?;
     let downloads = Semaphore::new(concurrency(settings));
-    try_join_all(index.items.iter().map(|item| async {
+    Ok(join_all(index.items.iter().map(|item| async {
         let _slot = downloads.acquire().await.expect("the semaphore stays open");
         rebuild_item(store, &recoverable(item), settings).await
     }))
-    .await
+    .await)
 }
 
 pub fn concurrency(settings: &AppConfigRebuild) -> usize {
