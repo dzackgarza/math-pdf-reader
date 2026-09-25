@@ -1,11 +1,18 @@
-// The capture client, run in the background: fetch the PDF with the browser's cookies,
-// post it to the bucket, and report exactly one outcome. The background, not the capture
-// page, fetches: Firefox sends no cookies from an extension page framed inside a site.
-// The bucket derives the item key from the posted filename.
+// The capture client, run in the background: post the PDF the browser received to the bucket
+// and report exactly one outcome. Where the bytes come from is the interception's business
+// (Firefox: the navigation's own response; Chrome: `refetchPdf`). The bucket derives the item
+// key from the posted filename.
 import { parse as parseContentDisposition } from "content-disposition";
+import decodeUriComponent from "decode-uri-component";
 import { CaptureResponseSchema } from "../contract/capture";
 import { ApiErrorSchema } from "../contract/library";
-import type { CaptureOutcome, LinkOrigin } from "./messages";
+import { checkedBody } from "./json";
+import { type CaptureOutcome, type Failed, failed, type LinkOrigin } from "./messages";
+
+// The PDF's bytes and the Content-Disposition header that came with them.
+export type ReceivedPdf = { bytes: Blob; contentDisposition: string | null };
+
+export type Received = { kind: "received"; pdf: ReceivedPdf } | Failed;
 
 // The first non-empty candidate in order of preference; `last` is never empty.
 function preferred(candidates: (string | undefined)[], last: string): string {
@@ -13,13 +20,14 @@ function preferred(candidates: (string | undefined)[], last: string): string {
   return first === undefined ? last : first;
 }
 
-// Content-Disposition filename, else the URL's last path segment, else the host name.
+// Content-Disposition filename, else the URL's last path segment, else the host name. The
+// segment is decoded as far as it is valid UTF-8; other escapes (`caf%E9.pdf`, Latin-1) stay.
 function captureFilename(pdfUrl: URL, contentDisposition: string | null): string {
   const declared =
     contentDisposition === null
       ? undefined
       : parseContentDisposition(contentDisposition).parameters.filename;
-  const segment = decodeURIComponent(pdfUrl.pathname.slice(pdfUrl.pathname.lastIndexOf("/") + 1));
+  const segment = decodeUriComponent(pdfUrl.pathname.slice(pdfUrl.pathname.lastIndexOf("/") + 1));
   return preferred([declared, segment], pdfUrl.hostname);
 }
 
@@ -28,50 +36,57 @@ function titleHint(origin: LinkOrigin | undefined, filename: string): string {
   return preferred([origin?.link_text, origin?.page_title], filename);
 }
 
-type Settled = { ok: true; response: Response } | { ok: false; detail: string };
+type Settled<T> = { ok: true; value: T } | { ok: false; detail: string };
 
-// A rejected fetch (network error, bucket not listening) becomes a reportable outcome.
-function settle(request: Promise<Response>): Promise<Settled> {
-  return request.then(
-    (response) => ({ ok: true, response }),
+// A rejected promise (network error, bucket not listening, body cut off) becomes a
+// reportable outcome.
+function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
+  return promise.then(
+    (value) => ({ ok: true, value }),
     (error: unknown) => ({ ok: false, detail: String(error) }),
   );
 }
 
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
+// Chrome cannot read a navigation's response body, so the background fetches the PDF again
+// with the browser's cookies.
+export async function refetchPdf(pdfUrl: URL): Promise<Received> {
+  const answered = await settle(fetch(pdfUrl, { credentials: "include" }));
+  if (!answered.ok) {
+    return failed("fetch-pdf", answered.detail);
   }
+  const response = answered.value;
+  if (!response.ok) {
+    return failed("fetch-pdf", `${response.status} ${response.statusText}`);
+  }
+  const bytes = await settle(response.blob());
+  if (!bytes.ok) {
+    return failed("fetch-pdf", `the PDF's body could not be read (${bytes.detail})`);
+  }
+  return {
+    kind: "received",
+    pdf: { bytes: bytes.value, contentDisposition: response.headers.get("content-disposition") },
+  };
 }
 
 // The bucket refuses a capture with its error envelope; any other body did not come from it.
-async function refusal(response: Response): Promise<string> {
+async function refusal(response: Response): Promise<Failed> {
   const status = `${response.status} ${response.statusText}`;
-  const body = await response.text();
-  const envelope = ApiErrorSchema.safeParse(parseJson(body));
-  return envelope.success
-    ? `${status} ${envelope.data.error.kind}: ${envelope.data.error.message}`
-    : `${status}, not a PDF Bucket error document: ${body}`;
+  const envelope = await checkedBody(response, ApiErrorSchema);
+  const detail = envelope.ok
+    ? `${status} ${envelope.value.error.kind}: ${envelope.value.error.message}`
+    : `${status}, not a PDF Bucket error document: ${envelope.detail}`;
+  return failed("post-bucket", detail);
 }
 
-export async function capturePdf(
+export async function postToBucket(
   pdfUrl: URL,
+  pdf: ReceivedPdf,
   origin: LinkOrigin | undefined,
   bucketOrigin: string,
 ): Promise<CaptureOutcome> {
-  const pdf = await settle(fetch(pdfUrl, { credentials: "include" }));
-  if (!pdf.ok) {
-    return { kind: "failed", error: { stage: "fetch-pdf", detail: pdf.detail } };
-  }
-  if (!pdf.response.ok) {
-    const detail = `${pdf.response.status} ${pdf.response.statusText}`;
-    return { kind: "failed", error: { stage: "fetch-pdf", detail } };
-  }
-  const filename = captureFilename(pdfUrl, pdf.response.headers.get("content-disposition"));
+  const filename = captureFilename(pdfUrl, pdf.contentDisposition);
   const form = new FormData();
-  form.set("pdf", new File([await pdf.response.blob()], filename, { type: "application/pdf" }));
+  form.set("pdf", new File([pdf.bytes], filename, { type: "application/pdf" }));
   form.set("pdf_url", pdfUrl.href);
   // A PDF opened without a followed link (typed in, bookmarked, framed) has no linking page.
   if (origin !== undefined) {
@@ -83,12 +98,20 @@ export async function capturePdf(
     fetch(`${bucketOrigin}/capture-bytes`, { method: "POST", body: form }),
   );
   if (!posted.ok) {
-    const detail = `PDF Bucket is not reachable at ${bucketOrigin} (${posted.detail})`;
-    return { kind: "failed", error: { stage: "post-bucket", detail } };
+    return failed(
+      "post-bucket",
+      `PDF Bucket is not reachable at ${bucketOrigin} (${posted.detail})`,
+    );
   }
-  if (!posted.response.ok) {
-    const detail = await refusal(posted.response);
-    return { kind: "failed", error: { stage: "post-bucket", detail } };
+  if (!posted.value.ok) {
+    return refusal(posted.value);
   }
-  return { kind: "stored", response: CaptureResponseSchema.parse(await posted.response.json()) };
+  const answer = await checkedBody(posted.value, CaptureResponseSchema);
+  if (!answer.ok) {
+    return failed(
+      "post-bucket",
+      `${bucketOrigin} answered, but not with a capture response: ${answer.detail}`,
+    );
+  }
+  return { kind: "stored", response: answer.value };
 }

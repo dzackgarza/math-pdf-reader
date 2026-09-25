@@ -3,6 +3,8 @@ declare const PDF_BUCKET_BUILD: {
   bucketOrigin: string;
   minFrameWidth: number;
   minFrameHeight: number;
+  linkOriginMaxAgeMs: number;
+  nativeOpenTimeoutMs: number;
 };
 
 export const bucketBuild = PDF_BUCKET_BUILD;

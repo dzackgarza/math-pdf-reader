@@ -60,7 +60,7 @@ function renderConnection(state: BucketState): void {
     element("connection-details", HTMLDListElement).replaceChildren(
       ...origin,
       ...detail("Error", state.detail),
-      ...detail("Start it", code("systemctl --user start pdf-bucket")),
+      ...detail("Start it", code("gtk-launch pdf-bucket-desktop")),
     );
     return;
   }

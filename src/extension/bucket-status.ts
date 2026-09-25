@@ -4,6 +4,7 @@ import { browser } from "wxt/browser";
 import { storage } from "wxt/utils/storage";
 import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
 import { ApiErrorSchema } from "../contract/library";
+import { checkedBody } from "./json";
 import type { CaptureOutcome } from "./messages";
 
 // Whether this browser's PDF navigations go to the bucket. On until the user switches it off.
@@ -26,7 +27,8 @@ export type BucketState =
 
 // A refused connection or a non-bucket answer on the configured port is `unreachable`: the
 // extension cannot hand PDFs to it. The bucket's own error document is `check-failed`: it
-// answered, but could not tell whether its data folder can take captures.
+// answered, but could not tell whether its data folder can take captures. Every answer is
+// read as text and checked against its schema, so no answer makes the check throw.
 export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   const answered = await fetch(`${bucketOrigin}/status`, { cache: "no-store" }).then(
     (response) => ({ ok: true as const, response }),
@@ -35,21 +37,18 @@ export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   if (!answered.ok) {
     return { kind: "unreachable", detail: answered.detail };
   }
-  if (!answered.response.ok) {
-    const detail = `${answered.response.status} ${answered.response.statusText}`;
-    if (answered.response.headers.get("Content-Type") !== "application/json") {
-      return { kind: "unreachable", detail };
-    }
-    const failure = ApiErrorSchema.safeParse(await answered.response.json());
-    return failure.success
-      ? { kind: "check-failed", detail: failure.data.error.message }
-      : { kind: "unreachable", detail };
+  const { response } = answered;
+  if (!response.ok) {
+    const failure = await checkedBody(response, ApiErrorSchema);
+    return failure.ok
+      ? { kind: "check-failed", detail: failure.value.error.message }
+      : { kind: "unreachable", detail: `${response.status} ${response.statusText}` };
   }
-  const status = ServerStatusSchema.safeParse(await answered.response.json());
-  if (!status.success) {
-    return { kind: "unreachable", detail: `not a PDF Bucket status report: ${status.error}` };
+  const status = await checkedBody(response, ServerStatusSchema);
+  if (!status.ok) {
+    return { kind: "unreachable", detail: `not a PDF Bucket status report: ${status.detail}` };
   }
-  return { kind: status.data.ready ? "ready" : "not-ready", status: status.data };
+  return { kind: status.value.ready ? "ready" : "not-ready", status: status.value };
 }
 
 type Badge = { text: string; color: string; title: string };
