@@ -60,7 +60,9 @@ invariant(record !== undefined, "arXiv BibTeX holds no entry");
 // The abstract travels as CSL, so citation-js escapes it into BibTeX. Its object output is
 // typed as a union with its text output, so the entries are read through their schema.
 const [entry] = FormattedSchema.parse(
-  new Cite([{ ...record, abstract: await abstractOf(id) }]).format("biblatex", { format: "object" }),
+  new Cite([{ ...record, abstract: await abstractOf(id) }]).format("biblatex", {
+    format: "object",
+  }),
 );
 invariant(entry !== undefined, "citation-js formatted no entry");
 // CSL has no arXiv eprint fields, so they come from arXiv's own entry. arXiv names the archive

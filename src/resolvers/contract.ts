@@ -92,7 +92,10 @@ function parsedEntries(bibtex: string): BibtexEntry[] {
 export function bibtexEntry(bibtex: string): BibtexEntry {
   const entries = parsedEntries(bibtex);
   const [entry] = entries;
-  invariant(entries.length === 1 && entry !== undefined, `expected exactly one BibTeX entry, got ${entries.length}`);
+  invariant(
+    entries.length === 1 && entry !== undefined,
+    `expected exactly one BibTeX entry, got ${entries.length}`,
+  );
   return entry;
 }
 

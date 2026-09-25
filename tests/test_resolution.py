@@ -8,9 +8,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import bibtexparser
-from bibtexparser.middlewares import LatexDecodingMiddleware
 import pikepdf
 import pytest
+from bibtexparser.middlewares import LatexDecodingMiddleware
 from pydantic import TypeAdapter
 
 from pdfbucket.cli import app
