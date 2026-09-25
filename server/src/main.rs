@@ -2,9 +2,11 @@
 //! commands over the configured data root.
 //!
 //! - `serve <root> <zotero url> <extractions manifest> <resolvers manifest> --index-export
-//!   <file>` serves any bucket root on a free port, prints its origin and serves until its
-//!   standard input closes; the test suites and evidence runs use it so that they never touch
-//!   the configured bucket or its port.
+//!   <file> --config <file>` serves any bucket root on a free port, prints its origin and
+//!   serves until its standard input closes; the test suites and evidence runs use it so that
+//!   they never touch the configured bucket or its port. The config file has the schema of
+//!   pdf-bucket.config.json and sets the time limits and the other tunables in place of the
+//!   compiled-in copy, so a test can run the server with short limits.
 //! - `export-index`, `import-index`, `rebuild-cache` and `forget` take an optional export file
 //!   (default: the configured one).
 use std::path::PathBuf;
@@ -14,7 +16,7 @@ use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use pdf_bucket::config::{self, BucketConfig, ProcessEnv};
-use pdf_bucket::contract::RebuildOutcome;
+use pdf_bucket::contract::{from_json, AppConfig, ContractViolation, RebuildOutcome};
 use pdf_bucket::error::AppError;
 use pdf_bucket::export::{
     export_index, forget_missing, import_index, rebuild_cache, BucketDocuments, ExportOutcome,
@@ -44,6 +46,9 @@ enum Command {
         /// Rewrite this index export after every change.
         #[arg(long)]
         index_export: PathBuf,
+        /// The app config (the schema of pdf-bucket.config.json) this server runs with.
+        #[arg(long)]
+        config: PathBuf,
     },
     /// Write the index export: every stored item's provenance and filing.
     ExportIndex { file: Option<PathBuf> },
@@ -110,6 +115,7 @@ enum Failure {
     Server(tokio::task::JoinError),
     Bucket(AppError),
     Json(serde_json::Error),
+    Config(PathBuf, ContractViolation),
     Refused(PathBuf, Vec<String>),
 }
 
@@ -132,6 +138,7 @@ impl std::fmt::Display for Failure {
             Self::Server(error) => write!(formatter, "the server stopped: {error}"),
             Self::Bucket(error) => write!(formatter, "{error:?}"),
             Self::Json(error) => write!(formatter, "{error}"),
+            Self::Config(file, violation) => write!(formatter, "{}: {violation}", file.display()),
             Self::Refused(file, missing) => write!(
                 formatter,
                 "{} lists {}, which have no PDF in the store; run `just rebuild-cache`, or \
@@ -172,8 +179,10 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             extractions_manifest,
             resolvers_manifest,
             index_export,
+            config: config_file,
         } => {
-            let app = config::app_config();
+            let app: AppConfig = from_json(&tokio::fs::read(&config_file).await?)
+                .map_err(|violation| Failure::Config(config_file, violation))?;
             let bucket = BucketConfig {
                 root,
                 pdfjs_dir: config::pdfjs_dir(&app),

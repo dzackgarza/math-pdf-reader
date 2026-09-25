@@ -25,7 +25,7 @@
     {
       "id": "mistral-ocr",
       "name": "Mistral OCR",
-      "command": ["pdfbucket-mistral-ocr", "$pdf", "$output"],
+      "command": ["pdfbucket-mistral-ocr", "$pdf", "$output", "https://api.mistral.ai"],
       "accepted_inputs": [
         {
           "kind": "pdf",
