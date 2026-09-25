@@ -53,13 +53,13 @@ import {
   sourceActions,
 } from "./libraryActions";
 import { type LibraryView, reconcileView, relatedItems, visibleItems } from "./librarySelectors";
+import { useReaderTabs } from "./readerTabs";
 import { entryView, readerPath, type Screen, screenAt } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import TimelineScreen from "./screens/TimelineScreen";
 import { defaultSearchSettings } from "./search";
 import { newRule } from "./smartRules";
-import { useReaderTabs } from "./readerTabs";
 import { type StatusRead, useBucketStatus } from "./useBucketStatus";
 import { useExtractionPlugins } from "./useExtractionPlugins";
 import { useKeyedAttempts } from "./useKeyedAttempts";

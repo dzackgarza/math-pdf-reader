@@ -17,13 +17,13 @@ use tower_http::services::{ServeDir, ServeFile};
 use url::Url;
 
 use crate::config::VERSION;
+use crate::contract::OpenReader;
 use crate::contract::{
     ApiErrorErrorKind, CaptureResponse, FolderImportRequest, FolderImportResponse,
     ImportUrlRequest, ImportUrlResponse, ServerStatus, ServerStatusCapabilities,
     ServerStatusService, ServerStatusServiceName, ServerStatusStorage,
 };
 use crate::error::{AppError, AppResult};
-use crate::contract::OpenReader;
 use crate::events;
 use crate::imports::{find_pdf_at, is_pdf, pdfs_in_folder};
 use crate::reader::{pdf_url_path, reader_page, reader_url_path};
