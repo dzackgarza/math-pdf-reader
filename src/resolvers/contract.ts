@@ -1,13 +1,21 @@
 // The resolver plugin contract: the identifier or URL arrives on stdin, the upstream service's
 // base URL is the first argument, and exactly one BibTeX entry leaves on stdout. A broken
 // invariant exits 1 with its reason as the whole of stderr.
-import { Cite, type CSL, type CSLName } from "@citation-js/core";
+import { Cite, type CSL, type CSLName, plugins } from "@citation-js/core";
 import "@citation-js/plugin-bibtex";
+
+// A BibTeX entry as citation-js's BibTeX parser reads it: field names in lower case, each
+// value the field's BibTeX source.
+export type BibtexEntry = ReturnType<plugins.input.Formats["@biblatex/text"]>[number];
+
+function fail(message: string): never {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}
 
 export function invariant(condition: boolean, message: string): asserts condition {
   if (!condition) {
-    process.stderr.write(`${message}\n`);
-    process.exit(1);
+    fail(message);
   }
 }
 
@@ -69,8 +77,29 @@ export function cslBibtex(record: CSL & { id: string }): string {
   return new Cite([{ ...record, "citation-key": record.id }]).format("bibtex");
 }
 
+function parsedEntries(bibtex: string): BibtexEntry[] {
+  try {
+    return plugins.input.data(bibtex, "@biblatex/text");
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      throw error;
+    }
+    return fail(`BibTeX does not parse: ${error.message}`);
+  }
+}
+
+// The one entry BIBTEX holds; text outside entries is a BibTeX comment.
+export function bibtexEntry(bibtex: string): BibtexEntry {
+  const entries = parsedEntries(bibtex);
+  const [entry] = entries;
+  invariant(
+    entries.length === 1 && entry !== undefined,
+    `expected exactly one BibTeX entry, got ${entries.length}`,
+  );
+  return entry;
+}
+
 export function writeBibtex(bibtex: string): void {
-  const entry = bibtex.trim();
-  invariant(entry.startsWith("@"), "the upstream answer is not a BibTeX entry");
-  process.stdout.write(`${entry}\n`);
+  bibtexEntry(bibtex);
+  process.stdout.write(`${bibtex.trim()}\n`);
 }
