@@ -1,30 +1,24 @@
+// The index export and its maintenance commands (`pdf-bucket export-index`, `import-index`,
+// `rebuild-cache`) over the configured data root, $XDG_DATA_HOME/pdf-bucket, and the running
+// server's rewrite of the export after every change.
 import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import type { IndexExport } from "../src/contract/files";
+import { RebuildOutcomeSchema } from "../src/contract/library";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 import {
-  exportIndex,
-  FilingExistsError,
-  type IndexExport,
-  importIndex,
-  PdfsMissingError,
+  bucketCommand,
+  captureBytes,
+  listItems,
   readIndexExport,
-  rebuildCache,
-} from "../src/server/indexExport";
-import {
-  addCollection,
-  addNote,
-  addSavedSearch,
-  OrganizationStore,
-  setCollections,
-  setTags,
-} from "../src/server/organization";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
-import { captureBytes, listItems } from "../src/server/store";
+  readOrganization,
+  unfiled,
+  writeOrganization,
+} from "./store";
 
 const config = loadAppConfig(CONFIG_PATH);
 // A collection's own fields as a new one has them.
@@ -76,6 +70,14 @@ function temporaryDirectory(label: string): string {
   return mkdtempSync(join(tmpdir(), `pdf-bucket-index-${label}-`));
 }
 
+// A scratch XDG data home: the maintenance commands work on its `pdf-bucket` data root.
+function dataHome() {
+  const home = temporaryDirectory("data");
+  const root = join(home, "pdf-bucket");
+  mkdirSync(root);
+  return { home, root };
+}
+
 async function capture(
   root: string,
   bytes: Uint8Array<ArrayBuffer>,
@@ -83,29 +85,49 @@ async function capture(
   url: string,
 ) {
   const result = await captureBytes(root, {
-    pdf: new File([bytes], filename, { type: "application/pdf" }),
-    pdf_url: url,
-    source_url: at("/teaching.html"),
-    title_hint: `Notes from ${filename}`,
+    bytes,
+    filename,
+    pdfUrl: url,
+    sourceUrl: at("/teaching.html"),
+    titleHint: `Notes from ${filename}`,
   });
   return result.item;
 }
 
+async function exportIndex(home: string, exportFile: string) {
+  const command = await bucketCommand(home, ["export-index", exportFile]);
+  expect(command).toMatchObject({ exitCode: 0 });
+}
+
+async function rebuildCache(home: string, exportFile: string) {
+  const command = await bucketCommand(home, ["rebuild-cache", exportFile]);
+  return {
+    exitCode: command.exitCode,
+    outcomes: RebuildOutcomeSchema.array().parse(JSON.parse(command.stdout)),
+  };
+}
+
 test("rebuilding re-downloads each missing PDF into its key and reports dead and changed URLs by key", async () => {
-  const root = temporaryDirectory("store");
+  const { home, root } = dataHome();
   const exportFile = join(temporaryDirectory("export"), "index.json");
   await capture(root, lectureNotes, "lecture-notes.pdf", at("/notes/lecture-notes.pdf"));
   await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
   await capture(root, tenPageNotes, "ten-page-notes.pdf", at("/teaching/ten-page-notes.pdf"));
   await capture(root, longNotes, "long-notes.pdf", at("/gone/long-notes.pdf"));
   await capture(root, lectureNotes, "revised.pdf", at("/revised/notes.pdf"));
-  const exported = await exportIndex(root, exportFile, new Set());
+  await exportIndex(home, exportFile);
+  const exported = readIndexExport(exportFile);
+  if (exported === null) {
+    throw new Error("export-index wrote no export");
+  }
   for (const key of ["lecture-notes", "2401.00001", "long-notes", "revised"]) {
     unlinkSync(join(root, `${key}.pdf`));
   }
 
-  const outcomes = await rebuildCache(root, exportFile, config.rebuild);
+  const { exitCode, outcomes } = await rebuildCache(home, exportFile);
 
+  // Two PDFs could not be restored.
+  expect(exitCode).toBe(1);
   const restored = await listItems(root, ["2401.00001", "lecture-notes", "ten-page-notes"]);
   expect(outcomes).toEqual([
     {
@@ -156,113 +178,136 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
 });
 
 test("an export imported into an empty store and rebuilt there exports byte for byte the same", async () => {
-  const original = temporaryDirectory("original");
+  const original = dataHome();
   const lattices = await capture(
-    original,
+    original.root,
     lectureNotes,
     "lattices.pdf",
     at("/notes/lecture-notes.pdf"),
   );
-  const packing = await capture(original, problemSet, "2401.00001", at("/pdf/2401.00001"));
+  const packing = await capture(original.root, problemSet, "2401.00001", at("/pdf/2401.00001"));
   // Never filed: the store has no filing entry for it, and the import must not add one.
-  await capture(original, tenPageNotes, "ten-page-notes.pdf", at("/teaching/ten-page-notes.pdf"));
-  const organizations = new OrganizationStore(original);
+  await capture(
+    original.root,
+    tenPageNotes,
+    "ten-page-notes.pdf",
+    at("/teaching/ten-page-notes.pdf"),
+  );
   const filedAt = "2026-09-24T10:15:00.000Z";
-  await organizations.update((org) =>
-    addCollection(addCollection(org, { ...PLAIN, id: "forms", name: "Quadratic forms" }), {
-      ...PLAIN,
-      id: "even",
-      name: "Even lattices",
-      parentId: "forms",
-    }),
-  );
-  await organizations.update((org) => setCollections(org, lattices.key, ["even"], filedAt));
-  await organizations.update((org) =>
-    setTags(org, lattices.key, ["topic:lattices", "to-read"], filedAt),
-  );
-  await organizations.update((org) => setTags(org, packing.key, ["topic:packing"], filedAt));
-  await organizations.update((org) =>
-    addNote(org, packing.key, {
-      id: "note-1",
-      note: "The E8 bound is in section 5.",
-      dateAdded: filedAt,
-      dateModified: filedAt,
-    }),
-  );
-  await organizations.update((org) =>
-    addSavedSearch(org, {
-      id: "search-1",
-      name: "Lattice topics",
-      match: "all",
-      rules: [
-        {
-          field: "text",
-          operator: "matches",
-          search: {
-            query: "lattices",
-            matchCase: false,
-            matchType: "any",
-            searchFields: {
-              title: true,
-              source: false,
-              pdfUrl: false,
-              tags: true,
-              notes: false,
-              key: false,
+  writeOrganization(original.root, {
+    version: 2,
+    collections: [
+      { ...PLAIN, id: "forms", name: "Quadratic forms" },
+      { ...PLAIN, id: "even", name: "Even lattices", parentId: "forms" },
+    ],
+    savedSearches: [
+      {
+        id: "search-1",
+        name: "Lattice topics",
+        match: "all",
+        rules: [
+          {
+            field: "text",
+            operator: "matches",
+            search: {
+              query: "lattices",
+              matchCase: false,
+              matchType: "any",
+              searchFields: {
+                title: true,
+                source: false,
+                pdfUrl: false,
+                tags: true,
+                notes: false,
+                key: false,
+              },
             },
           },
-        },
-      ],
-    }),
-  );
+        ],
+      },
+    ],
+    items: {
+      [lattices.key]: {
+        ...unfiled(lattices.provenance),
+        collections: ["even"],
+        tags: ["topic:lattices", "to-read"],
+        modifiedAt: filedAt,
+      },
+      [packing.key]: {
+        ...unfiled(packing.provenance),
+        tags: ["topic:packing"],
+        notes: [
+          {
+            id: "note-1",
+            note: "The E8 bound is in section 5.",
+            dateAdded: filedAt,
+            dateModified: filedAt,
+          },
+        ],
+        modifiedAt: filedAt,
+      },
+    },
+    activity: [],
+    preferences: { outlineOnOpen: false, theme: "system" },
+  });
   const exportFile = join(temporaryDirectory("export"), "index.json");
-  await exportIndex(original, exportFile, new Set());
+  await exportIndex(original.home, exportFile);
 
-  const restoredRoot = join(temporaryDirectory("restored"), "pdf-bucket");
-  const imported = await importIndex(restoredRoot, exportFile);
-  expect(imported).toEqual(await organizations.read());
-  const outcomes = await rebuildCache(restoredRoot, exportFile, config.rebuild);
+  const restored = dataHome();
+  const imported = await bucketCommand(restored.home, ["import-index", exportFile]);
+  expect(imported.exitCode).toBe(0);
+  expect(readOrganization(restored.root)).toEqual(readOrganization(original.root));
+  const { exitCode, outcomes } = await rebuildCache(restored.home, exportFile);
+  expect(exitCode).toBe(0);
   expect(outcomes.map((outcome) => [outcome.key, outcome.status])).toEqual([
     ["2401.00001", "restored"],
     ["lattices", "restored"],
     ["ten-page-notes", "restored"],
   ]);
   const reexportFile = join(temporaryDirectory("reexport"), "index.json");
-  await exportIndex(restoredRoot, reexportFile, new Set());
+  await exportIndex(restored.home, reexportFile);
 
   expect(readFileSync(reexportFile, "utf8")).toBe(readFileSync(exportFile, "utf8"));
 });
 
 test("an export never drops an item whose PDF is missing, and import never overwrites filing", async () => {
-  const root = temporaryDirectory("store");
+  const { home, root } = dataHome();
   const exportFile = join(temporaryDirectory("export"), "index.json");
   await capture(root, lectureNotes, "lecture-notes.pdf", at("/notes/lecture-notes.pdf"));
-  await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
-  await new OrganizationStore(root).update((org) =>
-    setTags(org, "2401.00001", ["topic:packing"], "2026-09-24T10:15:00.000Z"),
-  );
-  await exportIndex(root, exportFile, new Set());
+  const packing = await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
+  const filing = {
+    version: 2 as const,
+    collections: [],
+    savedSearches: [],
+    items: {
+      [packing.key]: {
+        ...unfiled(packing.provenance),
+        tags: ["topic:packing"],
+        modifiedAt: "2026-09-24T10:15:00.000Z",
+      },
+    },
+    activity: [],
+    preferences: { outlineOnOpen: false, theme: "system" as const },
+  };
+  writeOrganization(root, filing);
+  await exportIndex(home, exportFile);
   const before = readFileSync(exportFile, "utf8");
   unlinkSync(join(root, "lecture-notes.pdf"));
 
-  const [reexport, reimport] = await Promise.allSettled([
-    exportIndex(root, exportFile, new Set()),
-    importIndex(root, exportFile),
-  ]);
+  const reexport = await bucketCommand(home, ["export-index", exportFile]);
+  const reimport = await bucketCommand(home, ["import-index", exportFile]);
 
-  expect(reexport).toEqual({ status: "rejected", reason: expect.any(PdfsMissingError) });
-  expect(reexport).toMatchObject({ reason: { keys: ["lecture-notes"] } });
+  expect(reexport.exitCode).toBe(1);
   expect(readFileSync(exportFile, "utf8")).toBe(before);
-  expect(reimport).toEqual({ status: "rejected", reason: expect.any(FilingExistsError) });
+  expect(reimport.exitCode).toBe(1);
+  expect(readOrganization(root)).toEqual(filing);
 });
 
 test("the running server rewrites the index export after a capture, a filing change and a delete", async () => {
   const root = temporaryDirectory("server");
   const exportFile = join(temporaryDirectory("server-export"), "index.json");
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl: config.zotero.url,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
@@ -270,10 +315,13 @@ test("the running server rewrites the index export after a capture, a filing cha
   });
   // The export lands after the response; its content, not its timing, is the claim.
   const exported = async (done: (index: IndexExport) => boolean) => {
-    while (!existsSync(exportFile) || !done(await readIndexExport(exportFile))) {
+    for (;;) {
+      const index = readIndexExport(exportFile);
+      if (index !== null && done(index)) {
+        return index;
+      }
       await Bun.sleep(50);
     }
-    return readIndexExport(exportFile);
   };
 
   const form = new FormData();

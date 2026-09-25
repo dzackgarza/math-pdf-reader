@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Router } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
-import { LIBRARY_VIEW_KEY } from "../server/libraryContract";
+import { LIBRARY_VIEW_KEY } from "../contract/library";
 import "./index.css";
 import App from "./App.tsx";
 import ErrorBoundary from "./ErrorBoundary.tsx";

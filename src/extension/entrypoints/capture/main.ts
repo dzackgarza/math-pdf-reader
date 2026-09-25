@@ -4,7 +4,7 @@
 // or closes when it was opened for the PDF alone; a frame keeps one line naming the item.
 // A failure stays on screen with a way to open the PDF in the browser instead.
 import { browser } from "wxt/browser";
-import type { CaptureResponse } from "../../../server/contract";
+import type { CaptureResponse } from "../../../contract/capture";
 import { bucketBuild } from "../../bucket-config";
 import { pdfUrlFromCaptureQuery } from "../../interception";
 import { type CaptureOutcome, CaptureOutcomeSchema, type RuntimeMessage } from "../../messages";

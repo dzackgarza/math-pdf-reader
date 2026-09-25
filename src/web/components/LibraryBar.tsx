@@ -3,7 +3,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { Table } from "@tanstack/react-table";
 import { ArrowDownUp, Check, LayoutGrid, List } from "lucide-react";
-import type { BucketItem, LibraryPayload } from "../../server/libraryContract";
+import type { BucketItem, LibraryPayload } from "../../contract/library";
 import {
   type LibraryView,
   QUICK_FILTERS,

@@ -1,7 +1,8 @@
 // The bucket's `/status` report, read when the window opens.
 import { useEffect, useState } from "react";
-import { type ServerStatus, ServerStatusSchema } from "../server/contract";
-import { type Settings, SettingsSchema } from "../server/libraryContract";
+import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
+import { type Settings, SettingsSchema } from "../contract/library";
+import { requestError } from "./useLibraryApi";
 
 export type BucketStatus = ServerStatus & { settings: Settings; checkedAt: Date };
 
@@ -12,7 +13,14 @@ export type StatusRead =
 
 async function readStatus(): Promise<BucketStatus> {
   const [status, settings] = await Promise.all([
-    fetch("/status").then(async (response) => ServerStatusSchema.parse(await response.json())),
+    // A failed storage check arrives as the bucket's error document, whose message carries the
+    // operating system's error.
+    fetch("/status").then(async (response) => {
+      if (!response.ok) {
+        throw await requestError(response);
+      }
+      return ServerStatusSchema.parse(await response.json());
+    }),
     fetch("/api/settings").then(async (response) => SettingsSchema.parse(await response.json())),
   ]);
   return { ...status, settings, checkedAt: new Date() };

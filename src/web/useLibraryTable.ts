@@ -14,7 +14,7 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table";
 import { useEffect, useState } from "react";
-import type { BucketItem } from "../server/libraryContract";
+import type { BucketItem } from "../contract/library";
 import {
   BUCKET_COLUMNS,
   type ColumnLayout,

@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "identifier": "com.dzackgarza.pdfbucket",
   "build": {
-    "beforeDevCommand": "bun run --cwd .. dev",
     "frontendDist": "../src"
   },
   "app": {

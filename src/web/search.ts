@@ -8,7 +8,7 @@ import {
   type BucketItem,
   SEARCH_FIELDS,
   type SearchField,
-} from "../server/libraryContract";
+} from "../contract/library";
 import { sourceDomain } from "./format";
 
 export type SearchDocument = { item: BucketItem } & Record<SearchField, string>;

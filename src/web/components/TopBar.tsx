@@ -1,6 +1,6 @@
 import { BookmarkPlus, FolderInput, Link2, Search, SlidersHorizontal } from "lucide-react";
 import { forwardRef } from "react";
-import type { AdvancedSearchSettings } from "../../server/libraryContract";
+import type { AdvancedSearchSettings } from "../../contract/library";
 import { defaultSearchSettings } from "../search";
 
 type TopBarProps = {

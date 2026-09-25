@@ -4,7 +4,7 @@ import {
   type AdvancedSearchSettings,
   type BucketItem,
   SEARCH_FIELDS,
-} from "../../server/libraryContract";
+} from "../../contract/library";
 import { filterItems, SEARCH_FIELD_LABELS } from "../search";
 
 type AdvancedSearchModalProps = {

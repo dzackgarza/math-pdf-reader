@@ -6,8 +6,8 @@
 
 Builds three bucket roots in a temporary directory: an empty one, one holding a PDF without
 embedded provenance (the error state), and one seeded with 1,000 PDFs through the real store
-(`scripts/seed_bucket.py`, from committed fixture PDFs). Serves each with
-`src/server/serveBucket.ts` on a free port, files part of the seeded library through the library
+(`scripts/seed_bucket.py`, from committed fixture PDFs). Serves each with `pdf-bucket
+serve` (the app's server without its window) on a free port, files part of the seeded library through the library
 API, lays the committed MinerU output beside one item as its extraction, then captures each
 screen in the system Chromium driven by Playwright, and the library and reader in the system
 WebKitGTK (the engine of the desktop window) through WebKitWebDriver on a headless Weston. Prints the load and filter timings as JSON.
@@ -40,6 +40,8 @@ SEEDED_COUNT = 1000
 VIEWPORT = {"width": 1600, "height": 1000}
 FILED_COUNT = 300
 SHIPPED_EXTRACTIONS = REPO / "plugins/manifests/extractions.json"
+SHIPPED_RESOLVERS = REPO / "plugins/manifests/resolvers.json"
+SERVER = REPO / "target/debug/pdf-bucket"
 
 app = App()
 
@@ -58,10 +60,16 @@ def closed_port_url() -> str:
 
 
 def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> str:
-    """Start the bucket app over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
-    plugins listed in EXTRACTIONS; return its origin."""
+    """Start the bucket server over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
+    plugins listed in EXTRACTIONS; return its origin. It serves until its standard input closes."""
+    subprocess.run(["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"], cwd=REPO, check=True)
     process = subprocess.Popen(
-        ["bun", "src/server/serveBucket.ts", str(root), zotero_url, str(extractions)], cwd=REPO, stdout=subprocess.PIPE, text=True, env=project_env()
+        [SERVER, "serve", root, zotero_url, extractions, SHIPPED_RESOLVERS],
+        cwd=REPO,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=project_env(),
     )
     stack.callback(process.terminate)
     assert process.stdout is not None

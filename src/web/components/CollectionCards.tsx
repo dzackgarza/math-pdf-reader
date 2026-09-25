@@ -2,7 +2,7 @@
 // description, the most used tags, and a pin that brings a card to the front.
 import { Folder, FolderOpen, Pin } from "lucide-react";
 import { Link } from "wouter";
-import type { Collection, LibraryPayload } from "../../server/libraryContract";
+import type { Collection, LibraryPayload } from "../../contract/library";
 import { pdfCount } from "../format";
 import { itemsInView, tagCounts } from "../librarySelectors";
 import { organizationPath } from "../routes";

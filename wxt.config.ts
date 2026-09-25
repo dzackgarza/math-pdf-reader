@@ -1,5 +1,5 @@
 import { defineConfig } from "wxt";
-import { type AppConfig, CONFIG_PATH, loadAppConfig } from "./src/server/config";
+import { type AppConfig, CONFIG_PATH, loadAppConfig } from "./src/contract/config";
 
 // The extension learns the bucket origin and the minimum frame size from
 // pdf-bucket.config.json at build time; src/extension/bucket-config.ts reads this define.

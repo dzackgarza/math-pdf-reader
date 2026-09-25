@@ -23,23 +23,13 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-single-instance = "2"
-ureq = { version = "3", default-features = false }
-libc = "0.2"
 percent-encoding = "2"
 strip-ansi-escapes = "0.2"
 tauri-plugin-dialog = "2"
+pdf-bucket = { version = "0.1.0", path = "../../server" }
 
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
 
-# Lint silencing is checked, not free: #[allow] is denied; use #[expect(..., reason = "...")]
-# (clippy restriction lints allow_attributes, allow_attributes_without_reason).
-[lints.clippy]
-allow_attributes = "deny"
-allow_attributes_without_reason = "deny"
+
+[lints]
+workspace = true

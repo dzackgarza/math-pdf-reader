@@ -7,7 +7,7 @@ import {
   ApiErrorSchema,
   type LibraryPayload,
   LibraryPayloadSchema,
-} from "../server/libraryContract";
+} from "../contract/library";
 
 export type LibraryState =
   | { status: "loading" }

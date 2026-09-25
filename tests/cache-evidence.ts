@@ -15,12 +15,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir, REPO_ROOT } from "../src/server/config";
-import { CaptureResponseSchema } from "../src/server/contract";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
-import { CollectionSchema } from "../src/server/libraryContract";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
+import { CaptureResponseSchema } from "../src/contract/capture";
+import { CONFIG_PATH, loadAppConfig, REPO_ROOT } from "../src/contract/config";
+import { CollectionSchema } from "../src/contract/library";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 
 const fixtures = join(import.meta.dir, "fixtures");
 const papers: Record<string, string> = {
@@ -52,16 +50,13 @@ const exportFile = join(xdg, "pdf-bucket-export", "index.json");
 mkdirSync(root);
 const env = { ...process.env, XDG_DATA_HOME: xdg };
 const config = loadAppConfig(CONFIG_PATH);
-const app = createApp({
+const app = await serveBucket({
   root,
-  version: "0.1.0",
-  pdfjsDir: pdfjsDir(config),
   zoteroUrl: config.zotero.url,
   extractionsManifest: EXTRACTIONS_MANIFEST,
   resolversManifest: RESOLVERS_MANIFEST,
-  indexExport: null,
 });
-const api = (path: string, init?: RequestInit) => app.request(`http://bucket${path}`, init);
+const api = app.request;
 
 function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -157,3 +152,4 @@ for (const [path, name] of Object.entries(papers)) {
   process.stdout.write(`fixture ${name} ${sha256(join(fixtures, name))}\n\n`);
 }
 publisher.stop(true);
+await app.stop();

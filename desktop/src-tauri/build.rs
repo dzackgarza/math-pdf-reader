@@ -1,5 +1,5 @@
 fn main() {
-    // src/server.rs runs the bucket server with the PATH of this build (direnv, bun, uv).
+    // src/process_config.rs gives the commands the bucket runs this build's PATH (direnv, bun, uv).
     println!("cargo:rerun-if-env-changed=PATH");
     println!(
         "cargo:rustc-env=PDF_BUCKET_BUILD_PATH={}",

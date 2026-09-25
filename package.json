@@ -4,9 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/server/index.ts",
     "build": "vite build --config src/web/vite.config.ts && wxt build && wxt zip -b firefox",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/server && tsc --noEmit -p src/web && tsc --noEmit -p src/extension && tsc --noEmit -p src/resolvers && tsc --noEmit -p tests",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/contract && tsc --noEmit -p src/web && tsc --noEmit -p src/extension && tsc --noEmit -p src/resolvers && tsc --noEmit -p tests",
     "test": "bun test",
     "coverage": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
     "postinstall": "wxt prepare",
@@ -14,7 +13,6 @@
   },
   "dependencies": {
     "@citation-js/core": "^0.9.0",
-    "@citation-js/name": "^0.4.2",
     "@citation-js/plugin-bibtex": "^0.9.0",
     "@fontsource-variable/inter": "^5.3.0",
     "@radix-ui/react-alert-dialog": "^1.1.23",
@@ -32,13 +30,11 @@
     "content-disposition": "^3.0.0",
     "fast-xml-parser": "^5.11.1",
     "fzf": "^0.5.2",
-    "hono": "^4.13.8",
     "lucide-react": "^1.47.0",
     "pretty-bytes": "^7.1.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "wouter": "^3.11.0",
-    "xdg-basedir": "^5.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

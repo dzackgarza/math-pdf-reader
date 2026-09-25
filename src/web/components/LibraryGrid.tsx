@@ -2,7 +2,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import type { Table } from "@tanstack/react-table";
 import { type ReactNode, useState } from "react";
-import type { BucketItem } from "../../server/libraryContract";
+import type { BucketItem } from "../../contract/library";
 import { authorList, readingText, thumbnailPath } from "../format";
 
 type LibraryGridProps = {

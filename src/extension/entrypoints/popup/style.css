@@ -61,11 +61,13 @@ h1::before {
 }
 
 #connection[data-state="not-ready"] h1::before,
+#connection[data-state="check-failed"] h1::before,
 #connection[data-state="unreachable"] h1::before {
   background: var(--danger);
 }
 
 #connection[data-state="not-ready"] h1,
+#connection[data-state="check-failed"] h1,
 #connection[data-state="unreachable"] h1 {
   color: var(--danger);
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Build the web bundle and the release desktop app, install the app with its launcher entry,
-# icons and login autostart, and start it; the app starts the bucket server. Called by `just
-# provision` from the repository root.
+# icons and login autostart, and start it; the app is the bucket server. Called by `just provision`
+# from the repository root.
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo"
-# The app loads the provider keys with `direnv export json`; a blocked .envrc fails here.
+# The app reads the provider keys with `direnv export json`; a blocked .envrc fails here.
 direnv exec "$repo" true
 bun install --frozen-lockfile
 uv sync --locked
@@ -17,7 +17,7 @@ data="${XDG_DATA_HOME:-$HOME/.local/share}"
 units="$config/systemd/user"
 autostart_unit='app-pdf\x2dbucket\x2ddesktop@autostart.service'
 
-# A running app keeps the previous binary and its server; it quits here, and its server with it.
+# A running app keeps the previous binary and the bucket's port; it quits here.
 if systemctl --user is-active --quiet "$autostart_unit"; then
     systemctl --user stop "$autostart_unit"
 fi
@@ -28,7 +28,7 @@ if pgrep -x pdf-bucket-desk > /dev/null; then
 fi
 
 # The app runs an installed copy, so later builds can rewrite the build tree while it runs.
-install -D -m 755 desktop/src-tauri/target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
+install -D -m 755 target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
 # Launcher and autostart entry and the icon, named after the window's Wayland app_id (the binary
 # name) so that launchers and taskbars match the running window to them.
 for size in 32x32 128x128; do

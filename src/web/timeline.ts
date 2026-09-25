@@ -3,7 +3,7 @@
 // or left for another paper and come back to); an entry read for less than the chosen
 // minimum is left out. The pages and seconds are already filtered by the reader: only pages
 // read for at least MIN_PAGE_SECONDS at a time, idle time excluded.
-import type { ReadingSession } from "../server/libraryContract";
+import type { ReadingSession } from "../contract/library";
 
 export const MERGE_GAP_MS = 30 * 60 * 1000;
 

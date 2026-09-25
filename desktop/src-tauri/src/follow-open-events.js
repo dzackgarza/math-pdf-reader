@@ -1,7 +1,7 @@
 // Injected by lib.rs into the main frame of the bucket window only; reader pages opened in
 // an ordinary browser tab never run it.
 //
-// Every capture, new or existing, publishes an `open-reader` event (src/server/events.ts): the
+// Every capture, new or existing, publishes an `open-reader` event (server/src/events.rs): the
 // window shows itself if it was closed to the tray and moves to the item's reader page,
 // whatever page it was showing. A rejected window command propagates out of the listener as an
 // unhandled rejection in the window's console and the navigation does not happen.

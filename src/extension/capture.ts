@@ -3,7 +3,7 @@
 // page, fetches: Firefox sends no cookies from an extension page framed inside a site.
 // The bucket derives the item key from the posted filename.
 import { parse as parseContentDisposition } from "content-disposition";
-import { CaptureResponseSchema } from "../server/contract";
+import { CaptureResponseSchema } from "../contract/capture";
 import type { CaptureOutcome, LinkOrigin } from "./messages";
 
 // The first non-empty candidate in order of preference; `last` is never empty.

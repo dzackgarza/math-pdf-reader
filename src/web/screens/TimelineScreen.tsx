@@ -4,7 +4,7 @@
 // abstract when known. A minimum reading time hides short looks.
 import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
-import { type ReadingSession, ReadingSessionSchema } from "../../server/libraryContract";
+import { type ReadingSession, ReadingSessionSchema } from "../../contract/library";
 import { dateTime } from "../format";
 import { pageRanges, timelineEntries } from "../timeline";
 

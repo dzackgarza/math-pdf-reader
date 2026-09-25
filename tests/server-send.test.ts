@@ -5,20 +5,15 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server/app";
-import { CONFIG_PATH, loadAppConfig, pdfjsDir } from "../src/server/config";
-import { EXTRACTIONS_MANIFEST } from "../src/server/extractions";
 import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
   type ZoteroRecord,
-} from "../src/server/libraryContract";
-import { emptyOrganization, unfiled } from "../src/server/organization";
-import { RESOLVERS_MANIFEST } from "../src/server/send";
+} from "../src/contract/library";
+import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { unfiled, writeOrganization } from "./store";
 
-const config = loadAppConfig(CONFIG_PATH);
-const origin = `http://${config.server.host}:${config.server.port}`;
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 
 // A port nothing listens on: bound once, then released.
@@ -32,18 +27,15 @@ function closedPortUrl(): string {
 const zoteroUrl = closedPortUrl();
 type Bucket = { root: string; request: (path: string, init?: RequestInit) => Promise<Response> };
 
-function emptyBucket(): Bucket {
+async function emptyBucket(): Promise<Bucket> {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-"));
-  const app = createApp({
+  const app = await serveBucket({
     root,
-    version: "0.1.0",
-    pdfjsDir: pdfjsDir(config),
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
     resolversManifest: RESOLVERS_MANIFEST,
-    indexExport: null,
   });
-  return { root, request: async (path, init) => app.request(`${origin}${path}`, init) };
+  return { root, request: (path, init) => app.request(path, init) };
 }
 
 async function capture(bucket: Bucket, key: string): Promise<void> {
@@ -67,9 +59,14 @@ const SENT: ZoteroRecord = {
 };
 
 function recordSent(bucket: Bucket, key: string): void {
-  const filing = { ...unfiled(SENT.sentAt), zotero: SENT };
-  const organization = { ...emptyOrganization(), items: { [key]: filing } };
-  writeFileSync(join(bucket.root, "organization.json"), JSON.stringify(organization));
+  writeOrganization(bucket.root, {
+    version: 2,
+    collections: [],
+    savedSearches: [],
+    items: { [key]: { ...unfiled({ captured_at: SENT.sentAt }), zotero: SENT } },
+    activity: [],
+    preferences: { outlineOnOpen: false, theme: "system" },
+  });
 }
 
 async function item(bucket: Bucket, key: string): Promise<BucketItem | undefined> {
@@ -82,7 +79,7 @@ async function errorKind(response: Response): Promise<string> {
 }
 
 test("a send while Zotero does not answer fails visibly and records no Zotero item", async () => {
-  const bucket = emptyBucket();
+  const bucket = await emptyBucket();
   await capture(bucket, "lattices");
 
   const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
@@ -93,7 +90,7 @@ test("a send while Zotero does not answer fails visibly and records no Zotero it
 });
 
 test("a second send of an item already in Zotero is refused without contacting Zotero", async () => {
-  const bucket = emptyBucket();
+  const bucket = await emptyBucket();
   await capture(bucket, "lattices");
   recordSent(bucket, "lattices");
 
@@ -110,7 +107,7 @@ test("a second send of an item already in Zotero is refused without contacting Z
 });
 
 test("an extraction made after the send is owed to Zotero, and a later send goes to attach it", async () => {
-  const bucket = emptyBucket();
+  const bucket = await emptyBucket();
   await capture(bucket, "lattices");
   recordSent(bucket, "lattices");
   writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Quadratic Forms\n");

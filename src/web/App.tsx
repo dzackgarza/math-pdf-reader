@@ -6,7 +6,7 @@ import {
   type BucketItem,
   type LibraryPayload,
   LibraryPayloadSchema,
-} from "../server/libraryContract";
+} from "../contract/library";
 import {
   type ColumnLayout,
   defaultColumnLayout,

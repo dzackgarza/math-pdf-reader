@@ -1,9 +1,10 @@
 # PDF Bucket — standalone PDF reading bucket: browser capture, PDF.js reader, send to Zotero.
 #
-# One Bun package: src/server (Hono), src/web (Vite + React), src/extension (WXT), tests/.
-# desktop/ holds the Tauri crate; src/pdfbucket is the Python store and plugin package. QC
-# delegates to the global ai-review-ci bun-python profile; bun, uv, wxt, vite and tauri are
-# implementation details.
+# One Cargo workspace: server/ is the bucket server (axum), desktop/src-tauri the Tauri app that
+# runs it in its own process. One Bun package: src/contract (the zod contracts the server's types
+# are generated from), src/web (Vite + React), src/extension (WXT), tests/. src/pdfbucket is the
+# Python store and plugin package. QC delegates to the global ai-review-ci bun-python profile;
+# cargo, bun, uv, wxt, vite and tauri are implementation details.
 
 # ai-review-ci contract variables consumed by doctor and workflow installers.
 ai_review_ci_schema_version := "1"
@@ -27,8 +28,9 @@ build: fetch-pdfjs
     @cd desktop && NO_STRIP=true bunx @tauri-apps/cli build
 
 # Build the web bundle, the PDF.js viewer and the release app; install the app with its launcher
-# and login autostart entry (pdf-bucket-desktop.desktop) and icons, and start it. The app runs
-# the bucket server from this checkout.
+# and login autostart entry (pdf-bucket-desktop.desktop) and icons, and start it. The app is the
+# bucket server; it serves this checkout's PDF.js viewer and library bundle and runs its store
+# and plugins.
 provision: fetch-pdfjs
     @scripts/provision.sh
 
@@ -36,17 +38,17 @@ provision: fetch-pdfjs
 # provenance and filing, and the collections and saved searches. Refuses to drop an item whose
 # PDF is missing.
 export-index:
-    @bun run src/server/indexCli.ts export
+    @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- export-index
 
 # Restore the filing (collections, tags, notes, saved searches) from an index export into a data
 # root that has none.
 import-index file="":
-    @bun run src/server/indexCli.ts import {{file}}
+    @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- import-index {{file}}
 
 # Re-download every PDF the index export lists and the data root lacks, into the same key; prints
 # each item's outcome and fails when a URL is dead or now serves different bytes.
 rebuild-cache:
-    @bun run src/server/indexCli.ts rebuild
+    @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- rebuild-cache
 
 # Unpack the pinned prebuilt PDF.js viewer release into vendor/ (version and hash in pdf-bucket.config.json).
 fetch-pdfjs:
@@ -86,16 +88,9 @@ sign-firefox:
 test-capture:
     @bun test tests/capture-e2e.test.ts
 
-# Start the bucket server with hot reload on the configured host and port.
-serve: fetch-pdfjs build-web
-    @bun run dev
-
-# Open the desktop window; Tauri starts the server first and waits for its URL.
+# Open the desktop app from source (`tauri dev`); it serves the configured bucket itself.
 run: fetch-pdfjs build-web
-    #!/usr/bin/env bash
-    set -euo pipefail
-    url=$(jq -r '"http://\(.server.host):\(.server.port)"' pdf-bucket.config.json)
-    cd desktop && bunx @tauri-apps/cli dev --config "{\"build\":{\"devUrl\":\"$url\"}}"
+    @cd desktop && bunx @tauri-apps/cli dev
 
 # Run commit-tier Python and Bun QC through the central implementation.
 test-commit:
@@ -114,18 +109,22 @@ test-ci:
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-ci
     @just desktop-rust-checks
 
-# rustfmt check and clippy with warnings denied on the Tauri crate, from the central Rust implementation.
+# rustfmt check, clippy with warnings denied, and cargo test on the server and desktop crates,
+# from the central Rust implementation.
 desktop-rust-checks:
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _rustfmt
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _clippy
+    @just -f ~/ai-review-ci/justfiles/rust.just -d . _cargo-test
 
-# Provision the CI runner: Tauri's Linux build inputs, and user namespaces for Chromium's
-# sandbox, which Ubuntu 24.04's AppArmor blocks (actions/runner-images#10443). The qc-ci job
-# runs this recipe as its setup_recipe.
+# Provision the CI runner: Tauri's Linux build inputs, user namespaces for Chromium's sandbox,
+# which Ubuntu 24.04's AppArmor blocks (actions/runner-images#10443), and the pinned PDF.js viewer
+# the reader pages load (trash-cli for the recipe's cleanup). The qc-ci job runs this recipe as
+# its setup_recipe.
 ci-setup:
     sudo apt-get update
-    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev trash-cli
     sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+    just fetch-pdfjs
 
 # Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
 extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":

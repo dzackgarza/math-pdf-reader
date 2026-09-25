@@ -7,10 +7,11 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 
 | Path | What it is |
 | --- | --- |
-| `src/server` | Bun + Hono server: capture endpoint, PDF and reader URLs, library API, index export |
+| `server/` | Rust (axum) bucket server: capture endpoint, PDF and reader URLs, library API, index export; `pdf-bucket` CLI (`serve`, `export-index`, `import-index`, `rebuild-cache`) |
+| `src/contract` | zod contracts for the API, the store's answers, the config and the documents; the server's Rust types are generated from them |
 | `src/web` | React library UI served by the server |
 | `src/extension` | WXT WebExtension, built for Chrome and Firefox |
-| `desktop/` | Tauri app: the window, the tray, and the server it runs |
+| `desktop/` | Tauri app: the window, the tray, and the bucket server in the same process |
 | `src/pdfbucket` | Python package: provenance embedding, PDF store, plugin manifest contract, extraction and resolver runners |
 | `plugins/manifests` | Shipped extraction and resolver plugin manifests |
 | `src/resolvers` | Resolver plugins: an identifier or URL on stdin, one BibTeX entry on stdout |
@@ -28,10 +29,10 @@ If the whole data root is lost, `just import-index` restores the filing into the
 
 ## Running
 
-PDF Bucket runs while its app runs, like Zotero: the app starts the bucket server, and **Quit PDF Bucket** in the tray stops both.
+PDF Bucket runs while its app runs, like Zotero: the app is the bucket's server, as Zotero is the server of its local API, and **Quit PDF Bucket** in the tray stops it.
 Closing the window hides it to the tray; the bucket keeps capturing.
 Click the tray icon for **Show PDF Bucket** and **Quit PDF Bucket**. Starting PDF Bucket while it runs shows the running window.
-If the server stops or cannot start, the window shows why.
+If the bucket cannot serve (its port is taken, the PDF.js viewer is missing, the `.envrc` is blocked), the window shows why.
 
 `just provision` builds the app, installs it at `~/.local/bin/pdf-bucket-desktop` with a launcher entry, an icon and a login autostart entry, and starts it.
 Desktop sessions that run XDG autostart start it at login.
@@ -91,8 +92,7 @@ Three routes:
 
 ```bash
 just                # list recipes
-just serve          # bucket server on the host and port in pdf-bucket.config.json
-just run            # desktop window (starts the server first)
+just run            # desktop app from source (`tauri dev`), serving the configured bucket
 just build          # web bundle, both extension targets, desktop binary
 just provision      # build, install and start the app
 just export-index   # write the index export
