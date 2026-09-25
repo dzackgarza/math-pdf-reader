@@ -1,10 +1,10 @@
 // The capture client, run in the background: post the PDF the browser received to the bucket
 // and report exactly one outcome. Where the bytes come from is the interception's business
-// (Firefox: the navigation's own response; Chrome: `refetchPdf`). The bucket derives the item
-// key from the posted filename.
+// (Firefox: the navigation's own response; Chrome: a download it saved, or `refetchPdf` for a
+// PDF in a frame). The bucket derives the item key from the posted filename.
 import { parse as parseContentDisposition } from "content-disposition";
 import decodeUriComponent from "decode-uri-component";
-import { CaptureResponseSchema } from "../contract/capture";
+import { type CaptureDownloadRequest, CaptureResponseSchema } from "../contract/capture";
 import { ApiErrorSchema } from "../contract/library";
 import { checkedBody } from "./json";
 import { type CaptureOutcome, type Failed, failed, type LinkOrigin } from "./messages";
@@ -47,7 +47,7 @@ function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
   );
 }
 
-// Chrome cannot read a navigation's response body, so the background fetches the PDF again
+// Chrome cannot read a PDF's response body in a frame, so the background fetches it again
 // with the browser's cookies.
 export async function refetchPdf(pdfUrl: URL): Promise<Received> {
   const answered = await settle(fetch(pdfUrl, { credentials: "include" }));
@@ -78,25 +78,12 @@ async function refusal(response: Response): Promise<Failed> {
   return failed("post-bucket", detail);
 }
 
-export async function postToBucket(
-  pdfUrl: URL,
-  pdf: ReceivedPdf,
-  origin: LinkOrigin | undefined,
+// The bucket's answer to a capture post (or the post's failure) as the capture's outcome.
+async function captureOutcome(
+  post: Promise<Response>,
   bucketOrigin: string,
 ): Promise<CaptureOutcome> {
-  const filename = captureFilename(pdfUrl, pdf.contentDisposition);
-  const form = new FormData();
-  form.set("pdf", new File([pdf.bytes], filename, { type: "application/pdf" }));
-  form.set("pdf_url", pdfUrl.href);
-  // A PDF opened without a followed link (typed in, bookmarked, framed) has no linking page.
-  if (origin !== undefined) {
-    form.set("source_url", origin.source_url);
-  }
-  form.set("title_hint", titleHint(origin, filename));
-
-  const posted = await settle(
-    fetch(`${bucketOrigin}/capture-bytes`, { method: "POST", body: form }),
-  );
+  const posted = await settle(post);
   if (!posted.ok) {
     return failed(
       "post-bucket",
@@ -114,4 +101,51 @@ export async function postToBucket(
     );
   }
   return { kind: "stored", response: answer.value };
+}
+
+export function postToBucket(
+  pdfUrl: URL,
+  pdf: ReceivedPdf,
+  origin: LinkOrigin | undefined,
+  bucketOrigin: string,
+): Promise<CaptureOutcome> {
+  const filename = captureFilename(pdfUrl, pdf.contentDisposition);
+  const form = new FormData();
+  form.set("pdf", new File([pdf.bytes], filename, { type: "application/pdf" }));
+  form.set("pdf_url", pdfUrl.href);
+  // A PDF opened without a followed link (typed in, bookmarked, framed) has no linking page.
+  if (origin !== undefined) {
+    form.set("source_url", origin.source_url);
+  }
+  form.set("title_hint", titleHint(origin, filename));
+  return captureOutcome(
+    fetch(`${bucketOrigin}/capture-bytes`, { method: "POST", body: form }),
+    bucketOrigin,
+  );
+}
+
+// A PDF Chrome saved as a download at PATH: the bucket reads the file.
+export function postDownloadToBucket(
+  pdfUrl: URL,
+  path: string,
+  contentDisposition: string | null,
+  origin: LinkOrigin | undefined,
+  bucketOrigin: string,
+): Promise<CaptureOutcome> {
+  const filename = captureFilename(pdfUrl, contentDisposition);
+  const request: CaptureDownloadRequest = {
+    path,
+    filename,
+    pdf_url: pdfUrl.href,
+    ...(origin === undefined ? {} : { source_url: origin.source_url }),
+    title_hint: titleHint(origin, filename),
+  };
+  return captureOutcome(
+    fetch(`${bucketOrigin}/capture-download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
+    bucketOrigin,
+  );
 }

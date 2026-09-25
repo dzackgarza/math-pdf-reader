@@ -49,6 +49,20 @@ export const CaptureResponseSchema = z.strictObject({
 
 export type CaptureResponse = z.infer<typeof CaptureResponseSchema>;
 
+// `POST /capture-download`, from the extension in Chrome, which cannot read a navigation's
+// response body: the navigation is saved as a download, and the bucket reads the saved file at
+// `path`. `filename` is the name the PDF was offered under (Chrome renames a download whose
+// name is taken); `source_url` is absent when no linking page is known.
+export const CaptureDownloadRequestSchema = z.strictObject({
+  path: NonEmptySchema,
+  filename: NonEmptySchema,
+  pdf_url: z.url(),
+  source_url: z.url().optional(),
+  title_hint: NonEmptySchema,
+});
+
+export type CaptureDownloadRequest = z.infer<typeof CaptureDownloadRequestSchema>;
+
 // `GET /api/events` sends one `open-reader` event per capture, new or existing: the library
 // opens the item's reader in a tab under the item's title, and the desktop window comes to the
 // front.

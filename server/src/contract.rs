@@ -73,6 +73,7 @@ macro_rules! contract_types {
 contract_types!(
     BulkCollectionsRequest,
     BulkTagsRequest,
+    CaptureDownloadRequest,
     CollectionUpdateRequest,
     FolderImportRequest,
     ImportUrlRequest,

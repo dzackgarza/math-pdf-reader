@@ -1,4 +1,5 @@
-// Capture page: every intercepted PDF navigation lands here. It hands a small frame back to
+// Capture page: every intercepted PDF navigation lands here, except Chrome's top-level ones,
+// which become downloads and open this page only to show a failure. It hands a small frame back to
 // the browser, or captures the PDF. A captured PDF opens in the desktop window, so the page
 // then gets out of the way: a top-level tab goes back to the page the PDF was opened from,
 // or closes when it was opened for the PDF alone; a frame keeps one line naming the item.
@@ -8,7 +9,7 @@ import pTimeout from "p-timeout";
 import { browser } from "wxt/browser";
 import type { CaptureResponse } from "../../../contract/capture";
 import { bucketBuild } from "../../bucket-config";
-import { pdfUrlFromCaptureQuery } from "../../interception";
+import { failureFromCaptureHash, pdfUrlFromCaptureQuery } from "../../interception";
 import {
   type CaptureOutcome,
   CaptureOutcomeSchema,
@@ -124,12 +125,15 @@ function settle(pdfUrl: URL, outcome: CaptureOutcome, inFrame: boolean): void {
 }
 
 const pdfUrl = pdfUrlFromCaptureQuery(location.search);
+const shownFailure = failureFromCaptureHash(location.hash);
 const inFrame = window.self !== window.top;
 const smallFrame =
   inFrame &&
   (window.innerWidth < bucketBuild.minFrameWidth ||
     window.innerHeight < bucketBuild.minFrameHeight);
-if (smallFrame) {
+if (shownFailure !== null) {
+  settle(pdfUrl, shownFailure, inFrame);
+} else if (smallFrame) {
   void openNatively(pdfUrl);
 } else {
   document.documentElement.dataset.frame = String(inFrame);

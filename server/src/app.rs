@@ -20,7 +20,7 @@ use url::Url;
 
 use crate::config::VERSION;
 use crate::contract::{
-    ApiErrorErrorKind, CaptureResponse, FolderImportRequest, FolderImportResponse,
+    ApiErrorErrorKind, CaptureDownloadRequest, CaptureResponse, FolderImportRequest, FolderImportResponse,
     FolderImportResponseFilesItem, ImportUrlRequest, ImportUrlResponse, NonEmpty, OpenReader,
     RetrieveMetadataOutcome, ServerStatus, ServerStatusCapabilities, ServerStatusService,
     ServerStatusServiceName, ServerStatusStorage, StoredItemTitle, TitleSource,
@@ -145,8 +145,50 @@ async fn capture_bytes(
     form: Multipart,
 ) -> AppResult<Json<CaptureResponse>> {
     let upload = capture_form(form).await?;
-    let origin = origin(&headers)?;
-    let (captured, metadata) = store(&state, &upload).await?;
+    capture(&state, &headers, &upload).await
+}
+
+/// A PDF Chrome saved as a download for the extension: the bucket reads the saved file. The
+/// extension removes the download once the capture is stored.
+async fn capture_download(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> AppResult<Json<CaptureResponse>> {
+    let request: CaptureDownloadRequest = parse_body(&body)?;
+    let linked = request.source_url.as_deref().is_none_or(web_url);
+    if !web_url(&request.pdf_url) || !linked {
+        return Err(AppError::invalid(
+            "pdf_url and source_url must be http or https URLs",
+        ));
+    }
+    let path = request.path.to_string();
+    if !FsPath::new(&path).is_absolute() {
+        return Err(AppError::invalid(format!(
+            "the download path {path} is not absolute"
+        )));
+    }
+    let bytes = tokio::fs::read(&path).await.map_err(|error| {
+        AppError::invalid(format!("the download {path} cannot be read: {error}"))
+    })?;
+    let upload = Upload {
+        bytes,
+        filename: Some(request.filename.to_string()),
+        pdf_url: request.pdf_url,
+        source_url: request.source_url,
+        title_hint: request.title_hint.to_string(),
+    };
+    capture(&state, &headers, &upload).await
+}
+
+/// Stores a capture, answers where it is and opens its reader.
+async fn capture(
+    state: &Shared,
+    headers: &HeaderMap,
+    upload: &Upload,
+) -> AppResult<Json<CaptureResponse>> {
+    let origin = origin(headers)?;
+    let (captured, metadata) = store(state, upload).await?;
     let key = captured.item.key.to_string();
     let response = CaptureResponse {
         existing: captured.existing,
@@ -390,6 +432,7 @@ pub fn router(state: Shared) -> Router {
     Router::new()
         .route("/status", get(status))
         .route("/capture-bytes", post(capture_bytes))
+        .route("/capture-download", post(capture_download))
         .route("/api/import-url", post(import_url))
         .route("/api/import-folder", post(import_folder))
         .route("/api/events", get(events::stream))

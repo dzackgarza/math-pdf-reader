@@ -80,7 +80,8 @@ async function buildExtension(engine: Engine, bucketPort: number): Promise<strin
 // origin; this pref pins it so the suite can open the extension's own pages.
 const FIREFOX_EXTENSION_UUID = "5d1c2a8e-3f47-4b6e-9a0d-7c41e2b9f613";
 
-type Launched = { browser: Browser; extensionOrigin: string };
+// `downloads`: the folder Chrome saves captured navigations to (null in Firefox).
+type Launched = { browser: Browser; extensionOrigin: string; downloads: string | null };
 
 async function launch(engine: Engine, extension: string): Promise<Launched> {
   if (engine === "chrome") {
@@ -113,7 +114,18 @@ async function launch(engine: Engine, extension: string): Promise<Launched> {
     }
     // `URL.origin` is "null" for the non-special chrome-extension: scheme.
     const workerUrl = new URL(target.url());
-    return { browser, extensionOrigin: `${workerUrl.protocol}//${workerUrl.host}` };
+    const downloads = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-downloads-"));
+    const session = await browser.target().createCDPSession();
+    await session.send("Browser.setDownloadBehavior", {
+      behavior: "allow",
+      downloadPath: downloads,
+      eventsEnabled: true,
+    });
+    return {
+      browser,
+      extensionOrigin: `${workerUrl.protocol}//${workerUrl.host}`,
+      downloads,
+    };
   }
   const browser = await puppeteer.launch({
     browser: "firefox",
@@ -129,7 +141,11 @@ async function launch(engine: Engine, extension: string): Promise<Launched> {
     },
   });
   await browser.installExtension(extension);
-  return { browser, extensionOrigin: `moz-extension://${FIREFOX_EXTENSION_UUID}` };
+  return {
+    browser,
+    extensionOrigin: `moz-extension://${FIREFOX_EXTENSION_UUID}`,
+    downloads: null,
+  };
 }
 
 // The bucket announces every capture, new or existing, on the event stream the desktop
@@ -178,6 +194,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   let bucket: Awaited<ReturnType<typeof startBucket>>;
   let browser: Browser;
   let extensionOrigin: string;
+  let downloads: string | null;
   let page: Page;
 
   const shot = async (name: string) => {
@@ -202,16 +219,41 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await Bun.write(join(screenshots, `${engine}-${name}.png`), png);
   };
 
-  // Chromium swaps the tab's main frame when it commits the extension page, so the wait for
-  // the capture state starts after that commit. Firefox reports no navigation into
-  // moz-extension documents and keeps the frame.
+  // In Chrome a top-level PDF navigation becomes a download, so the tab stays on the linking
+  // page; in Firefox the tab passes through the capture page.
   const followLink = async (pagePath: string) => {
     await page.goto(`${site.origin}${pagePath}`);
-    if (engine === "chrome") {
-      await Promise.all([page.waitForNavigation(), page.click("a#pdf")]);
+    await page.click("a#pdf");
+  };
+
+  // The capture page tab Chrome's background opens for a failed download.
+  const capturePageTab = async () => {
+    const target = await browser.waitForTarget((candidate) =>
+      candidate.url().startsWith(`${extensionOrigin}/capture.html?`),
+    );
+    const tab = await target.page();
+    if (tab === null) {
+      throw new Error("the capture page tab has no page");
+    }
+    return tab;
+  };
+
+  // Follows the PDF link on PAGEPATH, whose capture fails, and makes the tab showing the
+  // failure the working tab. Firefox shows it in the tab the link was followed in; Chrome's
+  // background opens a capture page tab for it, since the navigation became a download.
+  const followLinkToFailure = async (pagePath: string) => {
+    if (engine === "firefox") {
+      await followLink(pagePath);
+      await captureState(page, "failed");
       return;
     }
-    await page.click("a#pdf");
+    const failureTab = capturePageTab();
+    await followLink(pagePath);
+    const tab = await failureTab;
+    await captureState(tab, "failed");
+    await page.close();
+    page = tab;
+    await page.setViewport(viewport);
   };
 
   // After a successful capture in the tab the link was followed in, the tab is back on the
@@ -319,7 +361,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
     bucket = await startBucket();
-    ({ browser, extensionOrigin } = await launch(
+    ({ browser, extensionOrigin, downloads } = await launch(
       engine,
       await buildExtension(engine, bucket.port),
     ));
@@ -386,12 +428,21 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   test("a PDF link that opens a new tab is captured, and that tab closes", async () => {
     await page.goto(`${site.origin}/reading-list.html`);
     const captures = await subscribeToCaptures(bucket.origin);
-    const opened = openedTab();
+    // Chrome closes a tab opened only for a download before its page can be attached, so the
+    // tab count is watched there.
+    const tabsBefore = (await browser.pages()).length;
+    const opened = engine === "chrome" ? undefined : openedTab();
     await page.click("a#pdf");
-    const tab = await opened;
     expect(await captures.next()).toBe(`${bucket.origin}/read/survey`);
-    while (!(await tabGone(tab))) {
-      await Bun.sleep(50);
+    if (opened === undefined) {
+      while ((await browser.pages()).length !== tabsBefore) {
+        await Bun.sleep(50);
+      }
+    } else {
+      const tab = await opened;
+      while (!(await tabGone(tab))) {
+        await Bun.sleep(50);
+      }
     }
 
     expect(page.url()).toBe(`${site.origin}/reading-list.html`);
@@ -516,21 +567,20 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/compressed.pdf")));
   });
 
-  // Firefox keeps the navigation's own response; Chrome can only fetch the URL again, which a
-  // single-use URL refuses, and says so.
-  test("a single-use PDF URL is captured from the browser's response in Firefox and reported refused in Chrome", async () => {
+  // Firefox keeps the navigation's own response; Chrome saves it as a download, which the
+  // bucket reads and the extension then removes.
+  test("a single-use PDF URL is captured from the browser's one request", async () => {
     const fetches = () => site.requests.filter((request) => request.path === "/once/ticket.pdf");
-    if (engine === "firefox") {
-      expect(await captureInPlace("/ticket.html")).toBe(`${bucket.origin}/read/ticket`);
-      const stored = await provenance("ticket");
-      expect(stored.original_sha256).toBe(sha256(pdfBytes("/once/ticket.pdf")));
-      expect(fetches().length).toBe(1);
-      return;
+    expect(await captureInPlace("/ticket.html")).toBe(`${bucket.origin}/read/ticket`);
+    const stored = await provenance("ticket");
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/once/ticket.pdf")));
+    expect(stored.source_url).toBe(`${site.origin}/ticket.html`);
+    expect(fetches().length).toBe(1);
+    if (downloads !== null) {
+      while (readdirSync(downloads).length > 0) {
+        await Bun.sleep(50);
+      }
     }
-    await followLink("/ticket.html");
-    await captureState(page, "failed");
-    expect(await text("#details")).toContain("403");
-    expect(bucket.files()).not.toContain("ticket.pdf");
   });
 
   test("two sub-frames below the minimum frame size are both handed back to the browser's viewer", async () => {
@@ -550,8 +600,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const fetches = () => site.requests.filter((request) => request.path === pdfPath).length;
     await bucket.stop();
 
-    await followLink("/teaching.html");
-    await captureState(page, "failed");
+    await followLinkToFailure("/teaching.html");
     await shotCapturePage("bucket-down");
 
     const beforeNativeOpen = fetches();
@@ -576,9 +625,11 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(await badge()).toBe("!");
   });
 
-  test("with the bucket stopped, a PDF link that opens a new tab keeps that tab with the failure", async () => {
+  // Firefox keeps the tab the link opened; Chrome closes it, as it does for any tab opened only
+  // for a download, and the background opens a capture page tab.
+  test("with the bucket stopped, a PDF link that opens a new tab leaves a tab with the failure", async () => {
     await page.goto(`${site.origin}/reading-list.html`);
-    const opened = openedTab();
+    const opened = engine === "chrome" ? capturePageTab() : openedTab();
     await page.click("a#pdf");
     const tab = await opened;
     await captureState(tab, "failed");
@@ -603,8 +654,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       expect(await badge()).toBe("!");
 
       // The lecture notes are exempted in this tab since the native open above.
-      await followLink("/abs/2401.00001");
-      await captureState(page, "failed");
+      await followLinkToFailure("/abs/2401.00001");
       expect(await text("#details")).toContain("not with a capture response");
     } finally {
       await other.stop(true);

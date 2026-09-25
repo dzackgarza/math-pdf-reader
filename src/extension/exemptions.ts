@@ -5,6 +5,7 @@
 import { Mutex } from "async-mutex";
 import { browser } from "wxt/browser";
 import { type Received, refetchPdf } from "./capture";
+import type { Intercepts } from "./chrome-downloads";
 import { PDF_FRAME_TYPES, pdfCaptureRules } from "./interception";
 
 export type Interception = {
@@ -15,19 +16,26 @@ export type Interception = {
   received(tabId: number, frameId: number, pdfUrl: URL): Promise<Received>;
 };
 
+export type ChromeInterception = Interception & { intercepts: Intercepts };
+
 export function capturePage(): string {
   return browser.runtime.getURL("/capture.html");
 }
 
+function exemption(pdfUrl: string): string {
+  return `^${RegExp.escape(pdfUrl)}$`;
+}
+
 // Chrome: the capture rules are dynamic rules while capture is on and absent while it is off.
-// A redirect rule acts on the response headers, and Chrome gives an extension no way to read
-// a navigation's body, so the capture fetches the PDF again.
+// A top-level PDF becomes a download the background hands to the bucket (chrome-downloads.ts);
+// a PDF in a frame reaches the capture page, which fetches it again.
 export async function chromeInterception(
   bucketOrigin: string,
   enabled: boolean,
-): Promise<Interception> {
+): Promise<ChromeInterception> {
   const dnr = browser.declarativeNetRequest;
   const rules = pdfCaptureRules(capturePage(), bucketOrigin);
+  let capturing = enabled;
   // Session rule ids are read, then written: one change at a time, so two exemptions made at
   // once never take the same id.
   const sessionRules = new Mutex();
@@ -37,6 +45,7 @@ export async function chromeInterception(
       removeRuleIds: stale.map((rule) => rule.id),
       addRules: on ? rules : [],
     });
+    capturing = on;
   };
   await setEnabled(enabled);
   return {
@@ -52,7 +61,7 @@ export async function chromeInterception(
               priority: rules.length + 1,
               action: { type: "allow" },
               condition: {
-                regexFilter: `^${RegExp.escape(pdfUrl)}$`,
+                regexFilter: exemption(pdfUrl),
                 tabIds: [tabId],
                 resourceTypes: PDF_FRAME_TYPES,
               },
@@ -69,5 +78,16 @@ export async function chromeInterception(
         await dnr.updateSessionRules({ removeRuleIds: ids });
       }),
     received: (_tabId, _frameId, pdfUrl) => refetchPdf(pdfUrl),
+    intercepts: async (tabId, url) => {
+      if (!capturing || url.startsWith(`${bucketOrigin}/`)) {
+        return false;
+      }
+      const session = await dnr.getSessionRules();
+      return !session.some(
+        (rule) =>
+          rule.condition.tabIds?.includes(tabId) === true &&
+          rule.condition.regexFilter === exemption(url),
+      );
+    },
   };
 }

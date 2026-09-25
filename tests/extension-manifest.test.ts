@@ -5,13 +5,14 @@ import { build } from "wxt";
 
 const EXTENSION_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-test("the Chrome build declares the declarativeNetRequest interception route and redirect observation", async () => {
+test("the Chrome build declares the declarativeNetRequest interception route, redirect observation and download capture", async () => {
   const output = await build({ root: EXTENSION_ROOT, browser: "chrome", mode: "production" });
 
   expect(output.manifest.manifest_version).toBe(3);
   expect(output.manifest.permissions).toEqual([
     "declarativeNetRequestWithHostAccess",
     "webRequest",
+    "downloads",
     "storage",
     "alarms",
   ]);

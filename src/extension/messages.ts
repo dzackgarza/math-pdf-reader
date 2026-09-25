@@ -31,7 +31,7 @@ export type RuntimeMessage = z.infer<typeof RuntimeMessageSchema>;
 
 // Where a capture failed: getting the PDF's bytes, the bucket refusing them or answering
 // outside its contract, or the extension itself (a background error, no reply in time).
-const FailedSchema = z.strictObject({
+export const FailedSchema = z.strictObject({
   kind: z.literal("failed"),
   error: z.strictObject({
     stage: z.enum(["fetch-pdf", "post-bucket", "extension"]),

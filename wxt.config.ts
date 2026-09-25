@@ -31,7 +31,7 @@ export default defineConfig({
     permissions:
       browser === "firefox"
         ? ["webRequest", "webRequestBlocking", "storage", "alarms"]
-        : ["declarativeNetRequestWithHostAccess", "webRequest", "storage", "alarms"],
+        : ["declarativeNetRequestWithHostAccess", "webRequest", "downloads", "storage", "alarms"],
     // The toolbar popup doubles as the options page, which holds the capture switch.
     options_ui: { page: "popup.html", open_in_tab: false },
     host_permissions: ["<all_urls>"],
