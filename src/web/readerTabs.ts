@@ -4,6 +4,9 @@ import { createContext, useContext } from "react";
 
 export type ReaderTabsApi = {
   openReader: (key: string, title: string) => void;
+  // Settles KEY's reader (its pending saves) and removes its tab; resolves at once when no tab
+  // is open for KEY; rejects, keeping the tab, when a save failed.
+  closeReader: (key: string) => Promise<void>;
   // False while a PDF's tab is shown: the library's shortcuts then stay off.
   libraryShown: boolean;
 };

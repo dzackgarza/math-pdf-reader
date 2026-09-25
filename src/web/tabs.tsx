@@ -11,13 +11,21 @@ import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import { ReaderTabsContext } from "./readerTabs";
 import { readerPath } from "./routes";
 
+// What a reader page offers once its viewer is up (server/templates/reader.html): settle sends
+// the reading session and waits for every annotation to be saved, rejecting while a save has
+// failed or a save conflict is open.
+type ReaderControl = { settle: () => Promise<void> };
+
 declare global {
   interface Window {
-    // Set by a reader page once its viewer is up: sends the reading session and waits for every
-    // annotation to be saved. A tab is closed only after it settles.
-    settleReader?: () => Promise<void>;
+    // Set by a reader page just before it dispatches `reader-ready` on its frame element.
+    readerControl: ReaderControl | undefined;
   }
 }
+
+// What the tab strip knows of a tab's reader: still loading (its viewer is not up, so it holds
+// nothing unsaved), or ready, with its control.
+type ReaderState = { status: "loading" } | { status: "ready"; control: ReaderControl };
 
 const LIBRARY_TAB = "library";
 
@@ -62,13 +70,30 @@ function ReaderFrame({
   shown,
   onTitle,
   onLoad,
+  onReady,
 }: {
   tab: ReaderTab;
   shown: boolean;
   onTitle: (title: string) => void;
   onLoad: (frame: HTMLIFrameElement) => void;
+  onReady: (control: ReaderControl) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const element = frame.current;
+    if (element === null) {
+      throw new Error(`the tab of ${tab.key} has no frame`);
+    }
+    const ready = () => {
+      const control = element.contentWindow?.readerControl;
+      if (control === undefined) {
+        throw new Error(`the reader of ${tab.key} announced itself without its control`);
+      }
+      onReady(control);
+    };
+    element.addEventListener("reader-ready", ready);
+    return () => element.removeEventListener("reader-ready", ready);
+  }, [tab.key, onReady]);
   // A frame's document stays "visible" while its tab is hidden, so the reader page is told to
   // look again (it reads its frame's own visibility), and a shown tab takes the keyboard.
   useEffect(() => {
@@ -100,8 +125,12 @@ function ReaderFrame({
 export function ReaderTabs({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TabsState>({ open: [], shown: LIBRARY_TAB });
   const frames = useRef(new Map<string, HTMLIFrameElement>());
+  const readers = useRef(new Map<string, ReaderState>());
 
   const openReader = useCallback((key: string, title: string) => {
+    if (!readers.current.has(key)) {
+      readers.current.set(key, { status: "loading" });
+    }
     setState((previous) => ({
       open: previous.open.some((tab) => tab.key === key)
         ? previous.open
@@ -110,11 +139,33 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const close = useCallback(async (key: string) => {
-    await frames.current.get(key)?.contentWindow?.settleReader?.();
+  const readerReady = useCallback(
+    (key: string) => (control: ReaderControl) => {
+      readers.current.set(key, { status: "ready", control });
+    },
+    [],
+  );
+
+  const closeReader = useCallback(async (key: string) => {
+    const reader = readers.current.get(key);
+    if (reader === undefined) {
+      return;
+    }
+    if (reader.status === "ready") {
+      await reader.control.settle();
+    }
+    readers.current.delete(key);
     frames.current.delete(key);
     setState((previous) => closing(previous, key));
   }, []);
+
+  // A tab whose reader cannot settle stays open and is shown: its reader names the failure.
+  const close = useCallback(
+    (key: string) => {
+      closeReader(key).catch(() => setState((previous) => ({ ...previous, shown: key })));
+    },
+    [closeReader],
+  );
 
   // One handler for the window and every reader frame, which receive their own keys.
   const shownRef = useRef(state.shown);
@@ -124,7 +175,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       if (matchesShortcut(event, KEYBOARD_SHORTCUTS.closeTab)) {
         event.preventDefault();
         if (shownRef.current !== LIBRARY_TAB) {
-          void close(shownRef.current);
+          close(shownRef.current);
         }
       }
       if (matchesShortcut(event, KEYBOARD_SHORTCUTS.nextTab)) {
@@ -170,7 +221,9 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     }));
 
   return (
-    <ReaderTabsContext.Provider value={{ openReader, libraryShown: state.shown === LIBRARY_TAB }}>
+    <ReaderTabsContext.Provider
+      value={{ openReader, closeReader, libraryShown: state.shown === LIBRARY_TAB }}
+    >
       <Tabs.Root
         value={state.shown}
         onValueChange={(shown) => setState((previous) => ({ ...previous, shown }))}
@@ -202,7 +255,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                 title={tab.title}
                 onAuxClick={(event) => {
                   if (event.button === 1) {
-                    void close(tab.key);
+                    close(tab.key);
                   }
                 }}
                 className={`${TAB_CLASSES} flex-1 border-transparent pr-1 text-muted group-hover:text-ink data-[state=active]:font-medium data-[state=active]:text-ink`}
@@ -214,7 +267,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                 type="button"
                 aria-label={`Close ${tab.title}`}
                 title="Close (Ctrl+W)"
-                onClick={() => void close(tab.key)}
+                onClick={() => close(tab.key)}
                 className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-ink/[0.08] hover:text-ink"
               >
                 <X aria-hidden className="h-3.5 w-3.5" />
@@ -245,6 +298,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                 shown={state.shown === tab.key}
                 onTitle={retitle(tab.key)}
                 onLoad={frameLoaded(tab.key)}
+                onReady={readerReady(tab.key)}
               />
             </Tabs.Content>
           ))}
