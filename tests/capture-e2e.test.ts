@@ -3,7 +3,7 @@
 // against the fixture site and the bucket server over a temporary store.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer, {
@@ -375,6 +375,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     site.stop();
     await bucket.stop();
     await browser.close();
+    if (downloads !== null) {
+      rmSync(downloads, { recursive: true, force: true });
+    }
   });
 
   test("an arXiv /pdf/ URL without .pdf is captured with the linking page and link text, and the tab returns to that page", async () => {
