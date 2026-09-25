@@ -21,6 +21,11 @@ declare global {
     // Set by a reader page just before it dispatches `reader-ready` on its frame element.
     readerControl: ReaderControl | undefined;
   }
+  interface WindowEventMap {
+    // The desktop app's tray Quit (desktop/src-tauri/src/follow-open-events.js): the app quits
+    // once every promise handed to waitUntil settles, and asks first when one rejects.
+    "pdf-bucket-quit": CustomEvent<{ waitUntil(settled: Promise<void>): void }>;
+  }
 }
 
 // What the tab strip knows of a tab's reader: still loading (its viewer is not up, so it holds
@@ -166,6 +171,18 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     },
     [closeReader],
   );
+
+  // Quitting waits for every open reader to settle; one that cannot rejects the quit's wait.
+  useEffect(() => {
+    const quitting = (event: WindowEventMap["pdf-bucket-quit"]) => {
+      const settling = [...readers.current.values()].map((reader) =>
+        reader.status === "ready" ? reader.control.settle() : Promise.resolve(),
+      );
+      event.detail.waitUntil(Promise.all(settling).then(() => undefined));
+    };
+    window.addEventListener("pdf-bucket-quit", quitting);
+    return () => window.removeEventListener("pdf-bucket-quit", quitting);
+  }, []);
 
   // One handler for the window and every reader frame, which receive their own keys.
   const shownRef = useRef(state.shown);
