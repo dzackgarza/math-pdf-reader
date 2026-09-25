@@ -1,22 +1,28 @@
 //! `pdf-bucket`: the bucket server without a window, and the index export's maintenance
 //! commands over the configured data root.
 //!
-//! - `serve <root> <zotero url> <extractions manifest> <resolvers manifest> [--index-export
-//!   <file>]` serves any bucket root on a free port, prints its origin and serves until its
-//!   standard input closes; the test
-//!   suites and evidence runs use it so that they never touch the configured bucket or its port.
-//! - `export-index`, `import-index` and `rebuild-cache` take an optional export file (default:
-//!   the configured one).
-use std::collections::BTreeSet;
+//! - `serve <root> <zotero url> <extractions manifest> <resolvers manifest> --index-export
+//!   <file>` serves any bucket root on a free port, prints its origin and serves until its
+//!   standard input closes; the test suites and evidence runs use it so that they never touch
+//!   the configured bucket or its port.
+//! - `export-index`, `import-index`, `rebuild-cache` and `forget` take an optional export file
+//!   (default: the configured one).
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use pdf_bucket::config::{self, BucketConfig, ProcessEnv};
 use pdf_bucket::contract::RebuildOutcome;
 use pdf_bucket::error::AppError;
-use pdf_bucket::export::{export_index, import_index, rebuild_cache};
+use pdf_bucket::export::{
+    export_index, forget_missing, import_index, rebuild_cache, BucketDocuments, ExportOutcome,
+};
+use pdf_bucket::index::LibraryIndex;
+use pdf_bucket::organization::OrganizationStore;
+use pdf_bucket::sessions::SessionStore;
 use pdf_bucket::store::Store;
+use tokio::sync::Notify;
 
 #[derive(Parser)]
 #[command(name = "pdf-bucket", version, about = "The PDF Bucket server")]
@@ -35,14 +41,18 @@ enum Command {
         resolvers_manifest: PathBuf,
         /// Rewrite this index export after every change.
         #[arg(long)]
-        index_export: Option<PathBuf>,
+        index_export: PathBuf,
     },
     /// Write the index export: every stored item's provenance and filing.
     ExportIndex { file: Option<PathBuf> },
-    /// Restore the filing from an index export into a data root that has none.
+    /// Restore the filing and reading sessions from an index export into a data root whose
+    /// filing document holds no filing.
     ImportIndex { file: Option<PathBuf> },
     /// Re-download every PDF the index export lists and the data root lacks.
     RebuildCache { file: Option<PathBuf> },
+    /// Forget an item the index export lists whose PDF the data root lost: drop its filing and
+    /// write the export without it.
+    Forget { key: String, file: Option<PathBuf> },
 }
 
 fn export_file(file: Option<PathBuf>) -> PathBuf {
@@ -60,12 +70,41 @@ fn configured_store() -> Store {
     )
 }
 
+/// The configured data root's documents; nothing in this process listens for their changes.
+struct Documents {
+    index: LibraryIndex,
+    organizations: OrganizationStore,
+    sessions: SessionStore,
+}
+
+impl Documents {
+    async fn configured() -> Result<Self, Failure> {
+        let store = configured_store();
+        tokio::fs::create_dir_all(store.root()).await?;
+        let unheard = Arc::new(Notify::new());
+        Ok(Self {
+            sessions: SessionStore::new(store.root(), Arc::clone(&unheard)),
+            organizations: OrganizationStore::new(store.clone(), unheard),
+            index: LibraryIndex::new(store),
+        })
+    }
+
+    fn documents(&self) -> BucketDocuments<'_> {
+        BucketDocuments {
+            index: &self.index,
+            organizations: &self.organizations,
+            sessions: &self.sessions,
+        }
+    }
+}
+
 /// Why a command stopped; `main` prints it and exits non-zero.
 enum Failure {
     Io(std::io::Error),
     Server(tokio::task::JoinError),
     Bucket(AppError),
     Json(serde_json::Error),
+    Refused(PathBuf, Vec<String>),
 }
 
 impl From<std::io::Error> for Failure {
@@ -87,6 +126,13 @@ impl std::fmt::Display for Failure {
             Self::Server(error) => write!(formatter, "the server stopped: {error}"),
             Self::Bucket(error) => write!(formatter, "{error:?}"),
             Self::Json(error) => write!(formatter, "{error}"),
+            Self::Refused(file, missing) => write!(
+                formatter,
+                "{} lists {}, which have no PDF in the store; run `just rebuild-cache`, or \
+                 `pdf-bucket forget <key>` for an item removed on purpose",
+                file.display(),
+                missing.join(", ")
+            ),
         }
     }
 }
@@ -99,6 +145,16 @@ async fn main() -> ExitCode {
             eprintln!("pdf-bucket: {failure}");
             ExitCode::FAILURE
         }
+    }
+}
+
+async fn export(documents: &Documents, file: PathBuf) -> Result<ExitCode, Failure> {
+    match export_index(&documents.documents(), &file).await? {
+        ExportOutcome::Written(index) => {
+            println!("exported {} items to {}", index.items.len(), file.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        ExportOutcome::Refused(missing) => Err(Failure::Refused(file, missing)),
     }
 }
 
@@ -139,14 +195,13 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             Ok(ExitCode::SUCCESS)
         }
         Command::ExportIndex { file } => {
-            let file = export_file(file);
-            let index = export_index(&configured_store(), &file, &BTreeSet::new()).await?;
-            println!("exported {} items to {}", index.items.len(), file.display());
-            Ok(ExitCode::SUCCESS)
+            export(&Documents::configured().await?, export_file(file)).await
         }
         Command::ImportIndex { file } => {
             let root = config::data_root();
-            let organization = import_index(&root, &export_file(file)).await?;
+            let documents = Documents::configured().await?;
+            let organization =
+                import_index(&documents.documents(), &root, &export_file(file)).await?;
             println!(
                 "imported the filing of {} items into {}",
                 organization.items.len(),
@@ -170,6 +225,13 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             } else {
                 ExitCode::SUCCESS
             })
+        }
+        Command::Forget { key, file } => {
+            let file = export_file(file);
+            let documents = Documents::configured().await?;
+            forget_missing(&documents.organizations, &file, &key).await?;
+            println!("forgot {key}");
+            export(&documents, file).await
         }
     }
 }

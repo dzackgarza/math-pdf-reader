@@ -176,10 +176,16 @@ test("filing survives a server restart, and deleting the filing leaves every ite
       await send(bucket, "POST", "/api/collections", { name: "Flips", parentId: birational.id })
     ).json(),
   );
-  await send(bucket, "PUT", "/api/items/lattices/tags", {
-    tags: ["topic:Lattices", " MMP ", "MMP"],
+  await send(bucket, "POST", "/api/bulk/tags", {
+    keys: ["lattices"],
+    add: ["topic:Lattices", "MMP", "MMP"],
+    remove: [],
   });
-  await send(bucket, "PUT", "/api/items/lattices/collections", { collections: [flips.id] });
+  await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices"],
+    add: [flips.id],
+    remove: [],
+  });
   await send(bucket, "POST", "/api/items/lattices/notes", { note: "Section 3 proves the bound." });
   const flipsRule: Rule = {
     field: "text",
@@ -235,16 +241,24 @@ test("filing survives a server restart, and deleting the filing leaves every ite
   ]).toEqual(pdfHashes);
 });
 
-test("filing refuses unknown items, unknown collections and empty tags", async () => {
+test("filing refuses unknown items, unknown collections, and blank or untrimmed tags", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const tag = (add: string[]) =>
+    send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices"], add, remove: [] });
 
-  const missingItem = await send(bucket, "PUT", "/api/items/missing/tags", { tags: ["MMP"] });
+  const missingItem = await send(bucket, "POST", "/api/bulk/tags", {
+    keys: ["missing"],
+    add: ["MMP"],
+    remove: [],
+  });
   expect(missingItem.status).toBe(404);
   expect(await errorKind(missingItem)).toBe("unknown_item");
 
-  const missingCollection = await send(bucket, "PUT", "/api/items/lattices/collections", {
-    collections: ["no-such-collection"],
+  const missingCollection = await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices"],
+    add: ["no-such-collection"],
+    remove: [],
   });
   expect(missingCollection.status).toBe(400);
   expect(await errorKind(missingCollection)).toBe("unknown_collection");
@@ -256,11 +270,78 @@ test("filing refuses unknown items, unknown collections and empty tags", async (
   expect(orphan.status).toBe(400);
   expect(await errorKind(orphan)).toBe("unknown_collection");
 
-  const blankTag = await send(bucket, "PUT", "/api/items/lattices/tags", { tags: ["  "] });
-  expect(blankTag.status).toBe(400);
-  expect(await errorKind(blankTag)).toBe("invalid_request");
+  for (const refused of [["  "], [" MMP"], ["MMP\n"]]) {
+    const response = await tag(refused);
+    expect(response.status).toBe(400);
+    expect(await errorKind(response)).toBe("invalid_request");
+  }
+  expect((await send(bucket, "POST", "/api/bulk/tags", { keys: [], add: ["x"], remove: [] })).status).toBe(400);
 
   expect(byId((await library(bucket)).items).get("lattices")?.tags).toEqual([]);
+});
+
+test("tag and collection edits are deltas, so two edits made from the same stale copy both land", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const forms = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Quadratic forms" })).json(),
+  );
+  const codes = CollectionSchema.parse(
+    await (await send(bucket, "POST", "/api/collections", { name: "Codes" })).json(),
+  );
+  await send(bucket, "POST", "/api/bulk/tags", {
+    keys: ["lattices"],
+    add: ["to-read", "survey"],
+    remove: [],
+  });
+  await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices"],
+    add: [forms.id],
+    remove: [],
+  });
+
+  // Two windows that both saw ["to-read", "survey"] and [forms]: one reads it, the other tags it.
+  const [read, tagged, moved] = await Promise.all([
+    send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices"], add: ["read"], remove: ["to-read"] }),
+    send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices"], add: ["E8"], remove: [] }),
+    send(bucket, "POST", "/api/bulk/collections", {
+      keys: ["lattices"],
+      add: [codes.id],
+      remove: [forms.id],
+    }),
+  ]);
+  expect([read.status, tagged.status, moved.status]).toEqual([200, 200, 200]);
+
+  const item = byId((await library(await open(bucket.root))).items).get("lattices");
+  expect(new Set(item?.tags)).toEqual(new Set(["survey", "read", "E8"]));
+  expect(item?.tags[0]).toBe("survey");
+  expect(item?.collections).toEqual([codes.id]);
+
+  const unknownRemoved = await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices"],
+    add: [],
+    remove: ["no-such-collection"],
+  });
+  expect(await errorKind(unknownRemoved)).toBe("unknown_collection");
+});
+
+test("preferences are changed one field at a time", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+
+  const themed = await send(bucket, "PATCH", "/api/preferences", { theme: "dark" });
+  expect(themed.status).toBe(200);
+  const outlined = await send(bucket, "PATCH", "/api/preferences", { outlineOnOpen: true });
+  expect(LibraryPayloadSchema.parse(await outlined.json()).preferences).toEqual({
+    outlineOnOpen: true,
+    theme: "dark",
+  });
+  expect((await library(await open(bucket.root))).preferences).toEqual({
+    outlineOnOpen: true,
+    theme: "dark",
+  });
+  expect((await send(bucket, "PATCH", "/api/preferences", {})).status).toBe(400);
+  expect((await send(bucket, "PATCH", "/api/preferences", { theme: "sepia" })).status).toBe(400);
 });
 
 test("renames, note deletions and saved-search deletions persist, and unknown ids are refused", async () => {
@@ -417,7 +498,7 @@ test("bulk filing adds tags and collections to every chosen item, keeping what e
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
-  await send(bucket, "PUT", "/api/items/lattices/tags", { tags: ["codes"] });
+  await send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices"], add: ["codes"], remove: [] });
   const forms = CollectionSchema.parse(
     await (await send(bucket, "POST", "/api/collections", { name: "Quadratic forms" })).json(),
   );
@@ -425,11 +506,13 @@ test("bulk filing adds tags and collections to every chosen item, keeping what e
   const tagged = await send(bucket, "POST", "/api/bulk/tags", {
     keys: ["lattices", "problems"],
     add: ["survey", "topic:lattices"],
+    remove: [],
   });
   expect(tagged.status).toBe(200);
   const filed = await send(bucket, "POST", "/api/bulk/collections", {
     keys: ["lattices", "problems"],
     add: [forms.id],
+    remove: [],
   });
   expect(filed.status).toBe(200);
   const items = byId((await library(await open(bucket.root))).items);
@@ -441,11 +524,13 @@ test("bulk filing adds tags and collections to every chosen item, keeping what e
   const unknownItem = await send(bucket, "POST", "/api/bulk/tags", {
     keys: ["lattices", "missing"],
     add: ["x"],
+    remove: [],
   });
   expect(unknownItem.status).toBe(404);
   const unknownCollection = await send(bucket, "POST", "/api/bulk/collections", {
     keys: ["lattices"],
     add: ["no-such-collection"],
+    remove: [],
   });
   expect(unknownCollection.status).toBe(400);
   expect(byId((await library(bucket)).items).get("lattices")?.tags).not.toContain("x");
@@ -460,12 +545,21 @@ test("a collection's description, pin and Keep offline persist, and its activity
   );
   expect([forms.description, forms.pinned, forms.keepOffline]).toEqual(["", false, false]);
 
-  await send(bucket, "PUT", "/api/items/lattices/collections", { collections: [forms.id] });
+  await send(bucket, "POST", "/api/bulk/collections", {
+    keys: ["lattices"],
+    add: [forms.id],
+    remove: [],
+  });
   await send(bucket, "POST", "/api/bulk/collections", {
     keys: ["lattices", "problems"],
     add: [forms.id],
+    remove: [],
   });
-  await send(bucket, "POST", "/api/bulk/tags", { keys: ["lattices", "problems"], add: ["MMP"] });
+  await send(bucket, "POST", "/api/bulk/tags", {
+    keys: ["lattices", "problems"],
+    add: ["MMP"],
+    remove: [],
+  });
   const updated = await send(bucket, "PATCH", `/api/collections/${forms.id}`, {
     description: "Hasse–Minkowski and the genus",
     pinned: true,
@@ -545,4 +639,52 @@ test("a smart collection's rules are stored, edited and checked against the fili
     rules,
   });
   expect(unknownSearch.status).toBe(404);
+});
+
+test("deleting a collection repairs every saved search naming it or a subcollection, keeping what each selects", async () => {
+  const bucket = await emptyBucket();
+  const collection = async (name: string, parentId?: string) =>
+    CollectionSchema.parse(
+      await (await send(bucket, "POST", "/api/collections", { name, parentId })).json(),
+    );
+  const forms = await collection("Quadratic forms");
+  const even = await collection("Even lattices", forms.id);
+  const codes = await collection("Codes");
+  const unread: Rule = { field: "reading", operator: "is", value: "unread" };
+  const search = async (name: string, match: "all" | "any", rules: Rule[]) =>
+    SavedSearchSchema.parse(
+      await (await send(bucket, "POST", "/api/saved-searches", { name, match, rules })).json(),
+    );
+  // "is not" a deleted collection holds for every item, "is" one for none.
+  const unreadOutside = await search("Unread outside forms", "all", [
+    unread,
+    { field: "collection", operator: "is not", value: even.id },
+  ]);
+  await search("Unread in forms", "all", [
+    unread,
+    { field: "collection", operator: "is", value: forms.id },
+  ]);
+  const codesOrForms = await search("Codes or forms", "any", [
+    { field: "collection", operator: "is", value: codes.id },
+    { field: "collection", operator: "is", value: even.id },
+  ]);
+  await search("Unread or outside forms", "any", [
+    unread,
+    { field: "collection", operator: "is not", value: forms.id },
+  ]);
+  await search("Only forms", "all", [
+    { field: "collection", operator: "is not", value: forms.id },
+  ]);
+
+  const deleted = await bucket.request(`/api/collections/${forms.id}`, { method: "DELETE" });
+  expect(deleted.status).toBe(200);
+
+  const restarted = await library(await open(bucket.root));
+  expect(restarted.collections).toEqual([codes]);
+  expect(restarted.savedSearches).toEqual([
+    { ...unreadOutside, rules: [unread] },
+    { ...codesOrForms, rules: [{ field: "collection", operator: "is", value: codes.id }] },
+  ]);
+  const again = await bucket.request(`/api/collections/${forms.id}`, { method: "DELETE" });
+  expect(await errorKind(again)).toBe("unknown_collection");
 });

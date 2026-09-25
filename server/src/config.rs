@@ -106,9 +106,8 @@ pub struct BucketConfig {
     pub zotero_url: String,
     pub extractions_manifest: PathBuf,
     pub resolvers_manifest: PathBuf,
-    /// The index export the server rewrites after every change, or `None` for a bucket whose
-    /// changes are not exported (tests, evidence runs).
-    pub index_export: Option<PathBuf>,
+    /// The index export the server rewrites after every change.
+    pub index_export: PathBuf,
     pub app: AppConfig,
     pub process_env: ProcessEnv,
 }
@@ -125,16 +124,12 @@ impl BucketConfig {
             zotero_url: app.zotero.url.clone(),
             extractions_manifest: extractions_manifest(),
             resolvers_manifest: resolvers_manifest(),
-            index_export: Some(index_export_file()),
+            index_export: index_export_file(),
             app,
             process_env,
         }
     }
 }
-
-/// Seconds a page must be read to count in a reading session: the contract's `minimum` on a
-/// page's seconds (MIN_PAGE_SECONDS in src/contract/library.ts), which typify does not check.
-pub const MIN_PAGE_SECONDS: f64 = 5.0;
 
 /// The characters JavaScript's `encodeURIComponent` leaves as they are, so thumbnail file names
 /// match the ones the cache already holds.

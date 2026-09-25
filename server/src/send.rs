@@ -16,7 +16,7 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::index::IndexedItem;
-use crate::organization::{filing, kept_offline, non_empty, remove_item, set_zotero_record};
+use crate::organization::{filing, kept_offline, non_empty, set_zotero_record};
 use crate::state::Shared;
 use crate::zotero::ExistingPdf;
 
@@ -210,15 +210,8 @@ async fn perform(
     })
 }
 
-/// The export hears of the removal first, so the export that the filing write starts drops the
-/// item instead of refusing to lose it.
 async fn remove(state: &Shared, key: &str) -> AppResult<Organization> {
-    state.removed(&[key.to_string()]);
-    state.store.remove(key).await?;
-    state
-        .organizations
-        .update(|org| remove_item(org, key))
-        .await
+    state.remove(key).await
 }
 
 async fn save(state: &Shared, key: &str, record: &ZoteroRecord) -> AppResult<Organization> {

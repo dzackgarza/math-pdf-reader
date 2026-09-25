@@ -1,51 +1,55 @@
 //! Reading sessions, kept in one JSON document under the bucket root beside the filing: a report
 //! replaces the stored session with its id, with the item as it stands now. Like the filing
-//! document, writes are serialized and land by rename.
+//! document, writes are serialized and land by rename, and each one wakes the index export,
+//! which carries the sessions.
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
-use crate::config::MIN_PAGE_SECONDS;
 use crate::contract::{
     ReadingSession, ReadingSessionItem, ReadingSessionPagesItem, ReadingSessionReport, Sessions,
 };
-use crate::error::{AppError, AppResult};
-use crate::organization::write_json;
+use crate::error::AppResult;
+use crate::organization::{read_document, write_json};
 use crate::state::{parse_body, Shared};
 
 pub struct SessionStore {
     path: PathBuf,
     writes: Mutex<()>,
+    changed: Arc<Notify>,
 }
 
-fn empty() -> Sessions {
+pub fn empty_sessions() -> Sessions {
     Sessions {
         version: 1.try_into().expect("1 is the sessions document's version"),
         sessions: Vec::new(),
     }
 }
 
+pub fn sessions_file(root: &Path) -> PathBuf {
+    root.join("reading-sessions.json")
+}
+
 impl SessionStore {
-    pub fn new(root: &Path) -> Self {
+    /// CHANGED is notified after every write that landed.
+    pub fn new(root: &Path, changed: Arc<Notify>) -> Self {
         Self {
-            path: root.join("reading-sessions.json"),
+            path: sessions_file(root),
             writes: Mutex::new(()),
+            changed,
         }
     }
 
     pub async fn read(&self) -> AppResult<Sessions> {
-        if !tokio::fs::try_exists(&self.path).await? {
-            return Ok(empty());
-        }
-        let text = tokio::fs::read_to_string(&self.path).await?;
-        serde_json::from_str(&text).map_err(|error| {
-            AppError::internal(format!("{} fails its schema: {error}", self.path.display()))
-        })
+        Ok(read_document(&self.path)
+            .await?
+            .unwrap_or_else(empty_sessions))
     }
 
     pub async fn upsert(&self, session: ReadingSession) -> AppResult<()> {
@@ -53,7 +57,9 @@ impl SessionStore {
         let mut current = self.read().await?;
         current.sessions.retain(|stored| stored.id != session.id);
         current.sessions.push(session);
-        write_json(&self.path, &current).await
+        write_json(&self.path, &current).await?;
+        self.changed.notify_one();
+        Ok(())
     }
 }
 
@@ -68,18 +74,6 @@ async fn list(State(state): State<Shared>) -> AppResult<Json<Vec<ReadingSession>
 
 async fn report(State(state): State<Shared>, body: Bytes) -> AppResult<Json<Recorded>> {
     let report: ReadingSessionReport = parse_body(&body)?;
-    if report.pages.is_empty() {
-        return Err(AppError::invalid("the session reports no page"));
-    }
-    if report
-        .pages
-        .iter()
-        .any(|page| page.seconds < MIN_PAGE_SECONDS)
-    {
-        return Err(AppError::invalid(format!(
-            "a page counts after {MIN_PAGE_SECONDS} seconds"
-        )));
-    }
     let indexed = state.require(&report.key).await?;
     let stored = indexed.stored;
     let session = ReadingSession {

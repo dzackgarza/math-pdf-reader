@@ -62,3 +62,85 @@ mod generated {
 }
 
 pub use generated::*;
+
+/// The JSON Schema every contract type is generated from.
+const SCHEMA: &str = include_str!(concat!(env!("OUT_DIR"), "/contract-schema.json"));
+
+/// A contract type read from JSON: `DEF` names its definition under `$defs` in the schema.
+pub trait Contract: serde::de::DeserializeOwned {
+    const DEF: &'static str;
+}
+
+macro_rules! contract_types {
+    ($($name:ident),* $(,)?) => {
+        $(impl Contract for $name {
+            const DEF: &'static str = stringify!($name);
+        })*
+    };
+}
+
+// The documents the server reads: request bodies and the files beside the stored PDFs.
+contract_types!(
+    BulkCollectionsRequest,
+    BulkTagsRequest,
+    CollectionUpdateRequest,
+    FolderImportRequest,
+    ImportUrlRequest,
+    IndexExport,
+    MirrorRequest,
+    NewCollectionRequest,
+    NewSavedSearchRequest,
+    NoteRequest,
+    Organization,
+    PreferencesUpdateRequest,
+    ReadingRequest,
+    ReadingSessionReport,
+    RemovedKeys,
+    SavedSearchUpdateRequest,
+    Sessions,
+);
+
+type Validators = std::collections::HashMap<&'static str, std::sync::Arc<jsonschema::Validator>>;
+
+static VALIDATORS: std::sync::LazyLock<std::sync::Mutex<Validators>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Validators::new()));
+
+fn validator(def: &'static str) -> std::sync::Arc<jsonschema::Validator> {
+    let mut validators = VALIDATORS.lock().expect("never poisoned");
+    let entry = validators.entry(def).or_insert_with(|| {
+        let mut schema: serde_json::Value =
+            serde_json::from_str(SCHEMA).expect("the contract schema is JSON");
+        schema["$ref"] = serde_json::Value::String(format!("#/$defs/{def}"));
+        std::sync::Arc::new(
+            jsonschema::options()
+                .build(&schema)
+                .expect("the contract schema compiles"),
+        )
+    });
+    std::sync::Arc::clone(entry)
+}
+
+/// Why a document is not the contract type it should be: its first violation of the schema.
+#[derive(Debug)]
+pub struct ContractViolation(String);
+
+impl fmt::Display for ContractViolation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// TEXT as the contract type T: checked against every constraint of T's schema (including those
+/// typify cannot type, such as `minItems`, `minimum` and `minProperties`), then typed.
+pub fn from_json<T: Contract>(text: &[u8]) -> Result<T, ContractViolation> {
+    let value: serde_json::Value =
+        serde_json::from_slice(text).map_err(|error| ContractViolation(error.to_string()))?;
+    if let Err(error) = validator(T::DEF).validate(&value) {
+        return Err(ContractViolation(format!(
+            "{} at {}: {error}",
+            T::DEF,
+            error.instance_path()
+        )));
+    }
+    serde_json::from_value(value).map_err(|error| ContractViolation(error.to_string()))
+}

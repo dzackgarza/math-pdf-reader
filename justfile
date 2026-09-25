@@ -35,15 +35,21 @@ provision: fetch-pdfjs
     @scripts/provision.sh
 
 # Write the index export ($XDG_DATA_HOME/pdf-bucket-export/index.json): every stored item's
-# provenance and filing, and the collections and saved searches. Refuses to drop an item whose
-# PDF is missing.
+# provenance, filing and extraction record, and the collections, saved searches and reading
+# sessions. Refuses to drop an item whose PDF is missing and that was not deleted, sent or
+# forgotten.
 export-index:
     @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- export-index
 
-# Restore the filing (collections, tags, notes, saved searches) from an index export into a data
-# root that has none.
+# Restore the filing (collections, tags, notes, saved searches) and the reading sessions from an
+# index export into a data root whose filing holds nothing yet.
 import-index file="":
     @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- import-index {{file}}
+
+# Forget an item the index export lists whose PDF is gone for good: drop its filing and write the
+# export without it.
+forget key file="":
+    @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- forget {{key}} {{file}}
 
 # Re-download every PDF the index export lists and the data root lacks, into the same key; prints
 # each item's outcome and fails when a URL is dead or now serves different bytes.

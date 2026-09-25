@@ -49,6 +49,7 @@ fn origin(headers: &HeaderMap) -> AppResult<String> {
 async fn store(state: &Shared, upload: &Upload) -> AppResult<crate::contract::CaptureResult> {
     let mut result = state.store.capture(upload).await?;
     if !result.existing {
+        state.organizations.claim(&result.item.key).await?;
         match retrieve_metadata(
             &state.store,
             &result.item.key,
@@ -322,6 +323,7 @@ async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Js
         storage,
         capabilities: ServerStatusCapabilities { capture: writable },
         ready: writable,
+        index_export: state.exporter.state(),
     }))
 }
 

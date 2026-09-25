@@ -62,10 +62,12 @@ def closed_port_url() -> str:
 
 def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> str:
     """Start the bucket server over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
-    plugins listed in EXTRACTIONS; return its origin. It serves until its standard input closes."""
+    plugins listed in EXTRACTIONS; return its origin. It serves until its standard input closes, and
+    rewrites the index export beside ROOT."""
     subprocess.run(["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"], cwd=REPO, check=True)
+    index_export = root.parent / f"{root.name}-export" / "index.json"
     process = subprocess.Popen(
-        [SERVER, "serve", root, zotero_url, extractions, SHIPPED_RESOLVERS],
+        [SERVER, "serve", root, zotero_url, extractions, SHIPPED_RESOLVERS, "--index-export", index_export],
         cwd=REPO,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -143,7 +145,6 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
     recent = sorted(items, key=lambda item: str(item["dateAdded"]), reverse=True)[:FILED_COUNT]
     for index, item in enumerate(recent):
         title = str(item["title"])
-        path = f"/api/items/{quote(str(item['id']))}"
         matched = [rule for rule in rules if rule[0] in title]
         tags = [tag for _, _, rule_tags in matched for tag in rule_tags]
         collections = [cid for _, rule_collections, _ in matched for cid in rule_collections]
@@ -152,9 +153,9 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         if index % 7 == 0:
             collections.append(to_read)
         if tags:
-            call(origin, "PUT", f"{path}/tags", {"tags": tags})
+            call(origin, "POST", "/api/bulk/tags", {"keys": [item["id"]], "add": tags, "remove": []})
         if collections:
-            call(origin, "PUT", f"{path}/collections", {"collections": collections})
+            call(origin, "POST", "/api/bulk/collections", {"keys": [item["id"]], "add": collections, "remove": []})
     for note, item in zip(
         [
             "Section 3 reduces the bound to the flip termination argument; check Lemma 3.4.",
@@ -423,13 +424,13 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     driver.save_screenshot(str(out / "webkit-tabs.png"))
 
     # The Dark preference over the light GTK theme.
-    call(origins["seeded"], "PUT", "/api/preferences", {"outlineOnOpen": False, "theme": "dark"})
+    call(origins["seeded"], "PATCH", "/api/preferences", {"theme": "dark"})
     driver.get(origins["seeded"])
     row = wait.until(expected_conditions.element_to_be_clickable((By.XPATH, cell)))
     row.click()
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
     driver.save_screenshot(str(out / "webkit-dark-library-populated.png"))
-    call(origins["seeded"], "PUT", "/api/preferences", {"outlineOnOpen": False, "theme": "system"})
+    call(origins["seeded"], "PATCH", "/api/preferences", {"theme": "system"})
     driver.quit()
 
 

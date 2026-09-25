@@ -56,7 +56,15 @@ async fn verify_item(state: &Shared, indexed: &IndexedItem) -> AppResult<()> {
     let captured_at = provenance.captured_at.clone();
     state
         .organizations
-        .update(|org| record_source_checks(org, &key, &captured_at, source_check, &by_url))
+        .update_items(&[&key], |org| {
+            Ok(record_source_checks(
+                org,
+                &key,
+                &captured_at,
+                source_check,
+                &by_url,
+            ))
+        })
         .await?;
     Ok(())
 }
@@ -85,9 +93,10 @@ async fn add(State(state): State<Shared>, Path(key): Path<String>, body: Bytes) 
         }
         Err(error) => return Err(AppError::invalid(format!("{}: {error}", request.url))),
     }
-    state.require(&key).await?;
     state
-        .change(|org| add_mirror(org, &key, &request.url, &Timestamp::now()))
+        .change_items(&[&key], |org| {
+            Ok(add_mirror(org, &key, &request.url, &Timestamp::now()))
+        })
         .await
 }
 
@@ -115,7 +124,9 @@ async fn remove(
         None => return Err(unknown_mirror(&key, "(none named)")),
     };
     state
-        .change(|org| remove_mirror(org, &key, &url, &Timestamp::now()))
+        .change_items(&[&key], |org| {
+            Ok(remove_mirror(org, &key, &url, &Timestamp::now()))
+        })
         .await
 }
 
