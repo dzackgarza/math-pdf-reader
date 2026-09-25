@@ -1,6 +1,8 @@
 // Display forms shared by the table, the inspector and the palette.
 import {
   type Activity,
+  type AVAILABILITIES,
+  type READING_STATES,
   type Reading,
   type Rule,
   type RuleField,
@@ -49,24 +51,29 @@ export const RULE_FIELD_LABELS: Record<RuleField, string> = {
   status: "Status",
 };
 
-const RULE_VALUE_LABELS: Record<"unread" | "reading" | "finished" | "cached" | "offline", string> =
-  {
-    unread: "Unread",
-    reading: "being read",
-    finished: "finished",
-    cached: "Cached",
-    offline: "Offline",
-  };
+const RULE_VALUE_LABELS: Record<
+  (typeof READING_STATES)[number] | (typeof AVAILABILITIES)[number],
+  string
+> = {
+  unread: "Unread",
+  reading: "being read",
+  finished: "finished",
+  cached: "Cached",
+  offline: "Offline",
+};
 
-// A rule as a smart collection's summary says it; COLLECTION_NAMES names collection ids.
+// A rule as a smart collection's summary says it; COLLECTION_NAMES names collection ids, and an
+// id it lacks is a collection deleted since the rule was saved.
 export function ruleText(rule: Rule, collectionNames: Map<string, string>): string {
   switch (rule.field) {
     case "text":
       return `Text matches “${rule.search.query}”`;
     case "added":
       return `Added in the last ${rule.value} days`;
-    case "collection":
-      return `Collection ${rule.operator} ${collectionNames.get(rule.value) ?? rule.value}`;
+    case "collection": {
+      const name = collectionNames.get(rule.value);
+      return `Collection ${rule.operator} ${name === undefined ? "a deleted collection" : name}`;
+    }
     case "reading":
     case "status":
       return `${RULE_FIELD_LABELS[rule.field]} ${rule.operator} ${RULE_VALUE_LABELS[rule.value]}`;

@@ -1,6 +1,7 @@
 // Which items a library view shows, what it is called, and the tag and topic counts.
 import {
   type AdvancedSearchSettings,
+  type AVAILABILITIES,
   type BucketItem,
   collectionSubtree,
   type LibraryPayload,
@@ -22,23 +23,29 @@ export type LibraryView =
   | { kind: "tag"; tag: string }
   | { kind: "saved"; id: string };
 
-export const ALL_ITEMS: LibraryView = { kind: "all" };
-
-// A view whose collection or saved search no longer exists falls back to the whole library,
-// so a reload after a deletion never leaves the table pointing at nothing.
-export function reconcileView(payload: LibraryPayload, view: LibraryView): LibraryView {
-  if (view.kind === "collection" && !payload.collections.some((c) => c.id === view.id)) {
-    return ALL_ITEMS;
+// Whether the library holds the collection or saved search a view shows. A view's address can
+// outlive them: a deletion in another window, or an address kept from before a deletion. Such a
+// view has no items and no name; the window says it is gone.
+export function viewExists(payload: LibraryPayload, view: LibraryView): boolean {
+  switch (view.kind) {
+    case "collection":
+      return payload.collections.some((collection) => collection.id === view.id);
+    case "saved":
+      return payload.savedSearches.some((search) => search.id === view.id);
+    case "all":
+    case "unfiled":
+    case "unread":
+    case "recent":
+    case "offline":
+    case "missing":
+    case "tag":
+      return true;
   }
-  if (view.kind === "saved" && !payload.savedSearches.some((s) => s.id === view.id)) {
-    return ALL_ITEMS;
-  }
-  return view;
 }
 
 // Whether an item can still be fetched from where it came from: offline when the last check
 // found its PDF URL dead or changed and no mirror serving the captured bytes.
-export type Availability = "cached" | "offline";
+export type Availability = (typeof AVAILABILITIES)[number];
 
 export function availability(item: BucketItem): Availability {
   const lost = item.sourceCheck.status === "dead" || item.sourceCheck.status === "changed";

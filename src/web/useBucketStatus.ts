@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
 import { type Settings, SettingsSchema } from "../contract/library";
-import { requestError } from "./useLibraryApi";
+import { request } from "./useLibraryApi";
 
 export type BucketStatus = ServerStatus & { settings: Settings; checkedAt: Date };
 
@@ -15,13 +15,8 @@ async function readStatus(): Promise<BucketStatus> {
   const [status, settings] = await Promise.all([
     // A failed storage check arrives as the bucket's error document, whose message carries the
     // operating system's error.
-    fetch("/status").then(async (response) => {
-      if (!response.ok) {
-        throw await requestError(response);
-      }
-      return ServerStatusSchema.parse(await response.json());
-    }),
-    fetch("/api/settings").then(async (response) => SettingsSchema.parse(await response.json())),
+    request(ServerStatusSchema, "GET", "/status"),
+    request(SettingsSchema, "GET", "/api/settings"),
   ]);
   return { ...status, settings, checkedAt: new Date() };
 }

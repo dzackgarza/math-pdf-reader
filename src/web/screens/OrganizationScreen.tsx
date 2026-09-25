@@ -20,7 +20,7 @@ import {
 import CollectionCards from "../components/CollectionCards";
 import Switch from "../components/Switch";
 import { activityText, dateTime, isTopic, pdfCount, ruleText, tagLabel } from "../format";
-import { itemsInView, tagCounts, viewName } from "../librarySelectors";
+import { itemsInView, tagCounts, viewExists, viewName } from "../librarySelectors";
 import { entryView, ORGANIZATION_TABS, type OrganizationTab, organizationPath } from "../routes";
 
 export type OrganizationActions = {
@@ -395,11 +395,23 @@ export default function OrganizationScreen(props: OrganizationScreenProps) {
         {(tab === "topics" || tab === "tags") && <TagList tags={tags} tab={tab} entry={entry} />}
         {tab === "saved" && <SavedSearchList payload={payload} entry={entry} />}
       </section>
-      {entry !== null && <EntryHeader {...props} entry={entry} />}
-      {collection !== undefined && (
-        <CollectionDetails payload={payload} collection={collection} actions={actions} />
+      {entry !== null && !viewExists(payload, entryView(tab, entry)) && (
+        <p role="alert" className="border-y border-line bg-panel px-5 py-3.5 text-sm text-muted">
+          This {tab === "collections" ? "collection" : "saved search"} no longer exists.{" "}
+          <Link href={organizationPath(tab)} className="font-medium text-accent hover:underline">
+            Show all {TAB_LABELS[tab]}
+          </Link>
+        </p>
       )}
-      {entry !== null && table}
+      {entry !== null && viewExists(payload, entryView(tab, entry)) && (
+        <>
+          <EntryHeader {...props} entry={entry} />
+          {collection !== undefined && (
+            <CollectionDetails payload={payload} collection={collection} actions={actions} />
+          )}
+          {table}
+        </>
+      )}
     </div>
   );
 }
