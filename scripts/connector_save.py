@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import json
 import tempfile
-import zipfile
 import time
+import zipfile
 from hashlib import sha256
 from pathlib import Path
 from urllib.request import urlopen
@@ -41,12 +41,13 @@ def newest_top_item() -> dict[str, str]:
 
 @app.default
 def save(reader_url: str, screenshot: Path, chromium: Path = Path("/usr/bin/chromium")) -> None:
-    work = Path(tempfile.mkdtemp(prefix="connector-save-"))
-    connector = work / "connector"
-    zipfile.ZipFile(CONNECTOR_ZIP).extractall(connector)
     before = newest_top_item()["key"]
 
-    with sync_playwright() as playwright:
+    # Playwright exits first, so Chromium has closed its profile before the directory goes.
+    with tempfile.TemporaryDirectory(prefix="connector-save-") as scratch, sync_playwright() as playwright:
+        work = Path(scratch)
+        connector = work / "connector"
+        zipfile.ZipFile(CONNECTOR_ZIP).extractall(connector)
         context = playwright.chromium.launch_persistent_context(
             work / "profile",
             executable_path=chromium,

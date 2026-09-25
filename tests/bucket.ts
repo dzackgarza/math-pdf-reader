@@ -1,6 +1,8 @@
 // The bucket under test: the app's server, run headless by `pdf-bucket serve` over a bucket
 // root on a free port, one process per bucket, stopped when the test process exits. Requests go
 // over real HTTP to the origin it prints.
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REPO_ROOT } from "../src/contract/config";
 
@@ -15,18 +17,22 @@ export type BucketOptions = {
   zoteroUrl: string;
   extractionsManifest: string;
   resolversManifest: string;
-  // The index export the server rewrites after every change; none unless a test names one.
+  // The index export the server rewrites after every change; a test that does not read it gets
+  // one in a scratch directory of its own.
   indexExport?: string;
 };
 
 export type Bucket = {
   origin: string;
+  indexExport: string;
   // PATH is a path on the bucket's origin, such as `/api/library`.
   request(path: string, init?: RequestInit): Promise<Response>;
   stop(): Promise<void>;
 };
 
 export async function serveBucket(options: BucketOptions): Promise<Bucket> {
+  const indexExport =
+    options.indexExport ?? join(mkdtempSync(join(tmpdir(), "pdf-bucket-export-")), "index.json");
   const command = [
     SERVER_BINARY,
     "serve",
@@ -34,7 +40,8 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
     options.zoteroUrl,
     options.extractionsManifest,
     options.resolversManifest,
-    ...(options.indexExport === undefined ? [] : ["--index-export", options.indexExport]),
+    "--index-export",
+    indexExport,
   ];
   // Bun.spawn without `env` passes the environment the test process started with; the
   // preload's scratch XDG directories are in process.env now.
@@ -58,6 +65,7 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
   const origin = printed.trim();
   return {
     origin,
+    indexExport,
     request: (path, init) => fetch(new URL(path, origin), init),
     stop: async () => {
       server.kill();

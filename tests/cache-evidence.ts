@@ -97,14 +97,14 @@ for (const [key, tags] of [
   ["lecture-notes", ["topic:lattices", "to-read"]],
   ["2401.00001", ["topic:packing"]],
 ] as const) {
-  await api(`/api/items/${key}/tags`, {
-    method: "PUT",
-    body: JSON.stringify({ tags }),
+  await api("/api/bulk/tags", {
+    method: "POST",
+    body: JSON.stringify({ keys: [key], add: tags, remove: [] }),
     headers: { "Content-Type": "application/json" },
   });
-  await api(`/api/items/${key}/collections`, {
-    method: "PUT",
-    body: JSON.stringify({ collections: [forms.id] }),
+  await api("/api/bulk/collections", {
+    method: "POST",
+    body: JSON.stringify({ keys: [key], add: [forms.id], remove: [] }),
     headers: { "Content-Type": "application/json" },
   });
 }

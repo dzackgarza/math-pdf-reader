@@ -30,6 +30,7 @@ test("status reports a ready storage contract for an existing writable root", as
     storage: { root_exists: true, root_writable: true },
     capabilities: { capture: true },
     ready: true,
+    index_export: expect.objectContaining({ file: app.indexExport }),
   });
   expect(readdirSync(root)).toEqual([]);
 });
@@ -49,6 +50,7 @@ test("status reports a missing root as not ready without creating it", async () 
     storage: { root_exists: false, root_writable: false },
     capabilities: { capture: false },
     ready: false,
+    index_export: expect.objectContaining({ file: app.indexExport }),
   });
   expect(readdirSync(parent)).toEqual([]);
 });

@@ -317,3 +317,28 @@ impl Store {
         })
     }
 }
+
+/// The library index of one store, as the library, the index export and the maintenance
+/// commands hold it: a handle on the store's own cache, so they all share one reader.
+#[derive(Clone)]
+pub struct LibraryIndex {
+    store: Store,
+}
+
+impl LibraryIndex {
+    pub fn new(store: Store) -> Self {
+        Self { store }
+    }
+
+    pub async fn library(&self) -> AppResult<Library> {
+        self.store.library().await
+    }
+
+    pub async fn items(&self) -> AppResult<Vec<IndexedItem>> {
+        self.store.items().await
+    }
+
+    pub async fn item(&self, key: &str) -> AppResult<Option<IndexedItem>> {
+        self.store.item(key).await
+    }
+}

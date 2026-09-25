@@ -22,6 +22,10 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// server drop a subscriber whose window went away.
 pub const EVENT_KEEPALIVE: Duration = Duration::from_secs(5);
 
+/// How long the desktop app's Quit waits for the open readers to save their annotations before
+/// it asks whether to quit anyway.
+pub const QUIT_SAVE_WAIT: Duration = Duration::from_secs(30);
+
 /// Filing changes kept per bucket, newest last.
 pub const ACTIVITY_KEPT: usize = 500;
 
@@ -136,9 +140,8 @@ pub struct BucketConfig {
     pub zotero_url: String,
     pub extractions_manifest: PathBuf,
     pub resolvers_manifest: PathBuf,
-    /// The index export the server rewrites after every change, or `None` for a bucket whose
-    /// changes are not exported (tests, evidence runs).
-    pub index_export: Option<PathBuf>,
+    /// The index export the server rewrites after every change.
+    pub index_export: PathBuf,
     /// The bin directory of the Python environment the store's commands and the plugins run
     /// from.
     pub python_bin: PathBuf,
@@ -158,17 +161,13 @@ impl BucketConfig {
             zotero_url: app.zotero.url.clone(),
             extractions_manifest: extractions_manifest(),
             resolvers_manifest: resolvers_manifest(),
-            index_export: Some(index_export_file()),
+            index_export: index_export_file(),
             python_bin: app_python_bin(),
             app,
             process_env,
         }
     }
 }
-
-/// Seconds a page must be read to count in a reading session: the contract's `minimum` on a
-/// page's seconds (MIN_PAGE_SECONDS in src/contract/library.ts), which typify does not check.
-pub const MIN_PAGE_SECONDS: f64 = 5.0;
 
 /// The characters JavaScript's `encodeURIComponent` leaves as they are, so the PDF and reader
 /// paths the server writes match the ones the library builds.

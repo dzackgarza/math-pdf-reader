@@ -5,19 +5,19 @@ use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::Json;
-use serde::de::DeserializeOwned;
-use tokio::sync::{Mutex, Semaphore};
+use lockable::LockPool;
+use tokio::sync::{Notify, Semaphore};
 
 use crate::config::{BucketConfig, THUMBNAIL_RENDERS};
 use crate::contract::{
-    BucketItem, BucketItemFile, ExportedItem, LibraryPayload, LibraryPayloadUnreadableItem,
-    MissingItem, Organization, ZoteroStatus,
+    from_json, BucketItem, BucketItemFile, Contract, ExportedItem, LibraryPayload,
+    LibraryPayloadUnreadableItem, MissingItem, Organization, ZoteroStatus,
 };
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
 use crate::export::{concurrency, IndexExporter};
-use crate::index::IndexedItem;
-use crate::organization::{filing_of, OrganizationStore};
+use crate::index::{IndexedItem, LibraryIndex};
+use crate::organization::{filing_of, remove_item, OrganizationStore};
 use crate::send::zotero_status;
 use crate::sessions::SessionStore;
 use crate::store::Store;
@@ -28,56 +28,70 @@ pub type Shared = Arc<AppState>;
 pub struct AppState {
     pub config: BucketConfig,
     pub store: Store,
-    pub organizations: OrganizationStore,
-    pub exporter: Option<Arc<IndexExporter>>,
+    pub index: Arc<LibraryIndex>,
+    pub organizations: Arc<OrganizationStore>,
+    pub exporter: Arc<IndexExporter>,
     pub zotero: ZoteroWriteApi,
     pub events: Events,
-    pub sessions: SessionStore,
+    pub sessions: Arc<SessionStore>,
+    /// Wakes the index exporter: every filing or session write, every PDF stored or removed.
+    changed: Arc<Notify>,
     /// Downloads at once when checking or rebuilding sources.
     pub downloads: Semaphore,
     /// Thumbnail renders at once.
     pub renders: Semaphore,
-    /// One send or removal at a time, so two clicks never create two Zotero items.
-    pub sends: Mutex<()>,
+    /// One send or removal of an item at a time, so two clicks never create two Zotero items;
+    /// sends of different items run side by side.
+    pub sends: LockPool<String>,
 }
 
 impl AppState {
     /// Must run on a tokio runtime: the index exporter starts its task here.
     pub fn new(config: BucketConfig) -> Shared {
         let store = Store::configured(&config);
-        let exporter = config
-            .index_export
-            .clone()
-            .map(|file| IndexExporter::start(store.clone(), file));
-        let state = Arc::new(Self {
-            organizations: OrganizationStore::new(&config.root, exporter.clone()),
-            sessions: SessionStore::new(&config.root),
+        let changed = Arc::new(Notify::new());
+        let index = Arc::new(LibraryIndex::new(store.clone()));
+        let organizations = Arc::new(OrganizationStore::new(store.clone(), Arc::clone(&changed)));
+        let sessions = Arc::new(SessionStore::new(&config.root, Arc::clone(&changed)));
+        let exporter = IndexExporter::start(
+            Arc::clone(&index),
+            Arc::clone(&organizations),
+            Arc::clone(&sessions),
+            config.index_export.clone(),
+            Arc::clone(&changed),
+        );
+        Arc::new(Self {
+            index,
+            organizations,
+            sessions,
+            exporter,
+            changed,
             zotero: ZoteroWriteApi::new(&config.zotero_url),
             events: Events::new(),
             downloads: Semaphore::new(concurrency(&config.app.rebuild)),
             renders: Semaphore::new(THUMBNAIL_RENDERS),
-            sends: Mutex::new(()),
-            exporter,
+            sends: LockPool::new(),
             store,
             config,
-        });
-        state.stored();
-        state
+        })
     }
 
     /// A PDF was stored or restored: the index export is rewritten.
     pub fn stored(&self) {
-        if let Some(exporter) = &self.exporter {
-            exporter.changed();
-        }
+        self.changed.notify_one();
     }
 
-    /// Items left the bucket on purpose: the index export drops them.
-    pub fn removed(&self, keys: &[String]) {
-        if let Some(exporter) = &self.exporter {
-            exporter.forget(keys);
-            exporter.changed();
+    /// Takes KEY out of the bucket on purpose (a delete, a send to Zotero): the key is recorded
+    /// as removed before its PDF goes to the trash, so the index export drops it even across a
+    /// restart, and then its filing goes.
+    pub async fn remove(&self, key: &str) -> AppResult<Organization> {
+        let keys = [key.to_string()];
+        self.organizations.record_removal(&keys).await?;
+        if let Err(error) = self.store.remove(key).await {
+            self.organizations.withdraw_removal(&keys).await?;
+            return Err(error);
         }
+        self.organizations.update(|org| remove_item(org, key)).await
     }
 
     pub async fn indexed(&self, key: &str) -> AppResult<Option<IndexedItem>> {
@@ -91,30 +105,16 @@ impl AppState {
         }
     }
 
-    pub async fn collection_ids(&self) -> AppResult<BTreeSet<String>> {
-        Ok(self
-            .organizations
-            .read()
-            .await?
-            .collections
-            .into_iter()
-            .map(|collection| collection.id.to_string())
-            .collect())
-    }
-
-    /// The items the index export holds whose PDF is gone; none without an export.
+    /// The items the index export holds whose PDF is gone.
     pub async fn missing(
         &self,
         indexed: &[IndexedItem],
     ) -> AppResult<Vec<(ExportedItem, MissingItem)>> {
-        let Some(exporter) = &self.exporter else {
-            return Ok(Vec::new());
-        };
         let stored: BTreeSet<String> = indexed
             .iter()
             .map(|entry| entry.stored.key.to_string())
             .collect();
-        exporter.missing(&stored).await
+        self.exporter.missing(&stored).await
     }
 
     pub async fn payload_of(&self, organization: Organization) -> AppResult<LibraryPayload> {
@@ -149,12 +149,23 @@ impl AppState {
         self.payload_of(self.organizations.read().await?).await
     }
 
-    /// Applies a filing change and answers with the library as it now stands.
+    /// Applies a filing change, checked under the filing lock, and answers with the library as
+    /// it now stands.
     pub async fn change(
         &self,
-        update: impl FnOnce(Organization) -> Organization,
+        update: impl FnOnce(Organization) -> AppResult<Organization>,
     ) -> AppResult<Json<LibraryPayload>> {
-        let organization = self.organizations.update(update).await?;
+        let organization = self.organizations.try_update(update).await?;
+        Ok(Json(self.payload_of(organization).await?))
+    }
+
+    /// A change to the filing of ITEMS, made only while each still has a stored PDF.
+    pub async fn change_items(
+        &self,
+        items: &[&str],
+        update: impl FnOnce(Organization) -> AppResult<Organization>,
+    ) -> AppResult<Json<LibraryPayload>> {
+        let organization = self.organizations.update_items(items, update).await?;
         Ok(Json(self.payload_of(organization).await?))
     }
 }
@@ -164,7 +175,8 @@ pub fn bucket_item(indexed: &IndexedItem, organization: &Organization) -> AppRes
     let stored = &indexed.stored;
     let provenance = &stored.provenance;
     let filing = filing_of(organization, &stored.key, &provenance.captured_at);
-    let zotero: ZoteroStatus = zotero_status(filing.zotero.as_ref(), &indexed.extraction);
+    let zotero: ZoteroStatus =
+        zotero_status(filing.zotero.as_ref(), &indexed.extraction, &filing.notes);
     Ok(BucketItem {
         id: stored.key.clone(),
         title: stored.title.text.clone(),
@@ -199,7 +211,8 @@ pub fn bucket_item(indexed: &IndexedItem, organization: &Organization) -> AppRes
     })
 }
 
-/// A request body parsed against its contract type; a body that fails it is an invalid request.
-pub fn parse_body<T: DeserializeOwned>(body: &Bytes) -> AppResult<T> {
-    serde_json::from_slice(body).map_err(|error| AppError::invalid(error.to_string()))
+/// A request body checked against its contract schema and typed; a body that fails it is an
+/// invalid request.
+pub fn parse_body<T: Contract>(body: &Bytes) -> AppResult<T> {
+    from_json(body).map_err(|error| AppError::invalid(error.to_string()))
 }

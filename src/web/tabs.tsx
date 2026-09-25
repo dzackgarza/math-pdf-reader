@@ -7,6 +7,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { OpenReaderSchema } from "../contract/capture";
+import { onBucketEvent } from "./bucketEvents";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import { ReaderTabsContext } from "./readerTabs";
 import { readerPath } from "./routes";
@@ -223,12 +224,10 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const events = new EventSource("/api/events");
-    events.addEventListener("open-reader", (event: MessageEvent<string>) => {
+    return onBucketEvent("open-reader", (event) => {
       const { reader_url, title } = OpenReaderSchema.parse(JSON.parse(event.data));
       openReader(readerKey(reader_url), title);
     });
-    return () => events.close();
   }, [openReader]);
 
   const retitle = (key: string) => (title: string) =>

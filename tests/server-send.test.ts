@@ -1,4 +1,5 @@
-// The send action's own rules at the bucket's HTTP boundary. Zotero is a closed port here, so
+// The send action's own rules at the bucket's HTTP boundary, and the guard in front of every
+// state-changing route. Zotero is a closed port here (or a replay of Zotero without the write API), so
 // any request that reaches for Zotero fails loudly instead of writing to a real library; the
 // Zotero write path itself is proved by the evidence run in docs/m3.md.
 import { expect, test } from "bun:test";
@@ -127,4 +128,100 @@ test("an extraction made after the send is owed to Zotero, and a later send goes
     record: SENT,
     pending: ["markdown"],
   });
+});
+
+test("a note added after the send is owed to Zotero, and a later send goes to add it", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, "lattices");
+  recordSent(bucket, "lattices");
+
+  const noted = await bucket.request("/api/items/lattices/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: "Lemma 2 needs the sign convention of section 1." }),
+  });
+  expect(noted.status).toBe(200);
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "sent",
+    record: SENT,
+    pending: ["notes"],
+  });
+  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+
+  // Not refused: the send tried to add the note to ABCD2345, and Zotero was down.
+  expect(response.status).toBe(502);
+  expect(await errorKind(response)).toBe("zotero_failed");
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "sent",
+    record: SENT,
+    pending: ["notes"],
+  });
+});
+
+// What Zotero's own HTTP server answered on 2026-09-25 to a path no endpoint serves, as it
+// does for the write API's paths when the local-write-api addon is not installed.
+function zoteroWithoutWriteApi(): string {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response("No endpoint found\n", {
+        status: 404,
+        headers: { "Content-Type": "text/plain" },
+      }),
+  });
+  return server.url.origin;
+}
+
+test("a send to a Zotero without the write API fails as a Zotero failure", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-"));
+  const app = await serveBucket({
+    root,
+    zoteroUrl: zoteroWithoutWriteApi(),
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    resolversManifest: RESOLVERS_MANIFEST,
+  });
+  const bucket = { root, request: app.request };
+  await capture(bucket, "lattices");
+
+  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+
+  expect(response.status).toBe(502);
+  expect(await errorKind(response)).toBe("zotero_failed");
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+});
+
+test("a web page on another site cannot send an item or delete it", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, "lattices");
+  const fromAnotherSite = { Origin: "https://pages.example.com", "Sec-Fetch-Site": "cross-site" };
+
+  const send = await bucket.request("/api/items/lattices/zotero", {
+    method: "POST",
+    headers: fromAnotherSite,
+  });
+  const removal = await bucket.request("/api/items/lattices", {
+    method: "DELETE",
+    headers: fromAnotherSite,
+  });
+
+  expect(send.status).toBe(403);
+  expect(await errorKind(send)).toBe("cross_origin_request");
+  expect(removal.status).toBe(403);
+  expect(await errorKind(removal)).toBe("cross_origin_request");
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+});
+
+test("a JSON route refuses a body a form on another site can send", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, "lattices");
+
+  const response = await bucket.request("/api/items/lattices/notes", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ note: "planted" }),
+  });
+
+  expect(response.status).toBe(415);
+  expect(await errorKind(response)).toBe("unsupported_media_type");
+  expect((await item(bucket, "lattices"))?.notes).toEqual([]);
 });

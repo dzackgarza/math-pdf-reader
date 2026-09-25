@@ -115,7 +115,8 @@ function name(schema: JsonSchema, path: string, nested: boolean): void {
 }
 
 const definitions: Record<string, JsonSchema> = {};
-for (const [id, { $schema, ...schema }] of Object.entries(exported.schemas)) {
+// Each definition is addressed by its place under `$defs`, never by its own `$id`.
+for (const [id, { $schema, $id, ...schema }] of Object.entries(exported.schemas)) {
   const definition = schema as JsonSchema;
   name(definition, id, false);
   definitions[id] = definition;

@@ -34,7 +34,7 @@ use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::{Captured, Upload};
 use crate::titles::retrieve_metadata;
-use crate::{extractions, library, send, sessions, source_routes, thumbnails};
+use crate::{extractions, guard, library, send, sessions, source_routes, thumbnails};
 
 /// The origin a request was made to, from its Host header.
 fn origin(headers: &HeaderMap) -> AppResult<String> {
@@ -55,6 +55,9 @@ async fn store(
     upload: &Upload,
 ) -> AppResult<(Captured, Option<RetrieveMetadataOutcome>)> {
     let mut captured = state.store.capture(upload).await?;
+    if !captured.existing {
+        state.organizations.claim(&captured.item.key).await?;
+    }
     state.stored();
     if captured.existing {
         return Ok((captured, None));
@@ -335,6 +338,7 @@ async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Js
         storage,
         capabilities: ServerStatusCapabilities { capture: writable },
         ready: writable,
+        index_export: state.exporter.state(),
     }))
 }
 
@@ -402,5 +406,6 @@ pub fn router(state: Shared) -> Router {
         // PDFs arrive whole in one request (a capture, a reader save); axum's 2 MB default
         // would refuse most of them.
         .layer(DefaultBodyLimit::disable())
+        .layer(axum::middleware::from_fn(guard::guard))
         .with_state(state)
 }

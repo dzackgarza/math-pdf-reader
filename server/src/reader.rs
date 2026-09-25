@@ -3,8 +3,8 @@
 use askama::Template;
 use percent_encoding::utf8_percent_encode;
 
-use crate::config::{MIN_PAGE_SECONDS, READER_IDLE_MINUTES, URI_COMPONENT};
-use crate::contract::{BucketItem, LibraryViewKey, Preferences, Reading, Theme};
+use crate::config::{READER_IDLE_MINUTES, URI_COMPONENT};
+use crate::contract::{BucketItem, LibraryViewKey, Preferences, Reading, Theme, MIN_PAGE_SECONDS};
 
 pub fn pdf_url_path(key: &str) -> String {
     format!("/pdf/{}.pdf", utf8_percent_encode(key, URI_COMPONENT))
