@@ -41,9 +41,7 @@ def ocr_markdown(client: Mistral, pdf: Path, first_page: int) -> str:
 @app.default
 def extract(pdf: Path, output: Path, api_base: str) -> None:
     """OCR PDF with the Mistral API at API_BASE and write OUTPUT/extraction.md."""
-    client = Mistral(
-        api_key=os.environ["MISTRAL_API_KEY"], server_url=api_base, retry_config=RETRIES, timeout_ms=REQUEST_TIMEOUT_MS
-    )
+    client = Mistral(api_key=os.environ["MISTRAL_API_KEY"], server_url=api_base, retry_config=RETRIES, timeout_ms=REQUEST_TIMEOUT_MS)
     with TemporaryDirectory() as scratch:
         ranges = page_ranges(page_count(pdf), MAX_PAGES)
         chunks = split_pdf(pdf, ranges, Path(scratch))
