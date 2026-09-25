@@ -19,3 +19,6 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 
 - **The suites run whatever `target/debug/pdf-bucket` is.** The server bakes in the checkout it serves from (`PDF_BUCKET_CHECKOUT`, set by `server/build.rs`). Building another checkout of this workspace with `CARGO_TARGET_DIR` pointed at this one leaves a binary that serves the other checkout's `dist/web`, and `cargo build` here keeps it, because the compiled crate counts as fresh.
   `cargo clean -p pdf-bucket` before building here.
+
+- **A native open exempts that PDF URL in that tab until the tab closes.** A later capture case that follows the same link in the same tab reaches the browser's viewer, and a wait for the capture page times out.
+  Follow a link to another PDF, or use a new tab.

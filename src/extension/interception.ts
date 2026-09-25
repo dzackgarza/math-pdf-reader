@@ -122,3 +122,10 @@ export function isPdfResponse(url: string, headers: ResponseHeader[]): boolean {
   };
   return [pdfContentType, pdfPathOctetStream, pdfDisposition].some((rule) => rule(evidence));
 }
+
+// URL without its fragment: the resource a request fetches.
+export function withoutFragment(href: string): string {
+  const url = new URL(href);
+  url.hash = "";
+  return url.href;
+}

@@ -424,14 +424,21 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
   test("a sub-frame large enough to read in is captured", async () => {
     await page.goto(`${site.origin}/frame-large.html`);
+    // Chromium replaces the iframe's frame when it commits the capture page, so a handle to the
+    // frame that still shows the PDF URL detaches; Firefox keeps one frame and reports no URL
+    // change into it.
     const frame = await page.waitForFrame(
-      (candidate) => candidate.parentFrame() === page.mainFrame(),
+      (candidate) =>
+        candidate.parentFrame() === page.mainFrame() &&
+        (engine === "firefox" || candidate.url().startsWith(extensionOrigin)),
     );
     await captureState(frame, "stored");
     await shot("large-frame");
 
     const stored = await provenance("chapter");
     expect(stored.pdf_url).toBe(`${site.origin}/frames/chapter.pdf`);
+    // No link was followed to the framed PDF, so no linking page is recorded.
+    expect(stored.source_url).toBeNull();
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/frames/chapter.pdf")));
   });
 
@@ -479,6 +486,64 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(bucket.files()).toEqual(before);
   });
 
+  test("a DOI link that redirects to the PDF is captured with the page the link was on", async () => {
+    expect(await captureInPlace("/citation.html")).toBe(`${bucket.origin}/read/redirected`);
+    const stored = await provenance("redirected");
+    expect(stored.pdf_url).toBe(`${site.origin}/articles/redirected.pdf`);
+    expect(stored.source_url).toBe(`${site.origin}/citation.html`);
+    expect(stored.title_hint).toBe("Full text via DOI");
+  });
+
+  test("a PDF link with a fragment is captured with the page the link was on", async () => {
+    expect(await captureInPlace("/fragment.html")).toBe(`${bucket.origin}/read/fragment`);
+    const stored = await provenance("fragment");
+    expect(stored.pdf_url).toBe(`${site.origin}/notes/fragment.pdf`);
+    expect(stored.source_url).toBe(`${site.origin}/fragment.html`);
+    expect(stored.title_hint).toBe("Chapter two, page 2");
+  });
+
+  test("a PDF URL whose file name holds a Latin-1 escape is captured under that name", async () => {
+    await captureInPlace("/latin1.html");
+    expect(bucket.files()).toContain("caf%E9.pdf");
+    const stored = await provenance("caf%E9");
+    expect(stored.pdf_url).toBe(`${site.origin}/notes/caf%E9.pdf`);
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/caf%E9.pdf")));
+  });
+
+  test("a gzip-encoded PDF is stored as the decoded PDF", async () => {
+    expect(await captureInPlace("/compressed.html")).toBe(`${bucket.origin}/read/compressed`);
+    const stored = await provenance("compressed");
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/compressed.pdf")));
+  });
+
+  // Firefox keeps the navigation's own response; Chrome can only fetch the URL again, which a
+  // single-use URL refuses, and says so.
+  test("a single-use PDF URL is captured from the browser's response in Firefox and reported refused in Chrome", async () => {
+    const fetches = () => site.requests.filter((request) => request.path === "/once/ticket.pdf");
+    if (engine === "firefox") {
+      expect(await captureInPlace("/ticket.html")).toBe(`${bucket.origin}/read/ticket`);
+      const stored = await provenance("ticket");
+      expect(stored.original_sha256).toBe(sha256(pdfBytes("/once/ticket.pdf")));
+      expect(fetches().length).toBe(1);
+      return;
+    }
+    await followLink("/ticket.html");
+    await captureState(page, "failed");
+    expect(await text("#details")).toContain("403");
+    expect(bucket.files()).not.toContain("ticket.pdf");
+  });
+
+  test("two sub-frames below the minimum frame size are both handed back to the browser's viewer", async () => {
+    const before = bucket.files();
+    await page.goto(`${site.origin}/frames-small-pair.html`);
+    await Bun.sleep(SETTLE_MS);
+
+    const frames = page.frames().map((frame) => frame.url());
+    expect(frames).toContain(`${site.origin}/frames/preview.pdf`);
+    expect(frames).toContain(`${site.origin}/frames/appendix.pdf`);
+    expect(bucket.files()).toEqual(before);
+  });
+
   test("with the bucket stopped, the capture page shows the failure and opens the PDF natively on request", async () => {
     const before = bucket.files();
     const pdfPath = "/notes/lecture-notes.pdf";
@@ -521,5 +586,28 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     expect(await tabGone(tab)).toBe(false);
     await tab.close();
+  });
+
+  test("with another service answering on the bucket's port, the badge shows ! and a capture reports the foreign answer", async () => {
+    const other = Bun.serve({
+      hostname: "127.0.0.1",
+      port: bucket.port,
+      fetch: () =>
+        new Response("<!doctype html><title>Another service</title>", {
+          headers: { "Content-Type": "text/html" },
+        }),
+    });
+    try {
+      await openStatus("unreachable");
+      expect(await text("#connection-details")).toContain("not a PDF Bucket status report");
+      expect(await badge()).toBe("!");
+
+      // The lecture notes are exempted in this tab since the native open above.
+      await followLink("/abs/2401.00001");
+      await captureState(page, "failed");
+      expect(await text("#details")).toContain("not with a capture response");
+    } finally {
+      await other.stop(true);
+    }
   });
 });

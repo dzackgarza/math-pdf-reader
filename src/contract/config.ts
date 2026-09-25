@@ -18,10 +18,15 @@ export const AppConfigSchema = z.strictObject({
     version: z.string().regex(/^\d+\.\d+\.\d+$/),
     sha256: Sha256Schema,
   }),
-  // Sub-frames smaller than this keep the browser's own viewer (embedded previews).
+  // The capture extension: sub-frames smaller than the minimum keep the browser's own viewer
+  // (embedded previews); a followed link names the page it was on for a PDF that arrives within
+  // the link-origin age; the capture page reports a failure when the background has not
+  // registered a native open within its timeout.
   capture: z.strictObject({
     min_frame_width: z.number().int().positive(),
     min_frame_height: z.number().int().positive(),
+    link_origin_max_age_seconds: z.number().int().positive(),
+    native_open_timeout_seconds: z.number().int().positive(),
   }),
   // Zotero's local HTTP server; the send action writes through its local write API.
   zotero: z.strictObject({ url: z.url({ protocol: /^http$/ }) }),
