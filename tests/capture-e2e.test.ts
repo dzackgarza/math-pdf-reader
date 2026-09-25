@@ -397,7 +397,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await shotCapturePage("status-ready");
 
     expect(await text("#bucket-origin")).toBe(bucket.origin);
-    expect(await text("#bucket-version")).toBe("0.1.0");
+    expect(await text("#bucket-version")).toBe("1.0.0");
     expect(await text("#bucket-root")).toBe(bucket.root);
     expect(await text("#last-capture a")).toBe("Sphere packing in dimension 8 (PDF)");
     expect(await page.$eval("#last-capture a", (link) => link.getAttribute("href"))).toBe(

@@ -26,7 +26,7 @@ test("status reports a ready storage contract for an existing writable root", as
   expect(await response.json()).toEqual({
     backend_url: app.origin,
     root,
-    service: { name: "pdf-bucket", version: "0.1.0" },
+    service: { name: "pdf-bucket", version: "1.0.0" },
     storage: { root_exists: true, root_writable: true },
     capabilities: { capture: true },
     ready: true,
@@ -46,7 +46,7 @@ test("status reports a missing root as not ready without creating it", async () 
   expect(await response.json()).toEqual({
     backend_url: app.origin,
     root,
-    service: { name: "pdf-bucket", version: "0.1.0" },
+    service: { name: "pdf-bucket", version: "1.0.0" },
     storage: { root_exists: false, root_writable: false },
     capabilities: { capture: false },
     ready: false,

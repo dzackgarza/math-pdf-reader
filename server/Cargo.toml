@@ -1,6 +1,6 @@
 [package]
 name = "pdf-bucket"
-version = "0.1.0"
+version = "1.0.0"
 description = "PDF Bucket server: capture, PDF and reader URLs, library API, index export"
 authors = ["Zack Garza"]
 edition = "2021"

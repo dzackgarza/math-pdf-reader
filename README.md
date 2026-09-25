@@ -63,8 +63,8 @@ The rule sets `focus_on_activate` for the bucket window only.
 | --- | --- |
 | `dist/chrome-mv3/` | Chrome and Chromium, Manifest V3 |
 | `dist/firefox-mv2/` | Firefox, Manifest V2 |
-| `dist/pdf-bucket-0.1.0-firefox.zip` | the same Firefox build as one installable package |
-| `dist/firefox-signed/pdf-bucket-0.1.0-firefox.xpi` | the Firefox build signed by addons.mozilla.org (`just sign-firefox`), which a release Firefox installs |
+| `dist/pdf-bucket-1.0.0-firefox.zip` | the same Firefox build as one installable package |
+| `dist/firefox-signed/pdf-bucket-1.0.0-firefox.xpi` | the Firefox build signed by addons.mozilla.org (`just sign-firefox`), which a release Firefox installs |
 
 The builds are unsigned.
 
@@ -83,7 +83,7 @@ Three routes:
 
 1. Temporary, any Firefox: open `about:debugging#/runtime/this-firefox`, press **Load Temporary Add-on** and choose `dist/firefox-mv2/manifest.json`. Firefox removes it when it quits.
 
-2. Permanent, unsigned: in Firefox Developer Edition, Nightly or ESR, set `xpinstall.signatures.required` to `false` in `about:config`, then in `about:addons` choose **Install Add-on From File** and pick `dist/pdf-bucket-0.1.0-firefox.zip`. Release and Beta builds ignore that preference.
+2. Permanent, unsigned: in Firefox Developer Edition, Nightly or ESR, set `xpinstall.signatures.required` to `false` in `about:config`, then in `about:addons` choose **Install Add-on From File** and pick `dist/pdf-bucket-1.0.0-firefox.zip`. Release and Beta builds ignore that preference.
 
 3. Permanent, signed, release Firefox: sign the build as an unlisted (self-distributed) add-on with API credentials from addons.mozilla.org (Tools → Manage API Keys), then install the signed `.xpi` from `about:addons`:
 
