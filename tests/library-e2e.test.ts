@@ -121,6 +121,15 @@ describe("library window", () => {
   const row = (key: string) => `tr[data-item-id="${key}"]`;
   const rowKeys = () =>
     page.$$eval("tr[data-item-id]", (rows) => rows.map((tr) => tr.getAttribute("data-item-id")));
+  // Waits until the element at SELECTOR shows TEXT. Its text only: `::-p-text` also matches the
+  // value typed into a field, so it passes while the change is still on its way to the server.
+  const shows = (selector: string, text: string) =>
+    page.waitForFunction(
+      (css, wanted) => document.querySelector(css)?.textContent?.includes(wanted) === true,
+      {},
+      selector,
+      text,
+    );
   // The element with this ARIA role whose text is exactly LABEL, once it is on the page.
   const byRole = async (role: string, label: string) => {
     const selector = `[role="${role}"], ${role}`;
@@ -228,7 +237,7 @@ describe("library window", () => {
     await page.type('input[aria-label="Collection"]', "Birational geometry");
     await shot("details-new-collection");
     await page.keyboard.press("Enter");
-    await page.waitForSelector("aside ::-p-text(Birational geometry)");
+    await shows("aside", "Birational geometry");
     await shot("details-filed");
 
     const org = await organization();
@@ -257,7 +266,7 @@ describe("library window", () => {
     await (await menuItem("Add Tag…")).click();
     await page.type('[role="dialog"] input', "exercises");
     await page.keyboard.press("Enter");
-    await page.waitForSelector(`${row("problems")} ::-p-text(exercises)`);
+    await shows(row("problems"), "exercises");
 
     const org = await organization();
     const quadratic = org.collections.filter((collection) => collection.name === "Quadratic forms");
@@ -815,7 +824,7 @@ describe("library window", () => {
     await page.type('[role="dialog"] input', "survey");
     await page.keyboard.press("Enter");
     for (const key of chosen) {
-      await page.waitForSelector(`${row(key)} ::-p-text(survey)`);
+      await shows(row(key), "survey");
     }
     await page.click('button[aria-label="File selected"]');
     const filed = page.waitForResponse((response) =>
@@ -847,6 +856,8 @@ describe("library window", () => {
     await shot("dialog-import-url");
     await page.keyboard.press("Enter");
     await page.waitForSelector(row("imported"));
+    // The dialog closes once the server has accepted the URL.
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null);
 
     const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-folder-"));
     // A PDF the library does not hold yet: the problem set with a comment after its end.
@@ -894,6 +905,45 @@ describe("library window", () => {
     await page.waitForSelector(`${row(sharing[0] ?? "")}[aria-selected="true"]`);
   });
 
+  test("an unsent note outlives a tab switch and another selection; a note is deleted only once confirmed", async () => {
+    await openLibrary();
+    await page.click(row("outlined"));
+    await (await byRole("tab", "Notes")).click();
+    const draft = "Compare the outline with chapter 3";
+    await page.type('textarea[aria-label="New note"]', draft);
+    await (await byRole("tab", "Details")).click();
+    await page.click(row("lattices"));
+    await page.click(row("outlined"));
+    await (await byRole("tab", "Notes")).click();
+    const kept = await page.$eval('textarea[aria-label="New note"]', (field) => field.value);
+    expect(kept).toBe(draft);
+
+    await (await byRole("button", "Add note")).click();
+    await shows("aside article", draft);
+    expect(await page.$eval('textarea[aria-label="New note"]', (field) => field.value)).toBe("");
+    expect((await organization()).items.outlined?.notes.map((note) => note.note)).toEqual([draft]);
+
+    await page.click('button[aria-label="Delete note"]');
+    await shot("note-delete-confirm");
+    await (await byRole("button", "Cancel")).click();
+    expect((await organization()).items.outlined?.notes).toHaveLength(1);
+    await page.click('button[aria-label="Delete note"]');
+    await (await byRole("button", "Delete note")).click();
+    await page.waitForFunction(() => document.querySelector("aside article") === null);
+    expect((await organization()).items.outlined?.notes).toEqual([]);
+  });
+
+  test("a tag added by another window shows in the open library without a reload", async () => {
+    await openLibrary();
+    const response = await fetch(`${bucket.origin}/api/bulk/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keys: ["outlined"], add: ["from elsewhere"], remove: [] }),
+    });
+    expect(response.status).toBe(200);
+    await shows(row("outlined"), "from elsewhere");
+  });
+
   test("collection cards show counts and pins; a collection keeps a description, Keep offline and its activity; New Topic tags the chosen rows", async () => {
     const cards = () =>
       page.$$eval("[data-collection-id]", (entries) =>
@@ -925,7 +975,7 @@ describe("library window", () => {
     await page.click('button[aria-label="Edit description"]');
     await page.type('[role="dialog"] input', "Genus theory and the Hasse–Minkowski theorem");
     await page.keyboard.press("Enter");
-    await page.waitForSelector("::-p-text(Genus theory and the Hasse–Minkowski theorem)");
+    await shows("main", "Genus theory and the Hasse–Minkowski theorem");
     await page.click('button[role="switch"][aria-label="Keep offline"]');
     await page.waitForSelector(
       'button[role="switch"][aria-label="Keep offline"][aria-checked="true"]',
@@ -942,7 +992,7 @@ describe("library window", () => {
     await page.click('button[aria-label="New Topic"]');
     await page.type('[role="dialog"] input', "Genus theory");
     await page.keyboard.press("Enter");
-    await page.waitForSelector(`${row(chosen)} ::-p-text(Genus theory)`);
+    await shows(row(chosen), "Genus theory");
     await shot("collection-page");
 
     const after = await organization();
@@ -954,6 +1004,17 @@ describe("library window", () => {
     ]);
     expect(after.items[chosen]?.tags).toContain("topic:Genus theory");
     await page.click('button[aria-label="Clear selection"]');
+
+    // An emptied description clears it.
+    await page.click('button[aria-label="Edit description"]');
+    await page.click('[role="dialog"] input', { count: 3 });
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press("Enter");
+    await shows("main", "No description");
+    const cleared = (await organization()).collections.find(
+      (collection) => collection.id === forms.id,
+    );
+    expect(cleared?.description).toBe("");
   });
 
   test("a smart collection built from rules lists the PDFs meeting all of them, and after an edit any of them", async () => {
