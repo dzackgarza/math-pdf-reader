@@ -20,7 +20,7 @@ import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { extensionDefine } from "../wxt.config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
-import { lectureNotes, problemSet, startFixtureSite } from "./fixture-site";
+import { pdfBytes, startFixtureSite } from "./fixture-site";
 import { listItems } from "./store";
 
 type Engine = "chrome" | "firefox";
@@ -341,7 +341,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(stored.pdf_url).toBe(`${site.origin}/pdf/2401.00001`);
     expect(stored.source_url).toBe(`${site.origin}/abs/2401.00001`);
     expect(stored.title_hint).toBe("Sphere packing in dimension 8 (PDF)");
-    expect(stored.original_sha256).toBe(sha256(problemSet));
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/pdf/2401.00001")));
   });
 
   test("the status page shows the connected bucket and the last capture, and the badge says ON", async () => {
@@ -405,7 +405,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const stored = await provenance("lecture-notes");
     expect(stored.source_url).toBe(`${site.origin}/teaching.html`);
     expect(stored.title_hint).toBe("Lecture notes on lattices");
-    expect(stored.original_sha256).toBe(sha256(lectureNotes));
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/lecture-notes.pdf")));
     const storedBytes = sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")));
 
     expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
@@ -432,7 +432,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     const stored = await provenance("chapter");
     expect(stored.pdf_url).toBe(`${site.origin}/frames/chapter.pdf`);
-    expect(stored.original_sha256).toBe(sha256(lectureNotes));
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/frames/chapter.pdf")));
   });
 
   test("an inline <embed> of a PDF is left to the browser", async () => {
