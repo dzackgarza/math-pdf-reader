@@ -80,17 +80,36 @@ async function buildExtension(engine: Engine, bucketPort: number): Promise<strin
 // origin; this pref pins it so the suite can open the extension's own pages.
 const FIREFOX_EXTENSION_UUID = "5d1c2a8e-3f47-4b6e-9a0d-7c41e2b9f613";
 
-type Launched = { browser: Browser; extensionOrigin: string };
-
-async function launch(engine: Engine, extension: string): Promise<Launched> {
+// Only launches: the suite holds the browser before anything else can fail, so its teardown
+// closes it and Puppeteer removes the temporary profile.
+function launch(engine: Engine, extension: string): Promise<Browser> {
   if (engine === "chrome") {
-    const browser = await puppeteer.launch({
+    return puppeteer.launch({
       browser: "chrome",
       executablePath: executable("chromium"),
       headless: true,
       enableExtensions: [extension],
       defaultViewport: viewport,
     });
+  }
+  return puppeteer.launch({
+    browser: "firefox",
+    executablePath: executable("firefox"),
+    headless: true,
+    defaultViewport: viewport,
+    // The capture page is a moz-extension (privileged) document; BiDi scripts it only then.
+    args: ["-remote-allow-system-access"],
+    extraPrefsFirefox: {
+      "extensions.webextensions.uuids": JSON.stringify({
+        "pdf-bucket@dzackgarza.com": FIREFOX_EXTENSION_UUID,
+      }),
+    },
+  });
+}
+
+// Resolves with the extension's origin once its capture rules are in force.
+async function extensionReady(engine: Engine, browser: Browser, extension: string) {
+  if (engine === "chrome") {
     // The service worker registers its rules asynchronously after install; navigating
     // before that would reach the browser's own viewer.
     const target = await browser.waitForTarget(
@@ -113,23 +132,10 @@ async function launch(engine: Engine, extension: string): Promise<Launched> {
     }
     // `URL.origin` is "null" for the non-special chrome-extension: scheme.
     const workerUrl = new URL(target.url());
-    return { browser, extensionOrigin: `${workerUrl.protocol}//${workerUrl.host}` };
+    return `${workerUrl.protocol}//${workerUrl.host}`;
   }
-  const browser = await puppeteer.launch({
-    browser: "firefox",
-    executablePath: executable("firefox"),
-    headless: true,
-    defaultViewport: viewport,
-    // The capture page is a moz-extension (privileged) document; BiDi scripts it only then.
-    args: ["-remote-allow-system-access"],
-    extraPrefsFirefox: {
-      "extensions.webextensions.uuids": JSON.stringify({
-        "pdf-bucket@dzackgarza.com": FIREFOX_EXTENSION_UUID,
-      }),
-    },
-  });
   await browser.installExtension(extension);
-  return { browser, extensionOrigin: `moz-extension://${FIREFOX_EXTENSION_UUID}` };
+  return `moz-extension://${FIREFOX_EXTENSION_UUID}`;
 }
 
 // The bucket announces every capture, new or existing, on the event stream the desktop
@@ -319,17 +325,17 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
     bucket = await startBucket();
-    ({ browser, extensionOrigin } = await launch(
-      engine,
-      await buildExtension(engine, bucket.port),
-    ));
+    const extension = await buildExtension(engine, bucket.port);
+    browser = await launch(engine, extension);
+    extensionOrigin = await extensionReady(engine, browser, extension);
     page = await browser.newPage();
   }, 60_000);
 
+  // Runs also when a test or the setup fails; closing the browser removes its profile.
   afterAll(async () => {
-    await browser.close();
-    await bucket.stop();
     site.stop();
+    await bucket.stop();
+    await browser.close();
   });
 
   test("an arXiv /pdf/ URL without .pdf is captured with the linking page and link text, and the tab returns to that page", async () => {
