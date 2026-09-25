@@ -10,7 +10,8 @@
 //!   another site can send a form or `text/plain` body without asking, but not these types.
 use axum::body::{Body, HttpBody};
 use axum::extract::{MatchedPath, Request};
-use axum::http::{header, HeaderMap, Method, StatusCode};
+use axum::http::header::ToStrError;
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use url::Url;
@@ -23,14 +24,13 @@ use crate::error::AppError;
 /// trusted by its scheme.
 const EXTENSION_SCHEMES: [&str; 2] = ["chrome-extension", "moz-extension"];
 
-fn header_text(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
+/// A header's value as text: `Ok(None)` when absent, `Err` when present but not visible ASCII.
+fn header_text(headers: &HeaderMap, name: header::HeaderName) -> Result<Option<&str>, ToStrError> {
+    headers.get(name).map(HeaderValue::to_str).transpose()
 }
 
-fn from_extension(headers: &HeaderMap) -> bool {
-    header_text(headers, header::ORIGIN)
-        .and_then(|origin| Url::parse(origin).ok())
-        .is_some_and(|origin| EXTENSION_SCHEMES.contains(&origin.scheme()))
+fn from_extension(origin: &Url) -> bool {
+    EXTENSION_SCHEMES.contains(&origin.scheme())
 }
 
 /// Whether a state-changing request may come from where the browser says it comes from. The
@@ -38,36 +38,36 @@ fn from_extension(headers: &HeaderMap) -> bool {
 /// with extension origins as its trusted origins: `Sec-Fetch-Site` of `same-origin` or `none`
 /// passes; any other value is cross-origin; without it (a browser older than 2023, or no
 /// browser), a missing `Origin` passes and an `Origin` whose host and port are the `Host`
-/// header's passes.
+/// header's passes. A browser writes these headers as ASCII and `Origin` as a URL (or
+/// `null`), so a value that is neither is refused.
 fn same_origin(headers: &HeaderMap) -> bool {
     let sec_fetch_site = header::HeaderName::from_static("sec-fetch-site");
-    // A browser writes both headers as ASCII; one that is not text is not a browser's.
-    let unreadable = [&sec_fetch_site, &header::ORIGIN].into_iter().any(|name| {
-        headers
-            .get(name)
-            .is_some_and(|value| value.to_str().is_err())
-    });
-    if unreadable {
+    let (Ok(site), Ok(origin), Ok(host)) = (
+        header_text(headers, sec_fetch_site),
+        header_text(headers, header::ORIGIN),
+        header_text(headers, header::HOST),
+    ) else {
         return false;
-    }
-    match header_text(headers, sec_fetch_site) {
-        Some("same-origin" | "none") => return true,
-        Some(_) => return from_extension(headers),
-        None => {}
-    }
-    let Some(origin) = header_text(headers, header::ORIGIN) else {
-        return true;
     };
-    let host = header_text(headers, header::HOST);
-    let same_host = Url::parse(origin).ok().is_some_and(|origin| {
-        let origin_host = match (origin.host_str(), origin.port()) {
-            (Some(host), Some(port)) => format!("{host}:{port}"),
-            (Some(host), None) => host.to_string(),
-            (None, _) => return false,
-        };
-        host == Some(origin_host.as_str())
-    });
-    same_host || from_extension(headers)
+    let origin = match origin.map(Url::parse) {
+        None => None,
+        Some(Ok(origin)) => Some(origin),
+        Some(Err(_)) => return false,
+    };
+    match (site, &origin) {
+        (Some("same-origin" | "none"), _) => true,
+        (Some(_), Some(origin)) => from_extension(origin),
+        (Some(_), None) => false,
+        (None, None) => true,
+        (None, Some(origin)) => {
+            let origin_host = match (origin.host_str(), origin.port()) {
+                (Some(host), Some(port)) => format!("{host}:{port}"),
+                (Some(host), None) => host.to_string(),
+                (None, _) => return from_extension(origin),
+            };
+            host == Some(origin_host.as_str()) || from_extension(origin)
+        }
+    }
 }
 
 /// The media type a route's body must have.
@@ -79,10 +79,13 @@ fn body_type(route: Option<&str>) -> &'static str {
     }
 }
 
+/// The body's media type without its parameters; `None` when the request names none or names
+/// it in bytes that are not text.
 fn media_type(headers: &HeaderMap) -> Option<&str> {
-    header_text(headers, header::CONTENT_TYPE)
-        .and_then(|value| value.split(';').next())
-        .map(str::trim)
+    match header_text(headers, header::CONTENT_TYPE) {
+        Ok(Some(value)) => value.split(';').next().map(str::trim),
+        Ok(None) | Err(_) => None,
+    }
 }
 
 pub async fn guard(request: Request<Body>, next: Next) -> Response {
@@ -101,7 +104,11 @@ pub async fn guard(request: Request<Body>, next: Next) -> Response {
                 "{} {} came from another site ({})",
                 request.method(),
                 request.uri().path(),
-                header_text(headers, header::ORIGIN).unwrap_or("no Origin header")
+                match header_text(headers, header::ORIGIN) {
+                    Ok(Some(origin)) => origin,
+                    Ok(None) => "no Origin header",
+                    Err(_) => "an Origin header that is not text",
+                }
             ),
         )
         .into_response();
