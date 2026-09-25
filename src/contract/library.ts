@@ -400,6 +400,8 @@ export const API_ERROR_KINDS = [
 
 export const ApiErrorSchema = z.strictObject({
   error: z.strictObject({ kind: z.enum(API_ERROR_KINDS), message: NonEmptySchema }),
+  "cross_origin_request",
+  "unsupported_media_type",
 });
 
 // Request bodies.

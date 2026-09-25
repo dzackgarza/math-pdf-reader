@@ -30,7 +30,7 @@ use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::Upload;
 use crate::titles::retrieve_metadata;
-use crate::{extractions, library, send, sessions, source_routes, thumbnails};
+use crate::{extractions, guard, library, send, sessions, source_routes, thumbnails};
 
 /// The origin a request was made to, from its Host header.
 fn origin(headers: &HeaderMap) -> AppResult<String> {
@@ -380,5 +380,6 @@ pub fn router(state: Shared) -> Router {
         // PDFs arrive whole in one request (a capture, a reader save); axum's 2 MB default
         // would refuse most of them.
         .layer(DefaultBodyLimit::disable())
+        .layer(axum::middleware::from_fn(guard::guard))
         .with_state(state)
 }
