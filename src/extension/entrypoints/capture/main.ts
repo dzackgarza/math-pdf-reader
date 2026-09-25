@@ -56,6 +56,15 @@ function renderStoredInFrame(response: CaptureResponse): void {
   const reader = link(response.reader_url, response.provenance.title_hint);
   reader.target = "_blank";
   element("heading").replaceChildren(reader);
+  const { metadata } = response;
+  if (metadata?.status === "failed") {
+    element("details").replaceChildren(
+      ...detail(
+        "Metadata",
+        `${metadata.pluginId} failed for ${metadata.identifier}: ${metadata.message}`,
+      ),
+    );
+  }
 }
 
 function renderFailure(

@@ -98,6 +98,14 @@ function renderLastCapture(last: LastCapture | null): void {
     link.target = "_blank";
     link.textContent = response.provenance.title_hint;
     line.append(link);
+    const { metadata } = response;
+    if (metadata?.status === "failed") {
+      const failure = document.createElement("p");
+      failure.className = "failed";
+      failure.textContent = `Stored, but ${metadata.pluginId} could not retrieve metadata for ${metadata.identifier}: ${metadata.message}`;
+      container.replaceChildren(line, failure, when);
+      return;
+    }
     container.replaceChildren(line, when);
     return;
   }

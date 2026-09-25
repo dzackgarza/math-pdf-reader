@@ -432,6 +432,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     const stored = await provenance("chapter");
     expect(stored.pdf_url).toBe(`${site.origin}/frames/chapter.pdf`);
+    // No link was followed to the framed PDF, so no linking page is recorded.
+    expect(stored.source_url).toBeNull();
     expect(stored.original_sha256).toBe(sha256(lectureNotes));
   });
 
