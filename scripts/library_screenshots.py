@@ -20,6 +20,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -373,16 +374,31 @@ def dark_screens(page: Page, out: Path, origins: dict[str, str], filed: dict[str
 
 def headless_display(stack: ExitStack) -> str:
     """A headless Weston whose kiosk shell fills its 1400x900 output (the desktop window size)
-    with each window; returns its Wayland socket name."""
+    with each window; returns its Wayland socket name. Weston's log goes to a temporary file
+    that is printed on stderr if Weston has exited by the time the screens are done."""
     socket = f"pdf-bucket-evidence-{os.getpid()}"
+    log = stack.enter_context(tempfile.TemporaryFile(mode="w+"))
     weston = subprocess.Popen(
         ["weston", "--backend=headless", "--shell=kiosk", "--renderer=pixman", "--width=1400", "--height=900", f"--socket={socket}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
     )
-    stack.callback(weston.terminate)
+
+    def weston_log() -> str:
+        log.seek(0)
+        return log.read()
+
+    def stop() -> None:
+        if weston.poll() is not None:
+            print(f"weston exited with {weston.returncode}:\n{weston_log()}", file=sys.stderr)
+            return
+        weston.terminate()
+
+    stack.callback(stop)
     socket_path = Path(os.environ["XDG_RUNTIME_DIR"]) / socket
     while not socket_path.exists():
+        if weston.poll() is not None:
+            raise RuntimeError(f"weston exited with {weston.returncode} before creating {socket_path}")
         time.sleep(0.1)
     return socket
 
