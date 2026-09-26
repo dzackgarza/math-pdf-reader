@@ -624,7 +624,9 @@ export default function InspectorPanel(props: InspectorPanelProps) {
         value={tab}
         onValueChange={(next) => {
           setTab(next);
-          if (next !== "details") setEditing(false);
+          if (next !== "details") {
+            setEditing(false);
+          }
         }}
         className="flex min-h-0 flex-1 flex-col"
       >
