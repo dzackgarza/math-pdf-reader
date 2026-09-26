@@ -260,7 +260,11 @@ describe("library window", () => {
 
   test("the details pane edits bibliographic metadata and shows the saved values after reload", async () => {
     const form = new FormData();
-    form.set("pdf", new File([fixture("lecture-notes.pdf")], "manual-edit.pdf"));
+    const bytes = new Uint8Array([
+      ...fixture("lecture-notes.pdf"),
+      ...new TextEncoder().encode("% metadata editor fixture\n"),
+    ]);
+    form.set("pdf", new File([bytes], "manual-edit.pdf"));
     form.set("pdf_url", published("/~author/manual-edit.pdf"));
     form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", "Download PDF");
@@ -270,6 +274,7 @@ describe("library window", () => {
     });
     expect(response.status).toBe(200);
     const captured = CaptureResponseSchema.parse(await response.json());
+    expect(captured.key).toBe("manual-edit");
     try {
       await openLibrary();
       await page.click(row(captured.key));
