@@ -34,7 +34,7 @@ export default function Toast({
   return (
     <div
       role={alert ? "alert" : "status"}
-      className="fixed right-5 bottom-12 z-50 flex max-w-md items-start gap-2 rounded-lg bg-toast px-4 py-3 text-sm text-white shadow-xl"
+      className="fixed right-5 bottom-12 z-50 flex max-h-[60vh] max-w-md items-start gap-2 overflow-y-auto rounded-lg bg-toast px-4 py-3 text-sm text-white shadow-xl"
     >
       {toast.kind === "progress" ? (
         <LoaderCircle

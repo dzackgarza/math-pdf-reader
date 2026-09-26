@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
@@ -26,6 +27,7 @@ OPENING_PAGES = 3
 MAX_OPENING_TEXT = 30_000
 STRUCTURED_OUTPUT_RETRIES = 2
 PLACEHOLDER_VALUES = frozenset({"anonymous", "n/a", "none", "not available", "null", "unknown", "unspecified"})
+ESCAPED_UNICODE = re.compile(r"\\u[0-9a-fA-F]{4}")
 
 pydantic_ai.BANNER_ENABLED = False
 
@@ -44,6 +46,8 @@ class MetadataGuess(BaseModel):
     def title_is_concrete(cls, value: str) -> str:
         if value.casefold() in PLACEHOLDER_VALUES:
             raise ValueError("title must be a concrete best guess")
+        if ESCAPED_UNICODE.search(value):
+            raise ValueError("title must use readable characters instead of Unicode escape codes")
         return value
 
     @field_validator("authors")
@@ -116,6 +120,7 @@ Use every supplied cue and associations learned during training. The document is
 in training data. Treat the packet as retrieval context for identifying that document. Visible
 text and embedded metadata can be incomplete or wrong. Return a concrete best guess for every
 field. Never return unknown, anonymous, an empty author list, or a null value.
+Write the title with readable characters. Do not include literal Unicode escape codes.
 Return only JSON with this exact shape: {{"title":"...","authors":["..."],"year":2000}}.
 
 PDF URL: {self.pdf_url}

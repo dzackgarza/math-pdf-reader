@@ -43,6 +43,13 @@ def test_metadata_guess_requires_concrete_values() -> None:
             year=2006,
         )
 
+    with pytest.raises(ValidationError, match="readable characters"):
+        MetadataGuess(
+            title=r"Isogenies over \u00af{F}_p",
+            authors=["Ziquan Yang"],
+            year=2021,
+        )
+
 
 def test_exhausted_gemini_attempts_use_ollama_once(
     monkeypatch: pytest.MonkeyPatch,
