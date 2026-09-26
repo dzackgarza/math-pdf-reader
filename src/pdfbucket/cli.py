@@ -14,12 +14,6 @@ import pikepdf
 from cyclopts import App
 from pydantic import TypeAdapter, ValidationError
 
-from pdfbucket.metadata_guess import (
-    GuessResult,
-    MetadataInferenceError,
-    MetadataPacket,
-    guess_metadata,
-)
 from pdfbucket.models import (
     ItemTitle,
     NonEmpty,
@@ -122,13 +116,19 @@ def guess_metadata_command(
     source_url: str | None = None,
 ) -> None:
     """Infer title, authors, and year from a PDF and its capture context."""
-    packet = MetadataPacket.from_pdf(
-        pdf,
-        pdf_url=pdf_url,
-        source_url=source_url,
-        title_hint=title_hint,
-    )
-    result: GuessResult = guess_metadata(packet)
+    from pdfbucket.metadata_guess import MetadataInferenceError, MetadataPacket, guess_metadata
+
+    try:
+        packet = MetadataPacket.from_pdf(
+            pdf,
+            pdf_url=pdf_url,
+            source_url=source_url,
+            title_hint=title_hint,
+        )
+        result = guess_metadata(packet)
+    except MetadataInferenceError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
     print(result.model_dump_json())
 
 
@@ -142,9 +142,6 @@ def main() -> None:
         failure = StoreFailure(kind="missing_provenance", message=str(error))
     except ValidationError as error:
         failure = StoreFailure(kind="invalid_metadata", message=str(error))
-    except MetadataInferenceError as error:
-        print(str(error), file=sys.stderr)
-        sys.exit(1)
     else:
         return
     print(failure.model_dump_json())
