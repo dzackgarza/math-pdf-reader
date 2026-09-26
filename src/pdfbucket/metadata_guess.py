@@ -26,6 +26,8 @@ OLLAMA_MODEL = "deepseek-v4-pro:cloud"
 OPENING_PAGES = 3
 MAX_OPENING_TEXT = 30_000
 STRUCTURED_OUTPUT_RETRIES = 2
+GEMINI_TIMEOUT_SECONDS = 300
+OLLAMA_TIMEOUT_SECONDS = 240
 PLACEHOLDER_VALUES = frozenset({"anonymous", "n/a", "none", "not available", "null", "unknown", "unspecified"})
 ESCAPED_UNICODE = re.compile(r"\\u[0-9a-fA-F]{4}")
 
@@ -155,6 +157,7 @@ def _guess_with_gemini(packet: MetadataPacket) -> GuessResult:
         agent = Agent(
             model,
             output_type=NativeOutput(MetadataGuess),
+            model_settings={"timeout": GEMINI_TIMEOUT_SECONDS},
             retries={"output": STRUCTURED_OUTPUT_RETRIES, "tools": 0},
         )
         result = agent.run_sync(
@@ -180,7 +183,7 @@ def _guess_with_ollama(packet: MetadataPacket) -> GuessResult:
         agent = Agent(
             model,
             output_type=PromptedOutput(MetadataGuess),
-            model_settings={"temperature": 0},
+            model_settings={"temperature": 0, "timeout": OLLAMA_TIMEOUT_SECONDS},
             retries={"output": STRUCTURED_OUTPUT_RETRIES, "tools": 0},
         )
         result = agent.run_sync(packet.prompt())
