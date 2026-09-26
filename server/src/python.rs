@@ -160,6 +160,15 @@ impl Python {
     /// input is written while the output is read, so a command that exits early still reports
     /// its own failure and stderr.
     pub async fn run(&self, args: &[String], stdin: Option<&[u8]>) -> Result<Vec<u8>, PdfFailure> {
+        self.run_with_timeout(args, stdin, self.timeout).await
+    }
+
+    pub async fn run_with_timeout(
+        &self,
+        args: &[String],
+        stdin: Option<&[u8]>,
+        timeout: Duration,
+    ) -> Result<Vec<u8>, PdfFailure> {
         let mut command = self.command(&self.bin.join("pdfbucket").to_string_lossy());
         command
             .args(args)
@@ -179,9 +188,9 @@ impl Python {
             }
         };
         let finished = async { tokio::join!(write, child.wait_with_output()) };
-        let (written, output) = tokio::time::timeout(self.timeout, finished)
+        let (written, output) = tokio::time::timeout(timeout, finished)
             .await
-            .map_err(|_elapsed| PdfFailure::TimedOut(self.timeout))?;
+            .map_err(|_elapsed| PdfFailure::TimedOut(timeout))?;
         let output = output.map_err(PdfFailure::Spawn)?;
         if output.status.code() == Some(STORE_REFUSED_EXIT) {
             let refused = serde_json::from_slice(&output.stdout).map_err(PdfFailure::Contract)?;

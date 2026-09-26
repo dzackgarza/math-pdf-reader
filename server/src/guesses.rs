@@ -1,5 +1,7 @@
 //! Metadata inference: one structured model command reads a stored PDF and its provenance, then
 //! the store records its required title, authors, and year inside the PDF.
+use std::time::Duration;
+
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::post;
@@ -11,6 +13,8 @@ use crate::contract::{
 use crate::error::{AppError, AppResult};
 use crate::state::{bucket_item, Shared};
 use crate::store::ResolvedMetadata;
+
+const INFERENCE_TIMEOUT: Duration = Duration::from_secs(600);
 
 async fn guess(
     State(state): State<Shared>,
@@ -34,7 +38,7 @@ async fn guess(
     let output = state
         .store
         .python()
-        .run(&args, None)
+        .run_with_timeout(&args, None, INFERENCE_TIMEOUT)
         .await
         .map_err(|error| {
             AppError::api(
