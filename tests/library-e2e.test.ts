@@ -221,6 +221,9 @@ describe("library window", () => {
       headless: true,
       defaultViewport: viewport,
     });
+    await browser
+      .defaultBrowserContext()
+      .overridePermissions(bucket.origin, ["clipboard-read", "clipboard-sanitized-write"]);
     page = await browser.newPage();
   }, 60_000);
 
@@ -382,6 +385,20 @@ describe("library window", () => {
     await page.setViewport({ width: 700, height: 900 });
     await shot("reader-narrow");
     await page.setViewport(viewport);
+  });
+
+  test("the reader link button copies the captured PDF URL", async () => {
+    await page.goto(`${bucket.origin}/read/lattices`);
+    await page.waitForFunction(
+      'document.querySelector("iframe")?.contentWindow?.PDFViewerApplication?.pdfViewer?.pagesCount > 0',
+    );
+    await page.evaluate(() => navigator.clipboard.writeText("probe"));
+
+    await page.click('button[aria-label="Copy link to this view"]');
+
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      published("/~author/lattices.pdf"),
+    );
   });
 
   test("each PDF opens in its own tab after the Library tab, which keeps its selection; opening an open PDF shows its tab; Ctrl+Tab steps through the tabs and Ctrl+W closes the one shown", async () => {
