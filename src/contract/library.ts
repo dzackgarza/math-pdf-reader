@@ -156,7 +156,10 @@ export const SourceCheckSchema = z.discriminatedUnion("status", [
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
 
 // Another URL that serves the same PDF; Rebuild tries mirrors after the PDF URL.
-export const MirrorSchema = z.strictObject({ url: HttpUrlSchema, check: SourceCheckSchema });
+export const MirrorSchema = z.strictObject({
+  url: HttpUrlSchema,
+  check: SourceCheckSchema,
+});
 
 export const MirrorRequestSchema = z.strictObject({ url: HttpUrlSchema });
 
@@ -195,8 +198,15 @@ export const SEND_STEPS = ["fields", "pdf", "markdown", "notes"] as const;
 export const SendStepSchema = z.discriminatedUnion("step", [
   z.strictObject({ step: z.literal("fields") }),
   z.strictObject({ step: z.literal("pdf"), attachmentKey: NonEmptySchema }),
-  z.strictObject({ step: z.literal("markdown"), attachmentKey: NonEmptySchema }),
-  z.strictObject({ step: z.literal("note"), noteId: NonEmptySchema, noteKey: NonEmptySchema }),
+  z.strictObject({
+    step: z.literal("markdown"),
+    attachmentKey: NonEmptySchema,
+  }),
+  z.strictObject({
+    step: z.literal("note"),
+    noteId: NonEmptySchema,
+    noteKey: NonEmptySchema,
+  }),
 ]);
 
 // How the Zotero item's metadata was found: a resolver plugin on an identifier, or, for an
@@ -240,9 +250,10 @@ export const SendResponseSchema = z.strictObject({
   kept: z.boolean(),
 });
 
-// Where an item's title came from, best first: an identifier resolver, the PDF's own
-// metadata, the title the capture offered (link text, page title), the stored file's name.
+// Where an item's title came from: a manual edit, a resolver, an inference, the PDF,
+// the capture hint, or the file name.
 export const TITLE_SOURCES = [
+  "manual",
   "resolver",
   "guess",
   "pdf-metadata",
@@ -274,7 +285,10 @@ export const BucketItemSchema = z.strictObject({
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
   provenance: ProvenanceSchema,
-  file: z.strictObject({ path: NonEmptySchema, sizeBytes: z.number().int().nonnegative() }),
+  file: z.strictObject({
+    path: NonEmptySchema,
+    sizeBytes: z.number().int().nonnegative(),
+  }),
   extraction: ExtractionSchema,
   zotero: ZoteroStatusSchema,
 });
@@ -282,6 +296,13 @@ export const BucketItemSchema = z.strictObject({
 export const RetrieveMetadataResponseSchema = z.strictObject({
   outcome: RetrieveMetadataOutcomeSchema,
   item: BucketItemSchema,
+});
+
+export const ManualMetadataRequestSchema = z.strictObject({
+  title: TrimmedSchema,
+  authors: z.array(TrimmedSchema),
+  year: z.int().nullable(),
+  abstract: TrimmedSchema.nullable(),
 });
 
 export const MetadataGuessSchema = z.strictObject({
@@ -323,7 +344,12 @@ export const ReadingSessionReportSchema = z.strictObject({
   openedAt: z.iso.datetime({ offset: true }),
   lastSeenAt: z.iso.datetime({ offset: true }),
   pages: z
-    .array(z.strictObject({ page: z.int().min(1), seconds: z.number().min(MIN_PAGE_SECONDS) }))
+    .array(
+      z.strictObject({
+        page: z.int().min(1),
+        seconds: z.number().min(MIN_PAGE_SECONDS),
+      }),
+    )
     .min(1),
 });
 
@@ -381,7 +407,11 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
       z.strictObject({ status: z.literal("failed"), message: NonEmptySchema }),
     ]),
   }),
-  z.strictObject({ key: NonEmptySchema, status: z.literal("failed"), message: NonEmptySchema }),
+  z.strictObject({
+    key: NonEmptySchema,
+    status: z.literal("failed"),
+    message: NonEmptySchema,
+  }),
   z.strictObject({
     key: NonEmptySchema,
     status: z.literal("unrestored"),
@@ -407,7 +437,9 @@ export const ImportUrlResponseSchema = z.strictObject({
 // Add Folder: one outcome per file directly inside the folder whose name ends in `.pdf`, in
 // name order: stored under a new key, already held, not a PDF (no `%PDF-` header), or failed
 // in the store. One file's failure never discards the others'.
-export const FolderImportRequestSchema = z.strictObject({ path: NonEmptySchema });
+export const FolderImportRequestSchema = z.strictObject({
+  path: NonEmptySchema,
+});
 export const FolderImportResponseSchema = z.strictObject({
   files: z.array(
     z.discriminatedUnion("status", [
@@ -417,7 +449,11 @@ export const FolderImportResponseSchema = z.strictObject({
         key: NonEmptySchema,
         metadata: RetrieveMetadataOutcomeSchema,
       }),
-      z.strictObject({ file: NonEmptySchema, status: z.literal("existing"), key: NonEmptySchema }),
+      z.strictObject({
+        file: NonEmptySchema,
+        status: z.literal("existing"),
+        key: NonEmptySchema,
+      }),
       z.strictObject({ file: NonEmptySchema, status: z.literal("not_a_pdf") }),
       z.strictObject({
         file: NonEmptySchema,
@@ -462,7 +498,10 @@ export const API_ERROR_KINDS = [
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({
-  error: z.strictObject({ kind: z.enum(API_ERROR_KINDS), message: NonEmptySchema }),
+  error: z.strictObject({
+    kind: z.enum(API_ERROR_KINDS),
+    message: NonEmptySchema,
+  }),
 });
 
 // Request bodies.
@@ -505,7 +544,9 @@ export const CollectionUpdateRequestSchema = changingSomething(
 // Any of the preferences; the others stay as they are.
 export const PreferencesUpdateRequestSchema = changingSomething(PreferencesSchema.partial());
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
-export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({ id: true });
+export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({
+  id: true,
+});
 
 export const SettingsSchema = z.strictObject({
   root: NonEmptySchema,
@@ -565,6 +606,7 @@ export type ImportUrlResponse = z.infer<typeof ImportUrlResponseSchema>;
 export type FolderImportResponse = z.infer<typeof FolderImportResponseSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
+export type ManualMetadataRequest = z.infer<typeof ManualMetadataRequestSchema>;
 export type GuessMetadataResponse = z.infer<typeof GuessMetadataResponseSchema>;
 
 // The session-storage key under which the library page keeps its current view (the address's

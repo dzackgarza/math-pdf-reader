@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
+import { CaptureResponseSchema } from "../src/contract/capture";
 import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
@@ -100,7 +101,10 @@ async function startBucket() {
     form.set("pdf_url", published(`/~author/${key}.pdf`));
     form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", linkText);
-    const response = await fetch(`${origin}/capture-bytes`, { method: "POST", body: form });
+    const response = await fetch(`${origin}/capture-bytes`, {
+      method: "POST",
+      body: form,
+    });
     if (!response.ok) {
       throw new Error(`capture of ${key} failed: ${response.status} ${await response.text()}`);
     }
@@ -176,7 +180,9 @@ describe("library window", () => {
           const pending: Promise<void>[] = [];
           window.dispatchEvent(
             new CustomEvent("pdf-bucket-quit", {
-              detail: { waitUntil: (settled: Promise<void>) => pending.push(settled) },
+              detail: {
+                waitUntil: (settled: Promise<void>) => pending.push(settled),
+              },
             }),
           );
           Promise.all(pending).then(
@@ -250,6 +256,68 @@ describe("library window", () => {
     );
     expect(org.items.lattices?.collections).toEqual(created.map((collection) => collection.id));
     expect(created).toHaveLength(1);
+  });
+
+  test("the details pane edits bibliographic metadata and shows the saved values after reload", async () => {
+    const form = new FormData();
+    form.set("pdf", new File([fixture("lecture-notes.pdf")], "manual-edit.pdf"));
+    form.set("pdf_url", published("/~author/manual-edit.pdf"));
+    form.set("source_url", published("/~author/teaching.html"));
+    form.set("title_hint", "Download PDF");
+    const response = await fetch(`${bucket.origin}/capture-bytes`, {
+      method: "POST",
+      body: form,
+    });
+    expect(response.status).toBe(200);
+    const captured = CaptureResponseSchema.parse(await response.json());
+    try {
+      await openLibrary();
+      await page.click(row(captured.key));
+      await page.click('button[aria-label="Edit metadata"]');
+      await page.waitForSelector('input[aria-label="Title"]');
+      await page.waitForFunction(() => {
+        const image = document.querySelector<HTMLImageElement>('aside img[alt="First page"]');
+        return image?.complete === true && image.naturalWidth > 0;
+      });
+      await shot("details-metadata-edit");
+      await page.setViewport({ width: 700, height: 900 });
+      await shot("details-metadata-edit-narrow");
+      await page.setViewport(viewport);
+
+      await page.click('input[aria-label="Title"]', { count: 3 });
+      await page.keyboard.press("Backspace");
+      await page.type('input[aria-label="Title"]', "Corrected title from the paper");
+      await page.type(
+        'textarea[aria-label="Authors, one per line"]',
+        "Ada Researcher\nBenoit Scholar",
+      );
+      await page.type('input[aria-label="Year"]', "2024");
+      await page.type('textarea[aria-label="Abstract"]', "A corrected abstract.");
+      await shot("details-metadata-filled");
+      await (await byRole("button", "Save metadata")).click();
+      await shows("aside h2", "Corrected title from the paper");
+      await shot("details-metadata-saved");
+
+      await openLibrary();
+      await page.click(row(captured.key));
+      expect(await page.$eval("aside h2", (heading) => heading.textContent)).toBe(
+        "Corrected title from the paper",
+      );
+      expect(await page.$eval("aside header", (header) => header.textContent)).toContain(
+        "Ada Researcher, Benoit Scholar · 2024",
+      );
+      const payload = LibraryPayloadSchema.parse(
+        await (await fetch(`${bucket.origin}/api/library`)).json(),
+      );
+      expect(payload.items.find((item) => item.id === captured.key)).toMatchObject({
+        titleSource: "manual",
+        abstract: "A corrected abstract.",
+      });
+    } finally {
+      await fetch(`${bucket.origin}/api/items/${captured.key}`, {
+        method: "DELETE",
+      });
+    }
   });
 
   test("the row context menu adds a tag and files into a new collection", async () => {
@@ -417,7 +485,9 @@ describe("library window", () => {
     // The Library tab is shown again, and the PDF loads while its tab is hidden.
     await page.waitForSelector(`${tab("problems")}[data-state="active"]`);
     await (await byRole("tab", "Library")).click();
-    await page.waitForSelector(`${row("problems")}[aria-selected="true"]`, { visible: true });
+    await page.waitForSelector(`${row("problems")}[aria-selected="true"]`, {
+      visible: true,
+    });
     expect(new URL(page.url()).pathname).toBe("/");
     await page.waitForFunction(pdfLoadedIn('iframe[data-reader-key="problems"]'));
     await page.keyboard.press("Enter");
@@ -592,7 +662,10 @@ describe("library window", () => {
     form.set("pdf_url", published("/~author/problems.pdf"));
     form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", "Problem set on quadratic forms");
-    const response = await fetch(`${bucket.origin}/capture-bytes`, { method: "POST", body: form });
+    const response = await fetch(`${bucket.origin}/capture-bytes`, {
+      method: "POST",
+      body: form,
+    });
     expect(response.status).toBe(200);
     await shownReader("problems");
   });
@@ -956,7 +1029,11 @@ describe("library window", () => {
     const response = await fetch(`${bucket.origin}/api/bulk/tags`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keys: ["outlined"], add: ["from elsewhere"], remove: [] }),
+      body: JSON.stringify({
+        keys: ["outlined"],
+        add: ["from elsewhere"],
+        remove: [],
+      }),
     });
     expect(response.status).toBe(200);
     await shows(row("outlined"), "from elsewhere");

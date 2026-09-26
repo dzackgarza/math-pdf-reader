@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, AnyUrl, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    AnyUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+)
 
 type NonEmpty = Annotated[str, StringConstraints(min_length=1)]
 type Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -40,9 +47,9 @@ class Provenance(BaseModel):
     title_hint: NonEmpty
 
 
-# Where an item's title came from, best first: an identifier resolver, the PDF's own metadata,
-# the title the capture offered (link text, page title), the stored file's name.
-type TitleSource = Literal["resolver", "guess", "pdf-metadata", "capture-hint", "filename"]
+# Where an item's title came from: a manual edit, a resolver, an inference, the PDF,
+# the capture hint, or the file name.
+type TitleSource = Literal["manual", "resolver", "guess", "pdf-metadata", "capture-hint", "filename"]
 
 
 class ItemTitle(BaseModel):

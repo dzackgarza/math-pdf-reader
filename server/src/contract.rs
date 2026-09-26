@@ -81,6 +81,7 @@ contract_types!(
     GuessMetadataResult,
     ImportUrlRequest,
     IndexExport,
+    ManualMetadataRequest,
     MirrorRequest,
     NewCollectionRequest,
     NewSavedSearchRequest,

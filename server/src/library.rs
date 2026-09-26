@@ -9,11 +9,12 @@ use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 
 use crate::contract::{
-    Activity, ApiErrorErrorKind, BulkCollectionsRequest, BulkTagsRequest, Collection,
-    CollectionUpdateRequest, ItemNote, LibraryPayload, NewCollectionRequest, NewSavedSearchRequest,
-    NewSavedSearchRequestMatch, NonEmpty, NoteRequest, Organization, PreferencesUpdateRequest,
-    Reading, ReadingRequest, RetrieveMetadataResponse, Rule, SavedSearch, SavedSearchMatch,
-    SavedSearchUpdateRequest, SavedSearchUpdateRequestMatch, Settings, Timestamp,
+    Activity, ApiErrorErrorKind, BucketItem, BulkCollectionsRequest, BulkTagsRequest, Collection,
+    CollectionUpdateRequest, ItemNote, LibraryPayload, ManualMetadataRequest, NewCollectionRequest,
+    NewSavedSearchRequest, NewSavedSearchRequestMatch, NonEmpty, NoteRequest, Organization,
+    PreferencesUpdateRequest, Reading, ReadingRequest, RetrieveMetadataResponse, Rule, SavedSearch,
+    SavedSearchMatch, SavedSearchUpdateRequest, SavedSearchUpdateRequestMatch, Settings, Timestamp,
+    TitleSource,
 };
 use crate::error::{AppError, AppResult};
 use crate::export::forget_missing;
@@ -25,7 +26,7 @@ use crate::organization::{
 };
 use crate::sources::sha256;
 use crate::state::{bucket_item, parse_body, Shared};
-use crate::store::Replacement;
+use crate::store::{Replacement, ResolvedMetadata};
 use crate::titles::retrieve_metadata;
 
 type Payload = AppResult<Json<LibraryPayload>>;
@@ -163,6 +164,34 @@ async fn metadata(
     })?;
     let item = bucket_item(&indexed, &state.organizations.read().await?)?;
     Ok(Json(RetrieveMetadataResponse { outcome, item }))
+}
+
+async fn edit_metadata(
+    State(state): State<Shared>,
+    Path(key): Path<String>,
+    body: Bytes,
+) -> AppResult<Json<BucketItem>> {
+    let request: ManualMetadataRequest = parse_body(&body)?;
+    let metadata = ResolvedMetadata {
+        title: String::from(request.title),
+        authors: request.authors.into_iter().map(String::from).collect(),
+        year: request.year,
+        abstract_: request.abstract_.map(String::from),
+    };
+    state
+        .store
+        .record_metadata(&key, TitleSource::Manual, &metadata)
+        .await?;
+    state.stored();
+    let indexed = state.indexed(&key).await?.ok_or_else(|| {
+        AppError::internal(format!(
+            "{key} left the store after its metadata was edited"
+        ))
+    })?;
+    Ok(Json(bucket_item(
+        &indexed,
+        &state.organizations.read().await?,
+    )?))
 }
 
 /// The SHA-256 an `If-Match: "<sha256>"` header names (RFC 9110, 13.1.1): the stored bytes a
@@ -479,7 +508,10 @@ pub fn routes() -> Router<Shared> {
         .route("/api/library", get(library))
         .route("/api/preferences", patch(preferences))
         .route("/api/settings", get(settings))
-        .route("/api/items/{key}/metadata", post(metadata))
+        .route(
+            "/api/items/{key}/metadata",
+            post(metadata).patch(edit_metadata),
+        )
         .route("/api/items/{key}/pdf", put(replace_pdf))
         .route("/api/items/{key}/reading", put(reading))
         .route("/api/items/{key}/notes", post(add_item_note))

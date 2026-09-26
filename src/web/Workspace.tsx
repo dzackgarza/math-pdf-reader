@@ -45,6 +45,7 @@ import {
   rebuildLost,
   run,
   type SendAttempt,
+  saveItemMetadata,
   saveSearch,
   saveSmartCollection,
   sendToZotero,
@@ -203,9 +204,10 @@ export default function Workspace({
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Each dialog opened is a new one: its fields start from its request, not from the last dialog.
   const dialogsOpened = useRef(0);
-  const [nameRequest, setNameRequest] = useState<{ key: number; request: NameRequest } | null>(
-    null,
-  );
+  const [nameRequest, setNameRequest] = useState<{
+    key: number;
+    request: NameRequest;
+  } | null>(null);
   const [smartEditor, setSmartEditor] = useState<SmartEditor | null>(null);
   const openSmartEditor = (editor: Omit<SmartEditor, "key">) => {
     dialogsOpened.current += 1;
@@ -440,10 +442,18 @@ export default function Workspace({
                   openSmartEditor({
                     id: null,
                     title: "New smart collection",
-                    initial: { name: "", match: "all", rules: [firstRule(payload)] },
+                    initial: {
+                      name: "",
+                      match: "all",
+                      rules: [firstRule(payload)],
+                    },
                   }),
                 editSmartCollection: ({ id, ...draft }) =>
-                  openSmartEditor({ id, title: `Edit “${draft.name}”`, initial: draft }),
+                  openSmartEditor({
+                    id,
+                    title: `Edit “${draft.name}”`,
+                    initial: draft,
+                  }),
               })}
               chosen={selectedKeys.length}
               table={
@@ -479,6 +489,9 @@ export default function Workspace({
               collections={payload.collections}
               knownTags={knownTags}
               filing={filingActions(context, selected)}
+              metadata={{
+                save: (metadata) => saveItemMetadata(context, selected.id, metadata),
+              }}
               noteDraft={{
                 text: noteDraftOf(selected.id),
                 onChange: (text) => setNoteDraft(selected.id, text === "" ? null : text),

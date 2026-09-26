@@ -130,7 +130,7 @@ async fn restore(
     };
     let metadata = if matches!(
         item.title_source,
-        TitleSource::Resolver | TitleSource::Guess
+        TitleSource::Manual | TitleSource::Resolver | TitleSource::Guess
     ) {
         let recorded = ResolvedMetadata {
             title: item.title.clone(),

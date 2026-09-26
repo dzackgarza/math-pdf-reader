@@ -6,6 +6,7 @@ import {
   CircleDashed,
   FileText,
   LoaderCircle,
+  Pencil,
   RefreshCw,
   Send,
   Trash2,
@@ -18,6 +19,7 @@ import type {
   Collection,
   Extraction,
   ItemNote,
+  ManualMetadataRequest,
   SourceCheck,
 } from "../../contract/library";
 import {
@@ -58,6 +60,10 @@ export type ItemSendActions = {
   onSend: () => void;
 };
 
+export type ItemMetadataActions = {
+  save: (metadata: ManualMetadataRequest) => Promise<void>;
+};
+
 type InspectorPanelProps = {
   item: BucketItem;
   related: Related[];
@@ -65,6 +71,7 @@ type InspectorPanelProps = {
   collections: Collection[];
   knownTags: string[];
   filing: ItemFilingActions;
+  metadata: ItemMetadataActions;
   noteDraft: NoteDraft;
   sources: ItemSourceActions & { verifying: boolean };
   send: ItemSendActions;
@@ -99,13 +106,22 @@ function ExtractionFiles({ extraction }: { extraction: Extraction }) {
 }
 
 const CHECK_MARKS: Record<SourceCheck["status"], { icon: ReactNode; label: string }> = {
-  unchecked: { icon: <CircleDashed className="h-3.5 w-3.5 text-faint" />, label: "Not verified" },
-  accessible: { icon: <Check className="h-3.5 w-3.5 text-ok" />, label: "Serves the PDF" },
+  unchecked: {
+    icon: <CircleDashed className="h-3.5 w-3.5 text-faint" />,
+    label: "Not verified",
+  },
+  accessible: {
+    icon: <Check className="h-3.5 w-3.5 text-ok" />,
+    label: "Serves the PDF",
+  },
   changed: {
     icon: <AlertTriangle className="h-3.5 w-3.5 text-warning" />,
     label: "Serves other bytes",
   },
-  dead: { icon: <X className="h-3.5 w-3.5 text-danger" />, label: "Serves nothing" },
+  dead: {
+    icon: <X className="h-3.5 w-3.5 text-danger" />,
+    label: "Serves nothing",
+  },
 };
 
 // A URL the PDF can be fetched from, with what its last check found.
@@ -213,14 +229,125 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function MetadataEditor({
+  item,
+  metadata,
+  onClose,
+}: {
+  item: BucketItem;
+  metadata: ItemMetadataActions;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [authors, setAuthors] = useState(item.authors.join("\n"));
+  const [year, setYear] = useState(item.year?.toString() ?? "");
+  const [abstract, setAbstract] = useState(item.abstract ?? "");
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const input =
+    "w-full rounded-md border border-line bg-panel px-2.5 py-1.5 text-sm outline-none focus:border-accent";
+
+  return (
+    <form
+      className="space-y-3 px-4 py-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        setSaving(true);
+        setFailure(null);
+        metadata
+          .save({
+            title: title.trim(),
+            authors: authors
+              .split(/\r?\n/)
+              .map((name) => name.trim())
+              .filter(Boolean),
+            year: year.trim() === "" ? null : Number(year),
+            abstract: abstract.trim() || null,
+          })
+          .then(onClose, (error: Error) => setFailure(error.message))
+          .finally(() => setSaving(false));
+      }}
+    >
+      <label className="block space-y-1 text-xs text-muted">
+        <span>Title</span>
+        <input
+          aria-label="Title"
+          required
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          className={input}
+        />
+      </label>
+      <label className="block space-y-1 text-xs text-muted">
+        <span>Authors, one per line</span>
+        <textarea
+          aria-label="Authors, one per line"
+          rows={3}
+          value={authors}
+          onChange={(event) => setAuthors(event.target.value)}
+          className={`${input} resize-y`}
+        />
+      </label>
+      <label className="block space-y-1 text-xs text-muted">
+        <span>Year</span>
+        <input
+          aria-label="Year"
+          type="number"
+          step="1"
+          value={year}
+          onChange={(event) => setYear(event.target.value)}
+          className={input}
+        />
+      </label>
+      <label className="block space-y-1 text-xs text-muted">
+        <span>Abstract</span>
+        <textarea
+          aria-label="Abstract"
+          rows={4}
+          value={abstract}
+          onChange={(event) => setAbstract(event.target.value)}
+          className={`${input} resize-y`}
+        />
+      </label>
+      {failure !== null && (
+        <p role="alert" className="text-xs break-words text-danger">
+          {failure}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving || title.trim() === ""}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save metadata"}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={saving}
+          className="rounded-md border border-line px-3 py-1.5 text-xs font-medium hover:bg-surface disabled:opacity-40"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function Details({
   item,
   collections,
   knownTags,
   filing,
   extraction,
+  editing,
+  onEditorClose,
   ...props
-}: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose" | "noteDraft">) {
+}: Omit<InspectorPanelProps, "send" | "onOpenReader" | "onClose" | "noteDraft"> & {
+  editing: boolean;
+  onEditorClose: () => void;
+}) {
   const names = new Map(collections.map((collection) => [collection.id, collection.name]));
   const topics = item.tags.filter(isTopic);
   const tags = item.tags.filter((tag) => !isTopic(tag));
@@ -232,57 +359,63 @@ function Details({
       <img
         src={thumbnailPath(item.id, 640)}
         alt="First page"
-        className="mx-4 mt-4 h-64 w-[calc(100%-2rem)] rounded border border-line bg-panel object-cover object-top"
+        className={`mx-4 mt-4 w-[calc(100%-2rem)] rounded border border-line bg-panel object-cover object-top ${editing ? "h-32" : "h-64"}`}
       />
-      <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
-        <Row label="Collections">
-          {item.collections.map((id) => (
-            <CollectionChip key={id} id={id} names={names} onRemove={() => filing.unfile(id)} />
-          ))}
-          <FilingPicker
-            label="collection"
-            options={collections.filter((collection) => !item.collections.includes(collection.id))}
-            onPick={filing.fileIn}
-            onCreate={filing.fileInNewCollection}
-          />
-        </Row>
-        <Row label="Topics">
-          {topics.map((tag) => (
-            <TagChip key={tag} tag={tag} onRemove={() => filing.removeTag(tag)} />
-          ))}
-          <FilingPicker
-            label="topic"
-            options={asOptions(
-              knownTags
-                .filter(isTopic)
-                .filter((tag) => !topics.includes(tag))
-                .map(topicName),
-            )}
-            onPick={(name) => filing.addTag(topicTag(name))}
-            onCreate={(name) => filing.addTag(topicTag(name))}
-          />
-        </Row>
-        <Row label="Tags">
-          {tags.map((tag) => (
-            <TagChip key={tag} tag={tag} onRemove={() => filing.removeTag(tag)} />
-          ))}
-          <FilingPicker
-            label="tag"
-            options={asOptions(knownTags.filter((tag) => !isTopic(tag) && !tags.includes(tag)))}
-            onPick={filing.addTag}
-            onCreate={filing.addTag}
-          />
-        </Row>
-        <Row label="Sources">
-          <Sources item={item} sources={props.sources} />
-        </Row>
-        <Row label="Extraction">
-          <div className="w-full space-y-2">
-            <ExtractionFiles extraction={item.extraction} />
-            <ExtractionRunner {...extraction} />
-          </div>
-        </Row>
-      </dl>
+      {editing ? (
+        <MetadataEditor item={item} metadata={props.metadata} onClose={onEditorClose} />
+      ) : (
+        <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-3 px-4 py-4 text-sm">
+          <Row label="Collections">
+            {item.collections.map((id) => (
+              <CollectionChip key={id} id={id} names={names} onRemove={() => filing.unfile(id)} />
+            ))}
+            <FilingPicker
+              label="collection"
+              options={collections.filter(
+                (collection) => !item.collections.includes(collection.id),
+              )}
+              onPick={filing.fileIn}
+              onCreate={filing.fileInNewCollection}
+            />
+          </Row>
+          <Row label="Topics">
+            {topics.map((tag) => (
+              <TagChip key={tag} tag={tag} onRemove={() => filing.removeTag(tag)} />
+            ))}
+            <FilingPicker
+              label="topic"
+              options={asOptions(
+                knownTags
+                  .filter(isTopic)
+                  .filter((tag) => !topics.includes(tag))
+                  .map(topicName),
+              )}
+              onPick={(name) => filing.addTag(topicTag(name))}
+              onCreate={(name) => filing.addTag(topicTag(name))}
+            />
+          </Row>
+          <Row label="Tags">
+            {tags.map((tag) => (
+              <TagChip key={tag} tag={tag} onRemove={() => filing.removeTag(tag)} />
+            ))}
+            <FilingPicker
+              label="tag"
+              options={asOptions(knownTags.filter((tag) => !isTopic(tag) && !tags.includes(tag)))}
+              onPick={filing.addTag}
+              onCreate={filing.addTag}
+            />
+          </Row>
+          <Row label="Sources">
+            <Sources item={item} sources={props.sources} />
+          </Row>
+          <Row label="Extraction">
+            <div className="w-full space-y-2">
+              <ExtractionFiles extraction={item.extraction} />
+              <ExtractionRunner {...extraction} />
+            </div>
+          </Row>
+        </dl>
+      )}
     </>
   );
 }
@@ -425,6 +558,8 @@ const TAB_CLASSES =
 
 export default function InspectorPanel(props: InspectorPanelProps) {
   const { item, send, onOpenReader, onClose } = props;
+  const [tab, setTab] = useState("details");
+  const [editing, setEditing] = useState(false);
   const sending = send.attempt?.kind === "sending";
   // Sent with every step done: the item stays only because a collection keeps it offline.
   const inZotero = item.zotero.status === "sent" && item.zotero.pending.length === 0;
@@ -467,6 +602,17 @@ export default function InspectorPanel(props: InspectorPanelProps) {
         </div>
         <button
           type="button"
+          aria-label="Edit metadata"
+          onClick={() => {
+            setTab("details");
+            setEditing(true);
+          }}
+          className="rounded p-1 text-muted hover:bg-surface hover:text-ink"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
           aria-label="Close details"
           onClick={onClose}
           className="rounded p-1 text-muted hover:bg-surface hover:text-ink"
@@ -474,7 +620,14 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           <X className="h-4 w-4" />
         </button>
       </header>
-      <Tabs.Root defaultValue="details" className="flex min-h-0 flex-1 flex-col">
+      <Tabs.Root
+        value={tab}
+        onValueChange={(next) => {
+          setTab(next);
+          if (next !== "details") setEditing(false);
+        }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <Tabs.List className="mt-3 flex gap-4 border-b border-line px-4">
           <Tabs.Trigger value="details" className={TAB_CLASSES}>
             Details
@@ -488,7 +641,7 @@ export default function InspectorPanel(props: InspectorPanelProps) {
         </Tabs.List>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Tabs.Content value="details">
-            <Details {...props} />
+            <Details {...props} editing={editing} onEditorClose={() => setEditing(false)} />
           </Tabs.Content>
           <Tabs.Content value="notes">
             <Notes item={item} filing={props.filing} draft={props.noteDraft} />

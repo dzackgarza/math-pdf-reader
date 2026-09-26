@@ -9,6 +9,7 @@ import type { ExtractionOutcome } from "../contract/extraction";
 import {
   type AdvancedSearchSettings,
   type BucketItem,
+  BucketItemSchema,
   type Collection,
   CollectionSchema,
   type CollectionUpdate,
@@ -16,6 +17,7 @@ import {
   type GuessMetadataResponse,
   GuessMetadataResponseSchema,
   ImportUrlResponseSchema,
+  type ManualMetadataRequest,
   type Preferences,
   type RebuildOutcome,
   RebuildOutcomeSchema,
@@ -109,8 +111,21 @@ function itemPath(key: string): string {
   return `/api/items/${encodeURIComponent(key)}`;
 }
 
+export function saveItemMetadata(
+  context: ActionContext,
+  key: string,
+  metadata: ManualMetadataRequest,
+): Promise<void> {
+  return context.api
+    .call(BucketItemSchema, "PATCH", `${itemPath(key)}/metadata`, metadata)
+    .then(done);
+}
+
 function newCollection(context: ActionContext, name: string, parentId?: string) {
-  return context.api.call(CollectionSchema, "POST", "/api/collections", { name, parentId });
+  return context.api.call(CollectionSchema, "POST", "/api/collections", {
+    name,
+    parentId,
+  });
 }
 
 // Creates a collection and files KEYS in it; the filing change answers with the library, which
@@ -133,7 +148,11 @@ function changeCollections(
   add: string[],
   remove: string[],
 ) {
-  return context.api.change("POST", "/api/bulk/collections", { keys, add, remove });
+  return context.api.change("POST", "/api/bulk/collections", {
+    keys,
+    add,
+    remove,
+  });
 }
 
 // What the details panel does with the item's sources.
@@ -349,7 +368,9 @@ export function addFolder(
     ...(browse === null ? {} : { browse }),
     onSubmit: (path) =>
       context.api
-        .call(FolderImportResponseSchema, "POST", "/api/import-folder", { path })
+        .call(FolderImportResponseSchema, "POST", "/api/import-folder", {
+          path,
+        })
         .then(({ files }) => {
           const count = (status: string) => files.filter((file) => file.status === status).length;
           const stored = count("stored");
@@ -420,7 +441,11 @@ export function saveSmartCollection(
   id: string | null,
   draft: Omit<SavedSearch, "id">,
 ): Promise<void> {
-  const sent = { ...draft, name: draft.name.trim(), rules: draft.rules.map(trimmedRule) };
+  const sent = {
+    ...draft,
+    name: draft.name.trim(),
+    rules: draft.rules.map(trimmedRule),
+  };
   if (id !== null) {
     return context.api
       .change("PUT", `/api/saved-searches/${encodeURIComponent(id)}`, sent)
@@ -523,7 +548,10 @@ export function sendToZotero(
       () => onAttempt(null),
       (error: Error) => {
         const refused = error instanceof BucketRequestError && error.kind === "already_sent";
-        onAttempt({ kind: refused ? "refused" : "failed", message: error.message });
+        onAttempt({
+          kind: refused ? "refused" : "failed",
+          message: error.message,
+        });
       },
     );
 }
