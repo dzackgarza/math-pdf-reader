@@ -84,11 +84,7 @@ def embed_metadata_command(
     abstract: str | None = None,
 ) -> None:
     """Print PDF with TEXT, from SOURCE, as its title, each AUTHOR in order, YEAR and ABSTRACT recorded."""
-    write_bytes(
-        embed_metadata(
-            pdf, ItemTitle(text=text, source=source), list(author), year, abstract
-        )
-    )
+    write_bytes(embed_metadata(pdf, ItemTitle(text=text, source=source), list(author), year, abstract))
 
 
 def read_one(path: Path) -> ReadOutcome:

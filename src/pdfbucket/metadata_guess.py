@@ -25,9 +25,7 @@ OLLAMA_MODEL = "deepseek-v4-pro:cloud"
 OPENING_PAGES = 3
 MAX_OPENING_TEXT = 30_000
 STRUCTURED_OUTPUT_RETRIES = 2
-PLACEHOLDER_VALUES = frozenset(
-    {"anonymous", "n/a", "none", "not available", "null", "unknown", "unspecified"}
-)
+PLACEHOLDER_VALUES = frozenset({"anonymous", "n/a", "none", "not available", "null", "unknown", "unspecified"})
 
 pydantic_ai.BANNER_ENABLED = False
 
@@ -53,9 +51,7 @@ class MetadataGuess(BaseModel):
     def authors_are_concrete(cls, values: list[str]) -> list[str]:
         for value in values:
             normalized = value.casefold()
-            if normalized in PLACEHOLDER_VALUES or normalized.endswith(
-                "unknown author"
-            ):
+            if normalized in PLACEHOLDER_VALUES or normalized.endswith("unknown author"):
                 raise ValueError("each author must be a concrete best guess")
         return values
 
@@ -94,18 +90,9 @@ class MetadataPacket:
         title_hint: str,
     ) -> MetadataPacket:
         with pymupdf.open(pdf) as document:
-            metadata = {
-                key: value.strip()
-                for key, value in document.metadata.items()
-                if isinstance(value, str) and value.strip()
-            }
-            text = "\n\n".join(
-                f"--- Page {number + 1} ---\n{document[number].get_text()}"
-                for number in range(min(OPENING_PAGES, document.page_count))
-            )[:MAX_OPENING_TEXT]
-            pixmap = document[0].get_pixmap(
-                matrix=pymupdf.Matrix(1.5, 1.5), alpha=False
-            )
+            metadata = {key: value.strip() for key, value in document.metadata.items() if isinstance(value, str) and value.strip()}
+            text = "\n\n".join(f"--- Page {number + 1} ---\n{document[number].get_text()}" for number in range(min(OPENING_PAGES, document.page_count)))[:MAX_OPENING_TEXT]
+            pixmap = document[0].get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
             first_page_png = pixmap.tobytes("png")
             page_count = document.page_count
         return cls(
@@ -122,9 +109,7 @@ class MetadataPacket:
 
     def prompt(self) -> str:
         source_url = self.source_url if self.source_url is not None else "(none)"
-        embedded = json.dumps(
-            self.embedded_metadata, ensure_ascii=False, sort_keys=True
-        )
+        embedded = json.dumps(self.embedded_metadata, ensure_ascii=False, sort_keys=True)
         return f"""Infer the paper's title, authors, and publication year.
 
 Use every supplied cue and associations learned during training. The document is likely present
@@ -170,15 +155,11 @@ def _guess_with_gemini(packet: MetadataPacket) -> GuessResult:
         result = agent.run_sync(
             [
                 packet.prompt(),
-                BinaryContent(
-                    data=packet.pdf.read_bytes(), media_type="application/pdf"
-                ),
+                BinaryContent(data=packet.pdf.read_bytes(), media_type="application/pdf"),
                 BinaryContent(data=packet.first_page_png, media_type="image/png"),
             ]
         )
-        return GuessResult(
-            provider="gemini", model=GEMINI_MODEL, metadata=result.output
-        )
+        return GuessResult(provider="gemini", model=GEMINI_MODEL, metadata=result.output)
     except MetadataInferenceError:
         raise
     except Exception as error:
@@ -198,9 +179,7 @@ def _guess_with_ollama(packet: MetadataPacket) -> GuessResult:
             retries={"output": STRUCTURED_OUTPUT_RETRIES, "tools": 0},
         )
         result = agent.run_sync(packet.prompt())
-        return GuessResult(
-            provider="ollama", model=OLLAMA_MODEL, metadata=result.output
-        )
+        return GuessResult(provider="ollama", model=OLLAMA_MODEL, metadata=result.output)
     except Exception as error:
         raise MetadataInferenceError(_message(error)) from error
 
@@ -212,6 +191,4 @@ def guess_metadata(packet: MetadataPacket) -> GuessResult:
         try:
             return _guess_with_ollama(packet)
         except MetadataInferenceError as ollama_error:
-            raise MetadataInferenceError(
-                f"Gemini: {gemini_error}; Ollama: {ollama_error}"
-            ) from ollama_error
+            raise MetadataInferenceError(f"Gemini: {gemini_error}; Ollama: {ollama_error}") from ollama_error
