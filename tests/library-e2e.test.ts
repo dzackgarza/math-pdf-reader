@@ -394,7 +394,7 @@ describe("library window", () => {
     );
     await page.evaluate(() => navigator.clipboard.writeText("probe"));
 
-    await page.click('button[aria-label="Copy link to this view"]');
+    await page.click('button[aria-label="Copy PDF link"]');
 
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       published("/~author/lattices.pdf"),
