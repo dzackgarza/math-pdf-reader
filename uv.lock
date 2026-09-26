@@ -714,6 +714,7 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },
+    { name = "google-genai" },
     { name = "httpx" },
     { name = "mistralai" },
     { name = "pikepdf" },
@@ -733,6 +734,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cyclopts", specifier = ">=4.25.3" },
+    { name = "google-genai", specifier = ">=2.25.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mistralai", specifier = ">=2.10.1" },
     { name = "pikepdf", specifier = ">=10.13.0.post1" },
