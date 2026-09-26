@@ -35,7 +35,7 @@ use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::{Captured, Upload};
 use crate::titles::retrieve_metadata;
-use crate::{extractions, guard, library, send, sessions, source_routes, thumbnails};
+use crate::{extractions, guard, guesses, library, send, sessions, source_routes, thumbnails};
 
 /// The origin a request was made to, from its Host header.
 fn origin(headers: &HeaderMap) -> AppResult<String> {
@@ -440,6 +440,7 @@ pub fn router(state: Shared) -> Router {
         .route("/pdf/{file}", get(pdf))
         .route("/read/{key}", get(read))
         .merge(library::routes())
+        .merge(guesses::routes())
         .merge(send::routes())
         .merge(source_routes::routes())
         .merge(sessions::routes())

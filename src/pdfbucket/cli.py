@@ -14,8 +14,29 @@ import pikepdf
 from cyclopts import App
 from pydantic import TypeAdapter, ValidationError
 
-from pdfbucket.models import ItemTitle, NonEmpty, Provenance, Read, ReadOutcome, StoreFailure, TitleSource, Unreadable
-from pdfbucket.provenance import MissingProvenanceError, embed_metadata, embed_provenance, embedded_identifiers, read_record
+from pdfbucket.metadata_guess import (
+    GuessResult,
+    MetadataInferenceError,
+    MetadataPacket,
+    guess_metadata,
+)
+from pdfbucket.models import (
+    ItemTitle,
+    NonEmpty,
+    Provenance,
+    Read,
+    ReadOutcome,
+    StoreFailure,
+    TitleSource,
+    Unreadable,
+)
+from pdfbucket.provenance import (
+    MissingProvenanceError,
+    embed_metadata,
+    embed_provenance,
+    embedded_identifiers,
+    read_record,
+)
 from pdfbucket.thumbnails import render_first_page
 
 app = App(help="PDF Bucket's pikepdf and MuPDF commands")
@@ -33,16 +54,41 @@ def write_bytes(data: bytes) -> None:
 
 
 @app.command(name="embed-provenance")
-def embed_provenance_command(*, pdf_url: str, captured_at: str, original_sha256: str, title_hint: str, source_url: str | None = None) -> None:
+def embed_provenance_command(
+    *,
+    pdf_url: str,
+    captured_at: str,
+    original_sha256: str,
+    title_hint: str,
+    source_url: str | None = None,
+) -> None:
     """Print the PDF read from stdin with the provenance embedded."""
-    provenance = Provenance(pdf_url=pdf_url, source_url=source_url, captured_at=captured_at, original_sha256=original_sha256, title_hint=title_hint)
+    provenance = Provenance(
+        pdf_url=pdf_url,
+        source_url=source_url,
+        captured_at=captured_at,
+        original_sha256=original_sha256,
+        title_hint=title_hint,
+    )
     write_bytes(embed_provenance(sys.stdin.buffer.read(), provenance))
 
 
 @app.command(name="embed-metadata")
-def embed_metadata_command(pdf: Path, text: str, source: TitleSource, *, author: tuple[str, ...] = (), year: int | None = None, abstract: str | None = None) -> None:
+def embed_metadata_command(
+    pdf: Path,
+    text: str,
+    source: TitleSource,
+    *,
+    author: tuple[str, ...] = (),
+    year: int | None = None,
+    abstract: str | None = None,
+) -> None:
     """Print PDF with TEXT, from SOURCE, as its title, each AUTHOR in order, YEAR and ABSTRACT recorded."""
-    write_bytes(embed_metadata(pdf, ItemTitle(text=text, source=source), list(author), year, abstract))
+    write_bytes(
+        embed_metadata(
+            pdf, ItemTitle(text=text, source=source), list(author), year, abstract
+        )
+    )
 
 
 def read_one(path: Path) -> ReadOutcome:
@@ -71,6 +117,25 @@ def thumbnail(pdf: Path, width: int) -> None:
     write_bytes(render_first_page(pdf, width))
 
 
+@app.command(name="guess-metadata")
+def guess_metadata_command(
+    pdf: Path,
+    *,
+    pdf_url: str,
+    title_hint: str,
+    source_url: str | None = None,
+) -> None:
+    """Infer title, authors, and year from a PDF and its capture context."""
+    packet = MetadataPacket.from_pdf(
+        pdf,
+        pdf_url=pdf_url,
+        source_url=source_url,
+        title_hint=title_hint,
+    )
+    result: GuessResult = guess_metadata(packet)
+    print(result.model_dump_json())
+
+
 def main() -> None:
     """Run one command; a PDF it cannot read becomes a StoreFailure the server tells apart."""
     try:
@@ -81,6 +146,9 @@ def main() -> None:
         failure = StoreFailure(kind="missing_provenance", message=str(error))
     except ValidationError as error:
         failure = StoreFailure(kind="invalid_metadata", message=str(error))
+    except MetadataInferenceError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
     else:
         return
     print(failure.model_dump_json())

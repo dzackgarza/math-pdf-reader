@@ -42,7 +42,7 @@ class Provenance(BaseModel):
 
 # Where an item's title came from, best first: an identifier resolver, the PDF's own metadata,
 # the title the capture offered (link text, page title), the stored file's name.
-type TitleSource = Literal["resolver", "pdf-metadata", "capture-hint", "filename"]
+type TitleSource = Literal["resolver", "guess", "pdf-metadata", "capture-hint", "filename"]
 
 
 class ItemTitle(BaseModel):

@@ -242,7 +242,13 @@ export const SendResponseSchema = z.strictObject({
 
 // Where an item's title came from, best first: an identifier resolver, the PDF's own
 // metadata, the title the capture offered (link text, page title), the stored file's name.
-export const TITLE_SOURCES = ["resolver", "pdf-metadata", "capture-hint", "filename"] as const;
+export const TITLE_SOURCES = [
+  "resolver",
+  "guess",
+  "pdf-metadata",
+  "capture-hint",
+  "filename",
+] as const;
 
 export const TitleSourceSchema = z.enum(TITLE_SOURCES);
 
@@ -275,6 +281,24 @@ export const BucketItemSchema = z.strictObject({
 
 export const RetrieveMetadataResponseSchema = z.strictObject({
   outcome: RetrieveMetadataOutcomeSchema,
+  item: BucketItemSchema,
+});
+
+export const MetadataGuessSchema = z.strictObject({
+  title: NonEmptySchema,
+  authors: z.array(NonEmptySchema).min(1),
+  year: z.int(),
+});
+
+export const GuessMetadataProviderSchema = z.enum(["gemini", "ollama"]);
+
+export const GuessMetadataResultSchema = z.strictObject({
+  provider: GuessMetadataProviderSchema,
+  model: NonEmptySchema,
+  metadata: MetadataGuessSchema,
+});
+
+export const GuessMetadataResponseSchema = GuessMetadataResultSchema.extend({
   item: BucketItemSchema,
 });
 
@@ -418,6 +442,7 @@ export const API_ERROR_KINDS = [
   "not_a_folder",
   "folder_check_failed",
   "resolver_failed",
+  "metadata_guess_failed",
   "zotero_failed",
   "storage_check_failed",
   // The store could not do its work: a write failed, or its pikepdf command failed.
@@ -540,6 +565,7 @@ export type ImportUrlResponse = z.infer<typeof ImportUrlResponseSchema>;
 export type FolderImportResponse = z.infer<typeof FolderImportResponseSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
+export type GuessMetadataResponse = z.infer<typeof GuessMetadataResponseSchema>;
 
 // The session-storage key under which the library page keeps its current view (the address's
 // hash, e.g. `#/unfiled`); the reader's Library button returns to that view.

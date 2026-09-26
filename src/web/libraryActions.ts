@@ -13,6 +13,8 @@ import {
   CollectionSchema,
   type CollectionUpdate,
   FolderImportResponseSchema,
+  GuessMetadataResponseSchema,
+  type GuessMetadataResponse,
   ImportUrlResponseSchema,
   type Preferences,
   type RebuildOutcome,
@@ -22,7 +24,12 @@ import {
   SavedSearchSchema,
   SendResponseSchema,
 } from "../contract/library";
-import { type ActionFailure, type ActionRejection, actionFailure } from "./actionFailure";
+import {
+  type ActionFailure,
+  type ActionRejection,
+  actionFailure,
+  describeFailure,
+} from "./actionFailure";
 import type { ConfirmRequest } from "./components/ConfirmDialog";
 import type { ItemFilingActions } from "./components/InspectorPanel";
 import type { NameRequest } from "./components/NameDialog";
@@ -42,6 +49,8 @@ export type ActionContext = {
   confirm: (request: ConfirmRequest) => void;
   // A failed call leaves the library as the server holds it; this says what refused it.
   fail: (failure: ActionFailure) => void;
+  error: (message: string) => void;
+  progress: (message: string) => void;
   // What a call that succeeded could not do (a PDF not restored, no identifier found).
   report: (message: string) => void;
   // What a call that succeeded did, when the library does not show it by itself.
@@ -57,6 +66,44 @@ export function run<T>(context: ActionContext, action: Promise<T>): void {
 }
 
 const done = () => undefined;
+
+function populated(result: GuessMetadataResponse): string {
+  const { title, authors, year } = result.metadata;
+  return `${title}\nAuthors: ${authors.join(", ")}\nYear: ${year}\nModel: ${result.provider} ${result.model}`;
+}
+
+export function guessMetadata(context: ActionContext, items: BucketItem[]): void {
+  const execute = async () => {
+    const guessed: GuessMetadataResponse[] = [];
+    const failures: string[] = [];
+    for (const item of items) {
+      context.progress(`Guessing metadata for “${item.title}”…`);
+      const outcome = await context.api
+        .call(GuessMetadataResponseSchema, "POST", `${itemPath(item.id)}/guess-metadata`)
+        .then(
+          (result) => ({ status: "guessed" as const, result }),
+          (rejection: ActionRejection) => ({
+            status: "failed" as const,
+            failure: actionFailure(rejection),
+          }),
+        );
+      if (outcome.status === "guessed") {
+        guessed.push(outcome.result);
+      } else {
+        const failure = describeFailure(outcome.failure);
+        failures.push(`${item.title}: ${failure.title}: ${failure.detail}`);
+      }
+    }
+    const completed = guessed.map(populated).join("\n\n");
+    if (failures.length > 0) {
+      const populatedItems = completed === "" ? "" : `\n\nPopulated:\n${completed}`;
+      context.error(`${failures.join("\n")}\n${populatedItems}`.trim());
+      return;
+    }
+    context.notify(`Populated metadata:\n${completed}`);
+  };
+  void execute();
+}
 
 function itemPath(key: string): string {
   return `/api/items/${encodeURIComponent(key)}`;

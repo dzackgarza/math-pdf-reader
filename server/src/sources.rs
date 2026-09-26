@@ -116,8 +116,7 @@ pub struct RecoverableItem {
     pub mirrors: Vec<String>,
 }
 
-// Writes the fetched original back under the item's key and records again the metadata a
-// resolver gave it.
+// Writes the fetched original back under the item's key and records metadata added after capture.
 async fn restore(
     store: &Store,
     item: &RecoverableItem,
@@ -129,7 +128,10 @@ async fn restore(
         Restoration::Present => return Ok(RebuildOutcome::Present { key }),
         Restoration::Restored { stored_sha256 } => stored_sha256,
     };
-    let metadata = if item.title_source == TitleSource::Resolver {
+    let metadata = if matches!(
+        item.title_source,
+        TitleSource::Resolver | TitleSource::Guess
+    ) {
         let recorded = ResolvedMetadata {
             title: item.title.clone(),
             authors: item.authors.clone(),
@@ -137,7 +139,7 @@ async fn restore(
             abstract_: item.abstract_.clone(),
         };
         match store
-            .record_metadata(&item.key, TitleSource::Resolver, &recorded)
+            .record_metadata(&item.key, item.title_source, &recorded)
             .await
         {
             Ok(_stored) => RebuildOutcomeRestoredMetadata::Recorded,
@@ -161,8 +163,7 @@ fn nonempty(text: String) -> NonEmpty {
 }
 
 /// Restores the item's PDF from its PDF URL, else from each mirror in turn, when the store has
-/// lost it. A title and authors a resolver gave are recorded again; any other title is read
-/// from the restored bytes as it was before. A failure of the store is this item's outcome.
+/// lost it. Recorded metadata is added again; metadata read from the original stays as it is.
 pub async fn rebuild_item(
     store: &Store,
     item: &RecoverableItem,

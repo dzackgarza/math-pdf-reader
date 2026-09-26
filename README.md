@@ -12,7 +12,7 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 | `src/web` | React library UI served by the server |
 | `src/extension` | WXT WebExtension, built for Chrome and Firefox |
 | `desktop/` | Tauri app: the window, the tray, and the bucket server in the same process |
-| `src/pdfbucket` | Python package: the pikepdf and MuPDF commands the server runs (embed provenance and metadata, read a PDF's record and identifiers, render a thumbnail) |
+| `src/pdfbucket` | Python package: the pikepdf and MuPDF commands the server runs (embed provenance and metadata, infer metadata, read a PDF's record and identifiers, render a thumbnail) |
 | `plugins/manifests` | Shipped extraction and resolver plugin manifests |
 | `src/resolvers` | Resolver plugins: an identifier or URL on stdin, one BibTeX entry on stdout |
 | `tests/` | Bun tests (`*.test.ts`) and Python tests (`test_*.py`) |

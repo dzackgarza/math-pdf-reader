@@ -1,15 +1,15 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from pdfbucket.metadata_guess import (
-    GuessFailure,
     GuessResult,
     MetadataGuess,
+    MetadataInferenceError,
     MetadataPacket,
     guess_metadata,
 )
-
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -35,12 +35,23 @@ def test_metadata_packet_contains_the_document_cues() -> None:
     assert built.title_hint == "Download PDF"
 
 
-def test_invalid_gemini_answer_uses_ollama_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_metadata_guess_requires_concrete_values() -> None:
+    with pytest.raises(ValidationError, match="concrete best guess"):
+        MetadataGuess(
+            title="Lattices and Quadratic Forms",
+            authors=["Unknown"],
+            year=2006,
+        )
+
+
+def test_exhausted_gemini_attempts_use_ollama_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
 
     def gemini(_: MetadataPacket) -> GuessResult:
         calls.append("gemini")
-        raise GuessFailure("Gemini returned no authors")
+        raise MetadataInferenceError("Gemini did not return usable structured metadata")
 
     def ollama(_: MetadataPacket) -> GuessResult:
         calls.append("ollama")
@@ -66,16 +77,16 @@ def test_invalid_gemini_answer_uses_ollama_once(monkeypatch: pytest.MonkeyPatch)
 
 def test_both_provider_failures_are_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     def gemini(_: MetadataPacket) -> GuessResult:
-        raise GuessFailure("Gemini quota exhausted")
+        raise MetadataInferenceError("Gemini quota exhausted")
 
     def ollama(_: MetadataPacket) -> GuessResult:
-        raise GuessFailure("Ollama model unavailable")
+        raise MetadataInferenceError("Ollama model unavailable")
 
     monkeypatch.setattr("pdfbucket.metadata_guess._guess_with_gemini", gemini)
     monkeypatch.setattr("pdfbucket.metadata_guess._guess_with_ollama", ollama)
 
     with pytest.raises(
-        GuessFailure,
+        MetadataInferenceError,
         match="Gemini: Gemini quota exhausted; Ollama: Ollama model unavailable",
     ):
         guess_metadata(packet())

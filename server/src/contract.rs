@@ -78,6 +78,7 @@ contract_types!(
     CaptureDownloadRequest,
     CollectionUpdateRequest,
     FolderImportRequest,
+    GuessMetadataResult,
     ImportUrlRequest,
     IndexExport,
     MirrorRequest,

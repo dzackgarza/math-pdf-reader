@@ -37,6 +37,7 @@ import {
   type ExtractionAttempt,
   extractWith,
   filingActions,
+  guessMetadata,
   importUrl,
   itemMenuActions,
   organizationActions,
@@ -240,6 +241,8 @@ export default function Workspace({
       },
       confirm: setConfirmRequest,
       fail,
+      error: (message) => setToast({ kind: "error", message }),
+      progress: (message) => setToast({ kind: "progress", message }),
       report: (message) => setToast({ kind: "shortfall", message }),
       notify: (message) => setToast({ kind: "notice", message }),
     }),
@@ -252,6 +255,7 @@ export default function Workspace({
     [payload, view, search],
   );
   const table = useLibraryTable(items, initialColumns);
+  const selectedKeys = table.getSelectedRowModel().rows.map((row) => row.id);
   const selected: BucketItem | undefined = payload.items.find((item) => item.id === selectedId);
   const collectionNames = new Map(
     payload.collections.map((collection) => [collection.id, collection.name]),
@@ -318,6 +322,10 @@ export default function Workspace({
           open: () => openReader(key),
           openInBrowser: () => attempt(openInBrowser(readerHref(key))),
           retrieveMetadata: actions.retrieveMetadata,
+          guessMetadata: () => {
+            const keys = selectedKeys.length > 1 ? selectedKeys : [key];
+            guessMetadata(context, keys.map(itemById));
+          },
           fileIn: actions.fileIn,
           fileInNewCollection: actions.fileInNewCollection,
           addTag: actions.addTag,
@@ -354,7 +362,6 @@ export default function Workspace({
       onClearSearch={() => setSearch(defaultSearchSettings())}
     />
   );
-  const selectedKeys = table.getSelectedRowModel().rows.map((row) => row.id);
   const bulk = bulkActions(context, selectedKeys);
   const selectionBar = selectedKeys.length > 0 && (
     <SelectionBar

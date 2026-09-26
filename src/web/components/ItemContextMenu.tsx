@@ -8,6 +8,7 @@ export type ItemCommands = {
   open: () => void;
   openInBrowser: () => void;
   retrieveMetadata: () => void;
+  guessMetadata: () => void;
   fileIn: (collectionId: string) => void;
   fileInNewCollection: () => void;
   addTag: () => void;
@@ -75,6 +76,7 @@ export default function ItemContextMenu({
       <Item onSelect={commands.addTag}>Add Tag…</Item>
       <ContextMenu.Separator className={SEPARATOR} />
       <Item onSelect={commands.retrieveMetadata}>Retrieve Metadata</Item>
+      <Item onSelect={commands.guessMetadata}>Guess Metadata</Item>
       <Item onSelect={commands.send}>Send to Zotero</Item>
       <Submenu label="Copy Link">
         {sourcePage !== null && <Item onSelect={() => commands.copy(sourcePage)}>Source Page</Item>}
