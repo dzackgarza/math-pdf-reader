@@ -59,6 +59,7 @@ const pdfs: Record<string, Pdf> = {
     gzip: true,
   },
   "/once/ticket.pdf": { ...inline(servedAt("/once/ticket.pdf", problemSet)), singleUse: true },
+  "/notes/typed.pdf": inline(servedAt("/notes/typed.pdf", lectureNotes)),
 };
 
 const redirects: Record<string, string> = {

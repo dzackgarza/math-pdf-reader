@@ -589,6 +589,25 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     }
   });
 
+  // Firefox keeps its start page in the tab's session history, so the tab holds an entry
+  // before the PDF's; the tab was still opened for the PDF alone. In Chrome a top-level PDF
+  // becomes a download and the tab never leaves its page.
+  test.if(engine === "firefox")(
+    "a PDF URL entered in a tab showing the browser's start page is captured, and that tab closes",
+    async () => {
+      // The site sets its session cookie on its pages; its PDFs refuse requests without it.
+      await page.goto(`${site.origin}/teaching.html`);
+      const captures = await subscribeToCaptures(bucket.origin);
+      const tab = await browser.newPage();
+      await tab.goto("about:home");
+      await tab.goto(`${site.origin}/notes/typed.pdf`);
+      expect(await captures.next()).toBe(`${bucket.origin}/read/typed`);
+      while (!(await tabGone(tab))) {
+        await Bun.sleep(50);
+      }
+    },
+  );
+
   test("two sub-frames below the minimum frame size are both handed back to the browser's viewer", async () => {
     const before = bucket.files();
     await page.goto(`${site.origin}/frames-small-pair.html`);
