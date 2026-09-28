@@ -11,16 +11,20 @@ The roadmap's Decision Log records this decision (2026-09-28).
 
 Tasks:
 
-1. Expand the local write API so that it owns finding metadata for a relatively arbitrary
-   source ([zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31)).
-   It accepts an item as a URL and applies its own heuristics:
+1. Expand the local write API so that it owns finding metadata for a relatively arbitrary source ([zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31)). It accepts an item as a URL and applies its own heuristics:
+
    - Zotero's web translators on the URL;
+
    - scraping of page metadata (`citation_*`, Dublin Core) and of the PDF itself;
+
    - discovery of a DOI, ISBN, arXiv ID or other identifier, then lookup by that identifier;
+
    - BibTeX that the source publishes, when it has some;
-   - searches of other metadata services that the API knows about (Crossref, OpenAlex,
-     zbMATH Open, MathSciNet, Open Library, arXiv).
+
+   - searches of other metadata services that the API knows about (Crossref, OpenAlex, zbMATH Open, MathSciNet, Open Library, arXiv).
+
 2. Change "Send to Zotero" to call that operation with the item's URL.
+
 3. Delete the resolver plugins, `manuscript_bibtex` and the BibTeX send path from this app.
 
 Today the app does this work itself:
