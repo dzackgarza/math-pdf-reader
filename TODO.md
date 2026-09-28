@@ -57,7 +57,6 @@ The most serious findings were checked against the code; the rest were confirmed
    The later PDF, its notes and its Markdown attach to the first paper, and no item is made for the later paper.
    The bucket then marks the later item as sent, so it leaves the library.
 
-
 ### Lower severity
 
 | Bug | Location |
