@@ -15,10 +15,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
@@ -376,6 +377,39 @@ describe("library window", () => {
     expect((await organization()).items.notes).toBeUndefined();
   });
 
+  test("an item deleted elsewhere while its row menu is open closes the menu and leaves the library", async () => {
+    const form = new FormData();
+    const bytes = new Uint8Array([
+      ...fixture("problem-set.pdf"),
+      ...new TextEncoder().encode("% deleted while its menu is open\n"),
+    ]);
+    form.set("pdf", new File([bytes], "menu-open.pdf"));
+    form.set("pdf_url", published("/~author/menu-open.pdf"));
+    form.set("source_url", published("/~author/teaching.html"));
+    form.set("title_hint", "Deleted while its menu is open");
+    const response = await fetch(`${bucket.origin}/capture-bytes`, {
+      method: "POST",
+      body: form,
+    });
+    expect(response.status).toBe(200);
+    const { key } = CaptureResponseSchema.parse(await response.json());
+    await openLibrary();
+    await page.click(row(key), { button: "right" });
+    await menuItem("Guess Metadata");
+
+    const deleted = await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+    expect(deleted.ok).toBe(true);
+    await page.waitForFunction(
+      (selector) => document.querySelector(selector) === null,
+      {},
+      row(key),
+    );
+
+    expect(await page.$("::-p-text(The library failed to render)")).toBeNull();
+    expect(await page.$('[role="menu"]')).toBeNull();
+    expect(await rowKeys()).toContain("lattices");
+  });
+
   test("Ctrl+F searches the table, Ctrl+P goes to an item by fuzzy title, Ctrl+Shift+P runs a command", async () => {
     await openLibrary();
     await page.keyboard.down("Control");
@@ -407,6 +441,26 @@ describe("library window", () => {
     await shot("palette-commands");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => location.hash === "#/unfiled");
+  });
+
+  test("Delete and Enter on a focused button act on that button, not on the selected PDF", async () => {
+    await openLibrary();
+    await page.click(row("lattices"));
+    await page.waitForSelector(`${row("lattices")}[aria-selected="true"]`);
+    const tabsBefore = await openTabKeys();
+    const unfiled = 'button[aria-label="Unfiled"]';
+    await page.focus(unfiled);
+
+    await page.keyboard.press("Delete");
+    expect(await page.$('[role="alertdialog"], [role="dialog"]')).toBeNull();
+    await page.keyboard.press("Enter");
+    expect(await page.$eval(unfiled, (button) => button.getAttribute("aria-pressed"))).toBe(
+      "true",
+    );
+    expect(await openTabKeys()).toEqual(tabsBefore);
+
+    await page.keyboard.press("Enter");
+    await page.waitForSelector(`${unfiled}[aria-pressed="false"]`);
   });
 
   test("reader back and forward walk the positions visited in the PDF and stay in it; on its own, the reader's Library returns to the view the library last showed", async () => {
@@ -495,6 +549,8 @@ describe("library window", () => {
     });
     expect(new URL(page.url()).pathname).toBe("/");
     await page.waitForFunction(pdfLoadedIn('iframe[data-reader-key="problems"]'));
+    // The Library tab has focus and answers Enter itself; the row takes it back.
+    await page.click(row("problems"));
     await page.keyboard.press("Enter");
     const problems = await shownReader("problems");
     expect(await openTabKeys()).toEqual(["problems"]);
@@ -941,6 +997,51 @@ describe("library window", () => {
     await page.waitForFunction(() => !document.body.textContent?.includes("selected"));
   });
 
+  test("Guess Metadata in the menu of a row outside the checked rows guesses that row; in a checked row, every checked row", async () => {
+    // The browser answers each guess itself, so no model provider is reached; the keys guessed
+    // are the ones the library asked for.
+    const guessed: string[] = [];
+    const answerGuess = (request: HTTPRequest) => {
+      const guess = /^\/api\/items\/([^/]+)\/guess-metadata$/.exec(new URL(request.url()).pathname);
+      if (guess === null) {
+        void request.continue();
+        return;
+      }
+      guessed.push(decodeURIComponent(guess[1] ?? ""));
+      void request.respond({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { kind: "metadata_guess_failed", message: "no model answers in this test" },
+        }),
+      });
+    };
+    const guessFrom = async (key: string) => {
+      guessed.length = 0;
+      await page.click(row(key), { button: "right" });
+      await (await menuItem("Guess Metadata")).click();
+      // The action reports once every guess it asked for has answered.
+      await shows('[role="alert"]', "no model answers in this test");
+      await (await byRole("button", "Dismiss")).click();
+      return [...guessed];
+    };
+    await openLibrary();
+    await page.setRequestInterception(true);
+    page.on("request", answerGuess);
+    try {
+      for (const key of ["problems", "lattices"]) {
+        await page.click(`${row(key)} input[type="checkbox"]`);
+      }
+      await page.waitForSelector("::-p-text(2 selected)");
+
+      expect(await guessFrom("reading")).toEqual(["reading"]);
+      expect((await guessFrom("problems")).sort()).toEqual(["lattices", "problems"]);
+    } finally {
+      page.off("request", answerGuess);
+      await page.setRequestInterception(false);
+    }
+  });
+
   test("Import URL and Add Folder in the toolbar add PDFs to the library", async () => {
     served.set(
       "/~author/imported.pdf",
@@ -1179,6 +1280,55 @@ describe("library window", () => {
     await page.keyboard.press("Enter");
     await shows('[role="alert"] strong', "The bucket did not answer");
     await shot("action-bucket-down");
+  });
+
+  test("an extraction past its time limit shows the limit and that nothing was written", async () => {
+    const config = loadAppConfig(CONFIG_PATH);
+    const manifest = join(
+      mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-manifest-")),
+      "extractions.json",
+    );
+    writeFileSync(
+      manifest,
+      JSON.stringify({
+        plugins: [
+          {
+            id: "hang",
+            name: "Slow extractor",
+            command: ["sh", join(fixtures, "plugins/extractor.sh"), "hang", "$pdf", "$output"],
+            accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+          },
+        ],
+      }),
+    );
+    const slow = await serveBucket({
+      root: mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-slow-")),
+      zoteroUrl: config.zotero.url,
+      extractionsManifest: manifest,
+      resolversManifest: RESOLVERS_MANIFEST,
+      config: { ...config, plugins: { ...config.plugins, extraction_timeout_seconds: 1 } },
+    });
+    try {
+      const form = new FormData();
+      form.set("pdf", new File([fixture("problem-set.pdf")], "problems.pdf"));
+      form.set("pdf_url", published("/~author/problems.pdf"));
+      form.set("source_url", published("/~author/teaching.html"));
+      form.set("title_hint", "Problem set on quadratic forms");
+      expect((await slow.request("/capture-bytes", { method: "POST", body: form })).status).toBe(
+        200,
+      );
+      await page.goto(`${slow.origin}/`);
+      await page.click(row("problems"));
+      await page.click('button[aria-label="Run extraction"]');
+
+      await shows(
+        "aside [role='alert']",
+        "Slow extractor ran past its 1 s limit and was stopped; nothing was written",
+      );
+      await shot("extraction-timed-out");
+    } finally {
+      await slow.stop();
+    }
   });
 
   test("the library at a narrow width", async () => {
