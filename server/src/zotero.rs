@@ -1,8 +1,9 @@
 //! The Zotero local write API: the endpoints the local-write-api addon adds to Zotero's own
-//! HTTP server (`POST /write` with an `operation`, `POST /attach`). The send action is the only
-//! caller that writes to Zotero; Retrieve metadata only asks it to resolve a URL, which saves
-//! nothing.
-use std::time::Duration;
+//! HTTP server (`GET /version`, its health check; `POST /write` with an `operation`;
+//! `POST /attach`). The send action is the only caller that writes to Zotero; Retrieve metadata
+//! only asks it to resolve a URL, which saves nothing. Every action checks Zotero's health
+//! first, then waits for Zotero's answer as long as Zotero takes, as the Zotero Connector does.
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use base64::Engine;
@@ -10,16 +11,23 @@ use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::sync::watch;
 use url::Url;
 
-use crate::contract::{ImportMethod, RetrieveMetadataOutcomeUnidentifiedAttemptsItem};
+use crate::config::ZOTERO_CHECK_INTERVAL;
+use crate::contract::{
+    ApiErrorErrorKind, ImportMethod, NonEmpty, RetrieveMetadataOutcomeUnidentifiedAttemptsItem,
+    ZoteroHealth,
+};
 use crate::error::{AppError, AppResult};
 
-/// Zotero answers on loopback, so a connection that takes longer is a Zotero that is down.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-/// An import from a URL runs Zotero's translators and metadata searches against remote sites,
-/// and an attach carries a whole PDF; either may take this long before Zotero counts as stalled.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
+/// What `GET /version` answers when the write API runs.
+#[derive(Deserialize)]
+struct Version {
+    healthy: bool,
+    version: NonEmpty,
+    message: String,
+}
 
 #[derive(Deserialize)]
 struct Refusal {
@@ -163,20 +171,97 @@ fn parsed<T: DeserializeOwned>(what: &str, answer: &[u8]) -> AppResult<T> {
     })
 }
 
+fn unavailable(message: String) -> ZoteroHealth {
+    ZoteroHealth::Unavailable {
+        message: message.try_into().expect("the message names what failed"),
+    }
+}
+
 pub struct ZoteroWriteApi {
     base: Url,
     client: reqwest::Client,
+    health: watch::Sender<ZoteroHealth>,
 }
 
 impl ZoteroWriteApi {
-    pub fn new(base_url: &str) -> Self {
-        Self {
+    /// Must run on a tokio runtime: the health check repeats on a task started here.
+    pub fn start(base_url: &str) -> Arc<Self> {
+        let (health, _) = watch::channel(ZoteroHealth::Checking);
+        let zotero = Arc::new(Self {
             base: Url::parse(base_url).expect("the configured Zotero URL is a URL"),
-            client: reqwest::Client::builder()
-                .connect_timeout(CONNECT_TIMEOUT)
-                .timeout(REQUEST_TIMEOUT)
-                .build()
-                .expect("a reqwest client with timeouts builds"),
+            client: reqwest::Client::new(),
+            health,
+        });
+        let checking = Arc::clone(&zotero);
+        tokio::spawn(async move {
+            loop {
+                checking.check().await;
+                tokio::time::sleep(ZOTERO_CHECK_INTERVAL).await;
+            }
+        });
+        zotero
+    }
+
+    pub fn subscribe(&self) -> watch::Receiver<ZoteroHealth> {
+        self.health.subscribe()
+    }
+
+    /// Asks the write API's health check whether Zotero can take a request, and publishes the
+    /// answer when it differs from the last one.
+    pub async fn check(&self) -> ZoteroHealth {
+        let health = match self.client.get(self.url("/version")).send().await {
+            Err(error) if error.is_connect() => {
+                unavailable("Zotero is not running: start Zotero".to_string())
+            }
+            Err(error) => unavailable(self.unanswered(error).message().to_string()),
+            Ok(response) => self.health_of(response).await,
+        };
+        self.health.send_if_modified(|published| {
+            let changed = *published != health;
+            *published = health.clone();
+            changed
+        });
+        health
+    }
+
+    async fn health_of(&self, response: Response) -> ZoteroHealth {
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            return unavailable("Zotero lacks the local write API addon".to_string());
+        }
+        let answer = match response.bytes().await {
+            Ok(answer) => answer,
+            Err(error) => return unavailable(self.unanswered(error).message().to_string()),
+        };
+        if !status.is_success() {
+            return unavailable(
+                refused("its health check", status, &answer)
+                    .message()
+                    .to_string(),
+            );
+        }
+        match parsed::<Version>("its health check", &answer) {
+            Err(error) => unavailable(error.message().to_string()),
+            Ok(Version {
+                healthy: true,
+                version,
+                ..
+            }) => ZoteroHealth::Ready { version },
+            Ok(Version { message, .. }) => unavailable(format!(
+                "Zotero's local write API reports it is not healthy: {message}"
+            )),
+        }
+    }
+
+    /// Fails with `zotero_unavailable` unless the health check finds Zotero ready.
+    pub async fn require_ready(&self) -> AppResult<()> {
+        match self.check().await {
+            ZoteroHealth::Unavailable { message } => Err(AppError::api(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorErrorKind::ZoteroUnavailable,
+                message.to_string(),
+            )),
+            ZoteroHealth::Ready { .. } | ZoteroHealth::Checking => Ok(()),
         }
     }
 

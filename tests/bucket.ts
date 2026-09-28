@@ -4,6 +4,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { z } from "zod";
 import { type AppConfig, CONFIG_PATH, REPO_ROOT } from "../src/contract/config";
 
 // Built once per test run by tests/preload.ts.
@@ -92,4 +93,50 @@ export function closedPortUrl(): string {
   const url = server.url.origin;
   server.stop(true);
   return url;
+}
+
+// The bucket's server-sent events (`/api/events`), subscribed before the call returns: `next`
+// answers the first event named NAME not yet taken, parsed by SCHEMA, and keeps the other events
+// for later calls.
+export async function subscribeEvents(app: Bucket) {
+  const response = await app.request("/api/events");
+  if (response.body === null) {
+    throw new Error("the event stream response has no body");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const received: { name: string; data: string }[] = [];
+  let buffered = "";
+  return {
+    async next<T>(name: string, schema: z.ZodType<T>): Promise<T> {
+      for (;;) {
+        const index = received.findIndex((event) => event.name === name);
+        if (index !== -1) {
+          const [event] = received.splice(index, 1);
+          return schema.parse(JSON.parse(event.data));
+        }
+        const chunk = await reader.read();
+        if (chunk.done) {
+          throw new Error(`the event stream ended before a ${name} event`);
+        }
+        buffered += decoder.decode(chunk.value, { stream: true });
+        const blocks = buffered.split("\n\n");
+        buffered = blocks.pop() ?? "";
+        for (const block of blocks) {
+          const fields = new Map(
+            block.split("\n").map((line) => {
+              const colon = line.indexOf(":");
+              return [line.slice(0, colon), line.slice(colon + 1).trimStart()] as const;
+            }),
+          );
+          const event = fields.get("event");
+          const data = fields.get("data");
+          if (event !== undefined && data !== undefined) {
+            received.push({ name: event, data });
+          }
+        }
+      }
+    },
+    close: () => reader.cancel(),
+  };
 }

@@ -5,6 +5,7 @@ import type { Table } from "@tanstack/react-table";
 import { AlertTriangle } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { MetadataEventSchema } from "../contract/capture";
 import type { AdvancedSearchSettings, BucketItem, LibraryPayload } from "../contract/library";
 import type { ActionFailure } from "./actionFailure";
 import { type ColumnLayout, type LibraryLayout, writeLibraryLayout } from "./columnModel";
@@ -28,6 +29,7 @@ import SmartCollectionDialog, {
 import StatusBar from "./components/StatusBar";
 import Toast, { type ToastMessage } from "./components/Toast";
 import TopBar from "./components/TopBar";
+import { onBucketEvent } from "./bucketEvents";
 import { chooseFolder, openInBrowser, showInFolder } from "./desktop";
 import {
   type ActionContext,
@@ -40,6 +42,7 @@ import {
   guessMetadata,
   importUrl,
   itemMenuActions,
+  metadataShortfall,
   organizationActions,
   rebuildAllLost,
   rebuildLost,
@@ -250,6 +253,19 @@ export default function Workspace({
     }),
     [api, tabs.closeReader, navigate, fail],
   );
+
+  // A new PDF's Retrieve metadata runs after its capture or import answered: the library shows
+  // the title it gave, or says what it could not do (start Zotero, no item identified).
+  useEffect(() => {
+    return onBucketEvent("metadata", (event) => {
+      const { key, outcome } = MetadataEventSchema.parse(JSON.parse(event.data));
+      api.refresh();
+      const shortfall = metadataShortfall(outcome);
+      if (shortfall !== null) {
+        context.report(`Retrieve metadata for ${key}: ${shortfall}`);
+      }
+    });
+  }, [api, context]);
 
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
   const items = useMemo(

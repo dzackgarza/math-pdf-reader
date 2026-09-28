@@ -2,7 +2,7 @@
 // bytes, the post to the bucket, the link-origin record and the exemptions, and the replies it
 // sends back. The sender's tab and frame come from the runtime, never from the message.
 import { z } from "zod";
-import { type CaptureResponse, CaptureResponseSchema } from "../contract/capture";
+import { CaptureResponseSchema } from "../contract/capture";
 
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
 
@@ -60,14 +60,3 @@ export const DoneReplySchema = z.discriminatedUnion("kind", [
 ]);
 
 export type DoneReply = z.infer<typeof DoneReplySchema>;
-
-// Why a stored capture has no retrieved metadata, or null when nothing went wrong.
-export function metadataFailure(response: CaptureResponse): string | null {
-  const { metadata } = response;
-  switch (metadata?.status) {
-    case "error":
-      return metadata.message;
-    default:
-      return null;
-  }
-}

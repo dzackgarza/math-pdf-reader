@@ -1,7 +1,7 @@
 // The send action's own rules at the bucket's HTTP boundary, and the guard in front of every
 // state-changing route. Zotero is a closed port here (or a replay of Zotero without the write API), so
-// any request that reaches for Zotero fails loudly instead of writing to a real library; the
-// Zotero write path itself is proved by the evidence run in docs/m3.md.
+// the health check before any request to Zotero fails loudly instead of writing to a real
+// library; the Zotero write path itself is proved by the evidence run in docs/m3.md.
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -75,14 +75,17 @@ async function errorKind(response: Response): Promise<string> {
   return ApiErrorSchema.parse(await response.json()).error.kind;
 }
 
-test("a send while Zotero does not answer fails visibly and records no Zotero item", async () => {
+test("a send while Zotero is not running says to start Zotero and records no Zotero item", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
 
   const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
 
-  expect(response.status).toBe(502);
-  expect(await errorKind(response)).toBe("zotero_failed");
+  expect(response.status).toBe(503);
+  expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
+    kind: "zotero_unavailable",
+    message: "Zotero is not running: start Zotero",
+  });
   expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
 });
 
@@ -93,7 +96,7 @@ test("a second send of an item already in Zotero is refused without contacting Z
 
   const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
 
-  // A request that reached the closed Zotero port would answer 502.
+  // A send that reached for the closed Zotero port would answer 503.
   expect(response.status).toBe(409);
   expect(await errorKind(response)).toBe("already_sent");
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
@@ -116,9 +119,9 @@ test("an extraction made after the send is owed to Zotero, and a later send goes
   });
   const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
 
-  // Not refused: the send tried to attach the Markdown to ABCD2345, and Zotero was down.
-  expect(response.status).toBe(502);
-  expect(await errorKind(response)).toBe("zotero_failed");
+  // Not refused: the send went to attach the Markdown to ABCD2345, and Zotero was down.
+  expect(response.status).toBe(503);
+  expect(await errorKind(response)).toBe("zotero_unavailable");
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
     record: SENT,
@@ -144,9 +147,9 @@ test("a note added after the send is owed to Zotero, and a later send goes to ad
   });
   const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
 
-  // Not refused: the send tried to add the note to ABCD2345, and Zotero was down.
-  expect(response.status).toBe(502);
-  expect(await errorKind(response)).toBe("zotero_failed");
+  // Not refused: the send went to add the note to ABCD2345, and Zotero was down.
+  expect(response.status).toBe(503);
+  expect(await errorKind(response)).toBe("zotero_unavailable");
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
     record: SENT,
@@ -168,7 +171,7 @@ function zoteroWithoutWriteApi(): string {
   return server.url.origin;
 }
 
-test("a send to a Zotero without the write API fails as a Zotero failure", async () => {
+test("a send to a Zotero without the write API says the addon is missing", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-"));
   const app = await serveBucket({
     root,
@@ -180,8 +183,11 @@ test("a send to a Zotero without the write API fails as a Zotero failure", async
 
   const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
 
-  expect(response.status).toBe(502);
-  expect(await errorKind(response)).toBe("zotero_failed");
+  expect(response.status).toBe(503);
+  expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
+    kind: "zotero_unavailable",
+    message: "Zotero lacks the local write API addon",
+  });
   expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
 });
 

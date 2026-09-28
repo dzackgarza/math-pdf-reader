@@ -128,7 +128,6 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   expect(ImportUrlResponseSchema.parse(await direct.json())).toEqual({
     key: "lattices",
     existing: false,
-    metadata: expect.objectContaining({ status: "error" }),
   });
   const fromPage = ImportUrlResponseSchema.parse(
     await (await post("/api/import-url", { url: at("/abs/2401.00001") })).json(),
@@ -136,7 +135,6 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   expect(fromPage).toEqual({
     key: "2401.00001",
     existing: false,
-    metadata: expect.objectContaining({ status: "error" }),
   });
 
   const byKey = new Map((await items()).map((item) => [item.id, item]));
@@ -154,7 +152,6 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   expect(ImportUrlResponseSchema.parse(await again.json())).toEqual({
     key: "lattices",
     existing: true,
-    metadata: null,
   });
   const noPdf = await post("/api/import-url", { url: at("/blog.html") });
   expect(noPdf.status).toBe(422);
@@ -244,14 +241,12 @@ test("Add Folder stores every PDF in the folder with file URLs as provenance, on
       file: "Lectures on Lattices.pdf",
       status: "stored",
       key: "Lectures on Lattices",
-      metadata: expect.objectContaining({ status: "error" }),
     },
     { file: "paywall.pdf", status: "not_a_pdf" },
     {
       file: "problem-set.pdf",
       status: "stored",
       key: "problem-set",
-      metadata: expect.objectContaining({ status: "error" }),
     },
   ]);
 

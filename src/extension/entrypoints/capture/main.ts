@@ -16,7 +16,6 @@ import {
   DoneReplySchema,
   type Failed,
   failed,
-  metadataFailure,
   type RuntimeMessage,
 } from "../../messages";
 
@@ -87,10 +86,6 @@ function renderStoredInFrame(response: CaptureResponse): void {
   const reader = link(response.reader_url, response.provenance.title_hint);
   reader.target = "_blank";
   element("heading").replaceChildren(reader);
-  const failure = metadataFailure(response);
-  if (failure !== null) {
-    element("details").replaceChildren(...detail("Metadata", failure));
-  }
 }
 
 function renderFailure(pdfUrl: URL, error: Failed["error"], heading: string): void {

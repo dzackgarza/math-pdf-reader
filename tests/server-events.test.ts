@@ -2,34 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CaptureResponseSchema, OpenReaderSchema } from "../src/contract/capture";
+import {
+  CaptureResponseSchema,
+  OpenReaderSchema,
+  ZoteroHealthSchema,
+} from "../src/contract/capture";
 import { LibraryPayloadSchema } from "../src/contract/library";
-import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
-
-// Server-sent events off a response body, one parsed `open-reader` payload per call.
-function openReaderEvents(response: Response) {
-  if (response.body === null) {
-    throw new Error("the event stream response has no body");
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffered = "";
-  return {
-    async next() {
-      for (;;) {
-        const match = /event: open-reader\ndata: (.*)\n\n/.exec(buffered);
-        if (match !== null) {
-          buffered = buffered.slice(match.index + match[0].length);
-          return OpenReaderSchema.parse(JSON.parse(match[1]));
-        }
-        const chunk = await reader.read();
-        expect(chunk.done).toBe(false);
-        buffered += decoder.decode(chunk.value);
-      }
-    },
-    close: () => reader.cancel(),
-  };
-}
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket, subscribeEvents } from "./bucket";
 
 test("every capture, new or existing, broadcasts its reader URL and stored title to event subscribers", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-events-"));
@@ -38,9 +17,8 @@ test("every capture, new or existing, broadcasts its reader URL and stored title
     zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
   });
-  const subscription = await app.request(`/api/events`);
-  expect(subscription.headers.get("content-type")).toStartWith("text/event-stream");
-  const events = openReaderEvents(subscription);
+  const events = await subscribeEvents(app);
+  const openReader = () => events.next("open-reader", OpenReaderSchema);
 
   const capture = async () => {
     const form = new FormData();
@@ -55,7 +33,7 @@ test("every capture, new or existing, broadcasts its reader URL and stored title
 
   const first = await capture();
   expect(first.existing).toBe(false);
-  const announced = await events.next();
+  const announced = await openReader();
   // The title the library shows for the item, whichever source gave it.
   const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
   const stored = library.items.find((item) => item.id === "problem-set");
@@ -66,10 +44,45 @@ test("every capture, new or existing, broadcasts its reader URL and stored title
 
   const second = await capture();
   expect(second.existing).toBe(true);
-  expect(await events.next()).toEqual({
+  expect(await openReader()).toEqual({
     reader_url: `${app.origin}/read/problem-set`,
     title: stored.title,
   });
 
+  await events.close();
+});
+
+test("the event stream reports Zotero's health: not running while its port is closed, then ready with the write API's version", async () => {
+  const zoteroUrl = closedPortUrl();
+  const app = await serveBucket({
+    root: mkdtempSync(join(tmpdir(), "pdf-bucket-events-")),
+    zoteroUrl,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
+  const events = await subscribeEvents(app);
+  const zotero = () => events.next("zotero", ZoteroHealthSchema);
+
+  let health = await zotero();
+  while (health.status === "checking") {
+    health = await zotero();
+  }
+  expect(health).toEqual({
+    status: "unavailable",
+    message: "Zotero is not running: start Zotero",
+  });
+
+  const { hostname, port } = new URL(zoteroUrl);
+  const version = readFileSync(join(import.meta.dir, "fixtures/zotero/version.json"), "utf8");
+  const started = Bun.serve({
+    hostname,
+    port: Number(port),
+    fetch: (request) =>
+      new URL(request.url).pathname === "/version"
+        ? new Response(version, { headers: { "Content-Type": "application/json" } })
+        : new Response("not the health check", { status: 404 }),
+  });
+  expect(await zotero()).toEqual({ status: "ready", version: "3.4.0" });
+
+  started.stop(true);
   await events.close();
 });

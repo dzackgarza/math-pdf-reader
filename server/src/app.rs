@@ -2,6 +2,7 @@
 //! stream, the API route groups, the PDF.js viewer and the library UI bundle.
 use std::io::ErrorKind;
 use std::path::Path as FsPath;
+use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
@@ -22,9 +23,8 @@ use crate::config::VERSION;
 use crate::contract::{
     ApiErrorErrorKind, CaptureDownloadRequest, CaptureResponse, FolderImportRequest,
     FolderImportResponse, FolderImportResponseFilesItem, ImportUrlRequest, ImportUrlResponse,
-    NonEmpty, OpenReader, RetrieveMetadataOutcome, ServerStatus, ServerStatusCapabilities,
-    ServerStatusService, ServerStatusServiceName, ServerStatusStorage, StoredItemTitle,
-    TitleSource,
+    MetadataEvent, NonEmpty, OpenReader, ServerStatus, ServerStatusCapabilities,
+    ServerStatusService, ServerStatusServiceName, ServerStatusStorage,
 };
 use crate::error::{AppError, AppResult};
 use crate::events;
@@ -48,15 +48,11 @@ pub fn origin(headers: &HeaderMap) -> AppResult<String> {
     Ok(format!("http://{host}"))
 }
 
-/// Stores an upload that came in a request to ORIGIN. A new item then takes its title from
-/// Retrieve metadata when Zotero resolves its URL; whatever the outcome, the PDF stays stored,
-/// and the outcome is answered beside it (None for a PDF already stored).
-async fn store(
-    state: &Shared,
-    origin: &str,
-    upload: &Upload,
-) -> AppResult<(Captured, Option<RetrieveMetadataOutcome>)> {
-    let mut captured = state
+/// Stores an upload that came in a request to ORIGIN. A new item then runs Retrieve metadata in
+/// the background, as long as Zotero takes, and its outcome is a `metadata` event; the PDF stays
+/// stored whatever the outcome.
+async fn store(state: &Shared, origin: &str, upload: &Upload) -> AppResult<Captured> {
+    let captured = state
         .store
         .capture(upload, &state.held_keys().await?)
         .await?;
@@ -64,17 +60,20 @@ async fn store(
         state.organizations.claim(&captured.item.key).await?;
     }
     state.stored();
-    if captured.existing {
-        return Ok((captured, None));
+    if !captured.existing {
+        let (state, origin, key) = (
+            Arc::clone(state),
+            origin.to_string(),
+            captured.item.key.clone(),
+        );
+        tokio::spawn(async move {
+            let outcome = retrieve_metadata(&state, &origin, &key).await;
+            state
+                .events
+                .publish_metadata(MetadataEvent { key, outcome });
+        });
     }
-    let outcome = retrieve_metadata(state, origin, &captured.item.key).await;
-    if let RetrieveMetadataOutcome::Resolved { title, .. } = &outcome {
-        captured.item.title = StoredItemTitle {
-            text: title.clone(),
-            source: TitleSource::Resolver,
-        };
-    }
-    Ok((captured, Some(outcome)))
+    Ok(captured)
 }
 
 fn web_url(value: &str) -> bool {
@@ -206,7 +205,7 @@ async fn capture(
     upload: &Upload,
 ) -> AppResult<Json<CaptureResponse>> {
     let origin = origin(headers)?;
-    let (captured, metadata) = store(state, &origin, upload).await?;
+    let captured = store(state, &origin, upload).await?;
     let key = captured.item.key.to_string();
     let response = CaptureResponse {
         existing: captured.existing,
@@ -218,7 +217,6 @@ async fn capture(
         pdf_url: format!("{origin}{}", pdf_url_path(&key)),
         provenance: captured.item.provenance,
         key: captured.item.key,
-        metadata,
     };
     state.events.publish_open_reader(OpenReader {
         reader_url: response.reader_url.clone(),
@@ -240,11 +238,10 @@ async fn import_url(
         )));
     }
     let upload = find_pdf_at(&request.url, &state.config.app.rebuild, state.store.root()).await?;
-    let (captured, metadata) = store(&state, &origin(&headers)?, &upload).await?;
+    let captured = store(&state, &origin(&headers)?, &upload).await?;
     Ok(Json(ImportUrlResponse {
         key: captured.item.key,
         existing: captured.existing,
-        metadata,
     }))
 }
 
@@ -271,14 +268,13 @@ async fn import_one(
         }
     };
     match store(state, origin, &upload).await {
-        Ok((captured, None)) => FolderImportResponseFilesItem::Existing {
+        Ok(captured) if captured.existing => FolderImportResponseFilesItem::Existing {
             file,
             key: captured.item.key,
         },
-        Ok((captured, Some(metadata))) => FolderImportResponseFilesItem::Stored {
+        Ok(captured) => FolderImportResponseFilesItem::Stored {
             file,
             key: captured.item.key,
-            metadata,
         },
         Err(error) => FolderImportResponseFilesItem::Failed {
             file,

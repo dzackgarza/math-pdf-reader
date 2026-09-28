@@ -28,9 +28,10 @@ export const ImportMethodSchema = z.enum([
 
 // The outcome of "Retrieve metadata", which asks the Zotero local write API to resolve the
 // item's URL and saves nothing in Zotero: the method that identified the source and the title
-// it gave; each method's attempt when none identified it; or a retrieval that failed (Zotero
-// down, an answer the bucket cannot use, a store failure). Every outcome but `resolved` leaves
-// the item's title as it was.
+// it gave; each method's attempt when none identified it; Zotero not running or without the
+// write API, found by its health check before the request; or a retrieval that failed (a Zotero
+// refusal, an answer the bucket cannot use, a store failure). Every outcome but `resolved`
+// leaves the item's title as it was.
 export const RetrieveMetadataOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("resolved"),
@@ -47,11 +48,12 @@ export const RetrieveMetadataOutcomeSchema = z.discriminatedUnion("status", [
       }),
     ),
   }),
+  z.strictObject({ status: z.literal("zotero_unavailable"), message: NonEmptySchema }),
   z.strictObject({ status: z.literal("error"), message: NonEmptySchema }),
 ]);
 
-// `metadata` is the outcome of "Retrieve metadata" on a newly stored PDF, null when the capture
-// found the PDF already stored. A PDF is stored whatever that outcome is.
+// The answer to a capture, sent as soon as the PDF is stored. A newly stored PDF then runs
+// "Retrieve metadata" in the background; its outcome is a `metadata` event.
 export const CaptureResponseSchema = z.strictObject({
   key: NonEmptySchema,
   existing: z.boolean(),
@@ -59,7 +61,6 @@ export const CaptureResponseSchema = z.strictObject({
   reader_url: z.url(),
   pdf_url: z.url(),
   provenance: ProvenanceSchema,
-  metadata: RetrieveMetadataOutcomeSchema.nullable(),
 });
 
 export type CaptureResponse = z.infer<typeof CaptureResponseSchema>;
@@ -82,6 +83,23 @@ export type CaptureDownloadRequest = z.infer<typeof CaptureDownloadRequestSchema
 // opens the item's reader in a tab under the item's title, and the desktop window comes to the
 // front.
 export const OpenReaderSchema = z.strictObject({ reader_url: z.url(), title: NonEmptySchema });
+
+// `GET /api/events` sends one `metadata` event per "Retrieve metadata" a newly stored PDF runs
+// in the background (capture, Import URL, Add Folder), with the item's key and the outcome.
+export const MetadataEventSchema = z.strictObject({
+  key: NonEmptySchema,
+  outcome: RetrieveMetadataOutcomeSchema,
+});
+
+// Whether Zotero can take a request, from the local write API's health check (`GET /version`):
+// not checked yet; ready, with the write API's version; or unavailable, with what to do about
+// it. The server checks at a fixed interval and before every Zotero action. `GET /api/events`
+// sends a `zotero` event with each new state, and the current one first.
+export const ZoteroHealthSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("checking") }),
+  z.strictObject({ status: z.literal("ready"), version: NonEmptySchema }),
+  z.strictObject({ status: z.literal("unavailable"), message: NonEmptySchema }),
+]);
 
 export const SERVICE_NAME = "pdf-bucket";
 
@@ -119,4 +137,6 @@ export const ServerStatusSchema = z.strictObject({
 });
 
 export type IndexExportState = z.infer<typeof IndexExportStateSchema>;
+export type MetadataEvent = z.infer<typeof MetadataEventSchema>;
+export type ZoteroHealth = z.infer<typeof ZoteroHealthSchema>;
 export type ServerStatus = z.infer<typeof ServerStatusSchema>;

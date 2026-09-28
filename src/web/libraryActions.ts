@@ -17,6 +17,7 @@ import {
   type GuessMetadataResponse,
   GuessMetadataResponseSchema,
   ImportUrlResponseSchema,
+  type RetrieveMetadataOutcome,
   type ManualMetadataRequest,
   type Preferences,
   type RebuildOutcome,
@@ -254,6 +255,23 @@ function deleteItem(context: ActionContext, key: string): Promise<void> {
     .then(done);
 }
 
+// What a Retrieve metadata outcome could not do, or null when Zotero resolved the item.
+export function metadataShortfall(outcome: RetrieveMetadataOutcome): string | null {
+  switch (outcome.status) {
+    case "resolved":
+      return null;
+    case "unidentified": {
+      const tried = outcome.attempts.map(
+        (attempt) => `${attempt.method}: ${attempt.outcome} (${attempt.message})`,
+      );
+      return `Zotero identified no item. ${tried.join("; ")}`;
+    }
+    case "zotero_unavailable":
+    case "error":
+      return outcome.message;
+  }
+}
+
 // What the row context menu does to one item.
 export type ItemMenuActions = {
   retrieveMetadata: () => void;
@@ -277,14 +295,9 @@ export function itemMenuActions(
         context.api
           .call(RetrieveMetadataResponseSchema, "POST", `${itemPath(item.id)}/metadata`)
           .then(({ outcome }) => {
-            if (outcome.status === "unidentified") {
-              const tried = outcome.attempts.map(
-                (attempt) => `${attempt.method}: ${attempt.outcome} (${attempt.message})`,
-              );
-              context.report(`Zotero identified no item. ${tried.join("; ")}`);
-            }
-            if (outcome.status === "error") {
-              context.report(outcome.message);
+            const shortfall = metadataShortfall(outcome);
+            if (shortfall !== null) {
+              context.report(shortfall);
             }
           }),
       ),

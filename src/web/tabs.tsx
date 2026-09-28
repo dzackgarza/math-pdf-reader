@@ -2,11 +2,12 @@
 // which frames that PDF's reader page (server/templates/reader.html). Every tab stays loaded
 // while another is shown, so a PDF keeps its view and the library its view and selection.
 // Opening a PDF that has a tab shows that tab. A capture anywhere opens its PDF here too: the
-// bucket's `open-reader` event (server/src/events.rs).
+// bucket's `open-reader` event (server/src/events.rs); the title Retrieve metadata gives the PDF
+// afterwards (`metadata`) retitles its tab.
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { OpenReaderSchema } from "../contract/capture";
+import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
 import { onBucketEvent } from "./bucketEvents";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import { ReaderTabsContext } from "./readerTabs";
@@ -235,6 +236,15 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       ...previous,
       open: previous.open.map((tab) => (tab.key === key ? { ...tab, title } : tab)),
     }));
+
+  useEffect(() => {
+    return onBucketEvent("metadata", (event) => {
+      const { key, outcome } = MetadataEventSchema.parse(JSON.parse(event.data));
+      if (outcome.status === "resolved") {
+        retitle(key)(outcome.title);
+      }
+    });
+  }, []);
 
   return (
     <ReaderTabsContext.Provider

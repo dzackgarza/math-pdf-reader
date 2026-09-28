@@ -416,11 +416,10 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
 
 // Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF.
 export const ImportUrlRequestSchema = z.strictObject({ url: HttpUrlSchema });
-// `metadata` as in a capture: "Retrieve metadata" on a new PDF, null for one already stored.
+// A new PDF runs "Retrieve metadata" in the background, as a captured one does.
 export const ImportUrlResponseSchema = z.strictObject({
   key: NonEmptySchema,
   existing: z.boolean(),
-  metadata: RetrieveMetadataOutcomeSchema.nullable(),
 });
 
 // Add Folder: one outcome per file directly inside the folder whose name ends in `.pdf`, in
@@ -436,7 +435,6 @@ export const FolderImportResponseSchema = z.strictObject({
         file: NonEmptySchema,
         status: z.literal("stored"),
         key: NonEmptySchema,
-        metadata: RetrieveMetadataOutcomeSchema,
       }),
       z.strictObject({
         file: NonEmptySchema,
@@ -468,6 +466,9 @@ export const API_ERROR_KINDS = [
   "folder_check_failed",
   "metadata_guess_failed",
   "zotero_failed",
+  // Zotero's health check failed before a Zotero action: Zotero is not running, or it has no
+  // local write API.
+  "zotero_unavailable",
   "storage_check_failed",
   // The store could not do its work: a write failed, or its pikepdf command failed.
   "store_failed",

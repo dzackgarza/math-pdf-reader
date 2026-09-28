@@ -9,7 +9,7 @@
 // and the download keeps them. One mutex serializes every change, as in link-origin.ts.
 // A claim stays until its capture has an outcome. Chrome stops a service worker whose `fetch()`
 // response takes more than 30 seconds (developer.chrome.com, "The extension service worker
-// lifecycle"), and the bucket answers a capture only after its metadata lookup. So a claim whose
+// lifecycle"), and the bucket answers a capture only once the PDF is stored. So a claim whose
 // delivery began in a worker that stopped is delivered again when the next worker starts: the
 // bucket keeps identical bytes as one item and answers a repeat at once. A claim whose deliveries
 // were lost MAX_DELIVERIES times is handed on as lost, which the background shows as a failure.

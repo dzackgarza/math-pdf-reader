@@ -31,7 +31,7 @@ pub struct AppState {
     pub index: Arc<LibraryIndex>,
     pub organizations: Arc<OrganizationStore>,
     pub exporter: Arc<IndexExporter>,
-    pub zotero: ZoteroWriteApi,
+    pub zotero: Arc<ZoteroWriteApi>,
     pub events: Events,
     pub sessions: Arc<SessionStore>,
     /// Wakes the index exporter: every filing or session write, every PDF stored or removed.
@@ -46,7 +46,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Must run on a tokio runtime: the index exporter starts its task here.
+    /// Must run on a tokio runtime: the index exporter and the Zotero health check start their
+    /// tasks here.
     pub fn new(config: BucketConfig) -> Shared {
         let store = Store::configured(&config);
         let changed = Arc::new(Notify::new());
@@ -66,7 +67,7 @@ impl AppState {
             sessions,
             exporter,
             changed,
-            zotero: ZoteroWriteApi::new(&config.zotero_url),
+            zotero: ZoteroWriteApi::start(&config.zotero_url),
             events: Events::new(),
             downloads: Semaphore::new(concurrency(&config.app.rebuild)),
             renders: Semaphore::new(THUMBNAIL_RENDERS),

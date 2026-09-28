@@ -9,7 +9,6 @@ import {
   lastCapture,
   refreshToolbar,
 } from "../../bucket-status";
-import { metadataFailure } from "../../messages";
 
 const browserName = import.meta.env.FIREFOX ? "Firefox" : "Chrome";
 
@@ -99,14 +98,6 @@ function renderLastCapture(last: LastCapture | null): void {
     link.target = "_blank";
     link.textContent = response.provenance.title_hint;
     line.append(link);
-    const failure = metadataFailure(response);
-    if (failure !== null) {
-      const failed = document.createElement("p");
-      failed.className = "failed";
-      failed.textContent = `Stored without metadata: ${failure}`;
-      container.replaceChildren(line, failed, when);
-      return;
-    }
     container.replaceChildren(line, when);
     return;
   }

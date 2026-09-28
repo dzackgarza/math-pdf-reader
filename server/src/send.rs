@@ -236,6 +236,7 @@ async fn send_item(state: Shared, origin: String, key: String) -> AppResult<Send
             ));
         }
     }
+    state.zotero.require_ready().await?;
 
     let (mut record, created) = match existing {
         Some(record) => (record, false),

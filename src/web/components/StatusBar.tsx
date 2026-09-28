@@ -1,7 +1,12 @@
-import { Archive, HardDrive, Radio } from "lucide-react";
+import { Archive, BookMarked, HardDrive, Radio } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { useEffect, useState } from "react";
-import { type IndexExportState, IndexExportStateSchema } from "../../contract/capture";
+import {
+  type IndexExportState,
+  IndexExportStateSchema,
+  type ZoteroHealth,
+  ZoteroHealthSchema,
+} from "../../contract/capture";
 import type { LibraryPayload } from "../../contract/library";
 import { onBucketEvent } from "../bucketEvents";
 import type { StatusRead } from "../useBucketStatus";
@@ -20,7 +25,7 @@ function CaptureIndicator({ read }: { read: StatusRead }) {
               `Not capturing: ${read.status.root} ${read.status.storage.root_exists ? "is not writable" : "does not exist"}`,
             ];
   return (
-    <span role="status" aria-label={title} title={title} className={`ml-auto ${color}`}>
+    <span role="status" aria-label={title} title={title} className={color}>
       <Radio aria-hidden className="h-3.5 w-3.5" />
     </span>
   );
@@ -76,6 +81,43 @@ function ExportIndicator() {
   );
 }
 
+// Zotero's state as the bucket streams it (`zotero` on /api/events, the current state first).
+function useZoteroHealth(): ZoteroHealth | null {
+  const [health, setHealth] = useState<ZoteroHealth | null>(null);
+  useEffect(() => {
+    return onBucketEvent("zotero", (event) => {
+      setHealth(ZoteroHealthSchema.parse(JSON.parse(event.data)));
+    });
+  }, []);
+  return health;
+}
+
+// Whether Retrieve metadata and Send to Zotero can reach Zotero; an unavailable Zotero shows
+// what to do about it in the bar itself.
+function ZoteroIndicator() {
+  const health = useZoteroHealth();
+  if (health === null) {
+    return null;
+  }
+  const [color, title] =
+    health.status === "checking"
+      ? ["text-faint", "Checking Zotero…"]
+      : health.status === "ready"
+        ? ["text-ok", `Zotero is running with its local write API ${health.version}`]
+        : ["text-danger", health.message];
+  return (
+    <span
+      role="status"
+      aria-label={title}
+      title={title}
+      className={`flex min-w-0 items-center gap-1.5 ${color}`}
+    >
+      <BookMarked aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      {health.status === "unavailable" && <span className="truncate">{title}</span>}
+    </span>
+  );
+}
+
 export default function StatusBar({
   payload,
   read,
@@ -91,7 +133,10 @@ export default function StatusBar({
         {prettyBytes(stored)}
       </span>
       <ExportIndicator />
-      <CaptureIndicator read={read} />
+      <span className="ml-auto flex min-w-0 items-center gap-4">
+        <ZoteroIndicator />
+        <CaptureIndicator read={read} />
+      </span>
     </footer>
   );
 }

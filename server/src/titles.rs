@@ -3,7 +3,7 @@
 //! methods and saves nothing. The title, authors, year and abstract of the CSL-JSON it answers
 //! become the item's, recorded inside the PDF. Without an answer the store reads them from the
 //! PDF itself.
-use crate::contract::{NonEmpty, RetrieveMetadataOutcome, TitleSource};
+use crate::contract::{NonEmpty, RetrieveMetadataOutcome, TitleSource, ZoteroHealth};
 use crate::error::{AppError, AppResult};
 use crate::send::import_url;
 use crate::state::AppState;
@@ -92,14 +92,18 @@ async fn retrieve(state: &AppState, origin: &str, key: &str) -> AppResult<Retrie
     })
 }
 
-/// "Retrieve metadata" on KEY, whose request came to ORIGIN. A retrieval that failed (Zotero
-/// down or refusing, an answer the bucket cannot record) is its `error` outcome; the item's
-/// title then stays as it was.
+/// "Retrieve metadata" on KEY, whose request came to ORIGIN. Zotero's health check runs first:
+/// a Zotero that is not running or has no write API is the `zotero_unavailable` outcome. A
+/// retrieval that failed after it (a Zotero refusal, an answer the bucket cannot record) is the
+/// `error` outcome. The item's title then stays as it was.
 pub async fn retrieve_metadata(
     state: &AppState,
     origin: &str,
     key: &str,
 ) -> RetrieveMetadataOutcome {
+    if let ZoteroHealth::Unavailable { message } = state.zotero.check().await {
+        return RetrieveMetadataOutcome::ZoteroUnavailable { message };
+    }
     match retrieve(state, origin, key).await {
         Ok(outcome) => outcome,
         Err(error) => RetrieveMetadataOutcome::Error {

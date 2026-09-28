@@ -612,8 +612,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     }
   });
 
-  // Chrome stops a service worker whose fetch() response takes more than 30 s, and the bucket
-  // answers a capture only after its metadata lookup. Here the post is held until the worker is
+  // Chrome stops a service worker whose fetch() response takes more than 30 s, and a slow
+  // store can hold the bucket's answer past that. Here the post is held until the worker is
   // stopped. Only the extension removes a download, and only once the bucket answers that it
   // holds the PDF, so the emptied downloads folder shows that a later worker delivered it.
   test.if(engine === "chrome")(
