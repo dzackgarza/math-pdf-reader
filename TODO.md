@@ -11,6 +11,3 @@ Tasks:
 
 1. Close [zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31): `import_from_url` finds metadata for a relatively arbitrary source.
    Its methods are Zotero's web translators, page metadata (`citation_*`, Dublin Core), an identifier in the URL or the page, BibTeX the source publishes, searches of metadata services, and recognition of the PDF. OpenAlex and MathSciNet are not searched yet, because they need credentials.
-
-2. Delete the resolver plugins (`src/resolvers/*.ts`, `plugins/manifests/resolvers.json`) from this app.
-   They still give an item its title (Retrieve metadata, `server/src/library.rs`), so that feature needs a new source first.

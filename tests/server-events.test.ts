@@ -6,7 +6,6 @@ import { CaptureResponseSchema, OpenReaderSchema } from "../src/contract/capture
 import { LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-
 // Server-sent events off a response body, one parsed `open-reader` payload per call.
 function openReaderEvents(response: Response) {
   if (response.body === null) {

@@ -53,7 +53,7 @@ export type ActionContext = {
   fail: (failure: ActionFailure) => void;
   error: (message: string) => void;
   progress: (message: string) => void;
-  // What a call that succeeded could not do (a PDF not restored, no identifier found).
+  // What a call that succeeded could not do (a PDF not restored, no item Zotero identified).
   report: (message: string) => void;
   // What a call that succeeded did, when the library does not show it by itself.
   notify: (message: string) => void;
@@ -270,7 +270,7 @@ export function itemMenuActions(
 ): ItemMenuActions {
   const keys = [item.id];
   return {
-    // Zotero's "Retrieve Metadata": the title from an identifier resolver, else the PDF.
+    // Zotero's "Retrieve Metadata": Zotero resolves the item's URL and the title is its answer.
     retrieveMetadata: () =>
       run(
         context,
@@ -278,10 +278,13 @@ export function itemMenuActions(
           .call(RetrieveMetadataResponseSchema, "POST", `${itemPath(item.id)}/metadata`)
           .then(({ outcome }) => {
             if (outcome.status === "unidentified") {
-              context.report("No identifier found");
+              const tried = outcome.attempts.map(
+                (attempt) => `${attempt.method}: ${attempt.outcome} (${attempt.message})`,
+              );
+              context.report(`Zotero identified no item. ${tried.join("; ")}`);
             }
-            if (outcome.status === "failed") {
-              context.report(`${outcome.pluginId} on ${outcome.identifier}: ${outcome.message}`);
+            if (outcome.status === "error") {
+              context.report(outcome.message);
             }
           }),
       ),

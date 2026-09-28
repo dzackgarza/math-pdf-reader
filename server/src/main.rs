@@ -1,8 +1,8 @@
 //! `pdf-bucket`: the bucket server without a window, and the index export's maintenance
 //! commands over the configured data root.
 //!
-//! - `serve <root> <zotero url> <extractions manifest> <resolvers manifest> --index-export
-//!   <file> --config <file>` serves any bucket root on a free port, prints its origin and
+//! - `serve <root> <zotero url> <extractions manifest> --index-export <file> --config <file>`
+//!   serves any bucket root on a free port, prints its origin and
 //!   serves until its standard input closes; the test suites and evidence runs use it so that
 //!   they never touch the configured bucket or its port. The config file has the schema of
 //!   pdf-bucket.config.json and sets the time limits and the other tunables in place of the
@@ -42,7 +42,6 @@ enum Command {
         root: PathBuf,
         zotero_url: String,
         extractions_manifest: PathBuf,
-        resolvers_manifest: PathBuf,
         /// Rewrite this index export after every change.
         #[arg(long)]
         index_export: PathBuf,
@@ -177,7 +176,6 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             root,
             zotero_url,
             extractions_manifest,
-            resolvers_manifest,
             index_export,
             config: config_file,
         } => {
@@ -190,7 +188,6 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 cache_dir: config::cache_root(),
                 zotero_url,
                 extractions_manifest,
-                resolvers_manifest,
                 index_export,
                 python_bin: config::checkout_python_bin(),
                 process_env: ProcessEnv::new(),

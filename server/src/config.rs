@@ -81,10 +81,6 @@ pub fn extractions_manifest() -> PathBuf {
     checkout().join("plugins/manifests/extractions.json")
 }
 
-pub fn resolvers_manifest() -> PathBuf {
-    checkout().join("plugins/manifests/resolvers.json")
-}
-
 /// The checkout's Python environment (`uv sync --locked`), whose bin directory holds
 /// `pdfbucket` and the extraction plugins' entry points: what `pdf-bucket serve` and the
 /// maintenance commands run.
@@ -137,7 +133,6 @@ pub struct BucketConfig {
     /// Zotero's local HTTP server, which carries the write API the send action uses.
     pub zotero_url: String,
     pub extractions_manifest: PathBuf,
-    pub resolvers_manifest: PathBuf,
     /// The index export the server rewrites after every change.
     pub index_export: PathBuf,
     /// The bin directory of the Python environment the store's commands and the plugins run
@@ -158,7 +153,6 @@ impl BucketConfig {
             cache_dir: cache_root(),
             zotero_url: app.zotero.url.clone(),
             extractions_manifest: extractions_manifest(),
-            resolvers_manifest: resolvers_manifest(),
             index_export: index_export_file(),
             python_bin: app_python_bin(),
             app,

@@ -8,6 +8,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 
+use crate::app::origin;
 use crate::contract::{
     Activity, ApiErrorErrorKind, BucketItem, BulkCollectionsRequest, BulkTagsRequest, Collection,
     CollectionUpdateRequest, ItemNote, LibraryPayload, ManualMetadataRequest, NewCollectionRequest,
@@ -149,14 +150,15 @@ async fn settings(State(state): State<Shared>) -> Json<Settings> {
     })
 }
 
-/// "Retrieve metadata": run the identifier resolvers again and answer with the item as it now
-/// stands; any outcome but a resolved one leaves the title as it was.
+/// "Retrieve metadata": ask Zotero to resolve the item's URL again and answer with the item as
+/// it now stands; any outcome but a resolved one leaves the title as it was.
 async fn metadata(
     State(state): State<Shared>,
+    headers: HeaderMap,
     Path(key): Path<String>,
 ) -> AppResult<Json<RetrieveMetadataResponse>> {
     state.require(&key).await?;
-    let outcome = retrieve_metadata(&state, &key).await;
+    let outcome = retrieve_metadata(&state, &origin(&headers)?, &key).await;
     let indexed = state.indexed(&key).await?.ok_or_else(|| {
         AppError::internal(format!(
             "{key} left the store while its metadata was retrieved"

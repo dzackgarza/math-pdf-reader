@@ -1,7 +1,7 @@
 // The library API contract: what `/api/library` and the filing mutations send and accept.
 // Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
-import { ProvenanceSchema, RetrieveMetadataOutcomeSchema } from "./capture";
+import { ImportMethodSchema, ProvenanceSchema, RetrieveMetadataOutcomeSchema } from "./capture";
 import { NonEmptySchema, Sha256Schema, TrimmedSchema } from "./text";
 
 export const SEARCH_FIELDS = ["title", "source", "pdfUrl", "tags", "notes", "key"] as const;
@@ -209,18 +209,6 @@ export const SendStepSchema = z.discriminatedUnion("step", [
   }),
 ]);
 
-// How the Zotero local write API identified the item's URL: Zotero's web translators, the
-// page's citation metadata, an identifier found in the source, BibTeX the source publishes, a
-// search of a metadata service, or recognition of the PDF.
-export const ImportMethodSchema = z.enum([
-  "web_translator",
-  "page_metadata",
-  "identifier",
-  "published_bibtex",
-  "external_service",
-  "pdf_recognition",
-]);
-
 // The Zotero item a send goes to, and the steps done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
   itemKey: NonEmptySchema,
@@ -251,8 +239,8 @@ export const SendResponseSchema = z.strictObject({
   kept: z.boolean(),
 });
 
-// Where an item's title came from: a manual edit, a resolver, an inference, the PDF,
-// the capture hint, or the file name.
+// Where an item's title came from: a manual edit, Zotero's resolution of its URL ("Retrieve
+// metadata"), an inference, the PDF, the capture hint, or the file name.
 export const TITLE_SOURCES = [
   "manual",
   "resolver",
@@ -271,7 +259,7 @@ export const BucketItemSchema = z.strictObject({
   title: NonEmptySchema,
   titleSource: TitleSourceSchema,
   authors: z.array(NonEmptySchema),
-  // From a resolver; null when none gave them.
+  // From "Retrieve metadata"; null when it gave none.
   year: z.int().nullable(),
   abstract: NonEmptySchema.nullable(),
   // The item's URL, as a reference manager's URL field: the page the PDF was linked from, or
@@ -392,7 +380,7 @@ export const LibraryPayloadSchema = z.strictObject({
 // What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
 // or a mirror and matched the recorded original; every URL was tried and none served it; or
 // the rebuild failed in the bucket itself (the store could not write the PDF).
-// A restored PDF's metadata: the title and authors a resolver gave, recorded again; none to
+// A restored PDF's metadata: the title and authors "Retrieve metadata" gave, recorded again; none to
 // record, since the item's title was read from the PDF; or a recording that failed, which
 // leaves the PDF restored with the title it carries.
 export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
@@ -428,7 +416,7 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
 
 // Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF.
 export const ImportUrlRequestSchema = z.strictObject({ url: HttpUrlSchema });
-// `metadata` as in a capture: the resolvers' outcome for a new PDF, null for one already stored.
+// `metadata` as in a capture: "Retrieve metadata" on a new PDF, null for one already stored.
 export const ImportUrlResponseSchema = z.strictObject({
   key: NonEmptySchema,
   existing: z.boolean(),
@@ -478,7 +466,6 @@ export const API_ERROR_KINDS = [
   "no_pdf_at_url",
   "not_a_folder",
   "folder_check_failed",
-  "resolver_failed",
   "metadata_guess_failed",
   "zotero_failed",
   "storage_check_failed",

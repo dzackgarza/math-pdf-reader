@@ -17,7 +17,6 @@ from pydantic import TypeAdapter, ValidationError
 
 from pdfbucket.models import (
     ItemTitle,
-    NonEmpty,
     Provenance,
     Read,
     ReadOutcome,
@@ -29,7 +28,6 @@ from pdfbucket.provenance import (
     MissingProvenanceError,
     embed_metadata,
     embed_provenance,
-    embedded_identifiers,
     read_record,
 )
 from pdfbucket.thumbnails import render_first_page
@@ -37,7 +35,6 @@ from pdfbucket.thumbnails import render_first_page
 app = App(help="PDF Bucket's pikepdf and MuPDF commands")
 
 READ_OUTCOMES: TypeAdapter[list[ReadOutcome]] = TypeAdapter(list[ReadOutcome])
-IDENTIFIERS: TypeAdapter[list[NonEmpty]] = TypeAdapter(list[NonEmpty])
 
 # Exit status of a command whose PDF could not be read; stdout then holds a StoreFailure.
 FAILED = 3
@@ -96,12 +93,6 @@ def read_one(path: Path) -> ReadOutcome:
 def read(*paths: Path) -> None:
     """Print, for each PATH in order, what the PDF says about itself or why it cannot be read."""
     print(READ_OUTCOMES.dump_json([read_one(path) for path in paths]).decode())
-
-
-@app.command
-def identifiers(pdf: Path) -> None:
-    """Print the identifiers the publisher embedded in PDF, as a JSON list."""
-    print(IDENTIFIERS.dump_json(embedded_identifiers(pdf)).decode())
 
 
 @app.command

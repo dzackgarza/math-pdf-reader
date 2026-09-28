@@ -35,11 +35,9 @@ export const AppConfigSchema = z.strictObject({
     concurrent_downloads: z.number().int().positive(),
     download_timeout_seconds: z.number().int().positive(),
   }),
-  // How long an extraction or resolver plugin may run before it is killed and its run reported
-  // as timed out.
+  // How long an extraction plugin may run before it is killed and its run reported as timed out.
   plugins: z.strictObject({
     extraction_timeout_seconds: z.number().int().positive(),
-    resolver_timeout_seconds: z.number().int().positive(),
   }),
   // How long one pikepdf command (`pdfbucket <command>`) may run before it is killed.
   store: z.strictObject({ command_timeout_seconds: z.number().int().positive() }),

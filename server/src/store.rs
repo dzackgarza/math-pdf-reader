@@ -21,9 +21,7 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::io::ReaderStream;
 
 use crate::config::{BucketConfig, PDF_HEADER_WINDOW};
-use crate::contract::{
-    ApiErrorErrorKind, IdentifierList, Provenance, StoredItem, Timestamp, TitleSource,
-};
+use crate::contract::{ApiErrorErrorKind, Provenance, StoredItem, Timestamp, TitleSource};
 use crate::error::{AppError, AppResult};
 use crate::index::{CachedRead, FileRead, Signature};
 use crate::layout::{self, candidate_keys, is_pdf, Key};
@@ -40,7 +38,7 @@ pub struct Upload {
     pub title_hint: String,
 }
 
-/// What a resolver gives an item: title, authors in order, year and abstract where known.
+/// What Retrieve metadata gives an item: title, authors in order, year and abstract where known.
 pub struct ResolvedMetadata {
     pub title: String,
     pub authors: Vec<String>,
@@ -637,24 +635,6 @@ impl Store {
             width.to_string(),
         ];
         Ok(self.inner.python.run(&args).await?)
-    }
-
-    /// The identifiers the publisher embedded in KEY's PDF.
-    pub async fn embedded_identifiers(&self, key: &str) -> AppResult<Vec<String>> {
-        let key = self.existing_key(key)?;
-        let args = [
-            "identifiers".to_string(),
-            "--".to_string(),
-            layout::pdf_path(self.root(), &key)
-                .to_string_lossy()
-                .into_owned(),
-        ];
-        let listed: IdentifierList = self.inner.python.json(&args).await?;
-        Ok(listed
-            .0
-            .into_iter()
-            .map(|identifier| identifier.to_string())
-            .collect())
     }
 }
 

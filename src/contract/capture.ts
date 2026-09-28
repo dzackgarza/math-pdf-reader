@@ -14,28 +14,43 @@ export const ProvenanceSchema = z.strictObject({
   title_hint: NonEmptySchema,
 });
 
-// The outcome of "Retrieve metadata": the resolver that answered and the title it gave; no
-// identifier the resolvers know; the resolver that failed or ran past its time limit; or a
-// retrieval that failed in the bucket itself (a BibTeX entry that does not parse, a store
-// failure). Every outcome but `resolved` leaves the item's title as it was.
+// How the Zotero local write API identified a source: Zotero's web translators, the page's
+// citation metadata, an identifier found in the source, BibTeX the source publishes, a search
+// of a metadata service, or recognition of the PDF.
+export const ImportMethodSchema = z.enum([
+  "web_translator",
+  "page_metadata",
+  "identifier",
+  "published_bibtex",
+  "external_service",
+  "pdf_recognition",
+]);
+
+// The outcome of "Retrieve metadata", which asks the Zotero local write API to resolve the
+// item's URL and saves nothing in Zotero: the method that identified the source and the title
+// it gave; each method's attempt when none identified it; or a retrieval that failed (Zotero
+// down, an answer the bucket cannot use, a store failure). Every outcome but `resolved` leaves
+// the item's title as it was.
 export const RetrieveMetadataOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("resolved"),
-    pluginId: NonEmptySchema,
-    identifier: NonEmptySchema,
+    method: ImportMethodSchema,
     title: NonEmptySchema,
   }),
-  z.strictObject({ status: z.literal("unidentified") }),
   z.strictObject({
-    status: z.literal("failed"),
-    pluginId: NonEmptySchema,
-    identifier: NonEmptySchema,
-    message: NonEmptySchema,
+    status: z.literal("unidentified"),
+    attempts: z.array(
+      z.strictObject({
+        method: ImportMethodSchema,
+        outcome: z.enum(["identified", "no_match", "ambiguous", "failed"]),
+        message: z.string(),
+      }),
+    ),
   }),
   z.strictObject({ status: z.literal("error"), message: NonEmptySchema }),
 ]);
 
-// `metadata` is the outcome of the resolvers run on a newly stored PDF, null when the capture
+// `metadata` is the outcome of "Retrieve metadata" on a newly stored PDF, null when the capture
 // found the PDF already stored. A PDF is stored whatever that outcome is.
 export const CaptureResponseSchema = z.strictObject({
   key: NonEmptySchema,

@@ -44,7 +44,6 @@ SEEDED_COUNT = 1000
 VIEWPORT = {"width": 1600, "height": 1000}
 FILED_COUNT = 300
 SHIPPED_EXTRACTIONS = REPO / "plugins/manifests/extractions.json"
-SHIPPED_RESOLVERS = REPO / "plugins/manifests/resolvers.json"
 SERVER = REPO / "target/debug/pdf-bucket"
 CONFIG = REPO / "pdf-bucket.config.json"
 
@@ -71,7 +70,7 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
     subprocess.run(["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"], cwd=REPO, check=True)
     index_export = root.parent / f"{root.name}-export" / "index.json"
     process = subprocess.Popen(
-        [SERVER, "serve", root, zotero_url, extractions, SHIPPED_RESOLVERS, "--index-export", index_export, "--config", CONFIG],
+        [SERVER, "serve", root, zotero_url, extractions, "--index-export", index_export, "--config", CONFIG],
         cwd=REPO,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -515,7 +514,7 @@ def record_sent(root: Path, key: str) -> None:
     record = {
         "itemKey": "Q7ZK3M2P",
         "sentAt": "2026-09-23T18:00:00.000Z",
-        "source": {"kind": "resolver", "pluginId": "arxiv", "identifier": "https://arxiv.org/abs/2609.21174v1"},
+        "method": "web_translator",
         "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
     }
     filing = {"tags": [], "collections": [], "notes": [], "reading": {"status": "unread"}, "sourceCheck": {"status": "unchecked"}, "mirrors": [], "modifiedAt": record["sentAt"], "zotero": record}

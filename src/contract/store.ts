@@ -23,9 +23,6 @@ export const ReadOutcomeListSchema = z.array(
   ]),
 );
 
-// `pdfbucket identifiers`: the identifiers the publisher embedded in the PDF.
-export const IdentifierListSchema = z.array(NonEmptySchema);
-
 // What a command on one PDF prints, with exit status 3, when it cannot read that PDF.
 export const StoreFailureSchema = z.strictObject({
   kind: z.enum(["unreadable_pdf", "missing_provenance", "invalid_metadata"]),

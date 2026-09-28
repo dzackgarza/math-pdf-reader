@@ -1,1 +1,33 @@
-{"success":true,"operation":"resolve_url","stage":"completed","version":"3.4.0","details":{"url":"https://arxiv.org/pdf/2609.21174v1","final_url":"https://arxiv.org/pdf/2609.21174v1","translator":null,"attempts":[{"method":"pdf_recognition","outcome":"identified","message":"On The Cyclicity of Algebraic Lattices"}]},"method":"pdf_recognition","item_type":"preprint","csl":{"type":"article","abstract":"This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices. First, we provide elementary facts regarding cyclic and quasi-cyclic lattices, and discuss about the cyclicity of some notable lattices. The main contributions of the paper is in the algebraic setting: we investigate cyclic lattices arising from $\\mathbb{Z}$-modules in Galois number fields via the Minkowski embedding. We establish necessary and sufficient conditions for an algebraic lattice to be cyclic over both cyclic and general Galois number fields, expressed in terms of naturally associated groups. Moreover, we derive a necessary and sufficient condition for ideal lattices to be cyclic, depending on the factorization of the ideal in the underlying number field.","DOI":"10.48550/arXiv.2609.21174","note":"arXiv:2609.21174 [math.NT]","number":"arXiv:2609.21174","publisher":"arXiv","source":"arXiv.org","title":"On The Cyclicity of Algebraic Lattices","URL":"http://arxiv.org/abs/2609.21174","author":[{"family":"Bonini","given":"Maria Fernanda Zordan"},{"family":"Araujo","given":"Robson Ricardo","dropping-particle":"de"},{"family":"Andrade","given":"Antonio Aparecido","dropping-particle":"de"},{"family":"Bastos","given":"Jéfferson Luiz Rocha"}],"accessed":{"date-parts":[["2026",9,28]]},"issued":{"date-parts":[["2026",9,18]]}}}
+{
+  "success": true,
+  "operation": "resolve_url",
+  "stage": "completed",
+  "version": "3.4.0",
+  "details": {
+    "url": "https://arxiv.org/pdf/2609.21174v1",
+    "final_url": "https://arxiv.org/pdf/2609.21174v1",
+    "translator": null,
+    "attempts": [{ "method": "pdf_recognition", "outcome": "identified", "message": "On The Cyclicity of Algebraic Lattices" }]
+  },
+  "method": "pdf_recognition",
+  "item_type": "preprint",
+  "csl": {
+    "type": "article",
+    "abstract": "This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices. First, we provide elementary facts regarding cyclic and quasi-cyclic lattices, and discuss about the cyclicity of some notable lattices. The main contributions of the paper is in the algebraic setting: we investigate cyclic lattices arising from $\\mathbb{Z}$-modules in Galois number fields via the Minkowski embedding. We establish necessary and sufficient conditions for an algebraic lattice to be cyclic over both cyclic and general Galois number fields, expressed in terms of naturally associated groups. Moreover, we derive a necessary and sufficient condition for ideal lattices to be cyclic, depending on the factorization of the ideal in the underlying number field.",
+    "DOI": "10.48550/arXiv.2609.21174",
+    "note": "arXiv:2609.21174 [math.NT]",
+    "number": "arXiv:2609.21174",
+    "publisher": "arXiv",
+    "source": "arXiv.org",
+    "title": "On The Cyclicity of Algebraic Lattices",
+    "URL": "http://arxiv.org/abs/2609.21174",
+    "author": [
+      { "family": "Bonini", "given": "Maria Fernanda Zordan" },
+      { "family": "Araujo", "given": "Robson Ricardo", "dropping-particle": "de" },
+      { "family": "Andrade", "given": "Antonio Aparecido", "dropping-particle": "de" },
+      { "family": "Bastos", "given": "Jéfferson Luiz Rocha" }
+    ],
+    "accessed": { "date-parts": [["2026", 9, 28]] },
+    "issued": { "date-parts": [["2026", 9, 18]] }
+  }
+}

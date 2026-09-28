@@ -81,13 +81,13 @@ Nothing in this repo is invented. Two kinds of source, handled differently:
 Reference implementations:
 
 - `~/gitclones/zotero-gui` (`dzackgarza/zotero-gui`): the library UI (table, collections
-  sidebar, inspector, command palette), the subprocess resolver plugins and their JSON
-  manifest, and the Zotero import path through the local write API.
+  sidebar, inspector, command palette), the subprocess plugins and their JSON manifest,
+  and the Zotero import path through the local write API.
 - `~/gitclones/mathread` (`dzackgarza/mathread`): the capture extension (interception rules,
   link origin, capture-bytes client), provenance embedding with pikepdf, the folder-backed
   store. Its reader, overlay and notes are superseded; do not port them.
 - `~/zotero-library` (`zotero-library-tools`): `lib/zotero.py`, the extraction providers
-  (MinerU flash, MinerU precise, Mistral OCR), identifier extraction.
+  (MinerU flash, MinerU precise, Mistral OCR).
 - Paperlib (https://paperlib.app) is the reference for the app's shape, not a code source.
 
 ## How to follow the mockups
@@ -135,7 +135,7 @@ but breaks one of these is wrong.
    Chrome and Firefox pass the same fixture set.
 5. **The bucket being down is visible, not silent.** The capture page shows the error and a
    link to open the PDF natively. No silent native open, no silent drop, no retry loop.
-6. **Plugins are commands.** Extraction and resolver plugins are external commands with a
+6. **Plugins are commands.** Extraction plugins are external commands with a
    JSON manifest and contract. The app imports no provider SDK and holds no credentials.
 7. **This repo owns wiring only.** No hand-rolled PDF viewer, library table, search index,
    metadata scraper or citation database. PDF.js renders; components cribbed from

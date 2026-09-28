@@ -21,8 +21,7 @@
     "download_timeout_seconds": 120
   },
   "plugins": {
-    "extraction_timeout_seconds": 1800,
-    "resolver_timeout_seconds": 60
+    "extraction_timeout_seconds": 1800
   },
   "store": {
     "command_timeout_seconds": 120

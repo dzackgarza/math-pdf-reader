@@ -65,8 +65,6 @@ export type DoneReply = z.infer<typeof DoneReplySchema>;
 export function metadataFailure(response: CaptureResponse): string | null {
   const { metadata } = response;
   switch (metadata?.status) {
-    case "failed":
-      return `${metadata.pluginId} failed for ${metadata.identifier}: ${metadata.message}`;
     case "error":
       return metadata.message;
     default:

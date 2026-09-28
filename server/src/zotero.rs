@@ -1,16 +1,18 @@
 //! The Zotero local write API: the endpoints the local-write-api addon adds to Zotero's own
 //! HTTP server (`POST /write` with an `operation`, `POST /attach`). The send action is the only
-//! caller; nothing else in the bucket writes to Zotero.
+//! caller that writes to Zotero; Retrieve metadata only asks it to resolve a URL, which saves
+//! nothing.
 use std::time::Duration;
 
+use axum::body::Bytes;
 use base64::Engine;
-use reqwest::{RequestBuilder, Response};
+use reqwest::{RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use url::Url;
 
-use crate::contract::ImportMethod;
+use crate::contract::{ImportMethod, RetrieveMetadataOutcomeUnidentifiedAttemptsItem};
 use crate::error::{AppError, AppResult};
 
 /// Zotero answers on loopback, so a connection that takes longer is a Zotero that is down.
@@ -31,6 +33,74 @@ pub struct Imported {
     pub item_key: String,
     pub existing: bool,
     pub method: ImportMethod,
+}
+
+/// A CSL-JSON name: a person's parts, or an institution's name as one literal.
+#[derive(Deserialize)]
+pub struct CslName {
+    pub given: Option<String>,
+    pub family: Option<String>,
+    #[serde(rename = "dropping-particle")]
+    pub dropping_particle: Option<String>,
+    #[serde(rename = "non-dropping-particle")]
+    pub non_dropping_particle: Option<String>,
+    pub suffix: Option<String>,
+    pub literal: Option<String>,
+}
+
+/// A CSL-JSON date part: Zotero writes the year as a string, the month and day as numbers.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum CslDatePart {
+    Number(i64),
+    Text(String),
+}
+
+#[derive(Deserialize)]
+pub struct CslDate {
+    #[serde(rename = "date-parts")]
+    pub date_parts: Vec<Vec<CslDatePart>>,
+}
+
+/// The CSL-JSON fields of a resolved item that the bucket records.
+#[derive(Deserialize)]
+pub struct Csl {
+    pub title: Option<String>,
+    #[serde(default)]
+    pub author: Vec<CslName>,
+    pub issued: Option<CslDate>,
+    #[serde(rename = "abstract")]
+    pub abstract_: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Resolved {
+    method: ImportMethod,
+    csl: Csl,
+}
+
+#[derive(Deserialize)]
+struct UnidentifiedDetails {
+    attempts: Vec<RetrieveMetadataOutcomeUnidentifiedAttemptsItem>,
+}
+
+/// The answer `resolve_url` gives when no method identified the source (422).
+#[derive(Deserialize)]
+struct Unidentified {
+    stage: String,
+    details: UnidentifiedDetails,
+}
+
+/// What `resolve_url` made of a URL: the method that identified it and the item's CSL-JSON,
+/// or each method's attempt when none identified it.
+pub enum Resolution {
+    Resolved {
+        method: ImportMethod,
+        csl: Csl,
+    },
+    Unidentified {
+        attempts: Vec<RetrieveMetadataOutcomeUnidentifiedAttemptsItem>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -72,6 +142,27 @@ pub fn note_html(text: &str) -> String {
     paragraphs.concat()
 }
 
+fn refused(what: &str, status: StatusCode, answer: &[u8]) -> AppError {
+    AppError::Zotero(match serde_json::from_slice::<Refusal>(answer) {
+        Ok(refusal) => format!(
+            "Zotero refused {} ({status}): {}",
+            refusal.operation, refusal.error
+        ),
+        Err(_not_a_refusal) => format!(
+            "Zotero answered {status} to {what}: {}",
+            String::from_utf8_lossy(answer).trim()
+        ),
+    })
+}
+
+fn parsed<T: DeserializeOwned>(what: &str, answer: &[u8]) -> AppResult<T> {
+    serde_json::from_slice(answer).map_err(|error| {
+        AppError::Zotero(format!(
+            "Zotero's answer to {what} is not what it documents: {error}"
+        ))
+    })
+}
+
 pub struct ZoteroWriteApi {
     base: Url,
     client: reqwest::Client,
@@ -102,13 +193,8 @@ impl ZoteroWriteApi {
         ))
     }
 
-    /// Sends the request and parses a 2xx answer as `T`. Any other status is Zotero's
-    /// failure: the addon's JSON refusal when it gave one, otherwise the status and body.
-    async fn answer<T: DeserializeOwned>(
-        &self,
-        what: &str,
-        request: RequestBuilder,
-    ) -> AppResult<T> {
+    /// Sends the request and answers its status and body.
+    async fn exchange(&self, request: RequestBuilder) -> AppResult<(StatusCode, Bytes)> {
         let response: Response = request
             .send()
             .await
@@ -118,25 +204,21 @@ impl ZoteroWriteApi {
             .bytes()
             .await
             .map_err(|error| self.unanswered(error))?;
+        Ok((status, answer))
+    }
+
+    /// Sends the request and parses a 2xx answer as `T`. Any other status is Zotero's
+    /// failure: the addon's JSON refusal when it gave one, otherwise the status and body.
+    async fn answer<T: DeserializeOwned>(
+        &self,
+        what: &str,
+        request: RequestBuilder,
+    ) -> AppResult<T> {
+        let (status, answer) = self.exchange(request).await?;
         if !status.is_success() {
-            return Err(AppError::Zotero(
-                match serde_json::from_slice::<Refusal>(&answer) {
-                    Ok(refusal) => format!(
-                        "Zotero refused {} ({status}): {}",
-                        refusal.operation, refusal.error
-                    ),
-                    Err(_not_a_refusal) => format!(
-                        "Zotero answered {status} to {what}: {}",
-                        String::from_utf8_lossy(&answer).trim()
-                    ),
-                },
-            ));
+            return Err(refused(what, status, &answer));
         }
-        serde_json::from_slice(&answer).map_err(|error| {
-            AppError::Zotero(format!(
-                "Zotero's answer to {what} is not what it documents: {error}"
-            ))
-        })
+        parsed(what, &answer)
     }
 
     async fn post<T: DeserializeOwned>(&self, path: &str, body: &impl Serialize) -> AppResult<T> {
@@ -149,6 +231,32 @@ impl ZoteroWriteApi {
     pub async fn import_from_url(&self, url: &str) -> AppResult<Imported> {
         let body = json!({ "operation": "import_from_url", "url": url });
         self.post("/write", &body).await
+    }
+
+    /// The metadata Zotero's methods resolve for the source at `url`, without saving an item.
+    pub async fn resolve_url(&self, url: &str) -> AppResult<Resolution> {
+        let what = "resolve_url";
+        let body = json!({ "operation": what, "url": url });
+        let (status, answer) = self
+            .exchange(self.client.post(self.url("/write")).json(&body))
+            .await?;
+        if status.is_success() {
+            let resolved: Resolved = parsed(what, &answer)?;
+            return Ok(Resolution::Resolved {
+                method: resolved.method,
+                csl: resolved.csl,
+            });
+        }
+        if status == StatusCode::UNPROCESSABLE_ENTITY {
+            if let Ok(unidentified) = serde_json::from_slice::<Unidentified>(&answer) {
+                if unidentified.stage == "identify_source" {
+                    return Ok(Resolution::Unidentified {
+                        attempts: unidentified.details.attempts,
+                    });
+                }
+            }
+        }
+        Err(refused(what, status, &answer))
     }
 
     pub async fn set_url_and_access_date(

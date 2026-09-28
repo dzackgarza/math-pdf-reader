@@ -1,8 +1,8 @@
 """Provenance, title and authors embedded in the PDF: XMP properties plus document-information keys.
 
 The document-information dictionary is the read path; XMP carries the same values for
-tools that only read XMP. A title and authors the bucket settles on (from an identifier
-resolver) go into the standard `/Title`, `/Author`, `dc:title` and `dc:creator`, so every PDF
+tools that only read XMP. A title and authors the bucket settles on (from Zotero's Retrieve
+metadata) go into the standard `/Title`, `/Author`, `dc:title` and `dc:creator`, so every PDF
 tool shows them, with the title's source beside it in the bucket's own keys; until then both
 are read from what the file already holds.
 """
@@ -37,7 +37,7 @@ DOCINFO_KEYS = {
 TITLE_KEY = "/PDFBucketTitle"
 TITLE_SOURCE_KEY = "/PDFBucketTitleSource"
 AUTHORS_KEY = "/PDFBucketAuthors"
-# The publication year and the abstract a resolver gave; the abstract also goes into XMP
+# The publication year and the abstract Zotero resolved; the abstract also goes into XMP
 # dc:description, the Dublin Core field for an abstract.
 YEAR_KEY = "/PDFBucketYear"
 ABSTRACT_KEY = "/PDFBucketAbstract"
@@ -164,20 +164,3 @@ def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int |
         pdf.save(output)
     return output.getvalue()
 
-
-# Identifiers publishers embed: arXiv's generated PDFs carry `/arXivID` and `/DOI` in the
-# document-information dictionary, and publishers following PRISM carry `prism:doi` and
-# `prism:isbn` in XMP.
-DOCINFO_IDENTIFIER_KEYS = ("/arXivID", "/DOI")
-PRISM = "http://prismstandard.org/namespaces/basic/2.0/"
-PRISM_IDENTIFIER_KEYS = (f"{{{PRISM}}}doi", f"{{{PRISM}}}isbn")
-
-
-def embedded_identifiers(path: Path) -> list[str]:
-    """The identifiers embedded in the PDF at PATH, document-information keys first."""
-    with pikepdf.open(path) as document:
-        docinfo = {str(key): str(value) for key, value in document.docinfo.items()}
-        embedded = [docinfo[key] for key in DOCINFO_IDENTIFIER_KEYS if key in docinfo]
-        with document.open_metadata(set_pikepdf_as_editor=False) as xmp:
-            embedded.extend(str(xmp[key]) for key in PRISM_IDENTIFIER_KEYS if key in xmp)
-    return [identifier.strip() for identifier in embedded]

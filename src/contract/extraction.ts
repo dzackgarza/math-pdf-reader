@@ -1,5 +1,5 @@
-// The extraction API contract and the plugin manifests: the plugin listing, a run's outcome,
-// and the two manifest files the server validates against these schemas alone. Shared by the
+// The extraction API contract and the plugin manifest: the plugin listing, a run's outcome,
+// and the manifest file the server validates against these schemas alone. Shared by the
 // server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
 import { NonEmptySchema, Sha256Schema } from "./text";
@@ -17,35 +17,18 @@ export const PdfInputSchema = z.strictObject({
   limits: z.array(PdfLimitSchema),
 });
 
-// What a resolver plugin accepts: an identifier its pattern (an ECMAScript regular expression,
-// matched without regard to case) matches.
-export const IdentifierInputSchema = z.strictObject({
-  kind: z.literal("identifier"),
-  id: NonEmptySchema,
-  label: NonEmptySchema,
-  example: NonEmptySchema,
-  pattern: NonEmptySchema,
-});
-
-const pluginCommand = <I extends z.ZodType>(input: I) =>
-  z.strictObject({
-    id: NonEmptySchema,
-    name: NonEmptySchema,
-    command: z.array(z.string()).min(1),
-    accepted_inputs: z.array(input).min(1),
-  });
-
 // `plugins/manifests/extractions.json`: `$pdf` and `$output` in a command are replaced by the
 // stored PDF and an empty output directory; on exit 0 the plugin has written
 // `$output/extraction.md` and, when it has more, files under `$output/artifacts/`.
 export const ExtractionManifestSchema = z.strictObject({
-  plugins: z.array(pluginCommand(PdfInputSchema)),
-});
-
-// `plugins/manifests/resolvers.json`: the identifier goes to the command's stdin and one BibTeX
-// entry comes back on its stdout; the command runs in the manifest's directory.
-export const ResolverManifestSchema = z.strictObject({
-  plugins: z.array(pluginCommand(IdentifierInputSchema)),
+  plugins: z.array(
+    z.strictObject({
+      id: NonEmptySchema,
+      name: NonEmptySchema,
+      command: z.array(z.string()).min(1),
+      accepted_inputs: z.array(PdfInputSchema).min(1),
+    }),
+  ),
 });
 
 export const ExtractionPluginsResponseSchema = z.strictObject({
@@ -110,4 +93,3 @@ export const EXTRACTION_OUTCOME_STATUS = {
   timed_out: 504,
 } as const satisfies Record<ExtractionOutcome["status"], number>;
 export type ExtractionManifest = z.infer<typeof ExtractionManifestSchema>;
-export type ResolverManifest = z.infer<typeof ResolverManifestSchema>;

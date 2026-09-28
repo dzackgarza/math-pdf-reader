@@ -126,7 +126,7 @@ fn page_url(provenance: &Provenance) -> &str {
 /// The URL the write API identifies the item by: its PDF URL, which names this one paper where
 /// the page it was captured from may list many. A PDF with no web URL (a folder import's
 /// `file:` URL) goes by the bucket's own URL for its stored copy.
-fn import_url(origin: &str, provenance: &Provenance, key: &str) -> String {
+pub fn import_url(origin: &str, provenance: &Provenance, key: &str) -> String {
     if provenance.pdf_url.starts_with("http://") || provenance.pdf_url.starts_with("https://") {
         return provenance.pdf_url.clone();
     }

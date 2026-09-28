@@ -48,11 +48,12 @@ pub fn origin(headers: &HeaderMap) -> AppResult<String> {
     Ok(format!("http://{host}"))
 }
 
-/// Stores an upload. A new item then takes its title from a resolver when one knows its
-/// identifier; whatever the resolvers' outcome, the PDF stays stored, and the outcome is
-/// answered beside it (None for a PDF already stored).
+/// Stores an upload that came in a request to ORIGIN. A new item then takes its title from
+/// Retrieve metadata when Zotero resolves its URL; whatever the outcome, the PDF stays stored,
+/// and the outcome is answered beside it (None for a PDF already stored).
 async fn store(
     state: &Shared,
+    origin: &str,
     upload: &Upload,
 ) -> AppResult<(Captured, Option<RetrieveMetadataOutcome>)> {
     let mut captured = state
@@ -66,7 +67,7 @@ async fn store(
     if captured.existing {
         return Ok((captured, None));
     }
-    let outcome = retrieve_metadata(state, &captured.item.key).await;
+    let outcome = retrieve_metadata(state, origin, &captured.item.key).await;
     if let RetrieveMetadataOutcome::Resolved { title, .. } = &outcome {
         captured.item.title = StoredItemTitle {
             text: title.clone(),
@@ -205,7 +206,7 @@ async fn capture(
     upload: &Upload,
 ) -> AppResult<Json<CaptureResponse>> {
     let origin = origin(headers)?;
-    let (captured, metadata) = store(state, upload).await?;
+    let (captured, metadata) = store(state, &origin, upload).await?;
     let key = captured.item.key.to_string();
     let response = CaptureResponse {
         existing: captured.existing,
@@ -228,6 +229,7 @@ async fn capture(
 
 async fn import_url(
     State(state): State<Shared>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> AppResult<Json<ImportUrlResponse>> {
     let request: ImportUrlRequest = parse_body(&body)?;
@@ -238,7 +240,7 @@ async fn import_url(
         )));
     }
     let upload = find_pdf_at(&request.url, &state.config.app.rebuild, state.store.root()).await?;
-    let (captured, metadata) = store(&state, &upload).await?;
+    let (captured, metadata) = store(&state, &origin(&headers)?, &upload).await?;
     Ok(Json(ImportUrlResponse {
         key: captured.item.key,
         existing: captured.existing,
@@ -253,6 +255,7 @@ fn nonempty(text: String) -> NonEmpty {
 // One file of a folder import: read, checked and stored on its own, its failure its outcome.
 async fn import_one(
     state: &Shared,
+    origin: &str,
     folder: &FsPath,
     name: String,
 ) -> FolderImportResponseFilesItem {
@@ -267,7 +270,7 @@ async fn import_one(
             }
         }
     };
-    match store(state, &upload).await {
+    match store(state, origin, &upload).await {
         Ok((captured, None)) => FolderImportResponseFilesItem::Existing {
             file,
             key: captured.item.key,
@@ -289,8 +292,10 @@ async fn import_one(
 /// outcome in name order.
 async fn import_folder(
     State(state): State<Shared>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> AppResult<Json<FolderImportResponse>> {
+    let origin = origin(&headers)?;
     let request: FolderImportRequest = parse_body(&body)?;
     let folder = FsPath::new(request.path.as_str());
     // Only the operating system's answer that the path is no directory (a stat(2) of something
@@ -320,7 +325,7 @@ async fn import_folder(
     }
     let names = pdf_names_in_folder(folder).await?;
     let files = stream::iter(names)
-        .map(|name| import_one(&state, folder, name))
+        .map(|name| import_one(&state, &origin, folder, name))
         .buffered(concurrency(&state.config.app.rebuild))
         .collect()
         .await;

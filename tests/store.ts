@@ -79,7 +79,7 @@ export async function listItems(root: string, keys: string[]): Promise<StoredIte
   });
 }
 
-// Records resolver metadata inside a stored PDF, as a resolver's answer does.
+// Records metadata inside a stored PDF, as Zotero's answer to Retrieve metadata does.
 export async function recordMetadata(
   root: string,
   key: string,

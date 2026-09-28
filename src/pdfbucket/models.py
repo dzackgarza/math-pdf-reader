@@ -47,8 +47,8 @@ class Provenance(BaseModel):
     title_hint: NonEmpty
 
 
-# Where an item's title came from: a manual edit, a resolver, an inference, the PDF,
-# the capture hint, or the file name.
+# Where an item's title came from: a manual edit, Zotero's Retrieve metadata (the
+# "resolver" source), an inference, the PDF, the capture hint, or the file name.
 type TitleSource = Literal["manual", "resolver", "guess", "pdf-metadata", "capture-hint", "filename"]
 
 
@@ -67,7 +67,7 @@ class PdfRecord(BaseModel):
     provenance: Provenance
     title: ItemTitle
     authors: list[NonEmpty]
-    # Recorded from a resolver; None when none gave them.
+    # Recorded from Zotero's Retrieve metadata; None when it gave none.
     year: int | None
     abstract: NonEmpty | None
     pages: Annotated[int, Field(ge=1)]

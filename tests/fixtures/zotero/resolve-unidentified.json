@@ -1,1 +1,14 @@
-{"success":false,"operation":"resolve_url","stage":"identify_source","error":"No method identified the source: http://127.0.0.1:38917/lecture-notes.pdf","details":{"request":{"operation":"resolve_url","url":"http://127.0.0.1:38917/lecture-notes.pdf"},"attempts":[{"method":"pdf_recognition","outcome":"no_match","message":"the recognizer produced no parent item (see the Zotero debug log)"},{"method":"identifier","outcome":"no_match","message":"no DOI, ISBN or arXiv ID found"}]},"version":"3.4.0"}
+{
+  "success": false,
+  "operation": "resolve_url",
+  "stage": "identify_source",
+  "error": "No method identified the source: http://127.0.0.1:38917/lecture-notes.pdf",
+  "details": {
+    "request": { "operation": "resolve_url", "url": "http://127.0.0.1:38917/lecture-notes.pdf" },
+    "attempts": [
+      { "method": "pdf_recognition", "outcome": "no_match", "message": "the recognizer produced no parent item (see the Zotero debug log)" },
+      { "method": "identifier", "outcome": "no_match", "message": "no DOI, ISBN or arXiv ID found" }
+    ]
+  },
+  "version": "3.4.0"
+}
