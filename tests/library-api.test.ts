@@ -670,6 +670,19 @@ test("an item's first page is served as a PNG of the requested width", async () 
   expect((await bucket.request("/api/items/lattices/thumbnail?width=0")).status).toBe(400);
 });
 
+test("a thumbnail asked for while its item is deleted is served or is unknown, never a failure", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  // More widths than render slots, so most requests wait for a slot while the delete runs.
+  const thumbnails = [160, 200, 240, 280, 320, 360, 400, 440].map((width) =>
+    bucket.request(`/api/items/lattices/thumbnail?width=${width}`),
+  );
+  const deleted = await bucket.request("/api/items/lattices", { method: "DELETE" });
+  expect(deleted.status).toBe(200);
+  const statuses = (await Promise.all(thumbnails)).map((response) => response.status);
+  expect(statuses.filter((status) => status !== 200 && status !== 404)).toEqual([]);
+});
+
 test("bulk filing adds tags and collections to every chosen item, keeping what each already had", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
