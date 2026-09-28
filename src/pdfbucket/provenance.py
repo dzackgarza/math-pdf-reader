@@ -19,6 +19,8 @@ from pydantic import TypeAdapter
 from pdfbucket.models import ItemTitle, NonEmpty, PdfRecord, Provenance
 
 XMP_NAMESPACE = "https://github.com/dzackgarza/math-pdf-reader/ns/provenance/1.0/"
+# Every document-information key the bucket writes starts with this prefix.
+BUCKET_KEY_PREFIX = "/PDFBucket"
 
 # Document-information key for each provenance field. Every field but `source_url` is required;
 # a PDF captured with no known linking page carries no `/PDFBucketSourceURL`.
@@ -49,7 +51,7 @@ YEAR: TypeAdapter[int] = TypeAdapter(int)
 
 
 def provenance_values(provenance: Provenance) -> dict[str, str]:
-    """The provenance fields to embed, each as the exact text given; an unknown source page is left out."""
+    """The provenance fields to embed, each as the exact text given; an unknown source page has no field."""
     values = {
         "pdf_url": provenance.pdf_url,
         "captured_at": provenance.captured_at,
@@ -62,12 +64,22 @@ def provenance_values(provenance: Provenance) -> dict[str, str]:
 
 
 def embed_provenance(pdf_bytes: bytes, provenance: Provenance) -> bytes:
+    """PDF_BYTES as this capture: every bucket key and bucket XMP property the bytes carry is replaced by PROVENANCE.
+
+    Bytes that another bucket stored carry that bucket's provenance, title, authors, year and
+    abstract; none of them describes this capture. The PDF's own `/Title`, `/Author` and `dc:*`
+    stay.
+    """
     values = provenance_values(provenance)
     output = BytesIO()
     with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
         with pdf.open_metadata() as metadata:
+            for name in [name for name in metadata if name.startswith(f"{{{XMP_NAMESPACE}}}")]:
+                del metadata[name]
             for field, value in values.items():
                 metadata[f"{{{XMP_NAMESPACE}}}{field.replace('_', '-')}"] = value
+        for key in [key for key in pdf.docinfo.keys() if str(key).startswith(BUCKET_KEY_PREFIX)]:
+            del pdf.docinfo[key]
         for field, value in values.items():
             pdf.docinfo[DOCINFO_KEYS[field]] = value
         pdf.save(output)
