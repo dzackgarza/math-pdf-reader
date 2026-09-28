@@ -1,6 +1,7 @@
-//! Where the bucket's settings come from: pdf-bucket.config.json (compiled in), the checkout
-//! this binary was built from (the PDF.js viewer, the library bundle and the plugin manifests
-//! live there), the installed Python environment, the XDG directories, and the tunables below.
+//! Where the bucket's settings come from: pdf-bucket.config.json (compiled in), the runtime
+//! files (the PDF.js viewer, the library bundle, the plugin manifest and the Python environment)
+//! under the checkout this binary was built from or under the installed app's own copy of them,
+//! the XDG directories, and the tunables below.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -69,33 +70,35 @@ pub fn checkout() -> PathBuf {
     Path::new(CHECKOUT).to_path_buf()
 }
 
-/// The prebuilt PDF.js viewer, unpacked from the pinned release by `just fetch-pdfjs`.
-pub fn pdfjs_dir(config: &AppConfig) -> PathBuf {
-    checkout()
+/// The installed app's copy of the runtime files, in the checkout's layout, which
+/// `just provision` writes (scripts/provision.sh): the installed binary runs against the files
+/// it was built with, whatever the checkout later holds.
+pub fn installed() -> PathBuf {
+    xdg_data_home().join("pdf-bucket-app")
+}
+
+/// The prebuilt PDF.js viewer under RUNTIME, unpacked from the pinned release by
+/// `just fetch-pdfjs`.
+pub fn pdfjs_dir(runtime: &Path, config: &AppConfig) -> PathBuf {
+    runtime
         .join("vendor")
         .join(format!("pdfjs-{}", *config.pdfjs.version))
 }
 
-/// The library UI bundle, built by `just build-web`.
-pub fn web_dir() -> PathBuf {
-    checkout().join("dist/web")
+/// The library UI bundle under RUNTIME, built by `just build-web`.
+pub fn web_dir(runtime: &Path) -> PathBuf {
+    runtime.join("dist/web")
 }
 
-pub fn extractions_manifest() -> PathBuf {
-    checkout().join("plugins/manifests/extractions.json")
+pub fn extractions_manifest(runtime: &Path) -> PathBuf {
+    runtime.join("plugins/manifests/extractions.json")
 }
 
-/// The checkout's Python environment (`uv sync --locked`), whose bin directory holds
-/// `pdfbucket` and the extraction plugins' entry points: what `pdf-bucket serve` and the
-/// maintenance commands run.
-pub fn checkout_python_bin() -> PathBuf {
-    checkout().join(".venv/bin")
-}
-
-/// The installed app's own Python environment, which `just provision` builds from a wheel of
-/// the package; switching the checkout's branch leaves it as installed.
-pub fn app_python_bin() -> PathBuf {
-    xdg_data_home().join("pdf-bucket-app/venv/bin")
+/// The Python environment under RUNTIME, whose bin directory holds `pdfbucket` and the
+/// extraction plugins' entry points: the checkout's is `uv sync --locked`; the installed app's
+/// is a wheel of the package with the locked dependencies.
+pub fn python_bin(runtime: &Path) -> PathBuf {
+    runtime.join(".venv/bin")
 }
 
 /// Permanent data (stored PDFs, the filing) lives in the XDG data directory:
@@ -147,18 +150,20 @@ pub struct BucketConfig {
 }
 
 impl BucketConfig {
-    /// The configured bucket: the XDG data root, the configured Zotero, the checkout's plugins.
+    /// The installed app's bucket: the XDG data root, the configured Zotero, the installed
+    /// runtime files.
     pub fn configured(process_env: ProcessEnv) -> Self {
         let app = app_config();
+        let runtime = installed();
         Self {
             root: data_root(),
-            pdfjs_dir: pdfjs_dir(&app),
-            web_dir: web_dir(),
+            pdfjs_dir: pdfjs_dir(&runtime, &app),
+            web_dir: web_dir(&runtime),
             cache_dir: cache_root(),
             zotero_url: app.zotero.url.clone(),
-            extractions_manifest: extractions_manifest(),
+            extractions_manifest: extractions_manifest(&runtime),
             index_export: index_export_file(),
-            python_bin: app_python_bin(),
+            python_bin: python_bin(&runtime),
             app,
             process_env,
         }

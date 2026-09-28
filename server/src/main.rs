@@ -73,7 +73,7 @@ fn configured_store() -> Store {
     Store::new(
         config::data_root(),
         Python::new(
-            config::checkout_python_bin(),
+            config::python_bin(&config::checkout()),
             ProcessEnv::new(),
             Duration::from_secs(config::app_config().store.command_timeout_seconds.get()),
         ),
@@ -183,13 +183,13 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 .map_err(|violation| Failure::Config(config_file, violation))?;
             let bucket = BucketConfig {
                 root,
-                pdfjs_dir: config::pdfjs_dir(&app),
-                web_dir: config::web_dir(),
+                pdfjs_dir: config::pdfjs_dir(&config::checkout(), &app),
+                web_dir: config::web_dir(&config::checkout()),
                 cache_dir: config::cache_root(),
                 zotero_url,
                 extractions_manifest,
                 index_export,
-                python_bin: config::checkout_python_bin(),
+                python_bin: config::python_bin(&config::checkout()),
                 process_env: ProcessEnv::new(),
                 app: app.clone(),
             };
