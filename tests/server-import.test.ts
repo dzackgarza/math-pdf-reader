@@ -34,6 +34,8 @@ const html = (body: string) =>
   });
 const pdf = (bytes: Uint8Array<ArrayBuffer>) =>
   new Response(bytes, { headers: { "Content-Type": "application/pdf" } });
+// A PDF another bucket stored, passed on by a second site; set by the test that serves it.
+let passedOn: Uint8Array<ArrayBuffer> | undefined;
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -49,6 +51,9 @@ const publisher = Bun.serve({
       return html(
         '<title>[2401.00001] Quadratic forms</title><meta name="citation_title" content="Problem Set on Quadratic Forms"><meta name="citation_pdf_url" content="/pdf/2401.00001">',
       );
+    }
+    if (path === "/shared/passed-on.pdf" && passedOn !== undefined) {
+      return pdf(passedOn);
     }
     if (path === "/blog.html") {
       return html("<title>A blog post</title>");
@@ -75,7 +80,7 @@ async function bucket() {
     });
   const items = async () =>
     LibraryPayloadSchema.parse(await (await app.request("/api/library")).json()).items;
-  return { post, items };
+  return { post, items, request: app.request };
 }
 
 test("Import URL stores a PDF URL, with no linking page, and follows an abstract page's citation_pdf_url", async () => {
@@ -119,6 +124,44 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   expect(ApiErrorSchema.parse(await noPdf.json()).error.kind).toBe("no_pdf_at_url");
   const gone = await post("/api/import-url", { url: at("/gone.pdf") });
   expect(gone.status).toBe(422);
+});
+
+test("Import URL of a PDF another bucket stored records this capture's provenance, not the other bucket's", async () => {
+  const other = await bucket();
+  await other.post("/api/import-url", { url: at("/abs/2401.00001") });
+  const edited = await other.request("/api/items/2401.00001/metadata", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: "Problem Set on Quadratic Forms",
+      authors: ["Ada Lovelace"],
+      year: 1843,
+      abstract: "Exercises on binary quadratic forms.",
+    }),
+  });
+  expect(edited.status).toBe(200);
+  passedOn = new Uint8Array(await (await other.request("/pdf/2401.00001.pdf")).arrayBuffer());
+
+  const { post, items } = await bucket();
+  const imported = ImportUrlResponseSchema.parse(
+    await (await post("/api/import-url", { url: at("/shared/passed-on.pdf") })).json(),
+  );
+
+  const item = (await items()).find((stored) => stored.id === imported.key);
+  expect(item?.provenance).toMatchObject({
+    pdf_url: at("/shared/passed-on.pdf"),
+    source_url: null,
+    title_hint: "passed-on.pdf",
+  });
+  expect(item?.url).toBe(at("/shared/passed-on.pdf"));
+  // The year, the abstract and the title's source are the other bucket's records. This bucket
+  // has none, so the title is the one in the PDF's standard metadata.
+  expect(item).toMatchObject({
+    title: "Problem Set on Quadratic Forms",
+    titleSource: "pdf-metadata",
+    year: null,
+    abstract: null,
+  });
 });
 
 test("Add Folder stores every PDF in the folder with file URLs as provenance, once, with one outcome per file", async () => {
