@@ -504,11 +504,10 @@ def main(out: Path) -> None:
 
 def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, source_url: str, title: str) -> None:
     """Store the fixture under KEY with its provenance embedded by the store's pikepdf command."""
-    original = (REPO / "tests/fixtures" / fixture).read_bytes()
-    provenance = [f"--pdf-url={pdf_url}", f"--source-url={source_url}", f"--captured-at={datetime.now(UTC).isoformat()}", f"--original-sha256={sha256(original).hexdigest()}", f"--title-hint={title}"]
-    command = ["uv", "run", "--locked", "pdfbucket", "embed-provenance", *provenance]
-    embedded = subprocess.run(command, cwd=REPO, check=True, env=project_env(), input=original, stdout=subprocess.PIPE)
-    (root / f"{key}.pdf").write_bytes(embedded.stdout)
+    original = REPO / "tests/fixtures" / fixture
+    provenance = [f"--pdf-url={pdf_url}", f"--source-url={source_url}", f"--captured-at={datetime.now(UTC).isoformat()}", f"--original-sha256={sha256(original.read_bytes()).hexdigest()}", f"--title-hint={title}"]
+    command = ["uv", "run", "--locked", "pdfbucket", "embed-provenance", *provenance, "--", str(original), str(root / f"{key}.pdf")]
+    subprocess.run(command, cwd=REPO, check=True, env=project_env(), stdin=subprocess.DEVNULL)
 
 
 def record_sent(root: Path, key: str) -> None:

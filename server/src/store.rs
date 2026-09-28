@@ -3,32 +3,37 @@
 //! into place, moves what it removes to the desktop trash, and serializes writes: a new PDF
 //! takes its key under one store-wide lock, and every change to a stored key holds that key's
 //! lock. The pikepdf work (embedding provenance and metadata, reading a PDF) runs in the Python
-//! commands (python.rs) on bytes and paths the store hands them.
-use std::collections::HashMap;
+//! commands (python.rs) on files the store names. A body from outside (a capture, a download)
+//! is streamed to a staged file in the root while it is hashed, so no body is held in memory.
+use std::collections::{BTreeSet, HashMap};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::body::Bytes;
 use axum::http::StatusCode;
-use tempfile::NamedTempFile;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use futures::{Stream, StreamExt};
+use sha2::{Digest, Sha256};
+use tempfile::{NamedTempFile, TempPath};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio_util::io::ReaderStream;
 
-use crate::config::BucketConfig;
+use crate::config::{BucketConfig, PDF_HEADER_WINDOW};
 use crate::contract::{
     ApiErrorErrorKind, IdentifierList, Provenance, StoredItem, Timestamp, TitleSource,
 };
 use crate::error::{AppError, AppResult};
 use crate::index::{CachedRead, FileRead, Signature};
 use crate::layout::{self, candidate_keys, is_pdf, Key};
-use crate::python::{PdfFailure, Python};
-use crate::sources::sha256;
+use crate::python::Python;
+use crate::sources::{digest, sha256};
 
 /// A PDF offered for storage and where it came from. `filename` is the name the PDF was
 /// offered under, if any; `source_url` the page that linked to it, if known.
 pub struct Upload {
-    pub bytes: Vec<u8>,
+    pub pdf: Staged,
     pub filename: Option<String>,
     pub pdf_url: String,
     pub source_url: Option<String>,
@@ -98,19 +103,89 @@ enum Placement {
     Over,
 }
 
-/// BYTES written to a unique temporary file in DIRECTORY and synced to disk.
-fn staged(directory: &Path, bytes: &[u8]) -> std::io::Result<NamedTempFile> {
-    let mut file = tempfile::Builder::new()
+/// A new, empty, unique temporary file in DIRECTORY, removed when dropped.
+fn temporary(directory: &Path) -> std::io::Result<NamedTempFile> {
+    tempfile::Builder::new()
         .prefix(".")
         .suffix(".partial")
-        .tempfile_in(directory)?;
+        .tempfile_in(directory)
+}
+
+/// BYTES written to a unique temporary file in DIRECTORY and synced to disk.
+fn staged(directory: &Path, bytes: &[u8]) -> std::io::Result<TempPath> {
+    let mut file = temporary(directory)?;
     file.write_all(bytes)?;
     file.as_file().sync_all()?;
-    Ok(file)
+    Ok(file.into_temp_path())
+}
+
+/// The first bytes of a body that `layout::is_pdf` looks at.
+const HEAD: usize = PDF_HEADER_WINDOW + b"%PDF-".len();
+
+/// A body streamed to a unique temporary file and synced, with its SHA-256 and its first
+/// bytes. The file is removed when this is dropped.
+pub struct Staged {
+    path: TempPath,
+    pub sha256: String,
+    head: Vec<u8>,
+}
+
+impl Staged {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Whether the body is a PDF: `%PDF-` starts within its first 1024 bytes.
+    pub fn is_pdf(&self) -> bool {
+        is_pdf(&self.head)
+    }
+}
+
+/// Why a body was not staged: its source failed, or the disk did.
+pub enum StageFailure<E> {
+    Read(E),
+    Write(std::io::Error),
+}
+
+/// Streams CHUNKS to a unique temporary file in DIRECTORY, hashing them as they are written.
+pub async fn stage<E>(
+    directory: &Path,
+    chunks: impl Stream<Item = Result<Bytes, E>>,
+) -> Result<Staged, StageFailure<E>> {
+    let (file, path) = temporary(directory)
+        .map_err(StageFailure::Write)?
+        .into_parts();
+    let mut file = tokio::fs::File::from_std(file);
+    let (mut hasher, mut head) = (Sha256::new(), Vec::with_capacity(HEAD));
+    let mut chunks = std::pin::pin!(chunks);
+    while let Some(chunk) = chunks.next().await {
+        let chunk = chunk.map_err(StageFailure::Read)?;
+        hasher.update(&chunk[..]);
+        let wanted = HEAD.saturating_sub(head.len()).min(chunk.len());
+        head.extend_from_slice(&chunk[..wanted]);
+        file.write_all(&chunk).await.map_err(StageFailure::Write)?;
+    }
+    file.sync_all().await.map_err(StageFailure::Write)?;
+    Ok(Staged {
+        path,
+        sha256: hex::encode(hasher.finalize()),
+        head,
+    })
+}
+
+/// The file at PATH, outside the root, staged into DIRECTORY.
+pub async fn stage_file(
+    directory: &Path,
+    path: &Path,
+) -> Result<Staged, StageFailure<std::io::Error>> {
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(StageFailure::Read)?;
+    stage(directory, ReaderStream::new(file)).await
 }
 
 /// Renames a staged file to PATH and syncs the directory, so the new name survives a crash.
-fn commit(staged: NamedTempFile, path: &Path, placement: Placement) -> std::io::Result<()> {
+fn commit(staged: TempPath, path: &Path, placement: Placement) -> std::io::Result<()> {
     match placement {
         Placement::New => staged.persist_noclobber(path),
         Placement::Over => staged.persist(path),
@@ -120,7 +195,7 @@ fn commit(staged: NamedTempFile, path: &Path, placement: Placement) -> std::io::
     std::fs::File::open(directory)?.sync_all()
 }
 
-async fn blocking<T: Send + 'static>(
+pub async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> std::io::Result<T> + Send + 'static,
 ) -> AppResult<T> {
     tokio::task::spawn_blocking(work)
@@ -243,11 +318,31 @@ impl Store {
         lock.lock_owned().await
     }
 
-    async fn embedded(&self, bytes: &[u8], provenance: &Provenance) -> Result<Vec<u8>, PdfFailure> {
-        self.inner
-            .python
-            .run(&provenance_args(provenance), Some(bytes))
+    /// SOURCE with PROVENANCE embedded, written by the Python command to a staged file in the
+    /// root, with the SHA-256 of what it wrote.
+    async fn embedded(
+        &self,
+        source: &Path,
+        provenance: &Provenance,
+    ) -> AppResult<(TempPath, String)> {
+        let output = temporary(self.root())
+            .map_err(AppError::store_failed)?
+            .into_temp_path();
+        let mut args = provenance_args(provenance);
+        args.extend([
+            "--".to_string(),
+            source.to_string_lossy().into_owned(),
+            output.to_string_lossy().into_owned(),
+        ]);
+        self.inner.python.run(&args).await?;
+        let written = tokio::fs::File::open(&output)
             .await
+            .map_err(AppError::store_failed)?;
+        written.sync_all().await.map_err(AppError::store_failed)?;
+        let stored_sha256 = digest(ReaderStream::new(written))
+            .await
+            .map_err(AppError::store_failed)?;
+        Ok((output, stored_sha256))
     }
 
     /// The stored item whose PDF was captured from these original bytes, if any.
@@ -280,15 +375,16 @@ impl Store {
     }
 
     /// Stores an upload with its provenance embedded, under the first free key its file name
-    /// gives. The same original bytes already stored under any key are that item, whatever URL
-    /// they came from.
-    pub async fn capture(&self, upload: &Upload) -> AppResult<Captured> {
-        if !is_pdf(&upload.bytes) {
+    /// gives: a key is free when no stored PDF has it and HELD, the keys the filing and the
+    /// index export still list, does not contain it. The same original bytes already stored
+    /// under any key are that item, whatever URL they came from.
+    pub async fn capture(&self, upload: &Upload, held: &BTreeSet<String>) -> AppResult<Captured> {
+        if !upload.pdf.is_pdf() {
             return Err(not_a_pdf(
                 "the bytes carry no %PDF- header in their first 1024 bytes",
             ));
         }
-        let original_sha256 = sha256(&upload.bytes);
+        let original_sha256 = upload.pdf.sha256.clone();
         if let Some(item) = self.holding(&original_sha256).await? {
             return self.already(item).await;
         }
@@ -306,8 +402,7 @@ impl Store {
                 .try_into()
                 .map_err(|_empty| AppError::invalid("the title hint is empty"))?,
         };
-        let embedded = self.embedded(&upload.bytes, &provenance).await?;
-        let stored_sha256 = sha256(&embedded);
+        let (embedded, stored_sha256) = self.embedded(upload.pdf.path(), &provenance).await?;
 
         let _placing = self.inner.placing.lock().await;
         if let Some(item) = self.holding(&original_sha256).await? {
@@ -315,11 +410,10 @@ impl Store {
         }
         for key in candidate_keys(upload.filename.as_deref(), &original_sha256) {
             let path = layout::pdf_path(self.root(), &key);
-            if path.exists() {
+            if held.contains(key.as_str()) || path.exists() {
                 continue;
             }
-            let (bytes, root) = (embedded.clone(), self.root().to_path_buf());
-            blocking(move || commit(staged(&root, &bytes)?, &path, Placement::New)).await?;
+            blocking(move || commit(embedded, &path, Placement::New)).await?;
             return Ok(Captured {
                 item: self.require_stored(&key).await?,
                 stored_sha256,
@@ -327,7 +421,7 @@ impl Store {
             });
         }
         Err(AppError::store_failed(format!(
-            "every key {:?} gives holds a different PDF",
+            "every key {:?} gives is held by a different PDF, the filing or the index export",
             upload.filename
         )))
     }
@@ -393,7 +487,7 @@ impl Store {
         let root = self.root().to_path_buf();
         let staged = blocking(move || staged(&root, &bytes)).await?;
         let offered = self
-            .read_records(&[staged.path().to_path_buf()])
+            .read_records(&[staged.to_path_buf()])
             .await?
             .pop()
             .expect("one path read gives one outcome");
@@ -443,18 +537,18 @@ impl Store {
             metadata.title.clone(),
             source.to_string(),
         ]);
-        let bytes = self.inner.python.run(&args, None).await?;
+        let bytes = self.inner.python.run(&args).await?;
         let root = self.root().to_path_buf();
         blocking(move || commit(staged(&root, &bytes)?, &path, Placement::Over)).await?;
         self.require_stored(&key).await
     }
 
-    /// Stores bytes re-downloaded for a lost PDF under KEY with the provenance recorded at
-    /// capture. The bytes must be the recorded original; a PDF already under KEY is left alone.
+    /// Stores PDF, re-downloaded for a lost PDF, under KEY with the provenance recorded at
+    /// capture. PDF must be the recorded original; a PDF already under KEY is left alone.
     pub async fn restore(
         &self,
         key: &str,
-        bytes: &[u8],
+        pdf: &Staged,
         provenance: &Provenance,
     ) -> AppResult<Restoration> {
         let parsed = Key::parse(key).ok_or_else(|| {
@@ -462,22 +556,19 @@ impl Store {
                 "the index export lists {key:?}, which is no store key"
             ))
         })?;
-        let observed = sha256(bytes);
-        if observed != *provenance.original_sha256 {
+        if pdf.sha256 != *provenance.original_sha256 {
             return Err(AppError::internal(format!(
-                "{key}: the bytes hash to {observed}, not the recorded original {}",
-                *provenance.original_sha256
+                "{key}: the bytes hash to {}, not the recorded original {}",
+                pdf.sha256, *provenance.original_sha256
             )));
         }
-        let embedded = self.embedded(bytes, provenance).await?;
-        let stored_sha256 = sha256(&embedded);
+        let (embedded, stored_sha256) = self.embedded(pdf.path(), provenance).await?;
         let _placing = self.inner.placing.lock().await;
         let path = layout::pdf_path(self.root(), &parsed);
         if path.exists() {
             return Ok(Restoration::Present);
         }
-        let root = self.root().to_path_buf();
-        blocking(move || commit(staged(&root, &embedded)?, &path, Placement::New)).await?;
+        blocking(move || commit(embedded, &path, Placement::New)).await?;
         Ok(Restoration::Restored { stored_sha256 })
     }
 
@@ -543,7 +634,7 @@ impl Store {
                 .into_owned(),
             width.to_string(),
         ];
-        Ok(self.inner.python.run(&args, None).await?)
+        Ok(self.inner.python.run(&args).await?)
     }
 
     /// The identifiers the publisher embedded in KEY's PDF.

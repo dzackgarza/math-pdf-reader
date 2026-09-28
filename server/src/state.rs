@@ -10,14 +10,14 @@ use tokio::sync::{Notify, Semaphore};
 
 use crate::config::{BucketConfig, THUMBNAIL_RENDERS};
 use crate::contract::{
-    from_json, BucketItem, BucketItemFile, Contract, ExportedItem, LibraryPayload,
+    from_json, BucketItem, BucketItemFile, Contract, ExportedItem, IndexExport, LibraryPayload,
     LibraryPayloadUnreadableItem, MissingItem, Organization, ZoteroStatus,
 };
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
 use crate::export::{concurrency, IndexExporter};
 use crate::index::{IndexedItem, LibraryIndex};
-use crate::organization::{filing_of, remove_item, OrganizationStore};
+use crate::organization::{filing_of, read_document, remove_item, OrganizationStore};
 use crate::send::zotero_status;
 use crate::sessions::SessionStore;
 use crate::store::Store;
@@ -92,6 +92,26 @@ impl AppState {
             return Err(error);
         }
         self.organizations.update(|org| remove_item(org, key)).await
+    }
+
+    /// The keys a new capture may not take although no PDF holds them: the keys the filing or
+    /// the last index export lists, except those removed on purpose.
+    pub async fn held_keys(&self) -> AppResult<BTreeSet<String>> {
+        let removed = self.organizations.removed().await?;
+        let filed = self.organizations.read().await?.items.into_keys();
+        let exported = match read_document::<IndexExport>(self.exporter.export_file()).await? {
+            Some(index) => index
+                .items
+                .into_iter()
+                .map(|item| item.key.to_string())
+                .collect(),
+            None => Vec::new(),
+        };
+        Ok(filed
+            .map(|key| key.to_string())
+            .chain(exported)
+            .filter(|key| !removed.contains(key))
+            .collect())
     }
 
     pub async fn indexed(&self, key: &str) -> AppResult<Option<IndexedItem>> {

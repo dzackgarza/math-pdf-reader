@@ -33,7 +33,7 @@ use crate::imports::{find_pdf_at, folder_upload, pdf_names_in_folder, FolderFile
 use crate::library::entity_tag;
 use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
-use crate::store::{Captured, Upload};
+use crate::store::{stage, stage_file, Captured, StageFailure, Upload};
 use crate::titles::retrieve_metadata;
 use crate::{extractions, guard, guesses, library, send, sessions, source_routes, thumbnails};
 
@@ -55,7 +55,10 @@ async fn store(
     state: &Shared,
     upload: &Upload,
 ) -> AppResult<(Captured, Option<RetrieveMetadataOutcome>)> {
-    let mut captured = state.store.capture(upload).await?;
+    let mut captured = state
+        .store
+        .capture(upload, &state.held_keys().await?)
+        .await?;
     if !captured.existing {
         state.organizations.claim(&captured.item.key).await?;
     }
@@ -81,8 +84,9 @@ fn web_url(value: &str) -> bool {
 }
 
 // The capture extension's form: the PDF's bytes and the name it was offered under, its URL,
-// the page that linked to it when one is known, and a title hint.
-async fn capture_form(mut form: Multipart) -> AppResult<Upload> {
+// the page that linked to it when one is known, and a title hint. The PDF is staged in ROOT as
+// it arrives.
+async fn capture_form(root: &FsPath, mut form: Multipart) -> AppResult<Upload> {
     let unreadable = |error: axum::extract::multipart::MultipartError| {
         AppError::invalid(format!(
             "the capture form cannot be read: {}",
@@ -97,8 +101,13 @@ async fn capture_form(mut form: Multipart) -> AppResult<Upload> {
                 let Some(filename) = field.file_name().map(str::to_string) else {
                     return Err(AppError::invalid("the capture form's pdf is not a file"));
                 };
-                let bytes = field.bytes().await.map_err(unreadable)?;
-                pdf = Some((filename, bytes.to_vec()));
+                let staged = stage(root, field).await.map_err(|failure| match failure {
+                    StageFailure::Read(error) => unreadable(error),
+                    StageFailure::Write(error) => {
+                        AppError::store_failed(format!("cannot stage the captured PDF: {error}"))
+                    }
+                })?;
+                pdf = Some((filename, staged));
             }
             Some(text @ ("pdf_url" | "source_url" | "title_hint")) => {
                 let value = field.text().await.map_err(unreadable)?;
@@ -116,7 +125,7 @@ async fn capture_form(mut form: Multipart) -> AppResult<Upload> {
             }
         }
     }
-    let (Some((filename, bytes)), Some(pdf_url), Some(title_hint)) = (pdf, pdf_url, title_hint)
+    let (Some((filename, staged)), Some(pdf_url), Some(title_hint)) = (pdf, pdf_url, title_hint)
     else {
         return Err(AppError::invalid(
             "the capture form requires pdf, pdf_url and title_hint",
@@ -132,7 +141,7 @@ async fn capture_form(mut form: Multipart) -> AppResult<Upload> {
         return Err(AppError::invalid("title_hint must not be empty"));
     }
     Ok(Upload {
-        bytes,
+        pdf: staged,
         filename: Some(filename),
         pdf_url,
         source_url,
@@ -145,7 +154,7 @@ async fn capture_bytes(
     headers: HeaderMap,
     form: Multipart,
 ) -> AppResult<Json<CaptureResponse>> {
-    let upload = capture_form(form).await?;
+    let upload = capture_form(state.store.root(), form).await?;
     capture(&state, &headers, &upload).await
 }
 
@@ -169,11 +178,18 @@ async fn capture_download(
             "the download path {path} is not absolute"
         )));
     }
-    let bytes = tokio::fs::read(&path).await.map_err(|error| {
-        AppError::invalid(format!("the download {path} cannot be read: {error}"))
-    })?;
+    let staged = stage_file(state.store.root(), FsPath::new(&path))
+        .await
+        .map_err(|failure| match failure {
+            StageFailure::Read(error) => {
+                AppError::invalid(format!("the download {path} cannot be read: {error}"))
+            }
+            StageFailure::Write(error) => {
+                AppError::store_failed(format!("cannot stage the download {path}: {error}"))
+            }
+        })?;
     let upload = Upload {
-        bytes,
+        pdf: staged,
         filename: Some(request.filename.to_string()),
         pdf_url: request.pdf_url,
         source_url: request.source_url,
@@ -221,15 +237,7 @@ async fn import_url(
             request.url
         )));
     }
-    let upload = find_pdf_at(&request.url, &state.config.app.rebuild)
-        .await
-        .map_err(|failure| {
-            AppError::api(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                ApiErrorErrorKind::NoPdfAtUrl,
-                failure.to_string(),
-            )
-        })?;
+    let upload = find_pdf_at(&request.url, &state.config.app.rebuild, state.store.root()).await?;
     let (captured, metadata) = store(&state, &upload).await?;
     Ok(Json(ImportUrlResponse {
         key: captured.item.key,
@@ -249,13 +257,13 @@ async fn import_one(
     name: String,
 ) -> FolderImportResponseFilesItem {
     let file = nonempty(name.clone());
-    let upload = match folder_upload(folder, &name).await {
+    let upload = match folder_upload(state.store.root(), folder, &name).await {
         Ok(FolderFile::Pdf(upload)) => upload,
         Ok(FolderFile::NotPdf) => return FolderImportResponseFilesItem::NotAPdf { file },
-        Err(error) => {
+        Err(message) => {
             return FolderImportResponseFilesItem::Failed {
                 file,
-                message: nonempty(format!("cannot read {name}: {error}")),
+                message: nonempty(message),
             }
         }
     };

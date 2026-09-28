@@ -63,16 +63,15 @@ def provenance_values(provenance: Provenance) -> dict[str, str]:
     return values
 
 
-def embed_provenance(pdf_bytes: bytes, provenance: Provenance) -> bytes:
-    """PDF_BYTES as this capture: every bucket key and bucket XMP property the bytes carry is replaced by PROVENANCE.
+def embed_provenance(original: Path | BytesIO, output: Path | BytesIO, provenance: Provenance) -> None:
+    """Write the ORIGINAL PDF to OUTPUT as this capture: every bucket key and bucket XMP property it carries is replaced by PROVENANCE.
 
-    Bytes that another bucket stored carry that bucket's provenance, title, authors, year and
-    abstract; none of them describes this capture. The PDF's own `/Title`, `/Author` and `dc:*`
-    stay.
+    qpdf reads and writes the files as it goes. A PDF that another bucket stored carries that
+    bucket's provenance, title, authors, year and abstract; none of them describes this capture.
+    The PDF's own `/Title`, `/Author` and `dc:*` stay.
     """
     values = provenance_values(provenance)
-    output = BytesIO()
-    with pikepdf.open(BytesIO(pdf_bytes)) as pdf:
+    with pikepdf.open(original) as pdf:
         with pdf.open_metadata() as metadata:
             for name in [name for name in metadata if name.startswith(f"{{{XMP_NAMESPACE}}}")]:
                 del metadata[name]
@@ -83,7 +82,6 @@ def embed_provenance(pdf_bytes: bytes, provenance: Provenance) -> bytes:
         for field, value in values.items():
             pdf.docinfo[DOCINFO_KEYS[field]] = value
         pdf.save(output)
-    return output.getvalue()
 
 
 class MissingProvenanceError(ValueError):

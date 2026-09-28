@@ -1,6 +1,6 @@
 //! The pikepdf and MuPDF commands (`pdfbucket <command>`, src/pdfbucket/cli.py): each call is one
-//! process that reads the PDF or bytes the server names and prints a PDF, a PNG or one JSON
-//! document. A command that cannot read its PDF exits 3 with a StoreFailure document; any other
+//! process that reads the files the server names and prints a PDF, a PNG or one JSON document,
+//! or writes the staged file the server names. A command that cannot read its PDF exits 3 with a StoreFailure document; any other
 //! non-zero exit, a timeout or a spawn failure is a store failure with the command's stderr.
 use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
@@ -12,7 +12,6 @@ use nix::errno::Errno;
 use nix::sys::signal::{killpg, Signal};
 use nix::unistd::Pid;
 use serde::de::DeserializeOwned;
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::config::{ProcessEnv, STORE_REFUSED_EXIT};
@@ -31,8 +30,6 @@ pub enum PdfFailure {
     },
     TimedOut(Duration),
     Spawn(std::io::Error),
-    /// Its standard input could not be written although it exited successfully.
-    Stdin(std::io::Error),
     /// It printed a document outside its contract.
     Contract(serde_json::Error),
 }
@@ -54,7 +51,6 @@ impl std::fmt::Display for PdfFailure {
                 limit.as_secs()
             ),
             Self::Spawn(error) => write!(formatter, "the store command did not start: {error}"),
-            Self::Stdin(error) => write!(formatter, "the store command's input failed: {error}"),
             Self::Contract(error) => {
                 write!(
                     formatter,
@@ -156,42 +152,27 @@ impl Python {
         command
     }
 
-    /// Runs `pdfbucket ARGS`, STDIN on its standard input, and answers its stdout. Standard
-    /// input is written while the output is read, so a command that exits early still reports
-    /// its own failure and stderr.
-    pub async fn run(&self, args: &[String], stdin: Option<&[u8]>) -> Result<Vec<u8>, PdfFailure> {
-        self.run_with_timeout(args, stdin, self.timeout).await
+    /// Runs `pdfbucket ARGS` and answers its stdout.
+    pub async fn run(&self, args: &[String]) -> Result<Vec<u8>, PdfFailure> {
+        self.run_with_timeout(args, self.timeout).await
     }
 
     pub async fn run_with_timeout(
         &self,
         args: &[String],
-        stdin: Option<&[u8]>,
         timeout: Duration,
     ) -> Result<Vec<u8>, PdfFailure> {
         let mut command = self.command(&self.bin.join("pdfbucket").to_string_lossy());
         command
             .args(args)
-            .stdin(if stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
-            })
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = command.spawn().map_err(PdfFailure::Spawn)?;
-        let pipe = child.stdin.take();
-        let write = async move {
-            match (pipe, stdin) {
-                (Some(mut pipe), Some(bytes)) => pipe.write_all(bytes).await,
-                _ => Ok(()),
-            }
-        };
-        let finished = async { tokio::join!(write, child.wait_with_output()) };
-        let (written, output) = tokio::time::timeout(timeout, finished)
+        let child = command.spawn().map_err(PdfFailure::Spawn)?;
+        let output = tokio::time::timeout(timeout, child.wait_with_output())
             .await
-            .map_err(|_elapsed| PdfFailure::TimedOut(timeout))?;
-        let output = output.map_err(PdfFailure::Spawn)?;
+            .map_err(|_elapsed| PdfFailure::TimedOut(timeout))?
+            .map_err(PdfFailure::Spawn)?;
         if output.status.code() == Some(STORE_REFUSED_EXIT) {
             let refused = serde_json::from_slice(&output.stdout).map_err(PdfFailure::Contract)?;
             return Err(PdfFailure::Refused(refused));
@@ -202,12 +183,11 @@ impl Python {
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             });
         }
-        written.map_err(PdfFailure::Stdin)?;
         Ok(output.stdout)
     }
 
     pub async fn json<T: DeserializeOwned>(&self, args: &[String]) -> Result<T, PdfFailure> {
-        let stdout = self.run(args, None).await?;
+        let stdout = self.run(args).await?;
         serde_json::from_slice(&stdout).map_err(PdfFailure::Contract)
     }
 }

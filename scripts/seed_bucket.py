@@ -91,7 +91,7 @@ def seed(root: Path, count: int) -> None:
             original_sha256=sha256(original).hexdigest(),
             title_hint=title,
         )
-        (root / f"{identifier}.pdf").write_bytes(embed_provenance(original, provenance))
+        embed_provenance(BytesIO(original), root / f"{identifier}.pdf", provenance)
 
 
 if __name__ == "__main__":

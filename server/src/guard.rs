@@ -1,16 +1,23 @@
-//! The checks every state-changing request passes before its route runs, so that a web page
-//! open in the user's browser cannot drive the bucket (send an item to Zotero and remove it,
-//! delete it, rewrite its PDF):
+//! The checks every request passes before its route runs, so that a web page open in the user's
+//! browser can neither read the bucket nor drive it (send an item to Zotero and remove it, delete
+//! it, rewrite its PDF):
 //!
-//! - It comes from the bucket's own pages, from the capture extension, or from a client that is
-//!   not a browser. Browsers mark every request with `Sec-Fetch-Site` and `Origin`; a page on
-//!   another site can make a POST but cannot forge those headers.
-//! - Its body is in the type its route reads: the capture form as `multipart/form-data`, the
-//!   reader's save as `application/pdf`, every other body as `application/json`. A page on
-//!   another site can send a form or `text/plain` body without asking, but not these types.
+//! - Every request names the bucket by a loopback host in its `Host` header. A page on a domain
+//!   that its owner points at 127.0.0.1 (DNS rebinding) is, for the browser, on the bucket's
+//!   origin; its requests name that domain.
+//! - A state-changing request comes from the bucket's own pages, from the capture extension, or
+//!   from a client that is not a browser. Browsers mark every request with `Sec-Fetch-Site` and
+//!   `Origin`; a page on another site can make a POST but cannot forge those headers.
+//! - A state-changing request's body is in the type its route reads: the capture form as
+//!   `multipart/form-data`, the reader's save as `application/pdf`, every other body as
+//!   `application/json`. A page on another site can send a form or `text/plain` body without
+//!   asking, but not these types.
+use std::net::IpAddr;
+
 use axum::body::{Body, HttpBody};
 use axum::extract::{MatchedPath, Request};
 use axum::http::header::ToStrError;
+use axum::http::uri::Authority;
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -31,6 +38,29 @@ fn header_text(headers: &HeaderMap, name: header::HeaderName) -> Result<Option<&
 
 fn from_extension(origin: &Url) -> bool {
     EXTENSION_SCHEMES.contains(&origin.scheme())
+}
+
+/// Whether the `Host` header names this machine: `localhost` or a loopback IP address, on any
+/// port. This is Jupyter Server's `JupyterHandler.check_host` with `allow_remote_access` off
+/// (jupyter_server/base/handlers.py), the check Vite's `server.allowedHosts` and
+/// webpack-dev-server's `allowedHosts: "auto"` also make against DNS rebinding. A request with
+/// no `Host`, or one that is not an authority, is refused.
+fn loopback_host(headers: &HeaderMap) -> bool {
+    let Ok(Some(host)) = header_text(headers, header::HOST) else {
+        return false;
+    };
+    let Ok(authority) = host.parse::<Authority>() else {
+        return false;
+    };
+    let name = authority.host();
+    let address = name
+        .strip_prefix('[')
+        .and_then(|name| name.strip_suffix(']'))
+        .unwrap_or(name);
+    name.eq_ignore_ascii_case("localhost")
+        || address
+            .parse::<IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
 }
 
 /// Whether a state-changing request may come from where the browser says it comes from. The
@@ -89,6 +119,23 @@ fn media_type(headers: &HeaderMap) -> Option<&str> {
 }
 
 pub async fn guard(request: Request<Body>, next: Next) -> Response {
+    if !loopback_host(request.headers()) {
+        return AppError::api(
+            StatusCode::FORBIDDEN,
+            ApiErrorErrorKind::CrossOriginRequest,
+            format!(
+                "{} {} named the host {}, not this machine's loopback address",
+                request.method(),
+                request.uri().path(),
+                match header_text(request.headers(), header::HOST) {
+                    Ok(Some(host)) => host,
+                    Ok(None) => "(no Host header)",
+                    Err(_) => "(a Host header that is not text)",
+                }
+            ),
+        )
+        .into_response();
+    }
     if matches!(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS
@@ -140,7 +187,7 @@ pub async fn guard(request: Request<Body>, next: Next) -> Response {
 mod tests {
     use axum::http::{HeaderMap, HeaderValue};
 
-    use super::same_origin;
+    use super::{loopback_host, same_origin};
 
     fn headers(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
         let mut map = HeaderMap::new();
@@ -178,5 +225,23 @@ mod tests {
             ("origin", "null"),
             ("host", "127.0.0.1:43117")
         ])));
+    }
+
+    #[test]
+    fn requests_pass_only_under_a_loopback_host() {
+        assert!(loopback_host(&headers(&[("host", "127.0.0.1:43117")])));
+        assert!(loopback_host(&headers(&[("host", "localhost:43117")])));
+        assert!(loopback_host(&headers(&[("host", "[::1]:43117")])));
+        assert!(loopback_host(&headers(&[("host", "127.0.0.1")])));
+        assert!(!loopback_host(&headers(&[(
+            "host",
+            "rebound.example:43117"
+        )])));
+        assert!(!loopback_host(&headers(&[("host", "192.168.1.20:43117")])));
+        assert!(!loopback_host(&headers(&[(
+            "host",
+            "localhost.rebound.example"
+        )])));
+        assert!(!loopback_host(&headers(&[])));
     }
 }

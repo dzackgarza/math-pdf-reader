@@ -38,7 +38,7 @@ async fn guess(
     let output = state
         .store
         .python()
-        .run_with_timeout(&args, None, INFERENCE_TIMEOUT)
+        .run_with_timeout(&args, INFERENCE_TIMEOUT)
         .await
         .map_err(|error| {
             AppError::api(

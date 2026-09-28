@@ -57,24 +57,6 @@ The most serious findings were checked against the code; the rest were confirmed
    The later PDF, its notes and its Markdown attach to the first paper, and no item is made for the later paper.
    The bucket then marks the later item as sent, so it leaves the library.
 
-2. **DNS rebinding gets past the origin guard.** `server/src/guard.rs:57` accepts any request marked `Sec-Fetch-Site: same-origin`, and no code checks that `Host` is `127.0.0.1` or `localhost`. A page whose domain name is switched to 127.0.0.1 counts as same-origin, so it can call every route:
-
-   - read the library and every PDF;
-
-   - delete items or send them to Zotero;
-
-   - use `/capture-download` (`app.rs:154-172`), which reads any absolute path on disk into the bucket, and then read that file back.
-
-3. **A new capture can take the key of a lost item and destroy its recovery record.** A key is a stored PDF's name in the bucket.
-   `store.rs:316-320` treats a key as free when its PDF file does not exist, and it does not check the index export.
-   Suppose an item's PDF has gone missing and a new PDF arrives with the same file name.
-   The new PDF gets that key and takes the lost item's tags, notes, mirrors and Zotero record.
-   The next export writes over the only record that `rebuild-cache` could use to get the lost PDF back.
-
-### Medium severity
-
-9. **Downloads have no size limit.** `imports.rs:365` and `sources.rs:61` read the whole response into memory.
-   During Verify all or Rebuild all, several large downloads run at once and can exhaust the app's memory.
 
 ### Lower severity
 

@@ -1,7 +1,8 @@
 """Command line the server calls: `pdfbucket <command>`, the pikepdf and MuPDF work on one PDF.
 
-The server owns the store's layout and every write: these commands read the files or bytes it
-names and print what they make on stdout (a PDF, a PNG, or one JSON document). A command that
+The server owns the store's layout and every write: these commands read the files it names and
+print what they make on stdout (a PDF, a PNG, or one JSON document), or write it to the staged
+file it names (embed-provenance, whose input may be as large as any download). A command that
 cannot read its PDF prints a StoreFailure document and exits with status 3.
 """
 
@@ -49,6 +50,8 @@ def write_bytes(data: bytes) -> None:
 
 @app.command(name="embed-provenance")
 def embed_provenance_command(
+    pdf: Path,
+    output: Path,
     *,
     pdf_url: str,
     captured_at: str,
@@ -56,7 +59,7 @@ def embed_provenance_command(
     title_hint: str,
     source_url: str | None = None,
 ) -> None:
-    """Print the PDF read from stdin with the provenance embedded."""
+    """Write PDF to OUTPUT with the provenance embedded."""
     provenance = Provenance(
         pdf_url=pdf_url,
         source_url=source_url,
@@ -64,7 +67,7 @@ def embed_provenance_command(
         original_sha256=original_sha256,
         title_hint=title_hint,
     )
-    write_bytes(embed_provenance(sys.stdin.buffer.read(), provenance))
+    embed_provenance(pdf, output, provenance)
 
 
 @app.command(name="embed-metadata")

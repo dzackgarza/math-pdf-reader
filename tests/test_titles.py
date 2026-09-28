@@ -22,8 +22,8 @@ PDFBUCKET = Path(sys.executable).with_name("pdfbucket")
 READ = TypeAdapter(list[ReadOutcome])
 
 
-def run(*args: str | Path, stdin: bytes = b"") -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run([PDFBUCKET, *args], input=stdin, capture_output=True, check=False)
+def run(*args: str | Path) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run([PDFBUCKET, *args], stdin=subprocess.DEVNULL, capture_output=True, check=False)
 
 
 def embed(
@@ -43,10 +43,9 @@ def embed(
     ]
     if source_url is not None:
         args.append(f"--source-url={source_url}")
-    embedded = run("embed-provenance", *args, stdin=pdf.read_bytes())
-    assert embedded.returncode == 0, embedded.stderr
     stored = tmp_path / f"{name}.pdf"
-    stored.write_bytes(embedded.stdout)
+    embedded = run("embed-provenance", *args, "--", pdf, stored)
+    assert embedded.returncode == 0, embedded.stderr
     return stored
 
 
@@ -168,6 +167,8 @@ def test_read_reports_each_file_it_cannot_read_beside_the_ones_it_can(tmp_path: 
 def test_a_command_on_a_pdf_it_cannot_read_exits_3_with_a_typed_failure(tmp_path: Path) -> None:
     torn = tmp_path / "torn.pdf"
     torn.write_bytes(LECTURE_NOTES.read_bytes()[:200])
+    page = tmp_path / "page.pdf"
+    page.write_bytes(b"<html></html>")
 
     failed = run("embed-metadata", "--", torn, "Title", "resolver")
     refused = run(
@@ -176,7 +177,9 @@ def test_a_command_on_a_pdf_it_cannot_read_exits_3_with_a_typed_failure(tmp_path
         "--captured-at=2026-09-25T10:00:00Z",
         f"--original-sha256={'0' * 64}",
         "--title-hint=A",
-        stdin=b"<html></html>",
+        "--",
+        page,
+        tmp_path / "refused.pdf",
     )
 
     assert (failed.returncode, StoreFailure.model_validate_json(failed.stdout).kind) == (3, "unreadable_pdf")
