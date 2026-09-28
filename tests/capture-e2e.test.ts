@@ -19,7 +19,7 @@ import { OpenReaderSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { extensionDefine } from "../wxt.config";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { LONG_FRAME_PDF, pdfBytes, startFixtureSite } from "./fixture-site";
 import { listItems } from "./store";
 
@@ -50,9 +50,8 @@ async function startBucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-store-"));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   return {
     root,

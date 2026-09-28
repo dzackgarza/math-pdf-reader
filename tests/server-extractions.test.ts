@@ -9,7 +9,7 @@ import {
   ExtractionPluginsResponseSchema,
 } from "../src/contract/extraction";
 import { ApiErrorSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -44,9 +44,8 @@ async function bucketWithExtractors(
   writeFileSync(manifestPath, JSON.stringify(manifest));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: manifestPath,
-    resolversManifest: RESOLVERS_MANIFEST,
     config: appConfig,
   });
   const form = new FormData();
@@ -63,9 +62,8 @@ test("the shipped extraction plugins are listed with their accepted inputs", asy
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-plugins-"));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
 
   const response = await app.request(`/api/plugins/extractions`);

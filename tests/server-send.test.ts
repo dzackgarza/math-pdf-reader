@@ -13,18 +13,10 @@ import {
   LibraryPayloadSchema,
   type ZoteroRecord,
 } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { unfiled, writeOrganization } from "./store";
 
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
-
-// A port nothing listens on: bound once, then released.
-function closedPortUrl(): string {
-  const server = Bun.serve({ port: 0, fetch: () => new Response() });
-  const url = server.url.origin;
-  server.stop(true);
-  return url;
-}
 
 const zoteroUrl = closedPortUrl();
 type Bucket = {
@@ -39,7 +31,6 @@ async function emptyBucket(): Promise<Bucket> {
     root,
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   return { root, origin: app.origin, request: (path, init) => app.request(path, init) };
 }
@@ -183,7 +174,6 @@ test("a send to a Zotero without the write API fails as a Zotero failure", async
     root,
     zoteroUrl: zoteroWithoutWriteApi(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   const bucket = { root, origin: app.origin, request: app.request };
   await capture(bucket, "lattices");

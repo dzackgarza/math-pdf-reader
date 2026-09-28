@@ -21,7 +21,7 @@ import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
 import { readOrganization } from "./store";
 
@@ -92,7 +92,6 @@ async function startBucket() {
     root,
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
     indexExport,
   });
   const origin = app.origin;
@@ -1303,9 +1302,8 @@ describe("library window", () => {
     );
     const slow = await serveBucket({
       root: mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-slow-")),
-      zoteroUrl: config.zotero.url,
+      zoteroUrl: closedPortUrl(),
       extractionsManifest: manifest,
-      resolversManifest: RESOLVERS_MANIFEST,
       config: { ...config, plugins: { ...config.plugins, extraction_timeout_seconds: 1 } },
     });
     try {

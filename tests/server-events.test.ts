@@ -3,11 +3,9 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CaptureResponseSchema, OpenReaderSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { LibraryPayloadSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-const config = loadAppConfig(CONFIG_PATH);
 
 // Server-sent events off a response body, one parsed `open-reader` payload per call.
 function openReaderEvents(response: Response) {
@@ -38,9 +36,8 @@ test("every capture, new or existing, broadcasts its reader URL and stored title
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-events-"));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   const subscription = await app.request(`/api/events`);
   expect(subscription.headers.get("content-type")).toStartWith("text/event-stream");

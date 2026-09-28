@@ -15,10 +15,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type IndexExportState, ServerStatusSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { type IndexExport, RemovedKeysSchema, SessionsSchema } from "../src/contract/files";
 import { LibraryPayloadSchema, RebuildOutcomeSchema } from "../src/contract/library";
-import { type Bucket, EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { type Bucket, closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import {
   bucketCommand,
   captureBytes,
@@ -29,7 +28,6 @@ import {
   writeOrganization,
 } from "./store";
 
-const config = loadAppConfig(CONFIG_PATH);
 // A collection's own fields as a new one has them.
 const PLAIN = { description: "", pinned: false, keepOffline: false };
 
@@ -324,9 +322,8 @@ test("the running server rewrites the index export after a capture, a filing cha
   const exportFile = join(temporaryDirectory("server-export"), "index.json");
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
     indexExport: exportFile,
   });
   // The export lands after the response; its content, not its timing, is the claim.
@@ -374,9 +371,8 @@ test("the running server rewrites the index export after a capture, a filing cha
 function serve(root: string, exportFile: string) {
   return serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
     indexExport: exportFile,
   });
 }

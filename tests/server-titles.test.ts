@@ -1,99 +1,81 @@
-// Item titles at capture and on "Retrieve metadata": the resolver plugins run against a replay
-// of the upstream responses they were captured from (tests/fixtures/resolvers), so the real
-// resolver commands, the real store and the real server take part and no request leaves the
-// machine.
+// Item titles at capture and on "Retrieve metadata": the server asks Zotero's local write API
+// to resolve the item's URL without saving anything. Zotero here is a replay of that API's
+// answers, recorded from a live Zotero (tests/fixtures/zotero), so the real store and the real
+// server take part and no request leaves the machine.
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
-import { LibraryPayloadSchema, RetrieveMetadataResponseSchema } from "../src/contract/library";
-import { type Bucket, EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import {
+  FolderImportResponseSchema,
+  LibraryPayloadSchema,
+  RetrieveMetadataResponseSchema,
+} from "../src/contract/library";
+import { type Bucket, closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-const config = loadAppConfig(CONFIG_PATH);
 const fixtures = join(import.meta.dir, "fixtures");
 const arxivPdf = readFileSync(join(fixtures, "arxiv-2609.21174v1.pdf"));
 const lectureNotes = readFileSync(join(fixtures, "lecture-notes.pdf"));
+const resolvedArxiv = readFileSync(join(fixtures, "zotero/resolve-arxiv.json"), "utf8");
+const unidentified = readFileSync(join(fixtures, "zotero/resolve-unidentified.json"), "utf8");
 
-const CapturesSchema = z.strictObject({
-  captured_at: z.string(),
-  responses: z.array(
-    z.strictObject({
-      request: z.string(),
-      live: z.url(),
-      file: z.string(),
-      content_type: z.string(),
-    }),
-  ),
+const arxiv = {
+  pdf: "https://arxiv.org/pdf/2609.21174v1",
+  source: "https://arxiv.org/abs/2609.21174v1",
+};
+
+const ResolveRequestSchema = z.strictObject({
+  operation: z.literal("resolve_url"),
+  url: z.url(),
 });
-const captures = CapturesSchema.parse(
-  JSON.parse(readFileSync(join(fixtures, "resolvers/captures.json"), "utf8")),
-);
-const replay = Bun.serve({
+
+// The URLs the bucket asked Zotero to resolve, in order.
+const resolved: string[] = [];
+// Zotero identifies the arXiv PDF by recognizing it; no method identifies any other URL.
+const zotero = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
-  fetch(request) {
-    const url = new URL(request.url);
-    const entry = captures.responses.find(
-      (candidate) => candidate.request === `${url.pathname}${url.search}`,
-    );
-    if (entry === undefined) {
-      return new Response("not captured", { status: 404 });
+  async fetch(request) {
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/write") {
+      return new Response("not the write API", { status: 404 });
     }
-    return new Response(readFileSync(join(fixtures, "resolvers", entry.file)), {
-      headers: { "Content-Type": entry.content_type },
-    });
+    const { url } = ResolveRequestSchema.parse(await request.json());
+    resolved.push(url);
+    const headers = { "Content-Type": "application/json" };
+    if (url === arxiv.pdf) {
+      return new Response(resolvedArxiv, { headers });
+    }
+    return new Response(unidentified, { status: 422, headers });
   },
 });
-afterAll(() => replay.stop(true));
+afterAll(() => zotero.stop(true));
+const zoteroDown = closedPortUrl();
 
-const ShippedManifestSchema = z.strictObject({
-  plugins: z.array(z.looseObject({ command: z.array(z.string()) })),
-});
-
-// The shipped resolver manifest with every plugin's upstream base URL replaced; its script
-// paths become absolute because the copy lives outside the shipped manifest's directory.
-function manifestWithUpstream(base: string): string {
-  const shipped = ShippedManifestSchema.parse(JSON.parse(readFileSync(RESOLVERS_MANIFEST, "utf8")));
-  const plugins = shipped.plugins.map((plugin) => {
-    const [runner, script] = plugin.command;
-    return { ...plugin, command: [runner, join(RESOLVERS_MANIFEST, "..", script ?? ""), base] };
-  });
-  const path = join(mkdtempSync(join(tmpdir(), "pdf-bucket-resolvers-")), "resolvers.json");
-  writeFileSync(path, JSON.stringify({ plugins }));
-  return path;
+function bucket(root: string, zoteroUrl: string) {
+  return serveBucket({ root, zoteroUrl, extractionsManifest: EXTRACTIONS_MANIFEST });
 }
 
-const replayManifest = manifestWithUpstream(`http://127.0.0.1:${replay.port}`);
-// Nothing listens on port 9 (discard) on the loopback: every resolver request fails.
-const deadManifest = manifestWithUpstream("http://127.0.0.1:9");
-
-function bucket(root: string, resolversManifest: string) {
-  return serveBucket({
-    root,
-    zoteroUrl: config.zotero.url,
-    extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest,
-  });
-}
-
+// Captures BYTES as the extension does and answers the capture response.
 async function capture(
   app: Bucket,
   bytes: Buffer,
   filename: string,
-  urls: { pdf: string; source: string },
+  urls: { pdf: string; source: string | null },
   titleHint: string,
 ) {
   const form = new FormData();
   form.set("pdf", new File([new Uint8Array(bytes)], filename, { type: "application/pdf" }));
   form.set("pdf_url", urls.pdf);
-  form.set("source_url", urls.source);
+  if (urls.source !== null) {
+    form.set("source_url", urls.source);
+  }
   form.set("title_hint", titleHint);
   const response = await app.request("/capture-bytes", { method: "POST", body: form });
   expect(response.status).toBe(200);
+  return CaptureResponseSchema.parse(await response.json());
 }
 
 async function item(app: Bucket, key: string) {
@@ -105,14 +87,15 @@ async function item(app: Bucket, key: string) {
   return found;
 }
 
-async function citationTitle(app: Bucket, key: string) {
-  const { document } = parseHTML(await (await app.request(`/read/${key}`)).text());
-  return document.querySelector('meta[name="citation_title"]')?.getAttribute("content");
+async function retrieve(app: Bucket, key: string) {
+  const response = await app.request(`/api/items/${key}/metadata`, { method: "POST" });
+  expect(response.status).toBe(200);
+  return RetrieveMetadataResponseSchema.parse(await response.json());
 }
 
-async function citationAuthors(app: Bucket, key: string) {
+async function readerMeta(app: Bucket, key: string, name: string) {
   const { document } = parseHTML(await (await app.request(`/read/${key}`)).text());
-  return [...document.querySelectorAll('meta[name="citation_author"]')].map((meta) =>
+  return [...document.querySelectorAll(`meta[name="${name}"]`)].map((meta) =>
     meta.getAttribute("content"),
   );
 }
@@ -124,238 +107,154 @@ const ARXIV_AUTHORS = [
   "Jéfferson Luiz Rocha Bastos",
 ];
 
-const arxiv = {
-  pdf: "https://arxiv.org/pdf/2609.21174v1",
-  source: "https://arxiv.org/abs/2609.21174v1",
+const notes = {
+  pdf: "https://www.math.example.edu/~author/notes.pdf",
+  source: "https://www.math.example.edu/~author/",
 };
 
-test("an arXiv capture takes its title from the arXiv resolver, not from the link text", async () => {
+test("an arXiv capture takes the title, authors, year and abstract Zotero resolves for its PDF URL", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
-  await capture(await bucket(root, replayManifest), arxivPdf, "2609.21174v1", arxiv, "View PDF");
+  const captured = await capture(
+    await bucket(root, zotero.url.origin),
+    arxivPdf,
+    "2609.21174v1",
+    arxiv,
+    "View PDF",
+  );
 
-  // A fresh server over the same root: the title is read back from the stored PDF.
-  const reread = await bucket(root, replayManifest);
-  const captured = await item(reread, "2609.21174v1");
-  expect(captured.title).toBe("On The Cyclicity of Algebraic Lattices");
-  expect(captured.titleSource).toBe("resolver");
-  expect(captured.provenance.title_hint).toBe("View PDF");
-  expect(await citationTitle(reread, "2609.21174v1")).toBe(
+  expect(resolved).toContain(arxiv.pdf);
+  expect(captured.metadata).toEqual({
+    status: "resolved",
+    method: "pdf_recognition",
+    title: "On The Cyclicity of Algebraic Lattices",
+  });
+  // A fresh server over the same root: the metadata is read back from the stored PDF.
+  const reread = await bucket(root, zoteroDown);
+  const listed = await item(reread, "2609.21174v1");
+  expect([listed.title, listed.titleSource]).toEqual([
     "On The Cyclicity of Algebraic Lattices",
-  );
-  expect(captured.authors).toEqual(ARXIV_AUTHORS);
-  expect(await citationAuthors(reread, "2609.21174v1")).toEqual(ARXIV_AUTHORS);
-  // The year from arXiv's BibTeX; the abstract from arXiv's API, which the BibTeX lacks.
-  expect(captured.year).toBe(2026);
-  expect(captured.abstract).toStartWith(
-    "This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices.",
-  );
-});
-
-test("a DOI capture takes the title from the resolved BibTeX, with its LaTeX turned into text", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
-  const app = await bucket(root, replayManifest);
-  // The lecture notes carry no title of their own: this title exists only in the DOI BibTeX,
-  // which writes it as `The sphere packing problem in dimension $8$`.
-  await capture(
-    app,
-    lectureNotes,
-    "viazovska.pdf",
-    {
-      pdf: "https://annals.math.princeton.edu/wp-content/uploads/Viazovska.pdf",
-      source: "https://doi.org/10.4007/annals.2017.185.3.7",
-    },
-    "Download PDF",
-  );
-
-  const captured = await item(app, "viazovska");
-  expect([captured.title, captured.titleSource]).toEqual([
-    "The sphere packing problem in dimension 8",
     "resolver",
   ]);
-  // The lecture notes name no author: this one comes from the DOI BibTeX alone.
-  expect(captured.authors).toEqual(["Maryna Viazovska"]);
-  // The DOI BibTeX gives a year and no abstract.
-  expect([captured.year, captured.abstract]).toEqual([2017, null]);
+  expect(listed.provenance.title_hint).toBe("View PDF");
+  expect(listed.authors).toEqual(ARXIV_AUTHORS);
+  expect(listed.year).toBe(2026);
+  expect(listed.abstract).toStartWith(
+    "This work presents theoretical advances in the study of cyclic and quasi-cyclic lattices.",
+  );
+  expect(await readerMeta(reread, "2609.21174v1", "citation_title")).toEqual([
+    "On The Cyclicity of Algebraic Lattices",
+  ]);
+  expect(await readerMeta(reread, "2609.21174v1", "citation_author")).toEqual(ARXIV_AUTHORS);
 });
 
-test("with the resolver unreachable, a capture succeeds and falls back to the PDF's own title, then to the hint", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
-  const app = await bucket(root, deadManifest);
-  await capture(app, arxivPdf, "2609.21174v1", arxiv, "View PDF");
-  await capture(
-    app,
-    lectureNotes,
-    "notes.pdf",
-    {
-      pdf: "https://www.math.example.edu/~author/notes.pdf",
-      source: "https://www.math.example.edu/~author/",
-    },
-    "Lecture notes on lattices",
-  );
+test("with Zotero down, a capture succeeds and falls back to the PDF's own title, then to the hint", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), zoteroDown);
+  const withMetadata = await capture(app, arxivPdf, "2609.21174v1", arxiv, "View PDF");
+  await capture(app, lectureNotes, "notes.pdf", notes, "Lecture notes on lattices");
 
-  const withMetadata = await item(app, "2609.21174v1");
-  const withHint = await item(app, "notes");
-  expect([withMetadata.title, withMetadata.titleSource]).toEqual([
+  expect(withMetadata.metadata?.status).toBe("error");
+  const fromPdf = await item(app, "2609.21174v1");
+  const fromHint = await item(app, "notes");
+  expect([fromPdf.title, fromPdf.titleSource]).toEqual([
     "On The Cyclicity of Algebraic Lattices",
     "pdf-metadata",
   ]);
-  expect([withHint.title, withHint.titleSource]).toEqual([
+  expect([fromHint.title, fromHint.titleSource]).toEqual([
     "Lecture notes on lattices",
     "capture-hint",
   ]);
   // The arXiv PDF names its authors in its own metadata; the lecture notes name none.
-  expect(withMetadata.authors).toEqual(ARXIV_AUTHORS);
-  expect(withHint.authors).toEqual([]);
+  expect(fromPdf.authors).toEqual(ARXIV_AUTHORS);
+  expect(fromHint.authors).toEqual([]);
 });
 
-test("Retrieve metadata resolves an item captured while the resolver was down", async () => {
+test("Retrieve metadata resolves an item captured while Zotero was down", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
-  await capture(await bucket(root, deadManifest), arxivPdf, "2609.21174v1", arxiv, "View PDF");
-  const online = await bucket(root, replayManifest);
-  expect((await item(online, "2609.21174v1")).titleSource).toBe("pdf-metadata");
+  await capture(await bucket(root, zoteroDown), arxivPdf, "2609.21174v1", arxiv, "View PDF");
+  const online = await bucket(root, zotero.url.origin);
 
-  const response = await online.request(`/api/items/2609.21174v1/metadata`, {
-    method: "POST",
-  });
+  const retrieved = await retrieve(online, "2609.21174v1");
 
-  expect(response.status).toBe(200);
-  const retrieved = RetrieveMetadataResponseSchema.parse(await response.json());
   expect(retrieved.outcome).toEqual({
     status: "resolved",
-    pluginId: "arxiv",
-    identifier: arxiv.source,
+    method: "pdf_recognition",
     title: "On The Cyclicity of Algebraic Lattices",
   });
-  expect([retrieved.item.title, retrieved.item.titleSource]).toEqual([
+  expect([retrieved.item.title, retrieved.item.titleSource, retrieved.item.year]).toEqual([
     "On The Cyclicity of Algebraic Lattices",
     "resolver",
+    2026,
   ]);
   expect(await item(online, "2609.21174v1")).toEqual(retrieved.item);
 });
 
-test("Retrieve metadata reports a failed resolver and keeps the title the item had", async () => {
+test("Retrieve metadata with Zotero down reports the error and keeps the title the item had", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
-  await capture(await bucket(root, replayManifest), arxivPdf, "2609.21174v1", arxiv, "View PDF");
-  const offline = await bucket(root, deadManifest);
+  await capture(await bucket(root, zotero.url.origin), arxivPdf, "2609.21174v1", arxiv, "View PDF");
 
-  const response = await offline.request(`/api/items/2609.21174v1/metadata`, {
-    method: "POST",
-  });
+  const retrieved = await retrieve(await bucket(root, zoteroDown), "2609.21174v1");
 
-  expect(response.status).toBe(200);
-  const retrieved = RetrieveMetadataResponseSchema.parse(await response.json());
-  expect(retrieved.outcome.status).toBe("failed");
+  expect(retrieved.outcome.status).toBe("error");
   expect([retrieved.item.title, retrieved.item.titleSource]).toEqual([
     "On The Cyclicity of Algebraic Lattices",
     "resolver",
   ]);
 });
 
-test("Retrieve metadata on an item with no identifier reports it unidentified; an unknown key is not found", async () => {
-  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
-  const app = await bucket(root, replayManifest);
-  await capture(
-    app,
-    lectureNotes,
-    "notes.pdf",
-    {
-      pdf: "https://www.math.example.edu/~author/notes.pdf",
-      source: "https://www.math.example.edu/~author/",
-    },
-    "Lecture notes on lattices",
-  );
+test("Retrieve metadata on a source no Zotero method identifies reports each method's attempt; an unknown key is not found", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), zotero.url.origin);
+  await capture(app, lectureNotes, "notes.pdf", notes, "Lecture notes on lattices");
 
-  const unidentified = RetrieveMetadataResponseSchema.parse(
-    await (await app.request(`/api/items/notes/metadata`, { method: "POST" })).json(),
-  );
-  expect(unidentified.outcome.status).toBe("unidentified");
-  expect([unidentified.item.title, unidentified.item.titleSource]).toEqual([
+  const retrieved = await retrieve(app, "notes");
+
+  expect(retrieved.outcome).toEqual({
+    status: "unidentified",
+    attempts: [
+      {
+        method: "pdf_recognition",
+        outcome: "no_match",
+        message: "the recognizer produced no parent item (see the Zotero debug log)",
+      },
+      { method: "identifier", outcome: "no_match", message: "no DOI, ISBN or arXiv ID found" },
+    ],
+  });
+  expect([retrieved.item.title, retrieved.item.titleSource]).toEqual([
     "Lecture notes on lattices",
     "capture-hint",
   ]);
   expect((await app.request(`/api/items/missing/metadata`, { method: "POST" })).status).toBe(404);
 });
 
-// Captures BYTES as the extension does and answers the capture's metadata outcome.
-async function captureOutcome(
-  app: Bucket,
-  bytes: Buffer,
-  filename: string,
-  pdf: string,
-  source: string | null,
-) {
-  const form = new FormData();
-  form.set("pdf", new File([new Uint8Array(bytes)], filename, { type: "application/pdf" }));
-  form.set("pdf_url", pdf);
-  if (source !== null) {
-    form.set("source_url", source);
-  }
-  form.set("title_hint", "View PDF");
-  const response = await app.request("/capture-bytes", { method: "POST", body: form });
+test("a folder import asks Zotero to resolve the bucket's own URL for the stored PDF", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), zotero.url.origin);
+  const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-folder-"));
+  copyFileSync(join(fixtures, "lecture-notes.pdf"), join(folder, "notes.pdf"));
+
+  const response = await app.request("/api/import-folder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: folder }),
+  });
+
   expect(response.status).toBe(200);
-  return CaptureResponseSchema.parse(await response.json());
-}
-
-test("an arXiv PDF from an author's homepage resolves through the arXiv id embedded in it", async () => {
-  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
-
-  const captured = await captureOutcome(
-    app,
-    arxivPdf,
-    "cyclicity.pdf",
-    "https://www.math.example.edu/~author/cyclicity.pdf",
-    "https://www.math.example.edu/~author/papers.html",
-  );
-
-  expect(captured.metadata).toEqual({
-    status: "resolved",
-    pluginId: "arxiv",
-    identifier: "https://arxiv.org/abs/2609.21174v1",
-    title: "On The Cyclicity of Algebraic Lattices",
-  });
+  const [file] = FolderImportResponseSchema.parse(await response.json()).files;
+  if (file?.status !== "stored") {
+    throw new Error(`the folder's PDF was not stored: ${JSON.stringify(file)}`);
+  }
+  expect(file.metadata.status).toBe("unidentified");
+  expect(resolved).toContain(`${app.origin}/pdf/${file.key}.pdf`);
 });
 
-test("a source page on a resolver's host wins over the identifiers inside the PDF", async () => {
-  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
+test("an existing PDF's capture reports no metadata outcome", async () => {
+  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), zoteroDown);
+  const first = await capture(app, lectureNotes, "notes.pdf", { pdf: arxiv.pdf, source: null }, "View PDF");
 
-  const captured = await captureOutcome(
-    app,
-    arxivPdf,
-    "sphere-packing.pdf",
-    "https://www.math.example.edu/~author/sphere-packing.pdf",
-    "https://doi.org/10.4007/annals.2017.185.3.7",
-  );
-
-  expect(captured.metadata).toMatchObject({
-    status: "resolved",
-    pluginId: "doi",
-    identifier: "https://doi.org/10.4007/annals.2017.185.3.7",
-  });
-});
-
-test("a capture with no linking page stores no source page, and its PDF URL is still a candidate", async () => {
-  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
-
-  const captured = await captureOutcome(app, arxivPdf, "2609.21174v1", arxiv.pdf, null);
-
-  expect(captured.provenance.source_url).toBeNull();
-  expect(captured.metadata).toMatchObject({ status: "resolved", identifier: arxiv.pdf });
-  const listed = await item(app, captured.key);
-  expect([listed.url, listed.provenance.source_url]).toEqual([arxiv.pdf, null]);
-  const { document } = parseHTML(await (await app.request(`/read/${captured.key}`)).text());
-  expect(document.querySelector('meta[name="citation_abstract_html_url"]')).toBeNull();
-});
-
-test("an existing PDF's capture runs no resolver and reports no metadata outcome", async () => {
-  const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), replayManifest);
-  const first = await captureOutcome(app, lectureNotes, "notes.pdf", arxiv.pdf, null);
-
-  const again = await captureOutcome(
+  const again = await capture(
     app,
     lectureNotes,
     "other-name.pdf",
-    "https://mirror.example.org/notes.pdf",
-    null,
+    { pdf: "https://mirror.example.org/notes.pdf", source: null },
+    "View PDF",
   );
 
   expect([again.existing, again.key, again.metadata]).toEqual([true, first.key, null]);

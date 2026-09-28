@@ -16,9 +16,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { CaptureResponseSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig, REPO_ROOT } from "../src/contract/config";
+import { REPO_ROOT } from "../src/contract/config";
 import { CollectionSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const fixtures = join(import.meta.dir, "fixtures");
 const papers: Record<string, string> = {
@@ -49,12 +49,10 @@ const root = join(xdg, "pdf-bucket");
 const exportFile = join(xdg, "pdf-bucket-export", "index.json");
 mkdirSync(root);
 const env = { ...process.env, XDG_DATA_HOME: xdg };
-const config = loadAppConfig(CONFIG_PATH);
 const app = await serveBucket({
   root,
-  zoteroUrl: config.zotero.url,
+  zoteroUrl: closedPortUrl(),
   extractionsManifest: EXTRACTIONS_MANIFEST,
-  resolversManifest: RESOLVERS_MANIFEST,
 });
 const api = app.request;
 

@@ -26,7 +26,7 @@ import {
   SavedSearchSchema,
   SettingsSchema,
 } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { listItems } from "./store";
 
 const config = loadAppConfig(CONFIG_PATH);
@@ -41,9 +41,8 @@ type Bucket = {
 async function open(root: string): Promise<Bucket> {
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   return { root, request: (path, init) => app.request(path, init) };
 }

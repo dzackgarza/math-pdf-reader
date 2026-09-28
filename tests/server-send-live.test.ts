@@ -14,7 +14,7 @@ import {
   LibraryPayloadSchema,
   SendResponseSchema,
 } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const LIVE = process.env.ZOTERO_LIVE === "1";
 const ZOTERO_URL = "http://127.0.0.1:23119";
@@ -72,7 +72,6 @@ test.skipIf(!LIVE)(
       root,
       zoteroUrl: ZOTERO_URL,
       extractionsManifest: EXTRACTIONS_MANIFEST,
-      resolversManifest: RESOLVERS_MANIFEST,
     });
     const listing = "https://arxiv.org/list/math/new";
     const papers = [
@@ -112,7 +111,6 @@ test.skipIf(!LIVE)(
       root,
       zoteroUrl: ZOTERO_URL,
       extractionsManifest: EXTRACTIONS_MANIFEST,
-      resolversManifest: RESOLVERS_MANIFEST,
     });
     const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-folder-"));
     writeFileSync(

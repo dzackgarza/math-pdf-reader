@@ -4,19 +4,16 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { ReadingSessionSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-const config = loadAppConfig(CONFIG_PATH);
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 
 async function bucket(root: string) {
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   // A form goes as multipart, anything else as JSON.
   return (method: string, path: string, body?: object) =>

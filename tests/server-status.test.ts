@@ -2,17 +2,14 @@ import { expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, readdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-const config = loadAppConfig(CONFIG_PATH);
 
 function bucket(root: string) {
   return serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
 }
 

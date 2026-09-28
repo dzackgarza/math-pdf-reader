@@ -9,14 +9,12 @@ import { type AppConfig, CONFIG_PATH, REPO_ROOT } from "../src/contract/config";
 // Built once per test run by tests/preload.ts.
 export const SERVER_BINARY = join(REPO_ROOT, "target/debug/pdf-bucket");
 export const EXTRACTIONS_MANIFEST = join(REPO_ROOT, "plugins/manifests/extractions.json");
-export const RESOLVERS_MANIFEST = join(REPO_ROOT, "plugins/manifests/resolvers.json");
 
 export type BucketOptions = {
   root: string;
   // Zotero's local HTTP server.
   zoteroUrl: string;
   extractionsManifest: string;
-  resolversManifest: string;
   // The index export the server rewrites after every change; a test that does not read it gets
   // one in a scratch directory of its own.
   indexExport?: string;
@@ -52,7 +50,6 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
     options.root,
     options.zoteroUrl,
     options.extractionsManifest,
-    options.resolversManifest,
     "--index-export",
     indexExport,
     "--config",
@@ -87,4 +84,12 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
       await server.exited;
     },
   };
+}
+
+// A port nothing listens on: bound once, then released.
+export function closedPortUrl(): string {
+  const server = Bun.serve({ port: 0, fetch: () => new Response() });
+  const url = server.url.origin;
+  server.stop(true);
+  return url;
 }

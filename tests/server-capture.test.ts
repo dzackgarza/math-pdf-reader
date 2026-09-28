@@ -5,11 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { CaptureResponseSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-const config = loadAppConfig(CONFIG_PATH);
 const fixture = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 const sourcePage = "https://www.math.example.edu/~author/teaching.html";
 const pdfSource = "https://www.math.example.edu/~author/lattices.pdf";
@@ -18,9 +16,8 @@ async function bucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-capture-"));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   return { root, app };
 }

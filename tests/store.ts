@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CaptureResponseSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig, STORE_COMMAND } from "../src/contract/config";
+import { STORE_COMMAND } from "../src/contract/config";
 import {
   type IndexExport,
   IndexExportSchema,
@@ -14,7 +14,7 @@ import {
 } from "../src/contract/files";
 import type { Provenance, TitleSource } from "../src/contract/library";
 import { ReadOutcomeListSchema, type StoredItem } from "../src/contract/store";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, SERVER_BINARY, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, SERVER_BINARY, serveBucket } from "./bucket";
 
 async function runStore(args: string[]): Promise<Uint8Array> {
   const store = Bun.spawn([...STORE_COMMAND, ...args], {
@@ -47,9 +47,8 @@ export type Upload = {
 export async function captureBytes(root: string, upload: Upload): Promise<string> {
   const server = await serveBucket({
     root,
-    zoteroUrl: loadAppConfig(CONFIG_PATH).zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   const form = new FormData();
   form.set("pdf", new File([upload.bytes], upload.filename, { type: "application/pdf" }));

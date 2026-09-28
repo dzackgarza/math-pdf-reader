@@ -4,19 +4,17 @@ import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, readFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
 } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { readIndexExport, recordMetadata } from "./store";
 
 setDefaultTimeout(30_000);
 
-const config = loadAppConfig(CONFIG_PATH);
 const fixture = (name: string) =>
   new Uint8Array(readFileSync(join(import.meta.dir, "fixtures", name)));
 const lectureNotes = fixture("lecture-notes.pdf");
@@ -42,9 +40,8 @@ async function bucket(indexExport: string | null) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-sources-"));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
     ...(indexExport === null ? {} : { indexExport }),
   });
   const request = (method: string, path: string, body?: object) =>

@@ -14,18 +14,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   FolderImportResponseSchema,
   ImportUrlResponseSchema,
   LibraryPayloadSchema,
 } from "../src/contract/library";
-import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 setDefaultTimeout(30_000);
 
-const config = loadAppConfig(CONFIG_PATH);
 const fixtures = join(import.meta.dir, "fixtures");
 const lectureNotes = new Uint8Array(readFileSync(join(fixtures, "lecture-notes.pdf")));
 const problemSet = new Uint8Array(readFileSync(join(fixtures, "problem-set.pdf")));
@@ -95,9 +93,8 @@ async function bucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-import-"));
   const app = await serveBucket({
     root,
-    zoteroUrl: config.zotero.url,
+    zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
-    resolversManifest: RESOLVERS_MANIFEST,
   });
   const post = (path: string, body: object) =>
     app.request(path, {
@@ -131,7 +128,7 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   expect(ImportUrlResponseSchema.parse(await direct.json())).toEqual({
     key: "lattices",
     existing: false,
-    metadata: { status: "unidentified" },
+    metadata: expect.objectContaining({ status: "error" }),
   });
   const fromPage = ImportUrlResponseSchema.parse(
     await (await post("/api/import-url", { url: at("/abs/2401.00001") })).json(),
@@ -139,7 +136,7 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   expect(fromPage).toEqual({
     key: "2401.00001",
     existing: false,
-    metadata: { status: "unidentified" },
+    metadata: expect.objectContaining({ status: "error" }),
   });
 
   const byKey = new Map((await items()).map((item) => [item.id, item]));
@@ -247,14 +244,14 @@ test("Add Folder stores every PDF in the folder with file URLs as provenance, on
       file: "Lectures on Lattices.pdf",
       status: "stored",
       key: "Lectures on Lattices",
-      metadata: { status: "unidentified" },
+      metadata: expect.objectContaining({ status: "error" }),
     },
     { file: "paywall.pdf", status: "not_a_pdf" },
     {
       file: "problem-set.pdf",
       status: "stored",
       key: "problem-set",
-      metadata: { status: "unidentified" },
+      metadata: expect.objectContaining({ status: "error" }),
     },
   ]);
 
