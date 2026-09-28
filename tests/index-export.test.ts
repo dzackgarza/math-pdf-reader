@@ -633,3 +633,59 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
   expect(item?.provenance.original_sha256).toBe(sha256(problemSet));
   expect([item?.tags, item?.notes]).toEqual([[], []]);
 });
+
+// Captures lecture notes as lattices.pdf over a server that rewrites EXPORT_FILE, tags them
+// "old", and loses their PDF after that server quits.
+async function lostLattices(root: string, exportFile: string) {
+  const first = await serve(root, exportFile);
+  await captureOver(first, lectureNotes, "lattices.pdf");
+  const tagged = await first.request("/api/bulk/tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keys: ["lattices"], add: ["old"], remove: [] }),
+  });
+  expect(tagged.status).toBe(200);
+  await exportedWhen(exportFile, (index) => index.items[0]?.filing.tags.length === 1);
+  await first.stop();
+  unlinkSync(join(root, "lattices.pdf"));
+}
+
+// The key a different PDF offered as lattices.pdf takes while "lattices" is held.
+const heldAside = `lattices--${sha256(problemSet).slice(0, 12)}`;
+
+test("a new capture never takes the key of a lost PDF that the index export still lists", async () => {
+  const { root } = dataHome();
+  const exportFile = join(temporaryDirectory("export"), "index.json");
+  await lostLattices(root, exportFile);
+  writeOrganization(root, {
+    version: 2,
+    collections: [],
+    savedSearches: [],
+    items: {},
+    activity: [],
+    preferences: { outlineOnOpen: false, theme: "system" },
+  });
+  const app = await serve(root, exportFile);
+
+  await captureOver(app, problemSet, "lattices.pdf");
+
+  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  expect(library.items.map((item) => [item.id, item.provenance.original_sha256])).toEqual([
+    [heldAside, sha256(problemSet)],
+  ]);
+  expect(library.missing.map((item) => [item.key, item.provenance.original_sha256])).toEqual([
+    ["lattices", sha256(lectureNotes)],
+  ]);
+});
+
+test("a new capture never takes the key of a lost PDF whose filing is still kept", async () => {
+  const { root } = dataHome();
+  await lostLattices(root, join(temporaryDirectory("export"), "index.json"));
+  const app = await serve(root, join(temporaryDirectory("other-export"), "index.json"));
+
+  await captureOver(app, problemSet, "lattices.pdf");
+
+  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  expect(library.items.map((item) => [item.id, item.tags])).toEqual([[heldAside, []]]);
+  expect(readOrganization(root).items.lattices?.tags).toEqual(["old"]);
+});

@@ -4,8 +4,10 @@ import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import {
   copyFileSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -36,6 +38,28 @@ const pdf = (bytes: Uint8Array<ArrayBuffer>) =>
   new Response(bytes, { headers: { "Content-Type": "application/pdf" } });
 // A PDF another bucket stored, passed on by a second site; set by the test that serves it.
 let passedOn: Uint8Array<ArrayBuffer> | undefined;
+
+// A download of /slow/streamed.pdf that has sent the first half of its PDF and waits for the
+// test to send the rest or to drop the connection.
+type Stalled = { finish(): void; cut(): void };
+const stalled: Stalled[] = [];
+const stalling = (bytes: Uint8Array<ArrayBuffer>) => {
+  const half = Math.floor(bytes.length / 2);
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes.slice(0, half));
+      stalled.push({
+        finish: () => {
+          controller.enqueue(bytes.slice(half));
+          controller.close();
+        },
+        cut: () => controller.error(new Error("the publisher dropped the connection")),
+      });
+    },
+  });
+  return new Response(body, { headers: { "Content-Type": "application/pdf" } });
+};
+
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -43,6 +67,9 @@ const publisher = Bun.serve({
     const path = new URL(request.url).pathname;
     if (path === "/papers/lattices.pdf") {
       return pdf(lectureNotes);
+    }
+    if (path === "/slow/streamed.pdf") {
+      return stalling(lectureNotes);
     }
     if (path === "/pdf/2401.00001") {
       return pdf(problemSet);
@@ -80,7 +107,20 @@ async function bucket() {
     });
   const items = async () =>
     LibraryPayloadSchema.parse(await (await app.request("/api/library")).json()).items;
-  return { post, items, request: app.request };
+  return { root, post, items, request: app.request };
+}
+
+// The files the bucket is writing in ROOT: staged bodies and outputs not yet in place.
+const staging = (root: string) => readdirSync(root).filter((name) => name.endsWith(".partial"));
+
+async function until(holds: () => boolean, what: string) {
+  const deadline = Date.now() + 10_000;
+  while (!holds()) {
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting until ${what}`);
+    }
+    await Bun.sleep(50);
+  }
 }
 
 test("Import URL stores a PDF URL, with no linking page, and follows an abstract page's citation_pdf_url", async () => {
@@ -162,6 +202,33 @@ test("Import URL of a PDF another bucket stored records this capture's provenanc
     year: null,
     abstract: null,
   });
+});
+
+test("Import URL writes a download to a staged file in the bucket root as it arrives, and leaves none behind", async () => {
+  const { root, post } = await bucket();
+  const url = at("/slow/streamed.pdf");
+
+  const finished = post("/api/import-url", { url });
+  await until(
+    () => staging(root).some((name) => statSync(join(root, name)).size > 0),
+    "the first half of the download is on disk in the bucket root",
+  );
+  stalled.shift()?.finish();
+  const stored = await finished;
+  expect(stored.status).toBe(200);
+  expect(ImportUrlResponseSchema.parse(await stored.json())).toMatchObject({
+    key: "streamed",
+    existing: false,
+  });
+  expect(staging(root)).toEqual([]);
+
+  const dropped = post("/api/import-url", { url });
+  await until(() => staging(root).length > 0, "the second download is staged");
+  stalled.shift()?.cut();
+  const failed = await dropped;
+  expect(failed.status).toBe(422);
+  expect(ApiErrorSchema.parse(await failed.json()).error.kind).toBe("no_pdf_at_url");
+  expect(staging(root)).toEqual([]);
 });
 
 test("Add Folder stores every PDF in the folder with file URLs as provenance, once, with one outcome per file", async () => {
