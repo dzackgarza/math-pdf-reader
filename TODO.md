@@ -86,15 +86,15 @@ The most serious findings were checked against the code; the rest were confirmed
 6. **Any web page can make the Chrome extension capture a URL.** `capture.html` is open to every site (`wxt.config.ts:38`), and the background listener does not check that a message comes from the extension's own page (`background.ts:122`). A page that knows the extension ID can load that page in a hidden frame.
    The extension then fetches any URL with the user's cookies and stores it in the bucket.
 
-8. **Chrome cannot open long PDF URLs natively.** `exemptions.ts:25,64` builds a regular expression from the whole URL. For signed S3 URLs and ScienceDirect URLs of about 150 characters or more, this pattern is too large for Chrome's regex limit.
+7. **Chrome cannot open long PDF URLs natively.** `exemptions.ts:25,64` builds a regular expression from the whole URL. For signed S3 URLs and ScienceDirect URLs of about 150 characters or more, this pattern is too large for Chrome's regex limit.
    "Open in the browser" then fails.
    This result comes from the regex library alone with Chrome's limits; it was not reproduced in Chrome itself.
 
-9. **Chrome can lose a capture silently.** The server answers a capture only after metadata lookup, which can take up to 60 s. Chrome can stop the extension's background worker after 30 s. The download marker is taken off before the post (`chrome-downloads.ts:142-152`), so no failure tab opens.
+8. **Chrome can lose a capture silently.** The server answers a capture only after metadata lookup, which can take up to 60 s. Chrome can stop the extension's background worker after 30 s. The download marker is taken off before the post (`chrome-downloads.ts:142-152`), so no failure tab opens.
    This comes from reading the code; it was not reproduced.
 
-11. **Downloads have no size limit.** `imports.rs:365` and `sources.rs:61` read the whole response into memory.
-    During Verify all or Rebuild all, several large downloads run at once and can exhaust the app's memory.
+9. **Downloads have no size limit.** `imports.rs:365` and `sources.rs:61` read the whole response into memory.
+   During Verify all or Rebuild all, several large downloads run at once and can exhaust the app's memory.
 
 ### Lower severity
 

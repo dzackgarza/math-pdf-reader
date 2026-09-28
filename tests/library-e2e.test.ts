@@ -456,9 +456,7 @@ describe("library window", () => {
     await page.keyboard.press("Delete");
     expect(await page.$('[role="alertdialog"], [role="dialog"]')).toBeNull();
     await page.keyboard.press("Enter");
-    expect(await page.$eval(unfiled, (button) => button.getAttribute("aria-pressed"))).toBe(
-      "true",
-    );
+    expect(await page.$eval(unfiled, (button) => button.getAttribute("aria-pressed"))).toBe("true");
     expect(await openTabKeys()).toEqual(tabsBefore);
 
     await page.keyboard.press("Enter");
