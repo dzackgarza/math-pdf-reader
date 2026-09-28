@@ -7,9 +7,7 @@ The Zotero local write API probably already holds better heuristics for many kin
 
 Target: "Send to Zotero" passes the item's URL to the local write API and nothing else.
 When Zotero must understand more kinds of URL, the write API absorbs that work, not this app.
-The write API does not have that operation yet:
-[zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31).
-The roadmap's Decision Log records this decision (2026-09-28).
+The write API does not have that operation yet: [zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31). The roadmap's Decision Log records this decision (2026-09-28).
 
 Today the app does this work itself:
 
