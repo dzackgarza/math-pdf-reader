@@ -30,8 +30,8 @@ build: fetch-pdfjs
 
 # Build the web bundle, the PDF.js viewer and the release app; install the app with its launcher
 # and login autostart entry (pdf-bucket-desktop.desktop) and icons, and start it. The app is the
-# bucket server; it serves this checkout's PDF.js viewer and library bundle and runs its store
-# and plugins.
+# bucket server; it runs against its own copy of the runtime files ($XDG_DATA_HOME/pdf-bucket-app),
+# so later changes to the checkout reach it only through the next provision.
 provision: fetch-pdfjs
     @scripts/provision.sh
 
@@ -106,11 +106,13 @@ test-commit:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-commit
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-commit
 
-# Run the full Python and Bun test suites and the desktop crate's Rust checks before pushing.
+# Run the full Python and Bun test suites and the desktop crate's Rust checks before pushing, then
+# provision the desktop app from the pushed state.
 test-push:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-push
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-push
     @just desktop-rust-checks
+    @just provision
 
 # Run CI acceptance QC through the Python, Bun and Rust central implementations.
 test-ci:

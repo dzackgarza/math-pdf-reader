@@ -45,6 +45,25 @@ opens it in a PDF.js reader inside the app window, and lets the user file it int
 collections and tags, run extraction plugins on it, and send it to Zotero when it matters.
 Zotero stays the citation store; the bucket is the reading store.
 
+## Provisioning
+
+The desktop app the user runs is an installed copy: the binary in `~/.local/bin` and its runtime
+files (library bundle, PDF.js viewer, extraction manifest, Python environment) in
+`$XDG_DATA_HOME/pdf-bucket-app`. A commit to this checkout does not change it. The user sees a
+change only after `just provision`, which builds, installs and restarts the app.
+
+A push provisions: the pre-push hook runs `just test-push`, and its last step is `just provision`,
+after the QC gates pass.
+
+Provision, or push, at these points:
+
+- after a significant change to the server, the library UI, the reader, the store or a plugin;
+- when a milestone or a child plan is complete;
+- when all work of a session is done, before the completion report.
+
+A completion report that claims user-visible behaviour is true only for the provisioned app.
+Verify that behaviour against the running app on port 8770, not only against the checkout's tests.
+
 ## Where the plan is
 
 The execution tracker is the GitHub issue tree rooted at
