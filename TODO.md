@@ -3,64 +3,12 @@
 ## Ownership: Zotero owns bibliographic metadata
 
 This app must not create or send BibTeX. Zotero owns how to get bibliographic information from a source.
-The Zotero local write API probably already holds better heuristics for many kinds of sources than this app does.
-
-Target: "Send to Zotero" passes the item's URL to the local write API and nothing else.
+"Send to Zotero" passes the item's PDF URL to the local write API's `import_from_url`, and nothing else.
 When Zotero must understand more kinds of URL, the write API absorbs that work, not this app.
 The roadmap's Decision Log records this decision (2026-09-28).
 
 Tasks:
 
-1. Expand the local write API so that it owns finding metadata for a relatively arbitrary source ([zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31)). It accepts an item as a URL and applies its own heuristics:
+1. Close [zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31): `import_from_url` finds metadata for a relatively arbitrary source. Its methods are Zotero's web translators, page metadata (`citation_*`, Dublin Core), an identifier in the URL or the page, BibTeX the source publishes, searches of metadata services, and recognition of the PDF. OpenAlex and MathSciNet are not searched yet, because they need credentials.
 
-   - Zotero's web translators on the URL;
-
-   - scraping of page metadata (`citation_*`, Dublin Core) and of the PDF itself;
-
-   - discovery of a DOI, ISBN, arXiv ID or other identifier, then lookup by that identifier;
-
-   - BibTeX that the source publishes, when it has some;
-
-   - searches of other metadata services that the API knows about (Crossref, OpenAlex, zbMATH Open, MathSciNet, Open Library, arXiv).
-
-2. Change "Send to Zotero" to call that operation with the item's URL.
-
-3. Delete the resolver plugins, `manuscript_bibtex` and the BibTeX send path from this app.
-
-Today the app does this work itself:
-
-- The resolver plugins (`src/resolvers/*.ts`, `plugins/manifests/resolvers.json`) turn an identifier into BibTeX.
-
-- `server/src/send.rs` sends that BibTeX through `import_bibtex`. Only arXiv goes through `import_by_identifier`. For an unidentified PDF, `manuscript_bibtex` writes a BibTeX entry by hand.
-
-The write API's `openapi.yaml` (`~/gitclones/zotero-local-write-api`) lists these operations for metadata: `import_bibtex`, `import_by_identifier` (Zotero's identifier translators) and `run_javascript`. It lists no operation that runs Zotero's web translators on a URL.
-
-This conflicts with the "Send to Zotero" row in `AGENTS.md` ("resolver plugins to BibTeX, then `import_bibtex`"). That row must change when the send path changes.
-
-## Bugs found by code inspection (2026-09-28)
-
-The inspection read the code only, not the GitHub issues.
-The most serious findings were checked against the code; the rest were confirmed by reading the code or with small scratch scripts.
-
-### High severity
-
-1. **Send to Zotero can attach a PDF to a different paper's Zotero item.** `server/src/send.rs:237-239` looks for an existing Zotero item by URL. That URL is the source page, or the PDF URL when no source page is known (`send.rs:119`). Many PDFs share one source page:
-
-   - Every PDF from a folder import gets the folder's `file://` URL (`imports.rs:236`).
-
-   - Two arXiv papers captured from one listing page share that page.
-
-   - Two papers from one journal contents page share that page.
-
-   The first send writes the shared URL into its Zotero item.
-   Every later send from the same page then matches that item.
-   The later PDF, its notes and its Markdown attach to the first paper, and no item is made for the later paper.
-   The bucket then marks the later item as sent, so it leaves the library.
-
-### Lower severity
-
-| Bug | Location |
-| --- | --- |
-| A backslash in a title breaks the BibTeX sent to Zotero | `send.rs:127` |
-
-No defects were found in the Tauri shell, in the locking of index and filing writes, in atomic file writes, in key path checks, in XSS escaping, or in plugin subprocess handling.
+2. Delete the resolver plugins (`src/resolvers/*.ts`, `plugins/manifests/resolvers.json`) from this app. They still give an item its title (Retrieve metadata, `server/src/library.rs`), so that feature needs a new source first.

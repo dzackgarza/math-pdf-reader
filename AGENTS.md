@@ -104,7 +104,7 @@ to build from scratch.
 | library (1) | Collections, Tags, Saved Searches | `zotero-gui`'s sidebar and table, cribbed, over the bucket index; topics are a `topic:` tag namespace or saved searches |
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
 | library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256, mirrors | provenance embedded in the PDF; the inspector shows the first page, the source page link, date and size, the PDF URL and mirrors with their last check (Verify), and the row menu copies the links |
-| library (1) | Send to Zotero | the send action: resolver plugins to BibTeX, then `import_bibtex` and `attach_bytes` on the local write API; or open the reader URL in a browser and press the Zotero Connector |
+| library (1) | Send to Zotero | the send action: `import_from_url` with the PDF URL, then `attach_bytes`, on the local write API; or open the reader URL in a browser and press the Zotero Connector |
 | reader (2) | reader, outline, search in document, highlights, notes | PDF.js prebuilt viewer in an iframe; highlights saved into the PDF by `saveDocument()` |
 | reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width PDF.js; mirrors are in the inspector's Sources |
 | reader (2) | Rebuild from metadata | Rebuild in the library's Needs Re-fetch list, and the cache-rebuild recipe; both try the PDF URL, then each mirror |

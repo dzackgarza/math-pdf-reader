@@ -209,22 +209,23 @@ export const SendStepSchema = z.discriminatedUnion("step", [
   }),
 ]);
 
-// How the Zotero item's metadata was found: a resolver plugin on an identifier, or, for an
-// item with no identifier, a manuscript entry carrying only the title.
-export const SendSourceSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("resolver"),
-    pluginId: NonEmptySchema,
-    identifier: NonEmptySchema,
-  }),
-  z.strictObject({ kind: z.literal("manuscript") }),
+// How the Zotero local write API identified the item's URL: Zotero's web translators, the
+// page's citation metadata, an identifier found in the source, BibTeX the source publishes, a
+// search of a metadata service, or recognition of the PDF.
+export const ImportMethodSchema = z.enum([
+  "web_translator",
+  "page_metadata",
+  "identifier",
+  "published_bibtex",
+  "external_service",
+  "pdf_recognition",
 ]);
 
 // The Zotero item a send goes to, and the steps done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
   itemKey: NonEmptySchema,
   sentAt: z.iso.datetime({ offset: true }),
-  source: SendSourceSchema,
+  method: ImportMethodSchema,
   steps: z.array(SendStepSchema),
 });
 
@@ -240,8 +241,8 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
 ]);
 
 // The answer to a send: the Zotero item and the steps this send performed.
-// `created`: this send made the Zotero item; false when it finished an earlier send, or found
-// the work already in Zotero (by its DOI, or by the page URL a send writes) and sent to that item.
+// `created`: this send made the Zotero item; false when it finished an earlier send, or the
+// write API found the work already in Zotero and the send went to that item.
 // `kept`: the item stays in the bucket because a collection holding it keeps its items offline.
 export const SendResponseSchema = z.strictObject({
   itemKey: NonEmptySchema,
@@ -592,7 +593,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
 export type Extraction = z.infer<typeof ExtractionSchema>;
 export type SendStep = (typeof SEND_STEPS)[number];
 export type SendStepDone = z.infer<typeof SendStepSchema>;
-export type SendSource = z.infer<typeof SendSourceSchema>;
+export type ImportMethod = z.infer<typeof ImportMethodSchema>;
 export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
 export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;

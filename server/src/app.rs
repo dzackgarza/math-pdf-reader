@@ -38,7 +38,7 @@ use crate::titles::retrieve_metadata;
 use crate::{extractions, guard, guesses, library, send, sessions, source_routes, thumbnails};
 
 /// The origin a request was made to, from its Host header.
-fn origin(headers: &HeaderMap) -> AppResult<String> {
+pub fn origin(headers: &HeaderMap) -> AppResult<String> {
     let host = headers
         .get(header::HOST)
         .ok_or_else(|| AppError::invalid("the request names no host"))?;

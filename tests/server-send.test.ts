@@ -60,7 +60,7 @@ async function capture(bucket: Bucket, key: string): Promise<void> {
 const SENT: ZoteroRecord = {
   itemKey: "ABCD2345",
   sentAt: "2026-09-23T18:00:00.000Z",
-  source: { kind: "manuscript" },
+  method: "page_metadata",
   steps: [{ step: "fields" }, { step: "pdf", attachmentKey: "EFGH6789" }],
 };
 

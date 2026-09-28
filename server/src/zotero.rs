@@ -1,7 +1,6 @@
 //! The Zotero local write API: the endpoints the local-write-api addon adds to Zotero's own
-//! HTTP server (`POST /write` with an `operation`, `POST /attach`), plus the read of Zotero's
-//! local API (`/api/users/0/...`) that a send needs. The send action is the only caller;
-//! nothing else in the bucket writes to Zotero.
+//! HTTP server (`POST /write` with an `operation`, `POST /attach`). The send action is the only
+//! caller; nothing else in the bucket writes to Zotero.
 use std::time::Duration;
 
 use base64::Engine;
@@ -11,15 +10,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use url::Url;
 
+use crate::contract::ImportMethod;
 use crate::error::{AppError, AppResult};
 
 /// Zotero answers on loopback, so a connection that takes longer is a Zotero that is down.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
-/// An identifier import runs Zotero's translator against the publisher's site, and an attach
-/// carries a whole PDF; either may take this long before Zotero counts as stalled.
+/// An import from a URL runs Zotero's translators and metadata searches against remote sites,
+/// and an attach carries a whole PDF; either may take this long before Zotero counts as stalled.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
-/// The local API's largest page.
-const PAGE: usize = 100;
 
 #[derive(Deserialize)]
 struct Refusal {
@@ -27,28 +25,12 @@ struct Refusal {
     error: String,
 }
 
+/// The item `import_from_url` made or found. `existing`: the library already held the work.
 #[derive(Deserialize)]
-struct Created {
-    item_key: String,
-    details: CreatedCount,
-}
-
-#[derive(Deserialize)]
-struct CreatedCount {
-    item_count: u64,
-}
-
-impl Created {
-    // One entry or one identifier makes exactly one item.
-    fn one(self) -> AppResult<String> {
-        if self.details.item_count != 1 {
-            return Err(AppError::Zotero(format!(
-                "Zotero made {} items where one was asked for",
-                self.details.item_count
-            )));
-        }
-        Ok(self.item_key)
-    }
+pub struct Imported {
+    pub item_key: String,
+    pub existing: bool,
+    pub method: ImportMethod,
 }
 
 #[derive(Deserialize)]
@@ -69,22 +51,6 @@ struct Attached {
 #[derive(Deserialize)]
 struct NoteAttached {
     note_key: String,
-}
-
-#[derive(Deserialize)]
-struct LibraryItem {
-    key: String,
-    data: LibraryItemData,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LibraryItemData {
-    item_type: String,
-    #[serde(rename = "DOI")]
-    doi: Option<String>,
-    url: Option<String>,
-    date_added: String,
 }
 
 /// update_item_fields merges the fields into the item's API JSON, where Zotero reads a
@@ -178,70 +144,11 @@ impl ZoteroWriteApi {
             .await
     }
 
-    /// Creates one item in the library root from one BibTeX entry; answers its key.
-    pub async fn import_bibtex(&self, bibtex: &str) -> AppResult<String> {
-        let body = json!({ "operation": "import_bibtex", "bibtex": bibtex });
-        self.post::<Created>("/write", &body).await?.one()
-    }
-
-    /// Creates one item in the library root with Zotero's own translator for the identifier
-    /// (for `arXiv:<id>`, its arXiv translator, which makes a preprint); answers its key.
-    pub async fn import_by_identifier(&self, identifier: &str) -> AppResult<String> {
-        let body = json!({ "operation": "import_by_identifier", "identifier": identifier });
-        self.post::<Created>("/write", &body).await?.one()
-    }
-
-    /// The top-level regular item (not an attachment or note) that the local API's `everything`
-    /// search finds for `term` and `matches` accepts, the earliest added when the library holds
-    /// several; Zotero's duplicate merge keeps the earliest too. Trashed items are left out.
-    async fn item_where(
-        &self,
-        what: &str,
-        term: &str,
-        matches: impl Fn(&LibraryItemData) -> bool,
-    ) -> AppResult<Option<String>> {
-        let mut found: Vec<LibraryItem> = Vec::new();
-        for start in (0..).step_by(PAGE) {
-            let mut url = self.url("/api/users/0/items/top");
-            url.query_pairs_mut().extend_pairs([
-                ("q", term),
-                ("qmode", "everything"),
-                ("format", "json"),
-                ("limit", &PAGE.to_string()),
-                ("start", &start.to_string()),
-            ]);
-            let page: Vec<LibraryItem> = self.answer(what, self.client.get(url)).await?;
-            let last = page.len() < PAGE;
-            found.extend(page.into_iter().filter(|item| {
-                !matches!(item.data.item_type.as_str(), "attachment" | "note")
-                    && matches(&item.data)
-            }));
-            if last {
-                break;
-            }
-        }
-        Ok(found
-            .into_iter()
-            .min_by(|a, b| a.data.date_added.cmp(&b.data.date_added))
-            .map(|item| item.key))
-    }
-
-    /// The item whose DOI is `doi`; DOIs compare without case.
-    pub async fn item_with_doi(&self, doi: &str) -> AppResult<Option<String>> {
-        self.item_where("a search by DOI", doi, |data| {
-            data.doi
-                .as_deref()
-                .is_some_and(|found| found.eq_ignore_ascii_case(doi))
-        })
-        .await
-    }
-
-    /// The item whose URL field is exactly `url`.
-    pub async fn item_with_url(&self, url: &str) -> AppResult<Option<String>> {
-        self.item_where("a search by URL", url, |data| {
-            data.url.as_deref() == Some(url)
-        })
-        .await
+    /// The item for the source at `url`: the write API identifies the source by its own
+    /// methods, and answers the library's item for that work when it already holds one.
+    pub async fn import_from_url(&self, url: &str) -> AppResult<Imported> {
+        let body = json!({ "operation": "import_from_url", "url": url });
+        self.post("/write", &body).await
     }
 
     pub async fn set_url_and_access_date(

@@ -3,11 +3,9 @@
 //! live there), the installed Python environment, the XDG directories, and the tunables below.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
-use regex::Regex;
 
 use crate::contract::AppConfig;
 
@@ -181,15 +179,6 @@ pub const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'\'')
     .remove(b'(')
     .remove(b')');
-
-/// The three rewrites that take an arXiv id out of an identifier the arXiv resolver accepts.
-pub static ARXIV_PREFIX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^arxiv:").expect("a valid pattern"));
-pub static ARXIV_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^https?://arxiv\.org/(?:abs|pdf)/").expect("a valid pattern")
-});
-pub static PDF_SUFFIX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\.pdf$").expect("a valid pattern"));
 
 /// Minutes without input after which the reader stops counting time as reading.
 pub const READER_IDLE_MINUTES: u32 = 10;
