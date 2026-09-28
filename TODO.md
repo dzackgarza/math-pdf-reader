@@ -62,6 +62,5 @@ The most serious findings were checked against the code; the rest were confirmed
 | Bug | Location |
 | --- | --- |
 | A backslash in a title breaks the BibTeX sent to Zotero | `send.rs:127` |
-| A thumbnail request for an item deleted while it waits for a render slot runs the renderer on a missing file and answers 500 with a traceback | `thumbnails.rs:35-56` |
 
 No defects were found in the Tauri shell, in the locking of index and filing writes, in atomic file writes, in key path checks, in XSS escaping, or in plugin subprocess handling.

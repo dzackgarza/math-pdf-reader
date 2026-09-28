@@ -623,8 +623,10 @@ impl Store {
         .await
     }
 
-    /// KEY's first page WIDTH pixels wide, as a PNG.
+    /// KEY's first page WIDTH pixels wide, as a PNG. The key's lock is held while it renders, so
+    /// a removal waits for the render, and a render after a removal finds no item.
     pub async fn thumbnail(&self, key: &str, width: u32) -> AppResult<Vec<u8>> {
+        let _key = self.lock(&self.existing_key(key)?).await;
         let key = self.existing_key(key)?;
         let args = [
             "thumbnail".to_string(),

@@ -41,8 +41,16 @@ async fn thumbnail(
         .cache_dir
         .join("thumbnails")
         .join(format!("{}-{width}.png", sha256(key.as_bytes())));
+    // The item can be removed after the check above.
+    let pdf_modified = match tokio::fs::metadata(&pdf).await {
+        Ok(stored) => stored.modified()?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::unknown_item(&key))
+        }
+        Err(error) => return Err(error.into()),
+    };
     let stale = match tokio::fs::metadata(&png).await {
-        Ok(drawn) => drawn.modified()? < tokio::fs::metadata(&pdf).await?.modified()?,
+        Ok(drawn) => drawn.modified()? < pdf_modified,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
         Err(error) => return Err(error.into()),
     };
