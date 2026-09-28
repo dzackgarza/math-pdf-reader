@@ -4,13 +4,20 @@
 // browser's own viewer when the capture page asks, hands the PDFs Chrome saved as downloads to
 // the bucket, and keeps the toolbar badge in step with the bucket and the switch. Every message
 // gets exactly one reply; an error in the background is a `failed` reply at stage `extension`.
+// Only the extension's own pages may ask for a capture, an exemption or a tab to be left;
+// content scripts, which run in web pages, only report followed links.
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
 import { bucketBuild } from "../bucket-config";
 import { captureEnabled, lastCapture, refreshToolbar } from "../bucket-status";
 import { postDownloadToBucket, postToBucket } from "../capture";
 import { type SavedPdf, watchPdfDownloads } from "../chrome-downloads";
-import { type ChromeInterception, capturePage, chromeInterception } from "../exemptions";
+import {
+  type ChromeInterception,
+  capturePage,
+  chromeInterception,
+  recordCaptureRedirect,
+} from "../exemptions";
 import { type FirefoxInterception, firefoxInterception } from "../firefox-interception";
 import { failureTarget } from "../interception";
 import { followRedirect, rememberLinkOrigin, takeLinkOrigin } from "../link-origin";
@@ -56,29 +63,39 @@ export default defineBackground(() => {
     return record(pdfUrl, outcome);
   }
 
+  // What became of a download's capture, without its record.
+  async function downloadOutcome(saved: SavedPdf): Promise<CaptureOutcome> {
+    const origin = await takeLinkOrigin(saved.pdfUrl.href);
+    switch (saved.kind) {
+      case "interrupted":
+        return failed("fetch-pdf", `Chrome could not download the PDF (${saved.reason})`);
+      case "lost":
+        return failed(
+          "extension",
+          "Chrome stopped PDF Bucket's extension each time before the bucket answered; the bucket may hold the PDF",
+        );
+      case "complete":
+        return postDownloadToBucket(
+          saved.pdfUrl,
+          saved.path,
+          saved.contentDisposition,
+          origin,
+          bucketOrigin,
+        );
+    }
+  }
+
   // Chrome saved a captured PDF as a download: once the bucket holds it, the download goes;
   // otherwise the download stays and a capture page tab shows the failure.
   async function captureDownload(saved: SavedPdf): Promise<void> {
     const pdfUrl = saved.pdfUrl.href;
-    const origin = await takeLinkOrigin(pdfUrl);
-    const outcome = await record(
-      pdfUrl,
-      saved.kind === "interrupted"
-        ? failed("fetch-pdf", `Chrome could not download the PDF (${saved.reason})`)
-        : await postDownloadToBucket(
-            saved.pdfUrl,
-            saved.path,
-            saved.contentDisposition,
-            origin,
-            bucketOrigin,
-          ),
-    );
+    const outcome = await record(pdfUrl, await downloadOutcome(saved));
     if (outcome.kind === "stored") {
       await browser.downloads.removeFile(saved.id);
       await browser.downloads.erase({ id: saved.id });
       return;
     }
-    const kept = saved.kind === "complete" ? `; Chrome saved the PDF at ${saved.path}` : "";
+    const kept = saved.kind === "interrupted" ? "" : `; Chrome saved the PDF at ${saved.path}`;
     const failure = failed(outcome.error.stage, `${outcome.error.detail}${kept}`);
     await browser.tabs.create({ url: failureTarget(capturePage(), pdfUrl, failure) });
   }
@@ -133,15 +150,26 @@ export default defineBackground(() => {
       reportFailure(message.error);
       return false;
     }
+    const fromExtensionPage = sender.url?.startsWith(browser.runtime.getURL("/")) === true;
+    if (message.data.type !== "remember-link" && !fromExtensionPage) {
+      reportFailure(`a ${message.data.type} message came from ${sender.url ?? "an unknown page"}`);
+      return false;
+    }
     handle(message.data, tabId, frameId).then(sendResponse, reportFailure);
     return true;
   });
 
   // A followed link's report also names the page for each URL the navigation is redirected to.
+  // In Chrome, a capture rule's redirect of a frame to the capture page is recorded too: it is
+  // what lets that capture page ask for the PDF.
   browser.webRequest.onBeforeRedirect.addListener(
     (details) => {
       if (/^https?:/.test(details.redirectUrl)) {
         void followRedirect(details.url, details.redirectUrl);
+        return;
+      }
+      if (chrome !== undefined && details.type === "sub_frame") {
+        recordCaptureRedirect(details.tabId, details.frameId, details.url, details.redirectUrl);
       }
     },
     { urls: ["http://*/*", "https://*/*"], types: ["main_frame", "sub_frame"] },

@@ -20,7 +20,7 @@ import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { pdfCaptureRules } from "../src/extension/interception";
 import { extensionDefine } from "../wxt.config";
 import { EXTRACTIONS_MANIFEST, RESOLVERS_MANIFEST, serveBucket } from "./bucket";
-import { pdfBytes, startFixtureSite } from "./fixture-site";
+import { LONG_FRAME_PDF, pdfBytes, startFixtureSite } from "./fixture-site";
 import { listItems } from "./store";
 
 type Engine = "chrome" | "firefox";
@@ -193,7 +193,7 @@ async function urlBecomes(page: Page, url: string): Promise<void> {
 }
 
 describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
-  const site = startFixtureSite();
+  let site: Awaited<ReturnType<typeof startFixtureSite>>;
   let bucket: Awaited<ReturnType<typeof startBucket>>;
   let browser: Browser;
   let extensionOrigin: string;
@@ -363,6 +363,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
+    site = await startFixtureSite();
     bucket = await startBucket();
     const extension = await buildExtension(engine, bucket.port);
     browser = await launch(engine, extension);
@@ -499,6 +500,29 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/frames/chapter.pdf")));
   });
 
+  // The capture page is web-accessible, so a web page can frame it with any PDF URL. Only a
+  // frame the extension itself sent there gets its PDF captured.
+  test("a web page that frames the capture page with a PDF URL gets a failure and no capture", async () => {
+    const before = bucket.files();
+    const pdfPath = "/private/statement.pdf";
+    await page.goto(`${site.origin}/teaching.html`);
+    await page.evaluate(`{
+      const frame = document.createElement("iframe");
+      frame.src = ${JSON.stringify(`${extensionOrigin}/capture.html?${site.origin}${pdfPath}`)};
+      frame.style = "width: 1000px; height: 700px";
+      document.body.append(frame);
+    }`);
+    const frame = await page.waitForFrame(
+      (candidate) =>
+        candidate.parentFrame() === page.mainFrame() &&
+        (engine === "firefox" || candidate.url().startsWith(extensionOrigin)),
+    );
+    await captureState(frame, "failed");
+
+    expect(served()).not.toContain(`GET ${pdfPath}`);
+    expect(bucket.files()).toEqual(before);
+  });
+
   test("an inline <embed> of a PDF is left to the browser", async () => {
     const before = bucket.files();
     await page.goto(`${site.origin}/embed.html`);
@@ -589,6 +613,64 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     }
   });
 
+  // Chrome stops a service worker whose fetch() response takes more than 30 s, and the bucket
+  // answers a capture only after its metadata lookup. Here the post is held until the worker is
+  // stopped. Only the extension removes a download, and only once the bucket answers that it
+  // holds the PDF, so the emptied downloads folder shows that a later worker delivered it.
+  test.if(engine === "chrome")(
+    "a download whose worker stops before the bucket answers is captured by the next worker",
+    async () => {
+      // A page load is a response the worker listens for, so a worker is running after it.
+      await page.goto(`${site.origin}/held.html`);
+      const target = await browser.waitForTarget(
+        (candidate) => candidate.type() === "service_worker",
+      );
+      const worker = await target.worker();
+      if (worker === null) {
+        throw new Error("the extension service worker target has no worker");
+      }
+      const posted = new Promise<void>((resolve) => {
+        worker.client.once("Fetch.requestPaused", () => resolve());
+      });
+      await worker.client.send("Fetch.enable", {
+        patterns: [{ urlPattern: "*/capture-download", requestStage: "Request" }],
+      });
+      await page.click("a#pdf");
+      await posted;
+      await worker.close();
+
+      // A followed PDF link starts the next worker.
+      await followLink("/teaching.html");
+      while (!bucket.files().includes("held.pdf")) {
+        await Bun.sleep(50);
+      }
+      if (downloads !== null) {
+        while (readdirSync(downloads).length > 0) {
+          await Bun.sleep(50);
+        }
+      }
+      const stored = await provenance("held");
+      expect(stored.pdf_url).toBe(`${site.origin}/notes/held.pdf`);
+      expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/held.pdf")));
+    },
+  );
+
+  // Every GET response invariant 4 counts as a PDF, beyond `application/pdf`: a generic or
+  // missing type on a `.pdf` path, the legacy PDF type, and whitespace before the parameters.
+  test.each([
+    ["binary/octet-stream on a .pdf path", "/scan.html", "scan", "/objects/scan.pdf"],
+    ["application/force-download on a .pdf path", "/handout.html", "handout", "/files/handout.pdf"],
+    ["no Content-Type on a .pdf path", "/untyped.html", "untyped", "/files/untyped.pdf"],
+    ["application/x-pdf", "/legacy.html", "legacy", "/papers/legacy"],
+    ["application/pdf ;version=1.7", "/spaced.html", "spaced", "/papers/spaced"],
+  ])("a PDF served as %s is captured", async (_served, pagePath, key, pdfPath) => {
+    expect(await captureInPlace(pagePath)).toBe(`${bucket.origin}/read/${key}`);
+    const stored = await provenance(key);
+    expect(stored.pdf_url).toBe(`${site.origin}${pdfPath}`);
+    expect(stored.source_url).toBe(`${site.origin}${pagePath}`);
+    expect(stored.original_sha256).toBe(sha256(pdfBytes(pdfPath)));
+  });
+
   // Firefox keeps its start page in the tab's session history, so the tab holds an entry
   // before the PDF's; the tab was still opened for the PDF alone. In Chrome a top-level PDF
   // becomes a download and the tab never leaves its page.
@@ -616,6 +698,16 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const frames = page.frames().map((frame) => frame.url());
     expect(frames).toContain(`${site.origin}/frames/preview.pdf`);
     expect(frames).toContain(`${site.origin}/frames/appendix.pdf`);
+    expect(bucket.files()).toEqual(before);
+  });
+
+  test("a sub-frame below the minimum frame size is handed back even when its PDF URL is several KB long", async () => {
+    const before = bucket.files();
+    await page.goto(`${site.origin}/frame-small-signed.html`);
+    await Bun.sleep(SETTLE_MS);
+
+    const frames = page.frames().map((frame) => frame.url());
+    expect(frames).toContain(`${site.origin}${LONG_FRAME_PDF}`);
     expect(bucket.files()).toEqual(before);
   });
 

@@ -35,7 +35,14 @@ export default defineConfig({
     // The toolbar popup doubles as the options page, which holds the capture switch.
     options_ui: { page: "popup.html", open_in_tab: false },
     host_permissions: ["<all_urls>"],
-    web_accessible_resources: [{ resources: ["capture.html"], matches: ["<all_urls>"] }],
+    // A capture rule can redirect a frame only to a web-accessible page, and any http(s) page
+    // can frame a PDF. The background fetches a PDF only for a frame its own rule redirected
+    // (exemptions.ts). Chrome's `use_dynamic_url` is not set: `runtime.getURL` does not return
+    // the per-session URL it creates (Chromium issue 375973466), and the rules are built from
+    // that URL. Firefox (MV2) takes a plain list of resources, which WXT derives from this.
+    web_accessible_resources: [
+      { resources: ["capture.html"], matches: ["http://*/*", "https://*/*"] },
+    ],
     ...(browser === "firefox"
       ? {
           browser_specific_settings: {

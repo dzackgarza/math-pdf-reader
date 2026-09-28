@@ -18,6 +18,9 @@ test("the Chrome build declares the declarativeNetRequest interception route, re
   ]);
   expect(output.manifest.host_permissions).toEqual(["<all_urls>"]);
   expect(output.manifest.minimum_chrome_version).toBe("128");
+  expect(output.manifest.web_accessible_resources).toEqual([
+    { resources: ["capture.html"], matches: ["http://*/*", "https://*/*"] },
+  ]);
 });
 
 test("the Firefox build declares the blocking webRequest interception route", async () => {
@@ -31,4 +34,5 @@ test("the Firefox build declares the blocking webRequest interception route", as
     "alarms",
     "<all_urls>",
   ]);
+  expect(output.manifest.web_accessible_resources).toEqual(["capture.html"]);
 });

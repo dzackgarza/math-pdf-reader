@@ -3,8 +3,11 @@
 // (Chrome 128+, response-header conditions) and, for Firefox, which has no response-header
 // rule condition, the same decision as a blocking webRequest.onHeadersReceived predicate.
 // Differences from pdf.js: only GET is intercepted, the bucket's own origin is allowed
-// through, and pdf.js's download escapes (`pdfjs.action=download`, `=download`,
-// attachment sub-frames) are dropped because every PDF is captured.
+// through, pdf.js's download escapes (`pdfjs.action=download`, `=download`, attachment
+// sub-frames) are dropped because every PDF is captured, `application/x-pdf` counts as PDF,
+// and the generic types below, or no Content-Type at all, count as octet-stream does in pdf.js.
+
+import { MIMEType } from "whatwg-mimetype";
 import type { Browser } from "wxt/browser";
 import { type Failed, FailedSchema } from "./messages";
 
@@ -14,6 +17,21 @@ type Rule = Browser.declarativeNetRequest.Rule;
 export const PDF_FRAME_TYPES: ("main_frame" | "sub_frame")[] = ["main_frame", "sub_frame"];
 
 const OCTET_STREAM = "application/octet-stream";
+
+// Media types that say PDF.
+const PDF_TYPES = ["application/pdf", "application/x-pdf"];
+
+// Media types servers send for any file (`binary/octet-stream` is Amazon S3's default). With
+// one of these, or with no Content-Type, the URL path or Content-Disposition decides.
+const GENERIC_TYPES = [OCTET_STREAM, "binary/octet-stream", "application/force-download"];
+
+// declarativeNetRequest header-value patterns (`*` is any run of characters, matched without
+// regard to case) for the media types TYPES with or without parameters, including the space or
+// tab that may come before the `;`. They also match a value such as `application/pdf x;y`,
+// which the MIME parser below rejects; no server sends one.
+function mediaTypePatterns(types: string[]): string[] {
+  return types.flatMap((type) => [type, `${type};*`, `${type} *;*`, `${type}\t*;*`]);
+}
 
 // The capture page receives the PDF URL verbatim as its whole query string:
 // declarativeNetRequest cannot encode the matched URL, so Firefox does the same.
@@ -44,37 +62,29 @@ export function pdfCaptureRules(capturePage: string, bucketOrigin: string): Rule
     type: "modifyHeaders",
     responseHeaders: [{ header: "content-type", operation: "set", value: OCTET_STREAM }],
   };
+  // pdf.js's double negation for "Content-Type is generic or absent". A rule with an excluded
+  // response header is matched on the response, like one with a response header.
+  const genericOrAbsent = [
+    { header: "content-type", excludedValues: mediaTypePatterns(GENERIC_TYPES) },
+  ];
   const pdfConditions: Rule["condition"][] = [
     {
       regexFilter: "^.*$",
       requestMethods: ["get"],
-      responseHeaders: [
-        { header: "content-type", values: ["application/pdf", "application/pdf;*"] },
-      ],
+      responseHeaders: [{ header: "content-type", values: mediaTypePatterns(PDF_TYPES) }],
     },
     {
-      // Wrong MIME type, but a PDF according to the file name in the URL.
+      // Generic or missing MIME type, but a PDF according to the file name in the URL.
       regexFilter: "^.*\\.pdf\\b.*$",
       requestMethods: ["get"],
-      responseHeaders: [
-        {
-          header: "content-type",
-          values: ["application/octet-stream", "application/octet-stream;*"],
-        },
-      ],
+      excludedResponseHeaders: genericOrAbsent,
     },
     {
-      // Wrong or missing MIME type, but a PDF according to Content-Disposition. The
-      // excluded header is pdf.js's double negation for "Content-Type is octet-stream or absent".
+      // Generic or missing MIME type, but a PDF according to Content-Disposition.
       regexFilter: "^.*$",
       requestMethods: ["get"],
       responseHeaders: [{ header: "content-disposition", values: ["*.pdf", '*.pdf"*', "*.pdf'*"] }],
-      excludedResponseHeaders: [
-        {
-          header: "content-type",
-          excludedValues: ["application/octet-stream", "application/octet-stream;*"],
-        },
-      ],
+      excludedResponseHeaders: genericOrAbsent,
     },
   ];
   const rules: Omit<Rule, "id" | "priority">[] = [
@@ -95,22 +105,27 @@ export function pdfCaptureRules(capturePage: string, bucketOrigin: string): Rule
 
 // The same decision as the three PDF conditions above, one predicate per condition, for
 // Firefox and for telling which of Chrome's downloads are captured navigations; it is
-// evaluated on the response headers (values lower-cased; the media type without parameters).
+// evaluated on the response headers. `mediaType` is the parsed type without parameters (the
+// raw value when it does not parse), undefined when there is no Content-Type.
 type PdfEvidence = {
   url: string;
-  contentType: string | undefined;
+  mediaType: string | undefined;
   disposition: string | undefined;
 };
 
-const pdfContentType = ({ contentType }: PdfEvidence) => contentType === "application/pdf";
+const genericOrAbsentType = ({ mediaType }: PdfEvidence) =>
+  mediaType === undefined || GENERIC_TYPES.includes(mediaType);
 
-const pdfPathOctetStream = ({ url, contentType }: PdfEvidence) =>
-  contentType === OCTET_STREAM && /\.pdf\b/i.test(url);
+const pdfType = ({ mediaType }: PdfEvidence) =>
+  mediaType !== undefined && PDF_TYPES.includes(mediaType);
 
-const pdfDisposition = ({ contentType, disposition }: PdfEvidence) =>
-  (contentType === undefined || contentType === OCTET_STREAM) &&
-  disposition !== undefined &&
-  /\.pdf(["']|$)/.test(disposition);
+const pdfPath = (evidence: PdfEvidence) =>
+  genericOrAbsentType(evidence) && /\.pdf\b/i.test(evidence.url);
+
+const pdfDisposition = (evidence: PdfEvidence) =>
+  genericOrAbsentType(evidence) &&
+  evidence.disposition !== undefined &&
+  /\.pdf(["']|$)/.test(evidence.disposition);
 
 // The name and value of a response header, the part of either browser's header type read here.
 type ResponseHeader = { name: string; value?: string | undefined };
@@ -118,12 +133,14 @@ type ResponseHeader = { name: string; value?: string | undefined };
 export function isPdfResponse(url: string, headers: ResponseHeader[]): boolean {
   const header = (name: string) =>
     headers.find((candidate) => candidate.name.toLowerCase() === name)?.value?.toLowerCase();
+  const contentType = header("content-type");
   const evidence = {
     url,
-    contentType: header("content-type")?.split(";", 1)[0]?.trim(),
+    mediaType:
+      contentType === undefined ? undefined : (MIMEType.parse(contentType)?.essence ?? contentType),
     disposition: header("content-disposition"),
   };
-  return [pdfContentType, pdfPathOctetStream, pdfDisposition].some((rule) => rule(evidence));
+  return [pdfType, pdfPath, pdfDisposition].some((rule) => rule(evidence));
 }
 
 // URL without its fragment: the resource a request fetches.
