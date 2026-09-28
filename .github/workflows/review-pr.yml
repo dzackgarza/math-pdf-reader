@@ -1,4 +1,4 @@
-name: PR QC and Slop Review
+name: PR QC
 on:
   pull_request: {}
 jobs:
@@ -66,13 +66,3 @@ jobs:
     with:
       gate: thread-resolution
       profile: 'bun-python'
-  slop-review:
-    uses: dzackgarza/automated-reviews/.github/workflows/_slop-review.yml@main
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-      pull-requests: write
-      issues: write
-    with:
-      scope: diff
