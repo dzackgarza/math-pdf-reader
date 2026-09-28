@@ -79,13 +79,24 @@ function keepBody(
 const heldKey = (tabId: number, frameId: number, pdfUrl: string) =>
   JSON.stringify([tabId, frameId, pdfUrl]);
 
+export type FirefoxInterception = Interception & {
+  // Whether the tab showed a web page when its last top-level PDF navigation began: the
+  // linking page, or a page the user left by entering the PDF's URL. A new tab shows
+  // about:blank or Firefox's start page, which Firefox keeps in the tab's session history.
+  leftWebPage(tabId: number): boolean;
+};
+
 // The listener is registered as the background starts, so no navigation slips past while the
 // stored switch is read; it waits for that read and lets every response through while capture
 // is off.
-export function firefoxInterception(bucketOrigin: string, enabled: Promise<boolean>): Interception {
+export function firefoxInterception(
+  bucketOrigin: string,
+  enabled: Promise<boolean>,
+): FirefoxInterception {
   const exempted = new Map<number, Set<string>>();
   // Responses kept for a capture page not yet asking, by (tab, frame, PDF URL).
   const held = new Map<string, { tabId: number; pdfUrl: string; body: Promise<Received> }>();
+  const leftWebPage = new Set<number>();
   let on = enabled;
   const forget = (keep: (entry: { tabId: number; pdfUrl: string }) => boolean) => {
     for (const [key, entry] of held) {
@@ -111,6 +122,16 @@ export function firefoxInterception(bucketOrigin: string, enabled: Promise<boole
       }
       if (!isPdfResponse(details.url, details.responseHeaders)) {
         return {};
+      }
+      if (details.type === "main_frame") {
+        // The tab still shows the page the navigation leaves. The `<all_urls>` host permission
+        // reveals a web page's URL; Firefox's own pages have none.
+        const { url } = await browser.tabs.get(details.tabId);
+        if (url !== undefined && /^https?:/.test(url)) {
+          leftWebPage.add(details.tabId);
+        } else {
+          leftWebPage.delete(details.tabId);
+        }
       }
       const document = savingDocument(captureTarget(capturePage(), pdfUrl));
       held.set(heldKey(details.tabId, details.frameId, pdfUrl), {
@@ -138,8 +159,10 @@ export function firefoxInterception(bucketOrigin: string, enabled: Promise<boole
     },
     async release(tabId) {
       exempted.delete(tabId);
+      leftWebPage.delete(tabId);
       forget((entry) => entry.tabId !== tabId);
     },
+    leftWebPage: (tabId) => leftWebPage.has(tabId),
     async received(tabId, frameId, pdfUrl) {
       const key = heldKey(tabId, frameId, pdfUrl.href);
       const entry = held.get(key);

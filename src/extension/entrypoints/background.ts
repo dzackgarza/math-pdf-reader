@@ -1,6 +1,6 @@
 // Capture background: registers PDF interception for this browser while the capture switch is
 // on, records link origins and carries them along redirects, captures PDFs for the capture
-// page, closes a tab opened only for a captured PDF, hands (tab, URL) pairs back to the
+// page, sends a tab it captured a PDF in back to the page it left or closes it, hands (tab, URL) pairs back to the
 // browser's own viewer when the capture page asks, hands the PDFs Chrome saved as downloads to
 // the bucket, and keeps the toolbar badge in step with the bucket and the switch. Every message
 // gets exactly one reply; an error in the background is a `failed` reply at stage `extension`.
@@ -10,8 +10,8 @@ import { bucketBuild } from "../bucket-config";
 import { captureEnabled, lastCapture, refreshToolbar } from "../bucket-status";
 import { postDownloadToBucket, postToBucket } from "../capture";
 import { type SavedPdf, watchPdfDownloads } from "../chrome-downloads";
-import { capturePage, chromeInterception, type Interception } from "../exemptions";
-import { firefoxInterception } from "../firefox-interception";
+import { type ChromeInterception, capturePage, chromeInterception } from "../exemptions";
+import { type FirefoxInterception, firefoxInterception } from "../firefox-interception";
 import { failureTarget } from "../interception";
 import { followRedirect, rememberLinkOrigin, takeLinkOrigin } from "../link-origin";
 import {
@@ -34,7 +34,7 @@ export default defineBackground(() => {
   const chrome = import.meta.env.FIREFOX
     ? undefined
     : enabled.then((on) => chromeInterception(bucketOrigin, on));
-  const interception: Promise<Interception> =
+  const interception: Promise<ChromeInterception | FirefoxInterception> =
     chrome ?? Promise.resolve(firefoxInterception(bucketOrigin, enabled));
   // The bucket check never throws; only the browser refusing a storage read or a badge update
   // rejects here, as an uncaught error in the background.
@@ -104,9 +104,18 @@ export default defineBackground(() => {
       case "exempt":
         await (await interception).exempt(tabId, message.pdf_url);
         return DONE;
-      case "close-tab":
-        await browser.tabs.remove(tabId);
+      case "leave-tab": {
+        const active = await interception;
+        if (!("leftWebPage" in active)) {
+          throw new Error("Chrome saves a top-level PDF as a download; no capture page is left");
+        }
+        if (message.can_go_back && active.leftWebPage(tabId)) {
+          await browser.tabs.goBack(tabId);
+        } else {
+          await browser.tabs.remove(tabId);
+        }
         return DONE;
+      }
     }
   }
 

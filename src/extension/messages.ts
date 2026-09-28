@@ -23,8 +23,9 @@ export const RuntimeMessageSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({ type: z.literal("capture"), pdf_url: HttpUrlSchema }),
   z.strictObject({ type: z.literal("exempt"), pdf_url: HttpUrlSchema }),
-  // The capture page's tab was opened for the PDF alone and the capture succeeded.
-  z.strictObject({ type: z.literal("close-tab") }),
+  // The capture succeeded in a top-level capture page, whose tab holds an entry before it
+  // (`can_go_back`) or not. The background returns the tab to the web page it left, or closes it.
+  z.strictObject({ type: z.literal("leave-tab"), can_go_back: z.boolean() }),
 ]);
 
 export type RuntimeMessage = z.infer<typeof RuntimeMessageSchema>;
