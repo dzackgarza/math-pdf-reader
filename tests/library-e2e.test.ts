@@ -1318,6 +1318,7 @@ describe("library window", () => {
       expect(response.status).toBe(200);
       const { key } = CaptureResponseSchema.parse(await response.json());
       await page.goto(`${slow.origin}/`);
+      await page.waitForSelector(row(key));
       await page.click(row(key));
       await page.click('button[aria-label="Run extraction"]');
 
