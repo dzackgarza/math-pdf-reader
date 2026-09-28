@@ -5,6 +5,12 @@
 This app must not create or send BibTeX. Zotero owns how to get bibliographic information from a source.
 The Zotero local write API probably already holds better heuristics for many kinds of sources than this app does.
 
+Target: "Send to Zotero" passes the item's URL to the local write API and nothing else.
+When Zotero must understand more kinds of URL, the write API absorbs that work, not this app.
+The write API does not have that operation yet:
+[zotero-local-write-api#31](https://github.com/dzackgarza/zotero-local-write-api/issues/31).
+The roadmap's Decision Log records this decision (2026-09-28).
+
 Today the app does this work itself:
 
 - The resolver plugins (`src/resolvers/*.ts`, `plugins/manifests/resolvers.json`) turn an identifier into BibTeX.
@@ -13,7 +19,7 @@ Today the app does this work itself:
 
 The write API's `openapi.yaml` (`~/gitclones/zotero-local-write-api`) lists these operations for metadata: `import_bibtex`, `import_by_identifier` (Zotero's identifier translators) and `run_javascript`. It lists no operation that runs Zotero's web translators on a URL.
 
-This conflicts with the "Send to Zotero" row in `AGENTS.md` ("resolver plugins to BibTeX, then `import_bibtex`"). That row and the plan's Decision Log must change with it.
+This conflicts with the "Send to Zotero" row in `AGENTS.md` ("resolver plugins to BibTeX, then `import_bibtex`"). That row must change when the send path changes.
 
 ## Bugs found by code inspection (2026-09-28)
 
