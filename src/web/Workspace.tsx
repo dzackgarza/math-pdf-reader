@@ -313,8 +313,12 @@ export default function Workspace({
       selected === undefined ? null : () => itemMenuActions(context, selected, deselect).delete(),
   });
 
+  // The menu of an item that has left the library (deleted in another window) closes.
   const rowMenu = (key: string) => {
-    const item = itemById(key);
+    const item = payload.items.find((candidate) => candidate.id === key);
+    if (item === undefined) {
+      return null;
+    }
     const actions = itemMenuActions(context, item, deselect);
     return (
       <ItemContextMenu
@@ -324,8 +328,9 @@ export default function Workspace({
           open: () => openReader(key),
           openInBrowser: () => attempt(openInBrowser(readerHref(key))),
           retrieveMetadata: actions.retrieveMetadata,
+          // A row among the checked rows acts for all of them; any other row, for itself.
           guessMetadata: () => {
-            const keys = selectedKeys.length > 1 ? selectedKeys : [key];
+            const keys = selectedKeys.includes(key) ? selectedKeys : [key];
             guessMetadata(context, keys.map(itemById));
           },
           fileIn: actions.fileIn,

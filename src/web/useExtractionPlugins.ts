@@ -1,7 +1,8 @@
 // The shipped extraction plugins, read once from `/api/plugins/extractions`, and a run of one
-// on an item. A run answers its outcome as 200 succeeded, 422 rejected or 502 failed.
+// on an item. A run answers each outcome with its status in EXTRACTION_OUTCOME_STATUS.
 import { useEffect, useState } from "react";
 import {
+  EXTRACTION_OUTCOME_STATUS,
   type ExtractionOutcome,
   ExtractionOutcomeSchema,
   type ExtractionPlugin,
@@ -14,7 +15,7 @@ export type PluginsState =
   | { status: "ready"; plugins: ExtractionPlugin[] }
   | { status: "failed"; message: string };
 
-const OUTCOME_STATUSES = new Set([200, 422, 502]);
+const OUTCOME_STATUSES = new Set<number>(Object.values(EXTRACTION_OUTCOME_STATUS));
 
 async function fetchPlugins(): Promise<ExtractionPlugin[]> {
   const response = await fetch("/api/plugins/extractions");
@@ -41,5 +42,12 @@ export async function runExtraction(key: string, pluginId: string): Promise<Extr
   if (!OUTCOME_STATUSES.has(response.status)) {
     throw await requestError(response);
   }
-  return ExtractionOutcomeSchema.parse(await response.json());
+  const outcome = ExtractionOutcomeSchema.parse(await response.json());
+  const expected = EXTRACTION_OUTCOME_STATUS[outcome.status];
+  if (response.status !== expected) {
+    throw new Error(
+      `the server answered a ${outcome.status} run with ${response.status}, not ${expected}`,
+    );
+  }
+  return outcome;
 }

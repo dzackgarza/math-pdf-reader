@@ -71,9 +71,6 @@ The most serious findings were checked against the code; the rest were confirmed
    The new PDF gets that key and takes the lost item's tags, notes, mirrors and Zotero record.
    The next export writes over the only record that `rebuild-cache` could use to get the lost PDF back.
 
-4. **Guess Metadata runs on the wrong rows.** At `src/web/Workspace.tsx:327`, the row menu's Guess Metadata uses the checked rows whenever two or more are checked, not the row you right-clicked.
-   It writes guessed titles into those other PDFs and replaces manual metadata on them.
-
 ### Medium severity
 
 5. **Capture misses some PDFs (breaks invariant 4).** `src/extension/interception.ts:107-113` misses these responses:
@@ -89,18 +86,12 @@ The most serious findings were checked against the code; the rest were confirmed
 6. **Any web page can make the Chrome extension capture a URL.** `capture.html` is open to every site (`wxt.config.ts:38`), and the background listener does not check that a message comes from the extension's own page (`background.ts:122`). A page that knows the extension ID can load that page in a hidden frame.
    The extension then fetches any URL with the user's cookies and stores it in the bucket.
 
-7. **Re-stored PDFs keep an old source page.** `src/pdfbucket/provenance.py:51-74` does not write the source-page field when it is empty, so the value already in the file stays.
-   Folder import and URL import give no source page.
-   A PDF that came from another bucket keeps that bucket's source page, title and authors next to a new PDF URL and capture time.
-
 8. **Chrome cannot open long PDF URLs natively.** `exemptions.ts:25,64` builds a regular expression from the whole URL. For signed S3 URLs and ScienceDirect URLs of about 150 characters or more, this pattern is too large for Chrome's regex limit.
    "Open in the browser" then fails.
    This result comes from the regex library alone with Chrome's limits; it was not reproduced in Chrome itself.
 
 9. **Chrome can lose a capture silently.** The server answers a capture only after metadata lookup, which can take up to 60 s. Chrome can stop the extension's background worker after 30 s. The download marker is taken off before the post (`chrome-downloads.ts:142-152`), so no failure tab opens.
    This comes from reading the code; it was not reproduced.
-
-10. **A timed-out extraction shows a schema error.** The server answers a timeout with 504 (`extractions.rs:260`), but the client accepts only 200, 422 and 502 (`useExtractionPlugins.ts:17`). The user sees a list of JSON schema errors in place of "timed out".
 
 11. **Downloads have no size limit.** `imports.rs:365` and `sources.rs:61` read the whole response into memory.
     During Verify all or Rebuild all, several large downloads run at once and can exhaust the app's memory.
@@ -109,8 +100,7 @@ The most serious findings were checked against the code; the rest were confirmed
 
 | Bug | Location |
 | --- | --- |
-| Enter or Delete, pressed while a button or link has focus, opens or deletes the selected PDF instead of pressing that control | `useLibraryShortcuts.ts:26-44` |
-| The library crashes when an item leaves while its row menu is open | `Workspace.tsx:316` |
 | A backslash in a title breaks the BibTeX sent to Zotero | `send.rs:127` |
+| A thumbnail request for an item deleted while it waits for a render slot runs the renderer on a missing file and answers 500 with a traceback | `thumbnails.rs:35-56` |
 
 No defects were found in the Tauri shell, in the locking of index and filing writes, in atomic file writes, in key path checks, in XSS escaping, or in plugin subprocess handling.

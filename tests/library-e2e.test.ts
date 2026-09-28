@@ -405,7 +405,9 @@ describe("library window", () => {
       row(key),
     );
 
-    expect(await page.$("::-p-text(The library failed to render)")).toBeNull();
+    expect(await page.evaluate(() => document.body.innerText)).not.toContain(
+      "The library failed to render",
+    );
     expect(await page.$('[role="menu"]')).toBeNull();
     expect(await rowKeys()).toContain("lattices");
   });
@@ -1314,11 +1316,11 @@ describe("library window", () => {
       form.set("pdf_url", published("/~author/problems.pdf"));
       form.set("source_url", published("/~author/teaching.html"));
       form.set("title_hint", "Problem set on quadratic forms");
-      expect((await slow.request("/capture-bytes", { method: "POST", body: form })).status).toBe(
-        200,
-      );
+      const response = await slow.request("/capture-bytes", { method: "POST", body: form });
+      expect(response.status).toBe(200);
+      const { key } = CaptureResponseSchema.parse(await response.json());
       await page.goto(`${slow.origin}/`);
-      await page.click(row("problems"));
+      await page.click(row(key));
       await page.click('button[aria-label="Run extraction"]');
 
       await shows(

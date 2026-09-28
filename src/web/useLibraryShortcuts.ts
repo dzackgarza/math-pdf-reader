@@ -1,8 +1,11 @@
 // The library's own keys: Ctrl+F finds in the table; Enter opens and Delete deletes the selected
-// PDF. Off while a PDF's tab is shown, while typing, and while a dialog or menu is open. The
+// PDF. Off while a PDF's tab is shown, while typing, while a control that answers these keys
+// itself (a button, link, select or tab) has focus, and while a dialog or menu is open. The
 // listener is registered once; useEffectEvent hands it the current selection and actions.
 import { type RefObject, useEffect, useEffectEvent } from "react";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
+
+const CONTROLS = 'button, a[href], select, summary, [role="button"], [role="link"], [role="tab"]';
 
 export type LibraryShortcuts = {
   enabled: boolean;
@@ -28,8 +31,10 @@ export function useLibraryShortcuts(shortcuts: LibraryShortcuts): void {
       target instanceof HTMLInputElement ||
       target instanceof HTMLTextAreaElement ||
       (target instanceof HTMLElement && target.isContentEditable);
+    const onControl = target instanceof Element && target.closest(CONTROLS) !== null;
     if (
       typing ||
+      onControl ||
       document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null
     ) {
       return;

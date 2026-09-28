@@ -100,5 +100,14 @@ export type PdfLimit = z.infer<typeof PdfLimitSchema>;
 export type ExtractionPlugin = z.infer<typeof ExtractionPluginsResponseSchema>["plugins"][number];
 export type ExtractionPluginsResponse = z.infer<typeof ExtractionPluginsResponseSchema>;
 export type ExtractionOutcome = z.infer<typeof ExtractionOutcomeSchema>;
+
+// The HTTP status a run answers with each outcome: a PDF outside the limits is unprocessable,
+// a non-zero exit a failed upstream, and a run past the time limit a timed-out upstream.
+export const EXTRACTION_OUTCOME_STATUS = {
+  succeeded: 200,
+  rejected: 422,
+  failed: 502,
+  timed_out: 504,
+} as const satisfies Record<ExtractionOutcome["status"], number>;
 export type ExtractionManifest = z.infer<typeof ExtractionManifestSchema>;
 export type ResolverManifest = z.infer<typeof ResolverManifestSchema>;
