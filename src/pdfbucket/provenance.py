@@ -163,4 +163,3 @@ def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int |
                 del pdf.docinfo[key]
         pdf.save(output)
     return output.getvalue()
-
