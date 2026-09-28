@@ -730,6 +730,90 @@ describe("library window", () => {
     await shownReader("problems");
   });
 
+  test("the status bar shows Zotero's state; a capture's reader opened before Retrieve metadata answers takes the title it resolves, and a source nothing identifies shows why", async () => {
+    // Zotero identifies the arXiv URL, once the test lets it answer; no method identifies any
+    // other URL. The PDF captured there has no title of its own, so it opens under its hint.
+    const arxivPdf = "https://arxiv.org/pdf/2609.21174v1";
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    const zotero = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        const headers = { "Content-Type": "application/json" };
+        const { pathname } = new URL(request.url);
+        if (request.method === "GET" && pathname === "/version") {
+          return new Response(readFileSync(join(fixtures, "zotero/version.json")), { headers });
+        }
+        const { url } = z
+          .strictObject({ operation: z.literal("resolve_url"), url: z.url() })
+          .parse(await request.json());
+        if (url === arxivPdf) {
+          await answered;
+          return new Response(readFileSync(join(fixtures, "zotero/resolve-arxiv.json")), {
+            headers,
+          });
+        }
+        return new Response(readFileSync(join(fixtures, "zotero/resolve-unidentified.json")), {
+          status: 422,
+          headers,
+        });
+      },
+    });
+    const app = await serveBucket({
+      root: mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-zotero-")),
+      zoteroUrl: zotero.url.origin,
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+    });
+    const capture = async (file: string, pdfUrl: string, titleHint: string) => {
+      const form = new FormData();
+      form.set("pdf", new File([fixture(file)], file));
+      form.set("pdf_url", pdfUrl);
+      form.set("title_hint", titleHint);
+      const response = await app.request("/capture-bytes", { method: "POST", body: form });
+      expect(response.status).toBe(200);
+      return CaptureResponseSchema.parse(await response.json()).key;
+    };
+    try {
+      await page.goto(`${app.origin}/`);
+      await page.waitForSelector(
+        '[role="status"][aria-label="Zotero is running with its local write API 3.4.0"]',
+      );
+
+      const key = await capture("lecture-notes.pdf", arxivPdf, "View PDF");
+      const { reader } = await shownReader(key);
+      expect(await page.$eval(tab(key), (element) => element.textContent)).toContain("View PDF");
+      answer();
+      const title = "On The Cyclicity of Algebraic Lattices";
+      await shows(tab(key), title);
+      await reader.waitForFunction(
+        (wanted) =>
+          document.querySelector('meta[name="citation_title"]')?.getAttribute("content") ===
+            wanted &&
+          document.title === wanted &&
+          document.querySelector("header h1")?.textContent === wanted,
+        {},
+        title,
+      );
+      await shot("zotero-retitled-reader");
+
+      await capture("problem-set.pdf", published("/~author/problems.pdf"), "Problem set");
+      await shows('[role="alert"]', "Retrieve metadata for ");
+      await shot("zotero-unidentified");
+
+      zotero.stop(true);
+      await page.waitForSelector(
+        '[role="status"][aria-label="Zotero is not running: start Zotero"]',
+      );
+      await shot("zotero-not-running");
+    } finally {
+      zotero.stop(true);
+      await app.stop();
+    }
+  });
+
   test("a PDF that asks for its outline opens with the outline closed, unless the setting opens it", async () => {
     const sidebarOnOpen = async () => {
       await page.goto(`${bucket.origin}/read/outlined`);

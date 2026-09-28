@@ -181,7 +181,9 @@ document.addEventListener("webviewerloaded", (event) => {
        (the user's copy while a conflict is open). window.readerControl.settle sends the reading
        session, runs any pending save and waits for every save; it rejects while a save has failed
        or a conflict is open. The Library link and a closing tab wait for it and stay when it
-       rejects.
+       rejects. window.readerControl.refresh loads this page again and takes its title and
+       citation_* tags, so a Zotero Connector reads the title Retrieve metadata gave the item after
+       the page opened; it gives the title, or shows why it failed and rejects.
 
        In a library tab the tab strip holds the Library tab, so the page hides its Library link.
        Once the viewer is up the page dispatches `reader-ready` on its frame element; the tab strip
@@ -505,7 +507,32 @@ frame.addEventListener("load", async () => {
       throw new Error(failure);
     }
   };
-  window.readerControl = { settle };
+  const reload = async () => {
+    const response = await fetch(location.pathname + location.search);
+    if (!response.ok) {
+      throw new Error(`Reloading the reader's title answered HTTP ${response.status}`);
+    }
+    const fresh = new DOMParser().parseFromString(await response.text(), "text/html");
+    for (const tag of document.head.querySelectorAll('meta[name^="citation_"]')) {
+      tag.remove();
+    }
+    for (const tag of fresh.head.querySelectorAll('meta[name^="citation_"]')) {
+      document.head.append(document.importNode(tag, true));
+    }
+    const title = fresh.title;
+    document.title = title;
+    const heading = document.querySelector("header h1");
+    heading.textContent = title;
+    heading.title = title;
+    frame.title = title;
+    return title;
+  };
+  const refresh = () =>
+    reload().catch((error) => {
+      showFailure(error.message);
+      throw error;
+    });
+  window.readerControl = { settle, refresh };
   if (inTab) {
     window.frameElement.dispatchEvent(new Event("reader-ready"));
   }

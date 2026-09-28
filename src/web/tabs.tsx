@@ -3,7 +3,8 @@
 // while another is shown, so a PDF keeps its view and the library its view and selection.
 // Opening a PDF that has a tab shows that tab. A capture anywhere opens its PDF here too: the
 // bucket's `open-reader` event (server/src/events.rs); the title Retrieve metadata gives the PDF
-// afterwards (`metadata`) retitles its tab.
+// afterwards (`metadata`) retitles its tab and its reader page, whose title and citation tags a
+// Zotero Connector reads.
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, X } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -15,8 +16,9 @@ import { readerPath } from "./routes";
 
 // What a reader page offers once its viewer is up (server/templates/reader.html): settle sends
 // the reading session and waits for every annotation to be saved, rejecting while a save has
-// failed or a save conflict is open.
-type ReaderControl = { settle: () => Promise<void> };
+// failed or a save conflict is open; refresh reloads the page's title and citation tags from the
+// server and gives the title.
+type ReaderControl = { settle: () => Promise<void>; refresh: () => Promise<string> };
 
 declare global {
   interface Window {
@@ -30,9 +32,14 @@ declare global {
   }
 }
 
+// A reader page shows why its refresh failed; its tab keeps the title it has.
+const shownInReader = () => undefined;
+
 // What the tab strip knows of a tab's reader: still loading (its viewer is not up, so it holds
-// nothing unsaved), or ready, with its control.
-type ReaderState = { status: "loading" } | { status: "ready"; control: ReaderControl };
+// nothing unsaved), and stale when its item was retitled meanwhile; or ready, with its control.
+type ReaderState =
+  | { status: "loading"; stale: boolean }
+  | { status: "ready"; control: ReaderControl };
 
 const LIBRARY_TAB = "library";
 
@@ -136,7 +143,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
 
   const openReader = useCallback((key: string, title: string) => {
     if (!readers.current.has(key)) {
-      readers.current.set(key, { status: "loading" });
+      readers.current.set(key, { status: "loading", stale: false });
     }
     setState((previous) => ({
       open: previous.open.some((tab) => tab.key === key)
@@ -146,12 +153,34 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const readerReady = useCallback(
-    (key: string) => (control: ReaderControl) => {
-      readers.current.set(key, { status: "ready", control });
-    },
+  const retitle = useCallback(
+    (key: string) => (title: string) =>
+      setState((previous) => ({
+        ...previous,
+        open: previous.open.map((tab) => (tab.key === key ? { ...tab, title } : tab)),
+      })),
     [],
   );
+
+  const readerReady = useCallback(
+    (key: string) => (control: ReaderControl) => {
+      const previous = readers.current.get(key);
+      readers.current.set(key, { status: "ready", control });
+      if (previous?.status === "loading" && previous.stale) {
+        control.refresh().then(retitle(key), shownInReader);
+      }
+    },
+    [retitle],
+  );
+
+  // A loading reader that is stale gets its title from refresh once ready, never from its page.
+  const pageTitled = (key: string) => (title: string) => {
+    const reader = readers.current.get(key);
+    if (reader?.status === "loading" && reader.stale) {
+      return;
+    }
+    retitle(key)(title);
+  };
 
   const closeReader = useCallback(async (key: string) => {
     const reader = readers.current.get(key);
@@ -231,20 +260,22 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     });
   }, [openReader]);
 
-  const retitle = (key: string) => (title: string) =>
-    setState((previous) => ({
-      ...previous,
-      open: previous.open.map((tab) => (tab.key === key ? { ...tab, title } : tab)),
-    }));
-
   useEffect(() => {
     return onBucketEvent("metadata", (event) => {
       const { key, outcome } = MetadataEventSchema.parse(JSON.parse(event.data));
-      if (outcome.status === "resolved") {
-        retitle(key)(outcome.title);
+      if (outcome.status !== "resolved") {
+        return;
+      }
+      retitle(key)(outcome.title);
+      const reader = readers.current.get(key);
+      if (reader?.status === "ready") {
+        reader.control.refresh().then(retitle(key), shownInReader);
+      }
+      if (reader?.status === "loading") {
+        readers.current.set(key, { status: "loading", stale: true });
       }
     });
-  }, []);
+  }, [retitle]);
 
   return (
     <ReaderTabsContext.Provider
@@ -322,7 +353,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
               <ReaderFrame
                 tab={tab}
                 shown={state.shown === tab.key}
-                onTitle={retitle(tab.key)}
+                onTitle={pageTitled(tab.key)}
                 onLoad={frameLoaded(tab.key)}
                 onReady={readerReady(tab.key)}
               />
