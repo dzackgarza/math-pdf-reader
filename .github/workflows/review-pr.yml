@@ -55,8 +55,6 @@ jobs:
       gate: pr-description-checklist
       profile: 'bun-python'
   thread-resolution:
-    needs:
-      - slop-review
     uses: dzackgarza/ai-review-ci/.github/workflows/_gates.yml@main
     permissions:
       contents: read
