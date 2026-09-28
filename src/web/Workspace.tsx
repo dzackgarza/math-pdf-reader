@@ -8,6 +8,7 @@ import { useLocation } from "wouter";
 import { MetadataEventSchema } from "../contract/capture";
 import type { AdvancedSearchSettings, BucketItem, LibraryPayload } from "../contract/library";
 import type { ActionFailure } from "./actionFailure";
+import { onBucketEvent } from "./bucketEvents";
 import { type ColumnLayout, type LibraryLayout, writeLibraryLayout } from "./columnModel";
 import { createAppCommands } from "./commands";
 import AdvancedSearchModal from "./components/AdvancedSearchModal";
@@ -29,7 +30,6 @@ import SmartCollectionDialog, {
 import StatusBar from "./components/StatusBar";
 import Toast, { type ToastMessage } from "./components/Toast";
 import TopBar from "./components/TopBar";
-import { onBucketEvent } from "./bucketEvents";
 import { chooseFolder, openInBrowser, showInFolder } from "./desktop";
 import {
   type ActionContext,
