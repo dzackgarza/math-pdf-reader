@@ -79,7 +79,9 @@ export default function ItemContextMenu({
       <Item onSelect={commands.guessMetadata}>Guess Metadata</Item>
       <Item onSelect={commands.send}>Send to Zotero</Item>
       <Submenu label="Copy Link">
-        {linkingPage !== null && <Item onSelect={() => commands.copy(linkingPage)}>Linking Page</Item>}
+        {linkingPage !== null && (
+          <Item onSelect={() => commands.copy(linkingPage)}>Linking Page</Item>
+        )}
         <Item onSelect={() => commands.copy(item.provenance.pdf_url)}>PDF</Item>
       </Submenu>
       {commands.showInFolder !== null && (
