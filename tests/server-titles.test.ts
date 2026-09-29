@@ -266,13 +266,7 @@ test("a folder import asks Zotero to resolve the bucket's own URL for the stored
 
 test("an existing PDF's capture runs no Retrieve metadata", async () => {
   const app = await bucket(mkdtempSync(join(tmpdir(), "pdf-bucket-titles-")), zoteroDown);
-  const first = await capture(
-    app,
-    lectureNotes,
-    "notes.pdf",
-    arxiv,
-    "View PDF",
-  );
+  const first = await capture(app, lectureNotes, "notes.pdf", arxiv, "View PDF");
 
   const again = await capture(
     app,
