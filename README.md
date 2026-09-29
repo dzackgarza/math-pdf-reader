@@ -56,17 +56,15 @@ The rule sets `focus_on_activate` for the bucket window only.
 
 ## Browser extensions
 
-`just build` (or `bun run build` for the extensions alone) writes:
+Each extension exists once, in `~/.local/share/pdf-bucket-app/extensions`:
 
 | Path | Browser |
 | --- | --- |
-| `dist/chrome-mv3/` | Chrome and Chromium, Manifest V3 |
-| `dist/firefox-mv2/` | Firefox, Manifest V2 |
-| `dist/pdf-bucket-<version>-firefox.zip` | the same Firefox build as one unsigned package |
+| `chrome-mv3/` | Chrome and Chromium, Manifest V3, loaded unpacked |
+| `firefox-mv2/` and `firefox.xpi` | Firefox, Manifest V2, and its package signed by addons.mozilla.org |
 
+`just provision`, which every push runs, builds both from the pushed commit, installs them there, and removes the builds from the checkout. addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision.
 The version is `1.0.<n>`, where `<n>` is the number of commits in the checkout, so each commit's build has a greater version than the one before.
-
-`just provision`, which every push runs, builds both extensions from the pushed commit and installs them in `~/.local/share/pdf-bucket-app/extensions`. addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision.
 The bucket reports the provisioned versions at `/status`. An extension whose version differs refuses every capture, shows `OLD` on its badge, and waits for the provisioned build:
 
 - Chromium reloads it from the installed directory within a minute.

@@ -5,10 +5,10 @@
 # update check runs every 120 s, as often as Firefox's update timers run
 # (app.update.timerMinimumDelay). Policy reference:
 # https://mozilla.github.io/policy-templates/#extensionsettings and #preferences.
-# Reads the add-on id from the Firefox build in dist/firefox-mv2; run from the repository root.
+# Reads the add-on id from pdf-bucket.config.json; run from the repository root.
 set -euo pipefail
 origin="http://$(jq -r '.server.host + ":" + (.server.port | tostring)' pdf-bucket.config.json)"
-id=$(jq -r .browser_specific_settings.gecko.id dist/firefox-mv2/manifest.json)
+id=$(jq -r .capture.firefox_addon_id pdf-bucket.config.json)
 jq -n --arg id "$id" --arg origin "$origin" '{
   policies: {
     ExtensionSettings: {

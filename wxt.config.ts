@@ -32,10 +32,8 @@ function extensionVersion(): string {
 // observe navigation redirects through webRequest, to carry a link's origin to the PDF URL.
 export default defineConfig({
   srcDir: "src/extension",
-  // `just build` lands both builds and the Firefox package beside the web bundle in dist/.
+  // `just provision` builds both here, installs them beside the app and removes them.
   outDir: "dist",
-  // The package is named after the manifest version, which the commit count gives.
-  zip: { zipSources: false, artifactTemplate: "{{name}}-{{version}}-{{browser}}.zip" },
   imports: false,
   vite: () => ({ define: extensionDefine(loadAppConfig(CONFIG_PATH)) }),
   manifest: ({ browser }) => ({
@@ -60,7 +58,7 @@ export default defineConfig({
       ? {
           browser_specific_settings: {
             gecko: {
-              id: "pdf-bucket@dzackgarza.com",
+              id: loadAppConfig(CONFIG_PATH).capture.firefox_addon_id,
               data_collection_permissions: { required: ["none"] },
             },
           },

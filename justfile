@@ -20,8 +20,8 @@ ai_review_ci_default_branch := "main"
 default:
     @just --list
 
-# Build every app into dist/: web bundle, Chrome and Firefox extensions (and the Firefox
-# package), desktop binary and its bundles.
+# Build the web bundle, the desktop binary and its bundles into dist/ and target/. The capture
+# extensions are built only by `just provision`, which installs them.
 # NO_STRIP: linuxdeploy's bundled strip cannot read the `.relr.dyn` sections of current distro
 # libraries and fails the AppImage (tauri-apps/tauri#8929; Tauri's AppImage guide).
 build: fetch-pdfjs
@@ -84,7 +84,6 @@ build-web:
 firefox-policy:
     #!/usr/bin/env bash
     set -euo pipefail
-    bunx wxt build -b firefox
     file=/etc/firefox/policies/policies.json
     have=$(if [[ -f "$file" ]]; then cat "$file"; else echo '{}'; fi)
     sudo install -d -m 755 "$(dirname "$file")"

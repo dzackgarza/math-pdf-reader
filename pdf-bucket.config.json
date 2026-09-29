@@ -11,7 +11,8 @@
     "min_frame_width": 700,
     "min_frame_height": 350,
     "link_origin_max_age_seconds": 300,
-    "native_open_timeout_seconds": 10
+    "native_open_timeout_seconds": 10,
+    "firefox_addon_id": "pdf-bucket@dzackgarza.com"
   },
   "zotero": {
     "url": "http://127.0.0.1:23119"

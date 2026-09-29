@@ -21,6 +21,8 @@ installed="$data/pdf-bucket-app"
 # and refuses captures until the provisioned build replaces it.
 bunx wxt build
 bunx wxt build -b firefox
+# The installed builds are the only ones: the checkout keeps none a browser could load.
+trap 'trash dist/chrome-mv3 dist/firefox-mv2' EXIT
 extensions="$installed/extensions"
 mkdir -p "$extensions"
 

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import puppeteer, {
   type Browser,
   type Frame,
@@ -197,6 +197,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   let browser: Browser;
   let extensionOrigin: string;
   let downloads: string | null;
+  // The extension build this engine runs; the suite removes it.
+  let extension: string | null = null;
   let page: Page;
 
   const shot = async (name: string) => {
@@ -364,7 +366,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     mkdirSync(screenshots, { recursive: true });
     site = await startFixtureSite();
     bucket = await startBucket();
-    const extension = await buildExtension(engine, bucket.port);
+    extension = await buildExtension(engine, bucket.port);
     browser = await launch(engine, extension);
     ({ extensionOrigin, downloads } = await extensionReady(engine, browser, extension));
     page = await browser.newPage();
@@ -377,6 +379,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await browser.close();
     if (downloads !== null) {
       rmSync(downloads, { recursive: true, force: true });
+    }
+    if (extension !== null) {
+      rmSync(dirname(extension), { recursive: true, force: true });
     }
   });
 
