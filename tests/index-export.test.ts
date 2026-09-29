@@ -543,7 +543,7 @@ test("the export carries reading sessions and extraction records, and imports in
           authors: [],
           year: null,
           abstract: null,
-          sourceUrl: lattices.provenance.source_url,
+          pdfUrl: lattices.provenance.pdf_url,
         },
       },
     ],
