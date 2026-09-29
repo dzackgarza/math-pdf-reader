@@ -48,9 +48,12 @@ Zotero stays the citation store; the bucket is the reading store.
 ## Provisioning
 
 The desktop app the user runs is an installed copy: the binary in `~/.local/bin` and its runtime
-files (library bundle, PDF.js viewer, extraction manifest, Python environment) in
-`$XDG_DATA_HOME/pdf-bucket-app`. A commit to this checkout does not change it. The user sees a
-change only after `just provision`, which builds, installs and restarts the app.
+files (library bundle, PDF.js viewer, extraction manifest, Python environment, capture
+extensions) in `$XDG_DATA_HOME/pdf-bucket-app`. A commit to this checkout does not change it. The
+user sees a change only after `just provision`, which builds, installs and restarts the app, and
+builds both capture extensions, has addons.mozilla.org sign a changed Firefox build, and installs
+them where Chromium loads the unpacked build and where the bucket serves Firefox its updates. An
+extension whose version differs from the provisioned one refuses captures until it is replaced.
 
 A push provisions: the pre-push hook runs `just test-push`, and its last step is `just provision`,
 after the QC gates pass.

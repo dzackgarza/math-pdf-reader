@@ -62,34 +62,27 @@ The rule sets `focus_on_activate` for the bucket window only.
 | --- | --- |
 | `dist/chrome-mv3/` | Chrome and Chromium, Manifest V3 |
 | `dist/firefox-mv2/` | Firefox, Manifest V2 |
-| `dist/pdf-bucket-<version>-firefox.zip` | the same Firefox build as one installable package |
-| `dist/firefox-signed/pdf-bucket-<version>-firefox.xpi` | the Firefox build signed by addons.mozilla.org (`just sign-firefox`), which a release Firefox installs; `<version>` is `version` in `package.json` |
+| `dist/pdf-bucket-<version>-firefox.zip` | the same Firefox build as one unsigned package |
 
-The builds are unsigned.
+The version is `1.0.<n>`, where `<n>` is the number of commits in the checkout, so each commit's build has a greater version than the one before.
+
+`just provision`, which every push runs, builds both extensions from the pushed commit and installs them in `~/.local/share/pdf-bucket-app/extensions`. addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision. The bucket reports the provisioned versions at `/status`. An extension whose version differs refuses every capture, shows `OLD` on its badge, and waits for the provisioned build:
+
+- Chromium reloads it from the installed directory within a minute.
+- Firefox installs it from the bucket at its next add-on update check, within a few minutes.
 
 A PDF link opens in the desktop window.
 The browser tab goes back to the page you clicked the link on, or closes when it was opened only for the PDF. If PDF Bucket cannot save the PDF, the tab stays with the error and a link that opens the PDF in the browser.
 
 Once installed, the extension has a toolbar button.
-Its badge shows the state: `ON` means the bucket answers and PDF links go to it, `OFF` means capture is switched off in this browser, and `!` means the bucket is not reachable or cannot store PDFs.
+Its badge shows the state: `ON` means the bucket answers and PDF links go to it, `OFF` means capture is switched off in this browser, `OLD` means the extension is not the provisioned build, and `!` means the bucket is not reachable or cannot store PDFs.
 Click the button to see the bucket's address, version and data folder, switch capture on or off for this browser, and see the last capture.
 The same page is the extension's options page.
 
-**Chrome or Chromium:** open `chrome://extensions`, turn on Developer mode, press **Load unpacked** and choose `dist/chrome-mv3`. The extension stays installed across restarts; after a rebuild press its reload button.
+Each browser needs one setup step, and `just provision` stops until it is done:
 
-**Firefox.** Release Firefox installs only signed extensions permanently.
-Three routes:
-
-1. Temporary, any Firefox: open `about:debugging#/runtime/this-firefox`, press **Load Temporary Add-on** and choose `dist/firefox-mv2/manifest.json`. Firefox removes it when it quits.
-
-2. Permanent, unsigned: in Firefox Developer Edition, Nightly or ESR, set `xpinstall.signatures.required` to `false` in `about:config`, then in `about:addons` choose **Install Add-on From File** and pick `dist/pdf-bucket-<version>-firefox.zip`. Release and Beta builds ignore that preference.
-
-3. Permanent, signed, release Firefox: sign the build as an unlisted (self-distributed) add-on with API credentials from addons.mozilla.org (Tools → Manage API Keys), then install the signed `.xpi` from `about:addons`:
-
-   ```bash
-   bunx web-ext sign --channel unlisted --source-dir dist/firefox-mv2 --artifacts-dir dist \
-       --api-key "$WEB_EXT_API_KEY" --api-secret "$WEB_EXT_API_SECRET"
-   ```
+- **Chrome or Chromium:** run `just provision` once, so that the installed directory exists. Then open `chrome://extensions`, turn on Developer mode, remove any other PDF Bucket, press **Load unpacked** and choose `~/.local/share/pdf-bucket-app/extensions/chrome-mv3`.
+- **Firefox:** run `just firefox-policy`, which asks for sudo, then restart Firefox. The recipe merges an enterprise policy into `/etc/firefox/policies/policies.json`: Firefox force-installs the add-on from the bucket, checks the bucket for updates, and checks every add-on for updates each 120 seconds.
 
 ## Commands
 

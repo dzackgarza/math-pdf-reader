@@ -14,6 +14,58 @@ bunx vite build --config src/web/vite.config.ts
 
 config="${XDG_CONFIG_HOME:-$HOME/.config}"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
+installed="$data/pdf-bucket-app"
+
+# The capture extensions, built from this commit into the extensions directory the bucket serves
+# (server/src/extensions.rs). Each extension compares its version with the one `/status` names
+# and refuses captures until the provisioned build replaces it.
+bunx wxt build
+bunx wxt build -b firefox
+extensions="$installed/extensions"
+mkdir -p "$extensions"
+
+# Whether build $1 equals the installed build $2 but for the version the commit gives it.
+unchanged() {
+    [[ -d "$2" ]] &&
+        diff -r --exclude=manifest.json "$1" "$2" > /dev/null &&
+        [[ "$(jq -S 'del(.version)' "$1/manifest.json")" == "$(jq -S 'del(.version)' "$2/manifest.json")" ]]
+}
+
+# Chromium reloads the unpacked build from the extensions directory (it keeps loaded unpacked
+# extensions in each profile's Preferences or Secure Preferences). The directory is written
+# before either check, so the first provision creates what Load unpacked needs.
+if ! unchanged dist/chrome-mv3 "$extensions/chrome-mv3"; then
+    rsync -a --delete dist/chrome-mv3/ "$extensions/chrome-mv3/"
+fi
+
+# Firefox installs and updates the add-on from the bucket only under the enterprise policy.
+policy=/etc/firefox/policies/policies.json
+if ! [[ -f "$policy" ]] ||
+    ! jq -e --argjson ours "$(scripts/firefox-policy.sh)" '. * $ours == .' "$policy" > /dev/null; then
+    echo "provision: $policy lacks the capture add-on's policy; run \`just firefox-policy\`, then restart Firefox" >&2
+    exit 1
+fi
+
+if ! cat "$config"/chromium/*/Preferences "$config"/chromium/*/"Secure Preferences" 2> /dev/null |
+    jq -e --arg dir "$extensions/chrome-mv3" -s 'any(.[].extensions.settings[]?; .path == $dir)' > /dev/null; then
+    echo "provision: Chromium does not load the capture extension from $extensions/chrome-mv3; in chrome://extensions remove any other PDF Bucket and press Load unpacked on that directory" >&2
+    exit 1
+fi
+
+# addons.mozilla.org signs a changed Firefox build as an unlisted add-on, with the committed
+# source (its source-code policy, since the build is minified); it signs each version once, so an
+# unchanged build keeps the package and version it was signed with. Credentials are
+# MOZILLA_JWT_ISSUER and MOZILLA_JWT_SECRET from the environment direnv loads here.
+if ! unchanged dist/firefox-mv2 "$extensions/firefox-mv2"; then
+    signing=$(mktemp -d)
+    git archive --format=zip -o "$signing/source.zip" HEAD
+    direnv exec "$repo" bash -c 'WEB_EXT_API_KEY="$MOZILLA_JWT_ISSUER" WEB_EXT_API_SECRET="$MOZILLA_JWT_SECRET" bunx web-ext sign --channel unlisted --source-dir dist/firefox-mv2 --artifacts-dir "$0" --upload-source-code "$0/source.zip"' "$signing"
+    # The package first: the bucket names the version from the build's manifest.
+    mv "$signing"/*.xpi "$extensions/firefox.xpi"
+    rsync -a --delete dist/firefox-mv2/ "$extensions/firefox-mv2/"
+    trash "$signing"
+fi
+
 units="$config/systemd/user"
 autostart_unit='app-pdf\x2dbucket\x2ddesktop@autostart.service'
 
@@ -33,7 +85,6 @@ install -D -m 755 target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket
 # so a later change to the checkout leaves the installed app as it was built: the library bundle,
 # the PDF.js viewer, the extraction manifest, and a Python environment made from a wheel of this
 # checkout's package with the locked dependencies.
-installed="$data/pdf-bucket-app"
 pdfjs="vendor/pdfjs-$(jq -r .pdfjs.version pdf-bucket.config.json)"
 mkdir -p "$installed/dist/web" "$installed/$pdfjs"
 rsync -a --delete dist/web/ "$installed/dist/web/"

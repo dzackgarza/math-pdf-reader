@@ -77,21 +77,19 @@ fetch-pdfjs:
 build-web:
     @bunx vite build --config src/web/vite.config.ts
 
-# Sign the Firefox build with addons.mozilla.org as an unlisted (self-distributed) add-on, so a
-# normal Firefox installs it; the signed .xpi lands in dist/firefox-signed. The build is
-# minified, so the committed source goes with it (AMO's source-code policy). AMO signs each
-# version once: raise `version` in package.json before signing a changed build. Credentials
-# are MOZILLA_JWT_ISSUER and MOZILLA_JWT_SECRET from the environment direnv loads here.
-sign-firefox:
+# Merge the Firefox enterprise policy through which Firefox installs and updates the capture
+# add-on from the bucket (scripts/firefox-policy.sh) into /etc/firefox/policies/policies.json,
+# keeping the policies already there. Needs sudo, once; Firefox reads it at its next start.
+# `just provision` refuses to run without it.
+firefox-policy:
     #!/usr/bin/env bash
     set -euo pipefail
     bunx wxt build -b firefox
-    mkdir -p dist/firefox-signed
-    git archive --format=zip -o dist/firefox-signed/pdf-bucket-source.zip HEAD
-    signed=$(mktemp -d)
-    direnv exec . bash -c 'WEB_EXT_API_KEY="$MOZILLA_JWT_ISSUER" WEB_EXT_API_SECRET="$MOZILLA_JWT_SECRET" bunx web-ext sign --channel unlisted --source-dir dist/firefox-mv2 --artifacts-dir "$0" --upload-source-code dist/firefox-signed/pdf-bucket-source.zip' "$signed"
-    # web-ext names the file after a hash of the add-on id; the package keeps the version.
-    mv "$signed"/*.xpi "dist/firefox-signed/pdf-bucket-$(jq -r .version package.json)-firefox.xpi"
+    file=/etc/firefox/policies/policies.json
+    have=$(if [[ -f "$file" ]]; then cat "$file"; else echo '{}'; fi)
+    sudo install -d -m 755 "$(dirname "$file")"
+    jq -n --argjson have "$have" --argjson ours "$(scripts/firefox-policy.sh)" '$have * $ours' \
+        | sudo tee "$file" > /dev/null
 
 # Drive both built capture extensions (chromium and firefox on PATH) against the fixture site; screenshots land in $TMPDIR/pdf-bucket-capture-e2e.
 test-capture:

@@ -32,7 +32,8 @@ export default defineConfig({
   srcDir: "src/extension",
   // `just build` lands both builds and the Firefox package beside the web bundle in dist/.
   outDir: "dist",
-  zip: { zipSources: false },
+  // The package is named after the manifest version, which the commit count gives.
+  zip: { zipSources: false, artifactTemplate: "{{name}}-{{version}}-{{browser}}.zip" },
   imports: false,
   vite: () => ({ define: extensionDefine(loadAppConfig(CONFIG_PATH)) }),
   manifest: ({ browser }) => ({
