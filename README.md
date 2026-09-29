@@ -66,9 +66,11 @@ The rule sets `focus_on_activate` for the bucket window only.
 
 The version is `1.0.<n>`, where `<n>` is the number of commits in the checkout, so each commit's build has a greater version than the one before.
 
-`just provision`, which every push runs, builds both extensions from the pushed commit and installs them in `~/.local/share/pdf-bucket-app/extensions`. addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision. The bucket reports the provisioned versions at `/status`. An extension whose version differs refuses every capture, shows `OLD` on its badge, and waits for the provisioned build:
+`just provision`, which every push runs, builds both extensions from the pushed commit and installs them in `~/.local/share/pdf-bucket-app/extensions`. addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision.
+The bucket reports the provisioned versions at `/status`. An extension whose version differs refuses every capture, shows `OLD` on its badge, and waits for the provisioned build:
 
 - Chromium reloads it from the installed directory within a minute.
+
 - Firefox installs it from the bucket at its next add-on update check, within a few minutes.
 
 A PDF link opens in the desktop window.
@@ -81,8 +83,11 @@ The same page is the extension's options page.
 
 Each browser needs one setup step, and `just provision` stops until it is done:
 
-- **Chrome or Chromium:** run `just provision` once, so that the installed directory exists. Then open `chrome://extensions`, turn on Developer mode, remove any other PDF Bucket, press **Load unpacked** and choose `~/.local/share/pdf-bucket-app/extensions/chrome-mv3`.
-- **Firefox:** run `just firefox-policy`, which asks for sudo, then restart Firefox. The recipe merges an enterprise policy into `/etc/firefox/policies/policies.json`: Firefox force-installs the add-on from the bucket, checks the bucket for updates, and checks every add-on for updates each 120 seconds.
+- **Chrome or Chromium:** run `just provision` once, so that the installed directory exists.
+  Then open `chrome://extensions`, turn on Developer mode, remove any other PDF Bucket, press **Load unpacked** and choose `~/.local/share/pdf-bucket-app/extensions/chrome-mv3`.
+
+- **Firefox:** run `just firefox-policy`, which asks for sudo, then restart Firefox.
+  The recipe merges an enterprise policy into `/etc/firefox/policies/policies.json`: Firefox force-installs the add-on from the bucket, checks the bucket for updates, and checks every add-on for updates each 120 seconds.
 
 ## Commands
 
