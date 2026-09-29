@@ -63,7 +63,8 @@ Each extension exists once, in `~/.local/share/pdf-bucket-app/extensions`:
 | `chrome-mv3/` | Chrome and Chromium, Manifest V3, loaded unpacked |
 | `firefox-mv2/` and `firefox.xpi` | Firefox, Manifest V2, and its package signed by addons.mozilla.org |
 
-`just provision`, which every push runs, builds both from the pushed commit, installs them there, and removes the builds from the checkout. addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision.
+`just provision`, which every push runs, builds both from the pushed commit, installs them there, and removes the builds from the checkout.
+addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision.
 The version is `1.0.<n>`, where `<n>` is the number of commits in the checkout, so each commit's build has a greater version than the one before.
 The bucket reports the provisioned versions at `/status`. An extension whose version differs refuses every capture, shows `OLD` on its badge, and waits for the provisioned build:
 
