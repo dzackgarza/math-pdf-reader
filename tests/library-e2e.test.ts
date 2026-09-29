@@ -591,65 +591,76 @@ describe("library window", () => {
   });
 
   test("past five PDF tabs the one shown longest ago sleeps, holding no reader, and wakes at its page when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
-    const form = new FormData();
-    const bytes = new Uint8Array([
-      ...fixture("problem-set.pdf"),
-      ...new TextEncoder().encode("% the sixth tab\n"),
-    ]);
-    form.set("pdf", new File([bytes], "sixth-tab.pdf"));
-    form.set("pdf_url", published("/~author/sixth-tab.pdf"));
-    form.set("source_url", published("/~author/teaching.html"));
-    form.set("title_hint", "The sixth tab");
-    const response = await fetch(`${bucket.origin}/capture-bytes`, {
-      method: "POST",
-      body: form,
-    });
-    expect(response.status).toBe(200);
-    const { key: sixth } = CaptureResponseSchema.parse(await response.json());
+    // The test opens and deletes its own PDFs, so later tests see the fixtures as they were. The
+    // first is a PDF no other test opens: PDF.js reopens a document at the page last viewed in any
+    // PDF with the same fingerprint.
+    const captureTab = async (source: string, ordinal: string) => {
+      const form = new FormData();
+      const bytes = new Uint8Array([
+        ...fixture(source),
+        ...new TextEncoder().encode(`% the ${ordinal} tab\n`),
+      ]);
+      form.set("pdf", new File([bytes], `${ordinal}-tab.pdf`));
+      form.set("pdf_url", published(`/~author/${ordinal}-tab.pdf`));
+      form.set("source_url", published("/~author/teaching.html"));
+      form.set("title_hint", `The ${ordinal} tab`);
+      const response = await fetch(`${bucket.origin}/capture-bytes`, {
+        method: "POST",
+        body: form,
+      });
+      expect(response.status).toBe(200);
+      return CaptureResponseSchema.parse(await response.json()).key;
+    };
+    const first = await captureTab("long-notes.pdf", "first");
+    const later = [];
+    for (const ordinal of ["second", "third", "fourth", "fifth", "sixth"]) {
+      later.push(await captureTab("problem-set.pdf", ordinal));
+    }
+    const [second, third] = later;
     const asleep = (key: string) => page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
-    const readerFrames = () =>
-      page.$$eval("iframe[data-reader-key]", (frames) =>
-        frames.map((frame) => frame.getAttribute("data-reader-key")),
-      );
+    const readerFrames = async () =>
+      (
+        await page.$$eval("iframe[data-reader-key]", (frames) =>
+          frames.map((frame) => frame.getAttribute("data-reader-key")),
+        )
+      ).sort();
 
     await openLibrary();
-    await page.click(row("notes"), { count: 2 });
-    const notes = await shownReader("notes");
-    await notes.viewer.evaluate("PDFViewerApplication.page = 3");
-    await notes.reader.waitForFunction(() => location.hash.includes("page=3"));
-    for (const key of ["lattices", "problems", "reading", "outlined", sixth]) {
+    await page.click(row(first), { count: 2 });
+    const opened = await shownReader(first);
+    await opened.viewer.evaluate("PDFViewerApplication.page = 3");
+    await opened.reader.waitForFunction(() => location.hash.includes("page=3"));
+    for (const key of later) {
       await (await byRole("tab", "Library")).click();
       await page.click(row(key));
       await page.keyboard.press("Enter");
       await shownReader(key);
     }
-    await asleep("notes");
-    expect((await readerFrames()).sort()).toEqual(
-      ["lattices", "problems", "reading", "outlined", sixth].sort(),
-    );
+    await asleep(first);
+    expect(await readerFrames()).toEqual([...later].sort());
     await shot("tabs-asleep");
 
-    await page.click(`${tab("notes")} [role="tab"]`);
-    const woken = await shownReader("notes");
+    await page.click(`${tab(first)} [role="tab"]`);
+    const woken = await shownReader(first);
     await woken.viewer.waitForFunction("PDFViewerApplication.page === 3");
-    await asleep("lattices");
-    expect(await readerFrames()).not.toContain("lattices");
+    await asleep(second);
+    expect(await readerFrames()).not.toContain(second);
 
-    await page.click(tab("problems"), { button: "right" });
+    await page.click(tab(third), { button: "right" });
     await (await menuItem("Sleep Tab")).click();
-    await asleep("problems");
-    expect(await readerFrames()).not.toContain("problems");
+    await asleep(third);
+    expect(await readerFrames()).not.toContain(third);
 
-    await page.click(tab("notes"), { button: "right" });
+    await page.click(tab(first), { button: "right" });
     await (await menuItem("Sleep Tab")).click();
-    await asleep("notes");
-    await shownReader("lattices");
-    expect((await readerFrames()).sort()).toEqual(
-      ["lattices", "reading", "outlined", sixth].sort(),
-    );
+    await asleep(first);
+    await shownReader(second);
+    expect(await readerFrames()).toEqual(later.filter((key) => key !== third).sort());
 
-    const deleted = await fetch(`${bucket.origin}/api/items/${sixth}`, { method: "DELETE" });
-    expect(deleted.ok).toBe(true);
+    for (const key of [first, ...later]) {
+      const deleted = await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+      expect(deleted.ok).toBe(true);
+    }
   });
 
   test("closing a PDF's tab right after a note is written saves the note into the PDF first", async () => {
@@ -701,6 +712,8 @@ describe("library window", () => {
     await openLibrary();
     await page.click(row("reading"), { count: 2 });
     const { reader, viewer } = await shownReader("reading");
+    // The reader resumes at the page an earlier test last viewed; the note goes on page 1.
+    await viewer.evaluate("PDFViewerApplication.page = 1");
     // Another window saves the PDF after this reader loaded it.
     const stored = await fetch(`${bucket.origin}/pdf/reading.pdf`);
     const tag = stored.headers.get("ETag");
