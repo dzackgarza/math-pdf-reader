@@ -35,7 +35,7 @@ use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::{stage, stage_file, Captured, StageFailure, Upload};
 use crate::titles::retrieve_metadata;
-use crate::{extractions, guard, guesses, library, send, sessions, source_routes, thumbnails};
+use crate::{extensions, extractions, guard, guesses, library, send, sessions, source_routes, thumbnails};
 
 /// The origin a request was made to, from its Host header.
 pub fn origin(headers: &HeaderMap) -> AppResult<String> {
@@ -391,6 +391,7 @@ async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Js
         capabilities: ServerStatusCapabilities { capture: writable },
         ready: writable,
         index_export: state.exporter.state(),
+        extensions: extensions::versions(&state.config.extensions_dir).await?,
     }))
 }
 
@@ -453,6 +454,7 @@ pub fn router(state: Shared) -> Router {
         .merge(send::routes())
         .merge(source_routes::routes())
         .merge(sessions::routes())
+        .merge(extensions::routes())
         .merge(extractions::routes())
         .merge(thumbnails::routes())
         .nest_service("/pdfjs", pdfjs)

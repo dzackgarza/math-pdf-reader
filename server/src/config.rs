@@ -90,6 +90,13 @@ pub fn web_dir(runtime: &Path) -> PathBuf {
     runtime.join("dist/web")
 }
 
+/// The capture extensions under RUNTIME, which `just provision` writes: the Chrome build
+/// (`chrome-mv3`, which Chromium loads unpacked), the Firefox build (`firefox-mv2`) and that build
+/// as addons.mozilla.org signed it (`firefox.xpi`), which Firefox installs from the bucket.
+pub fn extensions_dir(runtime: &Path) -> PathBuf {
+    runtime.join("extensions")
+}
+
 pub fn extractions_manifest(runtime: &Path) -> PathBuf {
     runtime.join("plugins/manifests/extractions.json")
 }
@@ -142,6 +149,8 @@ pub struct BucketConfig {
     pub extractions_manifest: PathBuf,
     /// The index export the server rewrites after every change.
     pub index_export: PathBuf,
+    /// The capture extension builds the bucket offers (config::extensions_dir).
+    pub extensions_dir: PathBuf,
     /// The bin directory of the Python environment the store's commands and the plugins run
     /// from.
     pub python_bin: PathBuf,
@@ -163,6 +172,7 @@ impl BucketConfig {
             zotero_url: app.zotero.url.clone(),
             extractions_manifest: extractions_manifest(&runtime),
             index_export: index_export_file(),
+            extensions_dir: extensions_dir(&runtime),
             python_bin: python_bin(&runtime),
             app,
             process_env,

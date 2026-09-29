@@ -40,6 +40,7 @@ function code(text: string): HTMLElement {
 const HEADINGS: Record<BucketState["kind"], string> = {
   ready: "Connected to PDF Bucket",
   "not-ready": "Connected, but it cannot store PDFs",
+  stale: "This extension is not the build PDF Bucket was provisioned with",
   "check-failed": "Connected, but it cannot tell whether it can store PDFs",
   unreachable: "PDF Bucket is not running",
 };
@@ -52,6 +53,15 @@ function renderConnection(state: BucketState): void {
     element("connection-details", HTMLDListElement).replaceChildren(
       ...origin,
       ...detail("Error", state.detail),
+    );
+    return;
+  }
+  if (state.kind === "stale") {
+    element("connection-details", HTMLDListElement).replaceChildren(
+      ...origin,
+      ...detail("This build", state.own),
+      ...detail("Provisioned", state.provisioned),
+      ...detail("Replacement", state.replacement),
     );
     return;
   }

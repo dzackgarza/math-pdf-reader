@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { defineConfig } from "wxt";
 import { type AppConfig, CONFIG_PATH, loadAppConfig } from "./src/contract/config";
 
@@ -15,6 +16,14 @@ export function extensionDefine(config: AppConfig): Record<string, string> {
   };
 }
 
+// The extension's version counts the commits of the checkout it is built from: each commit's
+// build has its own version and a later commit a greater one. Firefox updates an add-on only to
+// a greater version, and addons.mozilla.org signs each version once.
+function extensionVersion(): string {
+  const commits = execFileSync("git", ["rev-list", "--count", "HEAD"], { encoding: "utf8" });
+  return `1.0.${commits.trim()}`;
+}
+
 // Interception permissions follow mozilla/pdf.js extensions/chromium/manifest.json for
 // Chrome (declarativeNetRequest with response-header conditions, Chrome 128+) and the
 // blocking webRequest route for Firefox, which has no response-header rule condition. Both
@@ -28,6 +37,7 @@ export default defineConfig({
   vite: () => ({ define: extensionDefine(loadAppConfig(CONFIG_PATH)) }),
   manifest: ({ browser }) => ({
     name: "PDF Bucket",
+    version: extensionVersion(),
     permissions:
       browser === "firefox"
         ? ["webRequest", "webRequestBlocking", "storage", "alarms"]

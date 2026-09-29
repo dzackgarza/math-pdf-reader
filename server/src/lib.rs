@@ -7,6 +7,7 @@ pub mod contract;
 pub mod error;
 pub mod events;
 pub mod export;
+pub mod extensions;
 pub mod extractions;
 pub mod guard;
 pub mod guesses;

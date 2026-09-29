@@ -9,7 +9,13 @@
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
 import { bucketBuild } from "../bucket-config";
-import { captureEnabled, lastCapture, refreshToolbar } from "../bucket-status";
+import {
+  captureEnabled,
+  checkBucket,
+  lastCapture,
+  refreshToolbar,
+  staleDetail,
+} from "../bucket-status";
 import { postDownloadToBucket, postToBucket } from "../capture";
 import { type SavedPdf, watchPdfDownloads } from "../chrome-downloads";
 import {
@@ -53,7 +59,13 @@ export default defineBackground(() => {
     return outcome;
   }
 
+  // A stale build refuses before it takes the PDF; `record`'s refresh then starts its
+  // replacement, after the refusal's reply.
   async function capture(pdfUrl: string, tabId: number, frameId: number): Promise<CaptureOutcome> {
+    const state = await checkBucket(bucketOrigin);
+    if (state.kind === "stale") {
+      return record(pdfUrl, failed("extension", staleDetail(state)));
+    }
     const origin = await takeLinkOrigin(pdfUrl);
     const received = await (await interception).received(tabId, frameId, new URL(pdfUrl));
     const outcome =
@@ -65,6 +77,10 @@ export default defineBackground(() => {
 
   // What became of a download's capture, without its record.
   async function downloadOutcome(saved: SavedPdf): Promise<CaptureOutcome> {
+    const state = await checkBucket(bucketOrigin);
+    if (state.kind === "stale") {
+      return failed("extension", staleDetail(state));
+    }
     const origin = await takeLinkOrigin(saved.pdfUrl.href);
     switch (saved.kind) {
       case "interrupted":

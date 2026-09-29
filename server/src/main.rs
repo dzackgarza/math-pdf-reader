@@ -1,7 +1,8 @@
 //! `pdf-bucket`: the bucket server without a window, and the index export's maintenance
 //! commands over the configured data root.
 //!
-//! - `serve <root> <zotero url> <extractions manifest> --index-export <file> --config <file>`
+//! - `serve <root> <zotero url> <extractions manifest> --index-export <file> --config <file>
+//!   --extensions <dir>`
 //!   serves any bucket root on a free port, prints its origin and
 //!   serves until its standard input closes; the test suites and evidence runs use it so that
 //!   they never touch the configured bucket or its port. The config file has the schema of
@@ -48,6 +49,10 @@ enum Command {
         /// The app config (the schema of pdf-bucket.config.json) this server runs with.
         #[arg(long)]
         config: PathBuf,
+        /// The capture extension builds this server offers, in the layout of
+        /// config::extensions_dir; a directory without them offers none.
+        #[arg(long)]
+        extensions: PathBuf,
     },
     /// Write the index export: every stored item's provenance and filing.
     ExportIndex { file: Option<PathBuf> },
@@ -178,6 +183,7 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             extractions_manifest,
             index_export,
             config: config_file,
+            extensions,
         } => {
             let app: AppConfig = from_json(&tokio::fs::read(&config_file).await?)
                 .map_err(|violation| Failure::Config(config_file, violation))?;
@@ -189,6 +195,7 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 zotero_url,
                 extractions_manifest,
                 index_export,
+                extensions_dir: extensions,
                 python_bin: config::python_bin(&config::checkout()),
                 process_env: ProcessEnv::new(),
                 app: app.clone(),

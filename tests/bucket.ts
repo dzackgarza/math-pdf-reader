@@ -22,6 +22,9 @@ export type BucketOptions = {
   // The app config the server runs with; a test that does not shorten its time limits runs
   // with the checkout's pdf-bucket.config.json.
   config?: AppConfig;
+  // The capture extension builds the server offers (the installed app's `extensions` layout);
+  // a test that does not read them gets an empty scratch directory, which offers none.
+  extensions?: string;
 };
 
 export type Bucket = {
@@ -55,6 +58,8 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
     indexExport,
     "--config",
     configFile,
+    "--extensions",
+    options.extensions ?? mkdtempSync(join(tmpdir(), "pdf-bucket-extensions-")),
   ];
   // Bun.spawn without `env` passes the environment the test process started with; the
   // preload's scratch XDG directories are in process.env now.

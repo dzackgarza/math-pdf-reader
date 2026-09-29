@@ -19,16 +19,25 @@ export const lastCapture = storage.defineItem<LastCapture | null>("local:lastCap
   fallback: null,
 });
 
+// The build provisioning last installed into Chromium's extension directory that this
+// extension reloaded for; null until the first reload.
+const reloadedFor = storage.defineItem<string | null>("local:reloadedFor", { fallback: null });
+
+type StaleBuild = { kind: "stale"; own: string; provisioned: string; replacement: string };
+
 export type BucketState =
   | { kind: "ready"; status: ServerStatus }
   | { kind: "not-ready"; status: ServerStatus }
+  | StaleBuild
   | { kind: "check-failed"; detail: string }
   | { kind: "unreachable"; detail: string };
 
 // A refused connection or a non-bucket answer on the configured port is `unreachable`: the
 // extension cannot hand PDFs to it. The bucket's own error document is `check-failed`: it
-// answered, but could not tell whether its data folder can take captures. Every answer is
-// read as text and checked against its schema, so no answer makes the check throw.
+// answered, but could not tell whether its data folder can take captures. A bucket provisioned
+// with another build of this extension is `stale`: this build may not speak its contract;
+// `replacement` says how the provisioned build takes its place. Every answer is read as text and
+// checked against its schema, so no answer makes the check throw.
 export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   const answered = await fetch(`${bucketOrigin}/status`, { cache: "no-store" }).then(
     (response) => ({ ok: true as const, response }),
@@ -48,7 +57,41 @@ export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   if (!status.ok) {
     return { kind: "unreachable", detail: `not a PDF Bucket status report: ${status.detail}` };
   }
+  const own = browser.runtime.getManifest().version;
+  const provisioned = status.value.extensions[import.meta.env.FIREFOX ? "firefox" : "chrome"];
+  if (provisioned !== null && provisioned !== own) {
+    return { kind: "stale", own, provisioned, replacement: await replacement(provisioned) };
+  }
   return { kind: status.value.ready ? "ready" : "not-ready", status: status.value };
+}
+
+// How the provisioned build replaces a stale one. Firefox installs it by itself: the enterprise
+// policy points its add-on update check at the bucket and runs the check every few minutes
+// (`runtime.reload` would restart the installed build). Chromium runs the unpacked build that
+// provisioning rewrote, so a reload brings the provisioned build; a reload that did not means
+// Chromium loads this extension from another directory, and reloading again would loop.
+async function replacement(provisioned: string): Promise<string> {
+  if (import.meta.env.FIREFOX) {
+    return "Firefox installs it from the bucket at its next add-on update check, within a few minutes";
+  }
+  if ((await reloadedFor.getValue()) === provisioned) {
+    return "Chromium loads this extension from another directory; load it unpacked from the installed app's extensions/chrome-mv3";
+  }
+  return "the extension is reloading";
+}
+
+// Chromium: reload a stale build once per provisioned build.
+async function reloadStaleBuild(provisioned: string): Promise<void> {
+  if (import.meta.env.FIREFOX || (await reloadedFor.getValue()) === provisioned) {
+    return;
+  }
+  await reloadedFor.setValue(provisioned);
+  browser.runtime.reload();
+}
+
+// Why a stale extension refuses a capture.
+export function staleDetail(state: StaleBuild): string {
+  return `PDF Bucket was provisioned with version ${state.provisioned} of this extension, which is version ${state.own}; it captures nothing until it is replaced: ${state.replacement}`;
 }
 
 type Badge = { text: string; color: string; title: string };
@@ -71,6 +114,9 @@ function badgeFor(state: BucketState, enabled: boolean, bucketOrigin: string): B
       color: "#b3261e",
       title: `PDF Bucket at ${bucketOrigin} cannot store PDFs (${state.status.root} ${cause})`,
     };
+  }
+  if (state.kind === "stale") {
+    return { text: "OLD", color: "#b3261e", title: staleDetail(state) };
   }
   if (!enabled) {
     return { text: "OFF", color: "#5f6368", title: "PDF Bucket: capture is off in this browser" };
@@ -103,5 +149,8 @@ export async function refreshToolbar(bucketOrigin: string): Promise<BucketState>
     captureEnabled.getValue(),
   ]);
   await showOnToolbar(state, enabled, bucketOrigin);
+  if (state.kind === "stale") {
+    await reloadStaleBuild(state.provisioned);
+  }
   return state;
 }

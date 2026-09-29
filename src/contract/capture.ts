@@ -134,6 +134,13 @@ export const ServerStatusSchema = z.strictObject({
   capabilities: z.strictObject({ capture: z.boolean() }),
   ready: z.boolean(),
   index_export: IndexExportStateSchema,
+  // The capture extension builds provisioned with this server, by browser: an extension whose
+  // own version differs updates itself. Null for a browser whose build this server was not
+  // given (a server run for the tests or from the checkout).
+  extensions: z.strictObject({
+    chrome: NonEmptySchema.nullable(),
+    firefox: NonEmptySchema.nullable(),
+  }),
 });
 
 export type IndexExportState = z.infer<typeof IndexExportStateSchema>;

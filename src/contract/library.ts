@@ -459,6 +459,8 @@ export const API_ERROR_KINDS = [
   "unknown_mirror",
   "unknown_saved_search",
   "unknown_plugin",
+  // The bucket was given no signed Firefox build to offer.
+  "unknown_extension_build",
   "already_sent",
   "provenance_mismatch",
   "no_pdf_at_url",
