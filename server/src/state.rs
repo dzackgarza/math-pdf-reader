@@ -96,8 +96,10 @@ impl AppState {
     }
 
     /// The keys a new capture may not take although no PDF holds them: the keys the filing or
-    /// the last index export lists, except those removed on purpose.
+    /// the last index export lists, except those removed on purpose. One consistent view: an
+    /// export's prune takes a key out of the removed set, then its filing, under this lock.
     pub async fn held_keys(&self) -> AppResult<BTreeSet<String>> {
+        let _locked = self.organizations.lock().await?;
         let removed = self.organizations.removed().await?;
         let filed = self.organizations.read().await?.items.into_keys();
         let exported = match read_document::<IndexExport>(self.exporter.export_file()).await? {
