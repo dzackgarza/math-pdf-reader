@@ -19,14 +19,16 @@ export type ItemCommands = {
   delete: () => void;
 };
 
-const ITEM =
+// A context menu's classes, which the tab row's menu (tabs.tsx) shares.
+export const MENU_ITEM =
   "flex cursor-default items-center gap-2 rounded px-2.5 py-1.5 outline-none data-highlighted:bg-accent-soft data-disabled:text-faint";
-const PANEL = "z-50 min-w-52 rounded-lg border border-line bg-panel p-1 text-sm shadow-lg";
-const SEPARATOR = "my-1 h-px bg-line";
+export const MENU_PANEL =
+  "z-50 min-w-52 rounded-lg border border-line bg-panel p-1 text-sm shadow-lg";
+const MENU_SEPARATOR = "my-1 h-px bg-line";
 
 function Item({ onSelect, children }: { onSelect: () => void; children: ReactNode }) {
   return (
-    <ContextMenu.Item onSelect={onSelect} className={ITEM}>
+    <ContextMenu.Item onSelect={onSelect} className={MENU_ITEM}>
       {children}
     </ContextMenu.Item>
   );
@@ -35,12 +37,12 @@ function Item({ onSelect, children }: { onSelect: () => void; children: ReactNod
 function Submenu({ label, children }: { label: string; children: ReactNode }) {
   return (
     <ContextMenu.Sub>
-      <ContextMenu.SubTrigger className={ITEM}>
+      <ContextMenu.SubTrigger className={MENU_ITEM}>
         {label}
         <ChevronRight aria-hidden className="ml-auto h-3.5 w-3.5 text-muted" />
       </ContextMenu.SubTrigger>
       <ContextMenu.Portal>
-        <ContextMenu.SubContent className={`${PANEL} max-h-80 overflow-y-auto`}>
+        <ContextMenu.SubContent className={`${MENU_PANEL} max-h-80 overflow-y-auto`}>
           {children}
         </ContextMenu.SubContent>
       </ContextMenu.Portal>
@@ -60,21 +62,21 @@ export default function ItemContextMenu({
   const unfiledIn = collections.filter((collection) => !item.collections.includes(collection.id));
   const linkingPage = item.provenance.source_url;
   return (
-    <ContextMenu.Content className={PANEL}>
+    <ContextMenu.Content className={MENU_PANEL}>
       <Item onSelect={commands.open}>Open</Item>
       <Item onSelect={commands.openInBrowser}>Open in Browser</Item>
-      <ContextMenu.Separator className={SEPARATOR} />
+      <ContextMenu.Separator className={MENU_SEPARATOR} />
       <Submenu label="Add to Collection">
         {unfiledIn.map((collection) => (
           <Item key={collection.id} onSelect={() => commands.fileIn(collection.id)}>
             {collection.name}
           </Item>
         ))}
-        {unfiledIn.length > 0 && <ContextMenu.Separator className={SEPARATOR} />}
+        {unfiledIn.length > 0 && <ContextMenu.Separator className={MENU_SEPARATOR} />}
         <Item onSelect={commands.fileInNewCollection}>New Collection…</Item>
       </Submenu>
       <Item onSelect={commands.addTag}>Add Tag…</Item>
-      <ContextMenu.Separator className={SEPARATOR} />
+      <ContextMenu.Separator className={MENU_SEPARATOR} />
       <Item onSelect={commands.retrieveMetadata}>Retrieve Metadata</Item>
       <Item onSelect={commands.guessMetadata}>Guess Metadata</Item>
       <Item onSelect={commands.send}>Send to Zotero</Item>
@@ -87,7 +89,7 @@ export default function ItemContextMenu({
       {commands.showInFolder !== null && (
         <Item onSelect={commands.showInFolder}>Show in Folder</Item>
       )}
-      <ContextMenu.Separator className={SEPARATOR} />
+      <ContextMenu.Separator className={MENU_SEPARATOR} />
       <Item onSelect={commands.delete}>Delete…</Item>
     </ContextMenu.Content>
   );
