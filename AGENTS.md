@@ -125,7 +125,7 @@ to build from scratch.
 | library (1) | Library / Inbox, quick filters | the Library view with its PDF count; Inbox is the Unfiled quick filter (items in no collection, Zotero's term) beside Unread, Added This Week, Offline and Needs Re-fetch; the mockup's Offline Cache equals Library and is not a view |
 | library (1) | Collections, Tags, Saved Searches | `zotero-gui`'s sidebar and table, cribbed, over the bucket index; topics are a `topic:` tag namespace or saved searches |
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
-| library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256, mirrors | provenance embedded in the PDF; the inspector shows the first page, the source page link, date and size, the PDF URL and mirrors with their last check (Verify), and the row menu copies the links |
+| library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256, mirrors | provenance embedded in the PDF; the Source is the PDF URL; the inspector shows the first page, the PDF URL's site as a link, date and size, the PDF URL and mirrors with their last check (Verify), and the row menu copies the links |
 | library (1) | Send to Zotero | the send action: `import_from_url` with the PDF URL, then `attach_bytes`, on the local write API; or open the reader URL in a browser and press the Zotero Connector |
 | reader (2) | reader, outline, search in document, highlights, notes | PDF.js prebuilt viewer in an iframe; highlights saved into the PDF by `saveDocument()` |
 | reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width PDF.js; mirrors are in the inspector's Sources |

@@ -72,7 +72,7 @@ export default function CommandPalette({
       <span className="flex min-w-0 flex-col">
         <span className="truncate font-medium">{item.title}</span>
         <span className="truncate text-xs text-muted">
-          {sourceDomain(item.url)} · {shortDate(item.dateAdded)}
+          {sourceDomain(item.provenance.pdf_url)} · {shortDate(item.dateAdded)}
         </span>
       </span>
     </CmdK.Item>

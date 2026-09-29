@@ -205,10 +205,6 @@ pub fn bucket_item(indexed: &IndexedItem, organization: &Organization) -> AppRes
         authors: stored.authors.clone(),
         year: stored.year,
         abstract_: stored.abstract_.clone(),
-        url: match &provenance.source_url {
-            Some(page) => page.clone(),
-            None => provenance.pdf_url.clone(),
-        },
         tags: filing.tags,
         collections: filing.collections,
         notes: filing.notes,

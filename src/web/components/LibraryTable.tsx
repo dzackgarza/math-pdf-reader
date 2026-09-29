@@ -97,7 +97,7 @@ const CELL_RENDERERS: Record<
     </span>
   ),
   status: (item) => <StatusBadge item={item} />,
-  source: (item) => <Muted>{sourceDomain(item.url)}</Muted>,
+  source: (item) => <Muted>{sourceDomain(item.provenance.pdf_url)}</Muted>,
   dateAdded: (item) => <Muted>{shortDate(item.dateAdded)}</Muted>,
   dateModified: (item) => <Muted>{shortDate(item.dateModified)}</Muted>,
   tags: (item) => (

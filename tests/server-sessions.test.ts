@@ -67,7 +67,7 @@ test("a reading session is stored under its id, updated by later reports, and ke
         authors: [],
         year: null,
         abstract: null,
-        sourceUrl: "https://www.math.example.edu/~author/",
+        pdfUrl: "https://www.math.example.edu/~author/lattices.pdf",
       },
     },
   ]);

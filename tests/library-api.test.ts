@@ -106,7 +106,6 @@ test("the library lists every stored PDF with the provenance read back from the 
   const listed = items.get("lattices");
   expect(listed?.provenance).toEqual(lattices.provenance);
   expect(listed?.title).toBe("Lattices and Codes");
-  expect(listed?.url).toBe(`https://www.math.example.edu/~author/lattices.pdf.html`);
   expect(listed?.dateAdded).toBe(lattices.provenance.captured_at);
   expect(listed?.file).toEqual({
     path: join(bucket.root, "lattices.pdf"),

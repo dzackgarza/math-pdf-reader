@@ -44,8 +44,6 @@ struct ReaderPage {
     pdf_path: String,
     /// The URL from which the captured PDF came.
     pdf_url: String,
-    /// The page the PDF was linked from, when one is known.
-    source_url: Option<String>,
     key: String,
     library_view_key: String,
     idle_minutes: u32,
@@ -79,7 +77,6 @@ pub fn reader_page(item: &BucketItem, origin: &str, preferences: &Preferences) -
         ),
         pdf_path,
         pdf_url: item.provenance.pdf_url.clone(),
-        source_url: item.provenance.source_url.clone(),
         key: item.id.to_string(),
         library_view_key: LibraryViewKey::PdfBucketLibraryView.to_string(),
         idle_minutes: READER_IDLE_MINUTES,

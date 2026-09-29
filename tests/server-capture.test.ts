@@ -79,7 +79,6 @@ test("a captured PDF is served at its PDF URL and read back into a reader page w
   expect(await citationTags(reader)).toEqual({
     citation_title: title,
     citation_pdf_url: `${app.origin}/pdf/lattices.pdf`,
-    citation_abstract_html_url: sourcePage,
   });
 });
 

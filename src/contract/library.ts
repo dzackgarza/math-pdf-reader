@@ -262,9 +262,6 @@ export const BucketItemSchema = z.strictObject({
   // From "Retrieve metadata"; null when it gave none.
   year: z.int().nullable(),
   abstract: NonEmptySchema.nullable(),
-  // The item's URL, as a reference manager's URL field: the page the PDF was linked from, or
-  // the PDF's own URL when no linking page is known.
-  url: z.url(),
   tags: z.array(NonEmptySchema),
   collections: z.array(NonEmptySchema),
   notes: z.array(ItemNoteSchema),
@@ -349,8 +346,8 @@ export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
     authors: z.array(NonEmptySchema),
     year: z.int().nullable(),
     abstract: NonEmptySchema.nullable(),
-    // The item's URL: its source page, or its PDF URL when no page is known.
-    sourceUrl: z.url(),
+    // Where the PDF came from.
+    pdfUrl: z.url(),
   }),
 });
 

@@ -40,7 +40,7 @@ export function buildSearchDocuments(items: BucketItem[]): SearchDocument[] {
   return items.map((item) => ({
     item,
     title: item.title,
-    source: `${sourceDomain(item.url)} ${item.url}`,
+    source: `${sourceDomain(item.provenance.pdf_url)} ${item.provenance.pdf_url}`,
     pdfUrl: item.provenance.pdf_url,
     tags: item.tags.join(" "),
     notes: item.notes.map((note) => note.note).join(" "),

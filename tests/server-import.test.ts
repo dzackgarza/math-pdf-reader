@@ -187,7 +187,6 @@ test("Import URL of a PDF another bucket stored records this capture's provenanc
     source_url: null,
     title_hint: "passed-on.pdf",
   });
-  expect(item?.url).toBe(at("/shared/passed-on.pdf"));
   // The year, the abstract and the title's source are the other bucket's records. This bucket
   // has none, so the title is the one in the PDF's standard metadata.
   expect(item).toMatchObject({

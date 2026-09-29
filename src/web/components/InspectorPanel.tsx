@@ -586,13 +586,13 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           )}
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
             <a
-              href={item.url}
+              href={item.provenance.pdf_url}
               target="_blank"
               rel="noreferrer"
-              title={item.url}
+              title={item.provenance.pdf_url}
               className="text-accent hover:underline"
             >
-              {sourceDomain(item.url)}
+              {sourceDomain(item.provenance.pdf_url)}
             </a>
             <span aria-hidden>·</span>
             <span title={dateTime(item.dateAdded)}>{shortDate(item.dateAdded)}</span>

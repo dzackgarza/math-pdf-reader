@@ -114,15 +114,6 @@ pub fn zotero_status(
     }
 }
 
-/// The page the item was captured from, which the Zotero item's URL field names: the linking
-/// page, or the PDF itself for a capture with no linking page.
-fn page_url(provenance: &Provenance) -> &str {
-    provenance
-        .source_url
-        .as_deref()
-        .unwrap_or(&provenance.pdf_url)
-}
-
 /// The URL the write API identifies the item by: its PDF URL, which names this one paper where
 /// the page it was captured from may list many. A PDF with no web URL (a folder import's
 /// `file:` URL) goes by the bucket's own URL for its stored copy.
@@ -165,7 +156,7 @@ async fn perform(
         Step::Fields => {
             state
                 .zotero
-                .set_url_and_access_date(item_key, page_url(provenance), &provenance.captured_at)
+                .set_url_and_access_date(item_key, &provenance.pdf_url, &provenance.captured_at)
                 .await?;
             SendStep::Fields
         }

@@ -21,9 +21,6 @@ saved into the stored PDF. The Highwire `citation_*` tags let the Zotero Connect
     <meta name="citation_author" content="{{ author }}" />
     {%- endfor %}
     <meta name="citation_pdf_url" content="{{ origin }}{{ pdf_path }}" />
-    {%- if let Some(source_url) = source_url %}
-    <meta name="citation_abstract_html_url" content="{{ source_url }}" />
-    {%- endif %}
     {#
        Runs before the viewer frame loads. PDF.js dispatches `webviewerloaded` on the embedding
        document before it initializes, for the embedder to set options. A viewer in a frame counts

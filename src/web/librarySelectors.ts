@@ -115,7 +115,7 @@ function ruleMatches(payload: LibraryPayload, rule: Rule): Set<string> {
         return item.collections.some((id) => subtree.has(id)) === (rule.operator === "is");
       }
       case "source":
-        return (sourceDomain(item.url) === rule.value) === (rule.operator === "is");
+        return (sourceDomain(item.provenance.pdf_url) === rule.value) === (rule.operator === "is");
       case "added":
         return Date.parse(item.dateAdded) >= Date.now() - rule.value * DAY_MS;
       case "reading":
@@ -239,7 +239,7 @@ export function relatedItems(payload: LibraryPayload, item: BucketItem): Related
       authors: shared(other.authors, item.authors),
       collections: shared(other.collections, item.collections),
       tags: shared(other.tags, item.tags),
-      sameSource: sourceDomain(other.url) === sourceDomain(item.url),
+      sameSource: sourceDomain(other.provenance.pdf_url) === sourceDomain(item.provenance.pdf_url),
     }))
     .filter(
       (related) => related.authors.length + related.collections.length + related.tags.length > 0,

@@ -9,7 +9,7 @@ const item = (title: string) => ({
   authors: ["Maryna Viazovska"],
   year: 2017,
   abstract: null,
-  sourceUrl: "https://annals.math.princeton.edu/2017/185-3/p07",
+  pdfUrl: "https://annals.math.princeton.edu/2017/185-3/p07",
 });
 
 let counter = 0;

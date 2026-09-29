@@ -90,7 +90,7 @@ export default function TimelineScreen({ stored, onFailure }: TimelineScreenProp
             </a>
           ) : (
             <a
-              href={entry.item.sourceUrl}
+              href={entry.item.pdfUrl}
               target="_blank"
               rel="noreferrer"
               className="block text-base font-semibold text-ink hover:text-accent"

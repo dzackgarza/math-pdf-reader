@@ -39,7 +39,7 @@ export function choices(payload: LibraryPayload, field: ChoiceField): [string, s
     case "collection":
       return payload.collections.map((collection) => [collection.id, collection.name]);
     case "source":
-      return [...new Set(payload.items.map((item) => sourceDomain(item.url)))]
+      return [...new Set(payload.items.map((item) => sourceDomain(item.provenance.pdf_url)))]
         .sort()
         .map((domain) => [domain, domain]);
   }

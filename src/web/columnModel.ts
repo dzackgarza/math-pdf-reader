@@ -142,7 +142,7 @@ const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   reading: (item) =>
     String(item.reading.status === "viewed" ? item.reading.page / item.reading.pages : -1),
   status: (item) => availability(item),
-  source: (item) => sourceDomain(item.url),
+  source: (item) => sourceDomain(item.provenance.pdf_url),
   dateAdded: (item) => item.dateAdded,
   tags: (item) => item.tags.map(tagLabel).join(", "),
   collections: (item) => String(item.collections.length),
