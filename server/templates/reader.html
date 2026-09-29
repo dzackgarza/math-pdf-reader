@@ -313,9 +313,19 @@ frame.addEventListener("load", async () => {
     showMineButton.hidden = showingMine;
     showStoredButton.hidden = !showingMine;
   };
+  // Each document the page opens gets the next number; the hash of an earlier one (still being
+  // computed when the page replaced it) names bytes that are no longer loaded. The page replaces a
+  // document only after its changes are saved, kept as the user's copy, or discarded, so it marks
+  // them unmodified: PDF.js would otherwise download a changed document before it closes it.
+  let opened = 0;
+  const openDocument = (source) => {
+    opened += 1;
+    viewer.pdfDocument?.annotationStorage.resetModified();
+    return viewer.open(source);
+  };
   const loadStored = async () => {
     showingMine = false;
-    await viewer.open({ url: pdfPath });
+    await openDocument({ url: pdfPath });
   };
   const put = (bytes, tag) =>
     fetch(itemPath + "/pdf", {
@@ -358,9 +368,11 @@ frame.addEventListener("load", async () => {
   showMineButton.addEventListener("click", async () => {
     showingMine = true;
     showConflict();
-    await viewer.open({ data: mine.slice() });
+    await openDocument({ data: mine.slice() });
   });
   showStoredButton.addEventListener("click", async () => {
+    // Annotations made while the copy was shown belong to it.
+    mine = await viewer.pdfDocument.saveDocument();
     await loadStored();
     showConflict();
   });
@@ -392,6 +404,7 @@ frame.addEventListener("load", async () => {
   // what it holds and reports its annotation changes.
   const loaded = async () => {
     const pdf = viewer.pdfDocument;
+    const number = opened;
     const storage = pdf.annotationStorage;
     const ownCallback = storage.onSetModified;
     storage.onSetModified = () => {
@@ -405,10 +418,8 @@ frame.addEventListener("load", async () => {
     if (showingMine) {
       return;
     }
-    // The hash of a document the viewer has since replaced (a conflict reloads the stored PDF)
-    // names bytes that are no longer loaded.
     const tag = await entityTag(await pdf.getData());
-    if (viewer.pdfDocument === pdf) {
+    if (number === opened) {
       storedTag = tag;
     }
   };
