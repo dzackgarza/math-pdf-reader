@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
@@ -133,6 +140,9 @@ test("a bucket given no signed Firefox build refuses Firefox's update check", as
 
   expect(response.status).toBe(404);
   expect(await response.json()).toEqual({
-    error: { kind: "unknown_extension_build", message: expect.stringContaining("no signed Firefox build") },
+    error: {
+      kind: "unknown_extension_build",
+      message: expect.stringContaining("no signed Firefox build"),
+    },
   });
 });
