@@ -8,12 +8,13 @@
 // content scripts, which run in web pages, only report followed links.
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
-import { bucketBuild } from "../bucket-config";
+import { bucketBuild, newerThanLoaded } from "../bucket-config";
 import {
   captureEnabled,
   checkBucket,
   lastCapture,
   refreshToolbar,
+  reopenAfterReload,
   staleDetail,
 } from "../bucket-status";
 import { postDownloadToBucket, postToBucket } from "../capture";
@@ -42,6 +43,12 @@ const STATUS_PERIOD_MINUTES = 1;
 const DONE: DoneReply = { kind: "done" };
 
 export default defineBackground(() => {
+  // A background restarted from a build written over the loaded one reloads the extension, which
+  // then loads that build whole.
+  if (newerThanLoaded()) {
+    browser.runtime.reload();
+    return;
+  }
   const { bucketOrigin } = bucketBuild;
   const enabled = captureEnabled.getValue();
   const chrome = import.meta.env.FIREFOX
@@ -197,6 +204,14 @@ export default defineBackground(() => {
 
   captureEnabled.watch((enabled) => {
     void interception.then((active) => active.setEnabled(enabled)).then(refresh);
+  });
+
+  // A PDF a capture page gave up during the reload opens again, to be captured by this build.
+  void reopenAfterReload.getValue().then(async (pdfUrl) => {
+    if (pdfUrl !== null) {
+      await reopenAfterReload.setValue(null);
+      await browser.tabs.create({ url: pdfUrl });
+    }
   });
 
   void browser.alarms.create(STATUS_ALARM, { periodInMinutes: STATUS_PERIOD_MINUTES });

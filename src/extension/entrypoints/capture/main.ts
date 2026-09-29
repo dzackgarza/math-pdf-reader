@@ -8,7 +8,8 @@
 import pTimeout from "p-timeout";
 import { browser } from "wxt/browser";
 import type { CaptureResponse } from "../../../contract/capture";
-import { bucketBuild } from "../../bucket-config";
+import { bucketBuild, newerThanLoaded } from "../../bucket-config";
+import { reopenAfterReload } from "../../bucket-status";
 import { failureFromCaptureHash, pdfUrlFromCaptureQuery } from "../../interception";
 import {
   type CaptureOutcome,
@@ -124,7 +125,12 @@ const smallFrame =
   inFrame &&
   (window.innerWidth < bucketBuild.minFrameWidth ||
     window.innerHeight < bucketBuild.minFrameHeight);
-if (shownFailure !== null) {
+if (newerThanLoaded()) {
+  // This page belongs to a build written over the loaded extension, whose background may not
+  // understand it. The reload closes this tab; the reloaded background opens the PDF again.
+  element("heading").textContent = "PDF Bucket's extension is reloading to a new build";
+  void reopenAfterReload.setValue(pdfUrl.href).then(() => browser.runtime.reload());
+} else if (shownFailure !== null) {
   settle(pdfUrl, shownFailure, inFrame);
 } else if (smallFrame) {
   void openNatively(pdfUrl);

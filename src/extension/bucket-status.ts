@@ -23,6 +23,12 @@ export const lastCapture = storage.defineItem<LastCapture | null>("local:lastCap
 // extension reloaded for; null until the first reload.
 const reloadedFor = storage.defineItem<string | null>("local:reloadedFor", { fallback: null });
 
+// The PDF a capture page could not take because its files are newer than the loaded extension;
+// the reloaded background opens it again, and the capture starts over. Null when none waits.
+export const reopenAfterReload = storage.defineItem<string | null>("local:reopenAfterReload", {
+  fallback: null,
+});
+
 type StaleBuild = { kind: "stale"; own: string; provisioned: string; replacement: string };
 
 export type BucketState =

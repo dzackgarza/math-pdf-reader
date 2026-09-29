@@ -3,7 +3,8 @@ import { defineConfig } from "wxt";
 import { type AppConfig, CONFIG_PATH, loadAppConfig } from "./src/contract/config";
 
 // The extension learns the bucket origin and its capture settings from
-// pdf-bucket.config.json at build time; src/extension/bucket-config.ts reads this define.
+// pdf-bucket.config.json at build time, and its own version, which the manifest carries too;
+// src/extension/bucket-config.ts reads this define.
 export function extensionDefine(config: AppConfig): Record<string, string> {
   return {
     PDF_BUCKET_BUILD: JSON.stringify({
@@ -12,6 +13,7 @@ export function extensionDefine(config: AppConfig): Record<string, string> {
       minFrameHeight: config.capture.min_frame_height,
       linkOriginMaxAgeMs: config.capture.link_origin_max_age_seconds * 1000,
       nativeOpenTimeoutMs: config.capture.native_open_timeout_seconds * 1000,
+      version: extensionVersion(),
     }),
   };
 }

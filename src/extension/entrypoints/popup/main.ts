@@ -1,7 +1,8 @@
 // Status page, shown as the toolbar popup and as the options page: whether the bucket answers
 // and can store PDFs, this browser's capture switch, and the last capture from this browser.
 // Opening it re-reads `/status` and brings the toolbar badge up to date.
-import { bucketBuild } from "../../bucket-config";
+import { browser } from "wxt/browser";
+import { bucketBuild, newerThanLoaded } from "../../bucket-config";
 import {
   type BucketState,
   captureEnabled,
@@ -114,6 +115,12 @@ function renderLastCapture(last: LastCapture | null): void {
   line.className = "failed";
   line.textContent = `Not captured: ${last.pdf_url} (${last.outcome.error.detail})`;
   container.replaceChildren(line, when);
+}
+
+// A status page from a build written over the loaded extension reloads the extension, which
+// closes the page; the next one shows the new build.
+if (newerThanLoaded()) {
+  browser.runtime.reload();
 }
 
 element("open-library", HTMLAnchorElement).href = bucketBuild.bucketOrigin;
