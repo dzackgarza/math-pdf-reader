@@ -35,7 +35,9 @@ use crate::reader::{pdf_url_path, reader_page, reader_url_path};
 use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::{stage, stage_file, Captured, StageFailure, Upload};
 use crate::titles::retrieve_metadata;
-use crate::{extensions, extractions, guard, guesses, library, send, sessions, source_routes, thumbnails};
+use crate::{
+    extensions, extractions, guard, guesses, library, send, sessions, source_routes, thumbnails,
+};
 
 /// The origin a request was made to, from its Host header.
 pub fn origin(headers: &HeaderMap) -> AppResult<String> {

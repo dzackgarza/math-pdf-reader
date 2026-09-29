@@ -59,8 +59,12 @@ async fn manifest(dir: &Path, build: &str) -> AppResult<Option<Manifest>> {
 
 pub async fn versions(dir: &Path) -> AppResult<ServerStatusExtensions> {
     Ok(ServerStatusExtensions {
-        chrome: manifest(dir, CHROME_BUILD).await?.map(|built| built.version),
-        firefox: manifest(dir, FIREFOX_BUILD).await?.map(|built| built.version),
+        chrome: manifest(dir, CHROME_BUILD)
+            .await?
+            .map(|built| built.version),
+        firefox: manifest(dir, FIREFOX_BUILD)
+            .await?
+            .map(|built| built.version),
     })
 }
 
@@ -74,7 +78,9 @@ async fn firefox_build(dir: &Path) -> AppResult<(Manifest, Vec<u8>)> {
         )
     };
     let manifest = manifest(dir, FIREFOX_BUILD).await?.ok_or_else(missing)?;
-    let package = optional_file(dir, FIREFOX_PACKAGE).await?.ok_or_else(missing)?;
+    let package = optional_file(dir, FIREFOX_PACKAGE)
+        .await?
+        .ok_or_else(missing)?;
     Ok((manifest, package))
 }
 
