@@ -391,7 +391,8 @@ frame.addEventListener("load", async () => {
   // Each document the viewer loads (the stored PDF, or the user's copy) sets the entity tag of
   // what it holds and reports its annotation changes.
   const loaded = async () => {
-    const storage = viewer.pdfDocument.annotationStorage;
+    const pdf = viewer.pdfDocument;
+    const storage = pdf.annotationStorage;
     const ownCallback = storage.onSetModified;
     storage.onSetModified = () => {
       if (ownCallback !== null) {
@@ -401,8 +402,14 @@ frame.addEventListener("load", async () => {
       clearTimeout(pendingSave);
       pendingSave = setTimeout(startSave, 700);
     };
-    if (!showingMine) {
-      storedTag = await entityTag(await viewer.pdfDocument.getData());
+    if (showingMine) {
+      return;
+    }
+    // The hash of a document the viewer has since replaced (a conflict reloads the stored PDF)
+    // names bytes that are no longer loaded.
+    const tag = await entityTag(await pdf.getData());
+    if (viewer.pdfDocument === pdf) {
+      storedTag = tag;
     }
   };
   viewerDocumentLoaded.then(() => {

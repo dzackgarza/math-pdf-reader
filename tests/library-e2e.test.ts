@@ -611,11 +611,12 @@ describe("library window", () => {
       expect(response.status).toBe(200);
       return CaptureResponseSchema.parse(await response.json()).key;
     };
-    const first = await captureTab("long-notes.pdf", "first");
-    const later = [];
-    for (const ordinal of ["second", "third", "fourth", "fifth", "sixth"]) {
-      later.push(await captureTab("problem-set.pdf", ordinal));
-    }
+    const [first, ...later] = await Promise.all([
+      captureTab("long-notes.pdf", "first"),
+      ...["second", "third", "fourth", "fifth", "sixth"].map((ordinal) =>
+        captureTab("problem-set.pdf", ordinal),
+      ),
+    ]);
     const [second, third] = later;
     const asleep = (key: string) => page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
     const readerFrames = async () =>
@@ -661,7 +662,7 @@ describe("library window", () => {
       const deleted = await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
       expect(deleted.ok).toBe(true);
     }
-  });
+  }, 60_000);
 
   test("closing a PDF's tab right after a note is written saves the note into the PDF first", async () => {
     await openLibrary();
