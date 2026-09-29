@@ -95,7 +95,7 @@ async fn capture_form(root: &FsPath, mut form: Multipart) -> AppResult<Upload> {
             error.body_text()
         ))
     };
-    let (mut pdf, mut pdf_url, mut source_url, mut title_hint) = (None, None, None, None);
+    let (mut pdf, mut pdf_url, mut title_hint) = (None, None, None);
     while let Some(field) = form.next_field().await.map_err(unreadable)? {
         let name = field.name().map(str::to_string);
         match name.as_deref() {
@@ -111,11 +111,10 @@ async fn capture_form(root: &FsPath, mut form: Multipart) -> AppResult<Upload> {
                 })?;
                 pdf = Some((filename, staged));
             }
-            Some(text @ ("pdf_url" | "source_url" | "title_hint")) => {
+            Some(text @ ("pdf_url" | "title_hint")) => {
                 let value = field.text().await.map_err(unreadable)?;
                 let slot = match text {
                     "pdf_url" => &mut pdf_url,
-                    "source_url" => &mut source_url,
                     _ => &mut title_hint,
                 };
                 *slot = Some(value);
@@ -133,11 +132,8 @@ async fn capture_form(root: &FsPath, mut form: Multipart) -> AppResult<Upload> {
             "the capture form requires pdf, pdf_url and title_hint",
         ));
     };
-    let linked = source_url.as_deref().is_none_or(web_url);
-    if !web_url(&pdf_url) || !linked {
-        return Err(AppError::invalid(
-            "pdf_url and source_url must be http or https URLs",
-        ));
+    if !web_url(&pdf_url) {
+        return Err(AppError::invalid("pdf_url must be an http or https URL"));
     }
     if title_hint.is_empty() {
         return Err(AppError::invalid("title_hint must not be empty"));
@@ -146,7 +142,6 @@ async fn capture_form(root: &FsPath, mut form: Multipart) -> AppResult<Upload> {
         pdf: staged,
         filename: Some(filename),
         pdf_url,
-        source_url,
         title_hint,
     })
 }
@@ -168,11 +163,8 @@ async fn capture_download(
     body: Bytes,
 ) -> AppResult<Json<CaptureResponse>> {
     let request: CaptureDownloadRequest = parse_body(&body)?;
-    let linked = request.source_url.as_deref().is_none_or(web_url);
-    if !web_url(&request.pdf_url) || !linked {
-        return Err(AppError::invalid(
-            "pdf_url and source_url must be http or https URLs",
-        ));
+    if !web_url(&request.pdf_url) {
+        return Err(AppError::invalid("pdf_url must be an http or https URL"));
     }
     let path = request.path.to_string();
     if !FsPath::new(&path).is_absolute() {
@@ -194,7 +186,6 @@ async fn capture_download(
         pdf: staged,
         filename: Some(request.filename.to_string()),
         pdf_url: request.pdf_url,
-        source_url: request.source_url,
         title_hint: request.title_hint.to_string(),
     };
     capture(&state, &headers, &upload).await

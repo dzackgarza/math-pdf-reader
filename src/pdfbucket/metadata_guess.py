@@ -78,7 +78,6 @@ class MetadataInferenceError(RuntimeError):
 class MetadataPacket:
     pdf: Path
     pdf_url: str
-    source_url: str | None
     title_hint: str
     filename: str
     page_count: int
@@ -92,7 +91,6 @@ class MetadataPacket:
         pdf: Path,
         *,
         pdf_url: str,
-        source_url: str | None,
         title_hint: str,
     ) -> MetadataPacket:
         with pymupdf.open(pdf) as document:
@@ -104,7 +102,6 @@ class MetadataPacket:
         return cls(
             pdf=pdf,
             pdf_url=pdf_url,
-            source_url=source_url,
             title_hint=title_hint,
             filename=pdf.name,
             page_count=page_count,
@@ -114,7 +111,6 @@ class MetadataPacket:
         )
 
     def prompt(self) -> str:
-        source_url = self.source_url if self.source_url is not None else "(none)"
         embedded = json.dumps(self.embedded_metadata, ensure_ascii=False, sort_keys=True)
         return f"""Infer the paper's title, authors, and publication year.
 
@@ -126,7 +122,6 @@ Write the title with readable characters. Do not include literal Unicode escape 
 Return only JSON with this exact shape: {{"title":"...","authors":["..."],"year":2000}}.
 
 PDF URL: {self.pdf_url}
-Source page URL: {source_url}
 Filename: {self.filename}
 Page count: {self.page_count}
 Capture title hint: {self.title_hint}

@@ -4,11 +4,9 @@
 import { z } from "zod";
 import { NonEmptySchema, Sha256Schema } from "./text";
 
-// Where a stored PDF came from, embedded in the file. `source_url` is the page that linked to
-// the PDF, null when no linking page is known (the PDF then carries no `/PDFBucketSourceURL`).
+// Where a stored PDF came from, embedded in the file: `pdf_url` is the URL the PDF was fetched from.
 export const ProvenanceSchema = z.strictObject({
   pdf_url: z.url(),
-  source_url: z.url().nullable(),
   captured_at: z.iso.datetime({ offset: true }),
   original_sha256: Sha256Schema,
   title_hint: NonEmptySchema,
@@ -68,12 +66,11 @@ export type CaptureResponse = z.infer<typeof CaptureResponseSchema>;
 // `POST /capture-download`, from the extension in Chrome, which cannot read a navigation's
 // response body: the navigation is saved as a download, and the bucket reads the saved file at
 // `path`. `filename` is the name the PDF was offered under (Chrome renames a download whose
-// name is taken); `source_url` is absent when no linking page is known.
+// name is taken).
 export const CaptureDownloadRequestSchema = z.strictObject({
   path: NonEmptySchema,
   filename: NonEmptySchema,
   pdf_url: z.url(),
-  source_url: z.url().optional(),
   title_hint: NonEmptySchema,
 });
 

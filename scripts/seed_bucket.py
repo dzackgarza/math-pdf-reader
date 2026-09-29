@@ -2,9 +2,9 @@
 
 Run inside the project environment: `uv run --locked python scripts/seed_bucket.py ROOT COUNT`.
 Every PDF is a copy of a committed fixture PDF (tests/fixtures) with its own document title;
-its provenance (PDF URL, source page, capture time, original hash) is embedded by
+its provenance (PDF URL, capture time, original hash) is embedded by
 `pdfbucket.provenance.embed_provenance`, the pikepdf step of a browser capture, and it is written to
-`<ROOT>/<identifier>.pdf`, the key the server derives from that file name. Titles, sources and
+`<ROOT>/<identifier>.pdf`, the key the server derives from that file name. Titles, PDF URLs and
 capture times are synthetic and deterministic.
 """
 
@@ -52,17 +52,22 @@ CLAIMS = [
     "Mirror symmetry for {subject}",
     "Degenerations of {subject} and period maps",
 ]
-SOURCES = [
-    ("https://arxiv.org/abs/{id}", "https://arxiv.org/pdf/{id}"),
-    ("https://math.berkeley.edu/~author/papers.html", "https://math.berkeley.edu/~author/{id}.pdf"),
-    ("https://projecteuclid.org/journals/item/{id}", "https://projecteuclid.org/download/{id}.pdf"),
-    ("https://www.ams.org/journals/item/{id}", "https://www.ams.org/journals/item/{id}.pdf"),
-    ("https://www.numdam.org/item/{id}/", "https://www.numdam.org/item/{id}.pdf"),
+PDF_URLS = [
+    "https://arxiv.org/pdf/{id}",
+    "https://math.berkeley.edu/~author/{id}.pdf",
+    "https://projecteuclid.org/download/{id}.pdf",
+    "https://www.ams.org/journals/item/{id}.pdf",
+    "https://www.numdam.org/item/{id}.pdf",
 ]
 NEWEST_CAPTURE = datetime(2026, 9, 20, 14, 30, tzinfo=UTC)
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 # Committed PDFs the seeded items are copies of; nothing is downloaded.
-FIXTURE_PDFS = ["lecture-notes.pdf", "ten-page-notes.pdf", "long-notes.pdf", "problem-set.pdf"]
+FIXTURE_PDFS = [
+    "lecture-notes.pdf",
+    "ten-page-notes.pdf",
+    "long-notes.pdf",
+    "problem-set.pdf",
+]
 
 
 def titled_copy(fixture: bytes, title: str) -> bytes:
@@ -81,12 +86,11 @@ def seed(root: Path, count: int) -> None:
     for index in range(count):
         title = rng.choice(CLAIMS).format(subject=rng.choice(SUBJECTS), n=rng.randint(2, 24))
         identifier = f"{2400 + index // 400}.{10000 + index:05d}"
-        source, pdf_url = rng.choice(SOURCES)
+        pdf_url = rng.choice(PDF_URLS)
         captured_at = NEWEST_CAPTURE - timedelta(hours=index * 7 + rng.randint(0, 6), minutes=rng.randint(0, 59))
         original = titled_copy(fixtures[index % len(fixtures)], title)
         provenance = Provenance(
             pdf_url=pdf_url.format(id=identifier),
-            source_url=source.format(id=identifier),
             captured_at=captured_at.isoformat(),
             original_sha256=sha256(original).hexdigest(),
             title_hint=title,

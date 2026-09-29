@@ -65,11 +65,11 @@ async function openNatively(pdfUrl: URL): Promise<void> {
   location.replace(pdfUrl.href);
 }
 
-// A tab that followed a link in place goes back to the linking page; a tab opened for the PDF
-// alone (a target=_blank or middle-clicked link, a URL entered in a new tab) closes, the rule
-// the browsers apply to a tab opened only for a navigation that becomes a download. Session
-// history alone cannot tell them apart: Firefox keeps its start page as an entry before this
-// one. The background knows which page the tab left; this page knows whether an entry
+// A tab that followed a link in place goes back to the page that holds the link; a tab opened
+// for the PDF alone (a target=_blank or middle-clicked link, a URL entered in a new tab) closes,
+// the rule the browsers apply to a tab opened only for a navigation that becomes a download.
+// Session history alone cannot tell them apart: Firefox keeps its start page as an entry before
+// this one. The background knows which page the tab left; this page knows whether an entry
 // precedes it (MDN, History.length).
 async function leaveTab(pdfUrl: URL): Promise<void> {
   const message: RuntimeMessage = { type: "leave-tab", can_go_back: history.length > 1 };

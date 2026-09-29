@@ -81,8 +81,9 @@ const heldKey = (tabId: number, frameId: number, pdfUrl: string) =>
 
 export type FirefoxInterception = Interception & {
   // Whether the tab showed a web page when its last top-level PDF navigation began: the
-  // linking page, or a page the user left by entering the PDF's URL. A new tab shows
-  // about:blank or Firefox's start page, which Firefox keeps in the tab's session history.
+  // page that holds the link, or a page the user left by entering the PDF's URL. A new tab
+  // shows about:blank or Firefox's start page, which Firefox keeps in the tab's session
+  // history.
   leftWebPage(tabId: number): boolean;
 };
 

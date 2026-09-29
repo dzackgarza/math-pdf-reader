@@ -51,7 +51,6 @@ async function bucketWithExtractors(
   const form = new FormData();
   form.set("pdf", new File([readFileSync(fixture)], "lattices.pdf", { type: "application/pdf" }));
   form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
-  form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
   form.set("title_hint", "Ten Lectures on Integral Lattices");
   const captured = await app.request("/capture-bytes", { method: "POST", body: form });
   expect(captured.status).toBe(200);

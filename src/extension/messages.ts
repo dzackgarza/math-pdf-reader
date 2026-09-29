@@ -7,7 +7,6 @@ import { CaptureResponseSchema } from "../contract/capture";
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
 
 export const LinkOriginSchema = z.strictObject({
-  source_url: HttpUrlSchema,
   link_text: z.string(),
   page_title: z.string(),
   recorded_at: z.number(),

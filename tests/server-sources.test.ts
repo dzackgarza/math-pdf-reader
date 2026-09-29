@@ -54,7 +54,6 @@ async function bucket(indexExport: string | null) {
     const form = new FormData();
     form.set("pdf", new File([bytes], `${key}.pdf`, { type: "application/pdf" }));
     form.set("pdf_url", pdfUrl);
-    form.set("source_url", at("/teaching.html"));
     form.set("title_hint", `Notes ${key}`);
     const response = await app.request("/capture-bytes", { method: "POST", body: form });
     expect(response.status).toBe(200);

@@ -31,10 +31,7 @@ const resolvedArxiv = readFileSync(join(fixtures, "zotero/resolve-arxiv.json"), 
 const unidentified = readFileSync(join(fixtures, "zotero/resolve-unidentified.json"), "utf8");
 const version = readFileSync(join(fixtures, "zotero/version.json"), "utf8");
 
-const arxiv = {
-  pdf: "https://arxiv.org/pdf/2609.21174v1",
-  source: "https://arxiv.org/abs/2609.21174v1",
-};
+const arxiv = "https://arxiv.org/pdf/2609.21174v1";
 
 const ResolveRequestSchema = z.strictObject({
   operation: z.literal("resolve_url"),
@@ -58,7 +55,7 @@ const zotero = Bun.serve({
     }
     const { url } = ResolveRequestSchema.parse(await request.json());
     resolved.push(url);
-    if (url === arxiv.pdf) {
+    if (url === arxiv) {
       return new Response(resolvedArxiv, { headers });
     }
     return new Response(unidentified, { status: 422, headers });
@@ -85,15 +82,12 @@ async function capture(
   app: Subscribed,
   bytes: Buffer,
   filename: string,
-  urls: { pdf: string; source: string | null },
+  pdfUrl: string,
   titleHint: string,
 ) {
   const form = new FormData();
   form.set("pdf", new File([new Uint8Array(bytes)], filename, { type: "application/pdf" }));
-  form.set("pdf_url", urls.pdf);
-  if (urls.source !== null) {
-    form.set("source_url", urls.source);
-  }
+  form.set("pdf_url", pdfUrl);
   form.set("title_hint", titleHint);
   const response = await app.request("/capture-bytes", { method: "POST", body: form });
   expect(response.status).toBe(200);
@@ -129,10 +123,7 @@ const ARXIV_AUTHORS = [
   "Jéfferson Luiz Rocha Bastos",
 ];
 
-const notes = {
-  pdf: "https://www.math.example.edu/~author/notes.pdf",
-  source: "https://www.math.example.edu/~author/",
-};
+const notes = "https://www.math.example.edu/~author/notes.pdf";
 
 test("an arXiv capture takes the title, authors, year and abstract Zotero resolves for its PDF URL", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-titles-"));
@@ -147,7 +138,7 @@ test("an arXiv capture takes the title, authors, year and abstract Zotero resolv
       title: "On The Cyclicity of Algebraic Lattices",
     },
   });
-  expect(resolved).toContain(arxiv.pdf);
+  expect(resolved).toContain(arxiv);
   // A fresh server over the same root: the metadata is read back from the stored PDF.
   const reread = await bucket(root, zoteroDown);
   const listed = await item(reread, "2609.21174v1");
@@ -279,7 +270,7 @@ test("an existing PDF's capture runs no Retrieve metadata", async () => {
     app,
     lectureNotes,
     "notes.pdf",
-    { pdf: arxiv.pdf, source: null },
+    arxiv,
     "View PDF",
   );
 
@@ -287,7 +278,7 @@ test("an existing PDF's capture runs no Retrieve metadata", async () => {
     app,
     lectureNotes,
     "other-name.pdf",
-    { pdf: "https://mirror.example.org/notes.pdf", source: null },
+    "https://mirror.example.org/notes.pdf",
     "View PDF",
   );
 

@@ -60,7 +60,6 @@ async function capture(
   const form = new FormData();
   form.set("pdf", new File([readFileSync(fixture)], filename, { type: "application/pdf" }));
   form.set("pdf_url", `https://www.math.example.edu/~author/${filename}`);
-  form.set("source_url", `https://www.math.example.edu/~author/${filename}.html`);
   form.set("title_hint", title);
   const response = await bucket.request("/capture-bytes", {
     method: "POST",

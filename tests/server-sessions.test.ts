@@ -33,7 +33,6 @@ test("a reading session is stored under its id, updated by later reports, and ke
   const form = new FormData();
   form.set("pdf", new File([readFileSync(lectureNotes)], "lattices.pdf"));
   form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
-  form.set("source_url", "https://www.math.example.edu/~author/");
   form.set("title_hint", "Lattices and Codes");
   expect((await request("POST", "/capture-bytes", form)).status).toBe(200);
 

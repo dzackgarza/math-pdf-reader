@@ -99,7 +99,6 @@ async function startBucket() {
     const form = new FormData();
     form.set("pdf", new File([bytes], `${key}.pdf`));
     form.set("pdf_url", published(`/~author/${key}.pdf`));
-    form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", linkText);
     const response = await fetch(`${origin}/capture-bytes`, {
       method: "POST",
@@ -266,7 +265,6 @@ describe("library window", () => {
     ]);
     form.set("pdf", new File([bytes], "manual-edit.pdf"));
     form.set("pdf_url", published("/~author/manual-edit.pdf"));
-    form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", "Download PDF");
     const response = await fetch(`${bucket.origin}/capture-bytes`, {
       method: "POST",
@@ -384,7 +382,6 @@ describe("library window", () => {
     ]);
     form.set("pdf", new File([bytes], "menu-open.pdf"));
     form.set("pdf_url", published("/~author/menu-open.pdf"));
-    form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", "Deleted while its menu is open");
     const response = await fetch(`${bucket.origin}/capture-bytes`, {
       method: "POST",
@@ -602,7 +599,6 @@ describe("library window", () => {
       ]);
       form.set("pdf", new File([bytes], `${ordinal}-tab.pdf`));
       form.set("pdf_url", published(`/~author/${ordinal}-tab.pdf`));
-      form.set("source_url", published("/~author/teaching.html"));
       form.set("title_hint", `The ${ordinal} tab`);
       const response = await fetch(`${bucket.origin}/capture-bytes`, {
         method: "POST",
@@ -796,7 +792,6 @@ describe("library window", () => {
     const form = new FormData();
     form.set("pdf", new File([readFileSync(join(fixtures, "problem-set.pdf"))], "problems.pdf"));
     form.set("pdf_url", published("/~author/problems.pdf"));
-    form.set("source_url", published("/~author/teaching.html"));
     form.set("title_hint", "Problem set on quadratic forms");
     const response = await fetch(`${bucket.origin}/capture-bytes`, {
       method: "POST",
@@ -1470,7 +1465,6 @@ describe("library window", () => {
       const form = new FormData();
       form.set("pdf", new File([fixture("problem-set.pdf")], "problems.pdf"));
       form.set("pdf_url", published("/~author/problems.pdf"));
-      form.set("source_url", published("/~author/teaching.html"));
       form.set("title_hint", "Problem set on quadratic forms");
       const response = await slow.request("/capture-bytes", { method: "POST", body: form });
       expect(response.status).toBe(200);

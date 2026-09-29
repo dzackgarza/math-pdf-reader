@@ -33,8 +33,8 @@ function timeRange(openedAt: string, lastSeenAt: string): string {
 }
 
 type TimelineScreenProps = {
-  // Keys of the PDFs the bucket holds; a title opens the reader for these, links to the source
-  // page for a PDF that has left.
+  // Keys of the PDFs the bucket holds; a title opens the reader for these, links to the PDF URL
+  // for a PDF that has left.
   stored: ReadonlySet<string>;
   onFailure: (failure: ActionFailure) => void;
 };

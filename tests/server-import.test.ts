@@ -120,7 +120,7 @@ async function until(holds: () => boolean, what: string) {
   }
 }
 
-test("Import URL stores a PDF URL, with no linking page, and follows an abstract page's citation_pdf_url", async () => {
+test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_url", async () => {
   const { post, items } = await bucket();
 
   const direct = await post("/api/import-url", { url: at("/papers/lattices.pdf") });
@@ -140,11 +140,9 @@ test("Import URL stores a PDF URL, with no linking page, and follows an abstract
   const byKey = new Map((await items()).map((item) => [item.id, item]));
   expect(byKey.get("lattices")?.provenance).toMatchObject({
     pdf_url: at("/papers/lattices.pdf"),
-    source_url: null,
   });
   expect(byKey.get("2401.00001")?.provenance).toMatchObject({
     pdf_url: at("/pdf/2401.00001"),
-    source_url: at("/abs/2401.00001"),
     title_hint: "Problem Set on Quadratic Forms",
   });
 
@@ -184,7 +182,6 @@ test("Import URL of a PDF another bucket stored records this capture's provenanc
   const item = (await items()).find((stored) => stored.id === imported.key);
   expect(item?.provenance).toMatchObject({
     pdf_url: at("/shared/passed-on.pdf"),
-    source_url: null,
     title_hint: "passed-on.pdf",
   });
   // The year, the abstract and the title's source are the other bucket's records. This bucket
@@ -252,7 +249,6 @@ test("Add Folder stores every PDF in the folder with file URLs as provenance, on
   const byKey = new Map((await items()).map((item) => [item.id, item]));
   expect(byKey.get("problem-set")?.provenance).toMatchObject({
     pdf_url: pathToFileURL(join(folder, "problem-set.pdf")).href,
-    source_url: pathToFileURL(`${folder}/`).href,
     title_hint: "problem-set",
   });
 

@@ -148,7 +148,6 @@ extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
     curl --fail-with-body --silent --show-error -o /dev/null \
         -F "pdf=@{{fixture}};filename=$key.pdf;type=application/pdf" \
         -F "pdf_url=https://www.math.example.edu/~author/$key.pdf" \
-        -F "source_url=https://www.math.example.edu/~author/teaching.html" \
         -F "title_hint=$key" "$origin/capture-bytes"
     echo "root: $root"
     curl --silent --show-error -X POST "$origin/api/items/$key/extractions/{{plugin}}"

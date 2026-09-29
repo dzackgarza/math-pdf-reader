@@ -31,7 +31,7 @@ function captureFilename(pdfUrl: URL, contentDisposition: string | null): string
   return preferred([declared, segment], pdfUrl.hostname);
 }
 
-// Link text, else the linking page's title, else the filename.
+// Link text, else the title of the page that holds the link, else the filename.
 function titleHint(origin: LinkOrigin | undefined, filename: string): string {
   return preferred([origin?.link_text, origin?.page_title], filename);
 }
@@ -113,10 +113,6 @@ export function postToBucket(
   const form = new FormData();
   form.set("pdf", new File([pdf.bytes], filename, { type: "application/pdf" }));
   form.set("pdf_url", pdfUrl.href);
-  // A PDF opened without a followed link (typed in, bookmarked, framed) has no linking page.
-  if (origin !== undefined) {
-    form.set("source_url", origin.source_url);
-  }
   form.set("title_hint", titleHint(origin, filename));
   return captureOutcome(
     fetch(`${bucketOrigin}/capture-bytes`, { method: "POST", body: form }),
@@ -137,7 +133,6 @@ export function postDownloadToBucket(
     path,
     filename,
     pdf_url: pdfUrl.href,
-    ...(origin === undefined ? {} : { source_url: origin.source_url }),
     title_hint: titleHint(origin, filename),
   };
   return captureOutcome(

@@ -42,7 +42,6 @@ async function capture(bucket: Bucket, key: string): Promise<void> {
     new File([readFileSync(lectureNotes)], `${key}.pdf`, { type: "application/pdf" }),
   );
   form.set("pdf_url", `https://www.math.example.edu/~author/${key}.pdf`);
-  form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
   form.set("title_hint", "Lattices and Quadratic Forms");
   expect((await bucket.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
 }

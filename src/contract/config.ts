@@ -19,8 +19,8 @@ export const AppConfigSchema = z.strictObject({
     sha256: Sha256Schema,
   }),
   // The capture extension: sub-frames smaller than the minimum keep the browser's own viewer
-  // (embedded previews); a followed link names the page it was on for a PDF that arrives within
-  // the link-origin age; the capture page reports a failure when the background has not
+  // (embedded previews); a followed link gives its text as the title hint for a PDF that arrives
+  // within the link-origin age; the capture page reports a failure when the background has not
   // registered a native open within its timeout. Firefox knows the add-on by its id, which its
   // enterprise policy (scripts/firefox-policy.sh) names too.
   capture: z.strictObject({

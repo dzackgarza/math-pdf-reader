@@ -22,11 +22,9 @@ XMP_NAMESPACE = "https://github.com/dzackgarza/math-pdf-reader/ns/provenance/1.0
 # Every document-information key the bucket writes starts with this prefix.
 BUCKET_KEY_PREFIX = "/PDFBucket"
 
-# Document-information key for each provenance field. Every field but `source_url` is required;
-# a PDF captured with no known linking page carries no `/PDFBucketSourceURL`.
+# Document-information key for each provenance field; every field is required.
 DOCINFO_KEYS = {
     "pdf_url": "/PDFBucketPDFURL",
-    "source_url": "/PDFBucketSourceURL",
     "captured_at": "/PDFBucketCapturedAt",
     "original_sha256": "/PDFBucketOriginalSHA256",
     "title_hint": "/PDFBucketTitleHint",
@@ -51,16 +49,13 @@ YEAR: TypeAdapter[int] = TypeAdapter(int)
 
 
 def provenance_values(provenance: Provenance) -> dict[str, str]:
-    """The provenance fields to embed, each as the exact text given; an unknown source page has no field."""
-    values = {
+    """The provenance fields to embed, each as the exact text given."""
+    return {
         "pdf_url": provenance.pdf_url,
         "captured_at": provenance.captured_at,
         "original_sha256": provenance.original_sha256,
         "title_hint": provenance.title_hint,
     }
-    if provenance.source_url is not None:
-        values["source_url"] = provenance.source_url
-    return values
 
 
 def embed_provenance(original: Path | BytesIO, output: Path | BytesIO, provenance: Provenance) -> None:
@@ -127,7 +122,7 @@ def read_record(path: Path) -> PdfRecord:
     """Everything the PDF at PATH says about itself; raises MissingProvenanceError without the bucket's keys."""
     with pikepdf.open(path) as pdf:
         docinfo = {str(key): str(value) for key, value in pdf.docinfo.items()}
-        missing = [field for field, key in DOCINFO_KEYS.items() if field != "source_url" and key not in docinfo]
+        missing = [field for field, key in DOCINFO_KEYS.items() if key not in docinfo]
         if missing:
             raise MissingProvenanceError(path, missing)
         provenance = Provenance.model_validate({field: docinfo.get(key) for field, key in DOCINFO_KEYS.items()})
@@ -135,10 +130,23 @@ def read_record(path: Path) -> PdfRecord:
         authors = read_authors(pdf, docinfo)
         pages = len(pdf.pages)
     year = YEAR.validate_python(docinfo[YEAR_KEY]) if YEAR_KEY in docinfo else None
-    return PdfRecord(provenance=provenance, title=title, authors=authors, year=year, abstract=docinfo.get(ABSTRACT_KEY), pages=pages)
+    return PdfRecord(
+        provenance=provenance,
+        title=title,
+        authors=authors,
+        year=year,
+        abstract=docinfo.get(ABSTRACT_KEY),
+        pages=pages,
+    )
 
 
-def embed_metadata(path: Path, title: ItemTitle, authors: list[str], year: int | None, abstract: str | None) -> bytes:
+def embed_metadata(
+    path: Path,
+    title: ItemTitle,
+    authors: list[str],
+    year: int | None,
+    abstract: str | None,
+) -> bytes:
     """The PDF at PATH with TITLE, AUTHORS, YEAR and ABSTRACT recorded; a year or abstract of None removes one recorded before."""
     output = BytesIO()
     with pikepdf.open(path) as pdf:

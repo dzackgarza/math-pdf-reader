@@ -29,12 +29,11 @@ use crate::python::Python;
 use crate::sources::{digest, sha256};
 
 /// A PDF offered for storage and where it came from. `filename` is the name the PDF was
-/// offered under, if any; `source_url` the page that linked to it, if known.
+/// offered under, if any.
 pub struct Upload {
     pub pdf: Staged,
     pub filename: Option<String>,
     pub pdf_url: String,
-    pub source_url: Option<String>,
     pub title_hint: String,
 }
 
@@ -215,17 +214,13 @@ fn not_a_pdf(message: &str) -> AppError {
 }
 
 fn provenance_args(provenance: &Provenance) -> Vec<String> {
-    let mut args = vec![
+    vec![
         "embed-provenance".to_string(),
         format!("--pdf-url={}", provenance.pdf_url),
         format!("--captured-at={}", provenance.captured_at),
         format!("--original-sha256={}", *provenance.original_sha256),
         format!("--title-hint={}", *provenance.title_hint),
-    ];
-    if let Some(source_url) = &provenance.source_url {
-        args.push(format!("--source-url={source_url}"));
-    }
-    args
+    ]
 }
 
 fn file_name(path: &Path) -> String {
@@ -388,7 +383,6 @@ impl Store {
         }
         let provenance = Provenance {
             pdf_url: upload.pdf_url.clone(),
-            source_url: upload.source_url.clone(),
             captured_at: Timestamp::now(),
             original_sha256: original_sha256
                 .clone()

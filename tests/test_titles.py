@@ -32,7 +32,6 @@ def embed(
     name: str,
     title_hint: str,
     *,
-    source_url: str | None = f"{HOMEPAGE}index.html",
     pdf_url: str | None = None,
 ) -> Path:
     args = [
@@ -41,8 +40,6 @@ def embed(
         f"--original-sha256={sha256(pdf.read_bytes()).hexdigest()}",
         f"--title-hint={title_hint}",
     ]
-    if source_url is not None:
-        args.append(f"--source-url={source_url}")
     stored = tmp_path / f"{name}.pdf"
     embedded = run("embed-provenance", *args, "--", pdf, stored)
     assert embedded.returncode == 0, embedded.stderr
@@ -61,7 +58,9 @@ def record(path: Path) -> PdfRecord:
     return outcome.record
 
 
-def test_provenance_is_embedded_and_read_back_as_the_exact_text_given(tmp_path: Path) -> None:
+def test_provenance_is_embedded_and_read_back_as_the_exact_text_given(
+    tmp_path: Path,
+) -> None:
     # Host case, an escaped space and a trailing dot survive: nothing normalizes the URL.
     pdf_url = "https://Example.ORG/papers/Lattice%20Notes.pdf"
     stored = embed(
@@ -70,12 +69,11 @@ def test_provenance_is_embedded_and_read_back_as_the_exact_text_given(tmp_path: 
         "notes",
         "Lattices",
         pdf_url=pdf_url,
-        source_url="https://www.math.example.edu./~author/",
     )
 
     provenance = record(stored).provenance
 
-    assert (provenance.pdf_url, provenance.source_url) == (pdf_url, "https://www.math.example.edu./~author/")
+    assert provenance.pdf_url == pdf_url
     assert provenance.captured_at == "2026-09-25T10:00:00.123Z"
     with pikepdf.open(stored) as pdf:
         docinfo = {str(k): str(v) for k, v in pdf.docinfo.items()}
@@ -84,30 +82,35 @@ def test_provenance_is_embedded_and_read_back_as_the_exact_text_given(tmp_path: 
     assert xmp_url == pdf_url
 
 
-def test_a_capture_with_no_linking_page_carries_no_source_url(tmp_path: Path) -> None:
-    stored = embed(tmp_path, LECTURE_NOTES, "notes", "Lattices", source_url=None)
-
-    assert record(stored).provenance.source_url is None
-    with pikepdf.open(stored) as pdf:
-        assert "/PDFBucketSourceURL" not in pdf.docinfo
-
-
-def test_a_pdf_with_its_own_metadata_title_reads_back_under_that_title(tmp_path: Path) -> None:
+def test_a_pdf_with_its_own_metadata_title_reads_back_under_that_title(
+    tmp_path: Path,
+) -> None:
     stored = embed(tmp_path, ARXIV_PDF, "cyclicity", "View PDF")
 
     item = record(stored)
 
-    assert (item.title.text, item.title.source) == ("On The Cyclicity of Algebraic Lattices", "pdf-metadata")
+    assert (item.title.text, item.title.source) == (
+        "On The Cyclicity of Algebraic Lattices",
+        "pdf-metadata",
+    )
     assert item.provenance.title_hint == "View PDF"
     assert item.pages == 9
 
 
-def test_a_pdf_without_a_metadata_title_reads_back_under_the_capture_hint_then_the_file_name(tmp_path: Path) -> None:
+def test_a_pdf_without_a_metadata_title_reads_back_under_the_capture_hint_then_the_file_name(
+    tmp_path: Path,
+) -> None:
     hinted = record(embed(tmp_path, LECTURE_NOTES, "hinted", "Lecture notes on lattices"))
     unhinted = record(embed(tmp_path, PROBLEM_SET, "problem-set-3", " "))
 
-    assert (hinted.title.text, hinted.title.source) == ("Lecture notes on lattices", "capture-hint")
-    assert (unhinted.title.text, unhinted.title.source) == ("problem-set-3.pdf", "filename")
+    assert (hinted.title.text, hinted.title.source) == (
+        "Lecture notes on lattices",
+        "capture-hint",
+    )
+    assert (unhinted.title.text, unhinted.title.source) == (
+        "problem-set-3.pdf",
+        "filename",
+    )
 
 
 def test_recorded_resolver_metadata_is_written_into_the_pdf_and_leaves_the_provenance_as_captured(
@@ -131,7 +134,10 @@ def test_recorded_resolver_metadata_is_written_into_the_pdf_and_leaves_the_prove
     stored.write_bytes(recorded.stdout)
     after = record(stored)
 
-    assert (after.title.text, after.title.source) == ("Ten Lectures on Integral Lattices", "resolver")
+    assert (after.title.text, after.title.source) == (
+        "Ten Lectures on Integral Lattices",
+        "resolver",
+    )
     assert after.authors == ["Maryna Viazovska", "Henry Cohn"]
     assert (after.year, after.abstract) == (2017, ABSTRACT)
     assert after.provenance == before.provenance
@@ -142,13 +148,21 @@ def test_recorded_resolver_metadata_is_written_into_the_pdf_and_leaves_the_prove
             dc_title = str(xmp["dc:title"])
             dc_creator = list(xmp["dc:creator"])
             dc_description = str(xmp["dc:description"])
-    assert (docinfo["/Title"], dc_title) == ("Ten Lectures on Integral Lattices", "Ten Lectures on Integral Lattices")
+    assert (docinfo["/Title"], dc_title) == (
+        "Ten Lectures on Integral Lattices",
+        "Ten Lectures on Integral Lattices",
+    )
     assert docinfo["/PDFBucketTitleSource"] == "resolver"
-    assert (docinfo["/Author"], dc_creator) == ("Maryna Viazovska; Henry Cohn", ["Maryna Viazovska", "Henry Cohn"])
+    assert (docinfo["/Author"], dc_creator) == (
+        "Maryna Viazovska; Henry Cohn",
+        ["Maryna Viazovska", "Henry Cohn"],
+    )
     assert dc_description == ABSTRACT
 
 
-def test_read_reports_each_file_it_cannot_read_beside_the_ones_it_can(tmp_path: Path) -> None:
+def test_read_reports_each_file_it_cannot_read_beside_the_ones_it_can(
+    tmp_path: Path,
+) -> None:
     stored = embed(tmp_path, LECTURE_NOTES, "notes", "Lattices")
     foreign = tmp_path / "foreign.pdf"
     foreign.write_bytes(PROBLEM_SET.read_bytes())
@@ -161,10 +175,17 @@ def test_read_reports_each_file_it_cannot_read_beside_the_ones_it_can(tmp_path: 
 
     outcomes = read(foreign, stored, torn, wrong_authors)
 
-    assert [outcome.status for outcome in outcomes] == ["unreadable", "read", "unreadable", "unreadable"]
+    assert [outcome.status for outcome in outcomes] == [
+        "unreadable",
+        "read",
+        "unreadable",
+        "unreadable",
+    ]
 
 
-def test_a_command_on_a_pdf_it_cannot_read_exits_3_with_a_typed_failure(tmp_path: Path) -> None:
+def test_a_command_on_a_pdf_it_cannot_read_exits_3_with_a_typed_failure(
+    tmp_path: Path,
+) -> None:
     torn = tmp_path / "torn.pdf"
     torn.write_bytes(LECTURE_NOTES.read_bytes()[:200])
     page = tmp_path / "page.pdf"
@@ -182,5 +203,11 @@ def test_a_command_on_a_pdf_it_cannot_read_exits_3_with_a_typed_failure(tmp_path
         tmp_path / "refused.pdf",
     )
 
-    assert (failed.returncode, StoreFailure.model_validate_json(failed.stdout).kind) == (3, "unreadable_pdf")
-    assert (refused.returncode, StoreFailure.model_validate_json(refused.stdout).kind) == (3, "unreadable_pdf")
+    assert (
+        failed.returncode,
+        StoreFailure.model_validate_json(failed.stdout).kind,
+    ) == (3, "unreadable_pdf")
+    assert (
+        refused.returncode,
+        StoreFailure.model_validate_json(refused.stdout).kind,
+    ) == (3, "unreadable_pdf")

@@ -96,7 +96,6 @@ async function capture(
     bytes,
     filename,
     pdfUrl: url,
-    sourceUrl: at("/teaching.html"),
     titleHint: `Notes from ${filename}`,
   });
   const [item] = await listItems(root, [key]);
@@ -340,7 +339,6 @@ test("the running server rewrites the index export after a capture, a filing cha
   const form = new FormData();
   form.set("pdf", new File([lectureNotes], "lecture-notes.pdf", { type: "application/pdf" }));
   form.set("pdf_url", at("/notes/lecture-notes.pdf"));
-  form.set("source_url", at("/teaching.html"));
   form.set("title_hint", "Lecture notes on lattices");
   const captured = await app.request("/capture-bytes", { method: "POST", body: form });
   expect(captured.status).toBe(200);
@@ -392,7 +390,6 @@ async function captureOver(app: Bucket, bytes: Uint8Array<ArrayBuffer>, filename
   const form = new FormData();
   form.set("pdf", new File([bytes], filename, { type: "application/pdf" }));
   form.set("pdf_url", at(`/notes/${filename}`));
-  form.set("source_url", at("/teaching.html"));
   form.set("title_hint", `Notes from ${filename}`);
   const captured = await app.request("/capture-bytes", { method: "POST", body: form });
   expect(captured.status).toBe(200);

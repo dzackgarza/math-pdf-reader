@@ -67,10 +67,24 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
     """Start the bucket server over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
     plugins listed in EXTRACTIONS; return its origin. It serves until its standard input closes, and
     rewrites the index export beside ROOT."""
-    subprocess.run(["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"], cwd=REPO, check=True)
+    subprocess.run(
+        ["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"],
+        cwd=REPO,
+        check=True,
+    )
     index_export = root.parent / f"{root.name}-export" / "index.json"
     process = subprocess.Popen(
-        [SERVER, "serve", root, zotero_url, extractions, "--index-export", index_export, "--config", CONFIG],
+        [
+            SERVER,
+            "serve",
+            root,
+            zotero_url,
+            extractions,
+            "--index-export",
+            index_export,
+            "--config",
+            CONFIG,
+        ],
         cwd=REPO,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -84,7 +98,12 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
 
 def call(origin: str, method: str, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
     data = None if body is None else json.dumps(body).encode()
-    request = Request(f"{origin}{path}", data=data, method=method, headers={"Content-Type": "application/json"})
+    request = Request(
+        f"{origin}{path}",
+        data=data,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
     with urlopen(request) as response:
         return json.loads(response.read())
 
@@ -101,7 +120,12 @@ def record_readings(origin: str, items: list[dict[str, object]]) -> None:
     the timeline's default minimum hides, and an afternoon's reading."""
     first, second, third, fourth = (str(item["id"]) for item in items[:4])
     sessions = [
-        (first, "2026-09-24T09:00:00Z", "2026-09-24T09:40:00Z", [(1, 600), (2, 900), (3, 700)]),
+        (
+            first,
+            "2026-09-24T09:00:00Z",
+            "2026-09-24T09:40:00Z",
+            [(1, 600), (2, 900), (3, 700)],
+        ),
         (second, "2026-09-24T09:42:00Z", "2026-09-24T09:44:00Z", [(1, 20)]),
         (first, "2026-09-24T09:50:00Z", "2026-09-24T10:10:00Z", [(4, 800), (5, 400)]),
         (third, "2026-09-24T14:00:00Z", "2026-09-24T14:25:00Z", [(1, 300), (7, 1100)]),
@@ -135,7 +159,11 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
     rules: list[tuple[str, list[str], list[str]]] = [
         ("flips", [flips], ["MMP", "topic:Birational Geometry"]),
         ("Fano threefolds", [threefolds], ["Fano", "topic:Birational Geometry"]),
-        ("log canonical", [birational], ["MMP", "singularities", "topic:Birational Geometry"]),
+        (
+            "log canonical",
+            [birational],
+            ["MMP", "singularities", "topic:Birational Geometry"],
+        ),
         ("Mori dream", [birational], ["topic:Birational Geometry"]),
         ("lattices", [lattices], ["topic:Lattices"]),
         ("quadratic forms", [lattices], ["topic:Lattices", "arithmetic"]),
@@ -156,9 +184,19 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         if index % 7 == 0:
             collections.append(to_read)
         if tags:
-            call(origin, "POST", "/api/bulk/tags", {"keys": [item["id"]], "add": tags, "remove": []})
+            call(
+                origin,
+                "POST",
+                "/api/bulk/tags",
+                {"keys": [item["id"]], "add": tags, "remove": []},
+            )
         if collections:
-            call(origin, "POST", "/api/bulk/collections", {"keys": [item["id"]], "add": collections, "remove": []})
+            call(
+                origin,
+                "POST",
+                "/api/bulk/collections",
+                {"keys": [item["id"]], "add": collections, "remove": []},
+            )
     for note, item in zip(
         [
             "Section 3 reduces the bound to the flip termination argument; check Lemma 3.4.",
@@ -169,12 +207,34 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
     ):
         call(origin, "POST", f"/api/items/{quote(str(item['id']))}/notes", {"note": note})
 
-    fields = {"title": True, "source": False, "pdfUrl": False, "tags": True, "notes": True, "key": False}
+    fields = {
+        "title": True,
+        "source": False,
+        "pdfUrl": False,
+        "tags": True,
+        "notes": True,
+        "key": False,
+    }
     flips_search = call(
         origin,
         "POST",
         "/api/saved-searches",
-        {"name": "Flips and the MMP", "match": "all", "rules": [{"field": "text", "operator": "matches", "search": {"query": "flips", "matchCase": False, "matchType": "all", "searchFields": fields}}]},
+        {
+            "name": "Flips and the MMP",
+            "match": "all",
+            "rules": [
+                {
+                    "field": "text",
+                    "operator": "matches",
+                    "search": {
+                        "query": "flips",
+                        "matchCase": False,
+                        "matchType": "all",
+                        "searchFields": fields,
+                    },
+                }
+            ],
+        },
     )
     call(
         origin,
@@ -183,7 +243,18 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         {
             "name": "Surveys and lectures",
             "match": "all",
-            "rules": [{"field": "text", "operator": "matches", "search": {"query": "survey lectures", "matchCase": False, "matchType": "any", "searchFields": fields}}],
+            "rules": [
+                {
+                    "field": "text",
+                    "operator": "matches",
+                    "search": {
+                        "query": "survey lectures",
+                        "matchCase": False,
+                        "matchType": "any",
+                        "searchFields": fields,
+                    },
+                }
+            ],
         },
     )
     return {
@@ -332,7 +403,12 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.frame_locator(f"iframe[data-reader-key='{filed['reader']}']").frame_locator("iframe").locator(".page canvas").first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "tabs")
-        dark_screens(browser.new_page(viewport=VIEWPORT, color_scheme="dark"), out, origins, filed)
+        dark_screens(
+            browser.new_page(viewport=VIEWPORT, color_scheme="dark"),
+            out,
+            origins,
+            filed,
+        )
         browser.close()
     return timings
 
@@ -382,7 +458,15 @@ def headless_display(stack: ExitStack) -> str:
     socket = f"pdf-bucket-evidence-{os.getpid()}"
     log = stack.enter_context(tempfile.TemporaryFile(mode="w+"))
     weston = subprocess.Popen(
-        ["weston", "--backend=headless", "--shell=kiosk", "--renderer=pixman", "--width=1400", "--height=900", f"--socket={socket}"],
+        [
+            "weston",
+            "--backend=headless",
+            "--shell=kiosk",
+            "--renderer=pixman",
+            "--width=1400",
+            "--height=900",
+            f"--socket={socket}",
+        ],
         stdout=log,
         stderr=subprocess.STDOUT,
     )
@@ -393,7 +477,10 @@ def headless_display(stack: ExitStack) -> str:
 
     def stop() -> None:
         if weston.poll() is not None:
-            print(f"weston exited with {weston.returncode}:\n{weston_log()}", file=sys.stderr)
+            print(
+                f"weston exited with {weston.returncode}:\n{weston_log()}",
+                file=sys.stderr,
+            )
             return
         weston.terminate()
 
@@ -412,7 +499,12 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     org.gnome.desktop.interface color-scheme; the in-memory GSettings backend holds the schema
     default (light), so the Dark preference's screenshots show the preference, not the desktop's
     setting."""
-    env = {**os.environ, "WAYLAND_DISPLAY": headless_display(stack), "GDK_BACKEND": "wayland", "GSETTINGS_BACKEND": "memory"}
+    env = {
+        **os.environ,
+        "WAYLAND_DISPLAY": headless_display(stack),
+        "GDK_BACKEND": "wayland",
+        "GSETTINGS_BACKEND": "memory",
+    }
     options = webdriver.WebKitGTKOptions()
     options.binary_location = "/usr/lib/webkit2gtk-4.1/MiniBrowser"
     options.add_argument("--automation")
@@ -436,7 +528,10 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     driver.get(origins["seeded"])
     reader_cell = f"//tbody/tr[@data-item-id={json.dumps(filed['reader'])}]/td[@data-column='title']"
     ActionChains(driver).double_click(wait.until(expected_conditions.element_to_be_clickable((By.XPATH, reader_cell)))).perform()
-    tab_canvas = f"return document.querySelector(\"iframe[data-reader-key='{filed['reader']}']\")?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.page canvas') != null"
+    tab_canvas = (
+        f"return document.querySelector(\"iframe[data-reader-key='{filed['reader']}']\")"
+        "?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.page canvas') != null"
+    )
     wait.until(lambda d: d.execute_script(tab_canvas))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-tabs.png"))
@@ -467,12 +562,33 @@ def main(out: Path) -> None:
             root.mkdir()
         shutil.copy(REPO / "tests/fixtures/problem-set.pdf", roots["broken"] / "hand-copied.pdf")
         started = time.perf_counter()
-        subprocess.run(["uv", "run", "--locked", "python", "scripts/seed_bucket.py", str(roots["seeded"]), str(SEEDED_COUNT)], cwd=REPO, check=True, env=project_env())
+        subprocess.run(
+            [
+                "uv",
+                "run",
+                "--locked",
+                "python",
+                "scripts/seed_bucket.py",
+                str(roots["seeded"]),
+                str(SEEDED_COUNT),
+            ],
+            cwd=REPO,
+            check=True,
+            env=project_env(),
+        )
         seed_seconds = time.perf_counter() - started
 
         started = time.perf_counter()
         subprocess.run(
-            ["uv", "run", "--locked", "pdfbucket", "read", "--", *sorted(str(path) for path in roots["seeded"].glob("*.pdf"))],
+            [
+                "uv",
+                "run",
+                "--locked",
+                "pdfbucket",
+                "read",
+                "--",
+                *sorted(str(path) for path in roots["seeded"].glob("*.pdf")),
+            ],
             cwd=REPO,
             check=True,
             env=project_env(),
@@ -488,7 +604,10 @@ def main(out: Path) -> None:
         assert len(items) == SEEDED_COUNT, f"seeded library lists {len(items)} items"
         filed = file_library(origins["seeded"], items)
         place_extraction(roots["seeded"], filed["extracted"])
-        record_readings(origins["seeded"], sorted(items, key=lambda item: str(item["dateAdded"]), reverse=True))
+        record_readings(
+            origins["seeded"],
+            sorted(items, key=lambda item: str(item["dateAdded"]), reverse=True),
+        )
 
         timings = {
             "seed_1000_pdfs_s": seed_seconds,
@@ -501,11 +620,26 @@ def main(out: Path) -> None:
     print(json.dumps({name: round(value, 3) for name, value in timings.items()}, indent=2))
 
 
-def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, source_url: str, title: str) -> None:
+def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, title: str) -> None:
     """Store the fixture under KEY with its provenance embedded by the store's pikepdf command."""
     original = REPO / "tests/fixtures" / fixture
-    provenance = [f"--pdf-url={pdf_url}", f"--source-url={source_url}", f"--captured-at={datetime.now(UTC).isoformat()}", f"--original-sha256={sha256(original.read_bytes()).hexdigest()}", f"--title-hint={title}"]
-    command = ["uv", "run", "--locked", "pdfbucket", "embed-provenance", *provenance, "--", str(original), str(root / f"{key}.pdf")]
+    provenance = [
+        f"--pdf-url={pdf_url}",
+        f"--captured-at={datetime.now(UTC).isoformat()}",
+        f"--original-sha256={sha256(original.read_bytes()).hexdigest()}",
+        f"--title-hint={title}",
+    ]
+    command = [
+        "uv",
+        "run",
+        "--locked",
+        "pdfbucket",
+        "embed-provenance",
+        *provenance,
+        "--",
+        str(original),
+        str(root / f"{key}.pdf"),
+    ]
     subprocess.run(command, cwd=REPO, check=True, env=project_env(), stdin=subprocess.DEVNULL)
 
 
@@ -517,8 +651,24 @@ def record_sent(root: Path, key: str) -> None:
         "method": "web_translator",
         "steps": [{"step": "fields"}, {"step": "pdf", "attachmentKey": "H4VN8TQR"}],
     }
-    filing = {"tags": [], "collections": [], "notes": [], "reading": {"status": "unread"}, "sourceCheck": {"status": "unchecked"}, "mirrors": [], "modifiedAt": record["sentAt"], "zotero": record}
-    organization = {"version": 2, "collections": [], "savedSearches": [], "items": {key: filing}, "activity": [], "preferences": {"outlineOnOpen": False, "theme": "system"}}
+    filing = {
+        "tags": [],
+        "collections": [],
+        "notes": [],
+        "reading": {"status": "unread"},
+        "sourceCheck": {"status": "unchecked"},
+        "mirrors": [],
+        "modifiedAt": record["sentAt"],
+        "zotero": record,
+    }
+    organization = {
+        "version": 2,
+        "collections": [],
+        "savedSearches": [],
+        "items": {key: filing},
+        "activity": [],
+        "preferences": {"outlineOnOpen": False, "theme": "system"},
+    }
     (root / "organization.json").write_text(json.dumps(organization))
 
 
@@ -533,7 +683,6 @@ def send(out: Path) -> None:
             "lecture-notes.pdf",
             "lecture-notes",
             "https://www.math.example.edu/~author/lecture-notes.pdf",
-            "https://www.math.example.edu/~author/teaching.html",
             "Lattices and Quadratic Forms",
         )
         capture_fixture(
@@ -541,7 +690,6 @@ def send(out: Path) -> None:
             "arxiv-2609.21174v1.pdf",
             "2609.21174v1",
             "https://arxiv.org/pdf/2609.21174v1",
-            "https://arxiv.org/abs/2609.21174v1",
             "On The Cyclicity of Algebraic Lattices",
         )
         record_sent(root, "2609.21174v1")
@@ -588,7 +736,14 @@ def fixture_extractions(directory: Path) -> Path:
             "id": mode,
             "name": name,
             "command": ["sh", extractor, mode, "$pdf", "$output"],
-            "accepted_inputs": [{"kind": "pdf", "id": "pdf", "label": f"PDF up to {max_pages} pages", "limits": limits}],
+            "accepted_inputs": [
+                {
+                    "kind": "pdf",
+                    "id": "pdf",
+                    "label": f"PDF up to {max_pages} pages",
+                    "limits": limits,
+                }
+            ],
         }
 
     manifest = directory / "extractions.json"
@@ -610,8 +765,20 @@ def extract(out: Path) -> None:
         root = scratch / "bucket"
         root.mkdir()
         homepage = "https://www.math.example.edu/~author/"
-        capture_fixture(root, "lecture-notes.pdf", "lecture-notes", f"{homepage}lecture-notes.pdf", f"{homepage}teaching.html", "Lattices and Quadratic Forms")
-        capture_fixture(root, "ten-page-notes.pdf", "ten-page-notes", f"{homepage}ten-page-notes.pdf", f"{homepage}teaching.html", "Ten Lectures on Integral Lattices")
+        capture_fixture(
+            root,
+            "lecture-notes.pdf",
+            "lecture-notes",
+            f"{homepage}lecture-notes.pdf",
+            "Lattices and Quadratic Forms",
+        )
+        capture_fixture(
+            root,
+            "ten-page-notes.pdf",
+            "ten-page-notes",
+            f"{homepage}ten-page-notes.pdf",
+            "Ten Lectures on Integral Lattices",
+        )
         origin = serve(stack, root, closed_port_url(), fixture_extractions(scratch))
 
         with sync_playwright() as playwright:

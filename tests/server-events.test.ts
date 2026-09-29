@@ -25,7 +25,6 @@ test("every capture, new or existing, broadcasts its reader URL and stored title
     const bytes = readFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"));
     form.set("pdf", new File([bytes], "problem-set.pdf", { type: "application/pdf" }));
     form.set("pdf_url", "https://www.math.example.edu/~author/problem-set.pdf");
-    form.set("source_url", "https://www.math.example.edu/~author/teaching.html");
     form.set("title_hint", "Problem set 3");
     const response = await app.request(`/capture-bytes`, { method: "POST", body: form });
     return CaptureResponseSchema.parse(await response.json());

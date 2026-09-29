@@ -18,7 +18,6 @@ def packet() -> MetadataPacket:
     return MetadataPacket.from_pdf(
         FIXTURES / "lecture-notes.pdf",
         pdf_url="https://example.org/papers/lecture-notes.pdf",
-        source_url="https://example.org/papers",
         title_hint="Download PDF",
     )
 
@@ -31,7 +30,6 @@ def test_metadata_packet_contains_the_document_cues() -> None:
     assert built.first_pages_text.strip()
     assert built.first_page_png.startswith(b"\x89PNG\r\n\x1a\n")
     assert built.pdf_url == "https://example.org/papers/lecture-notes.pdf"
-    assert built.source_url == "https://example.org/papers"
     assert built.title_hint == "Download PDF"
 
 

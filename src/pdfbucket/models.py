@@ -36,12 +36,11 @@ type Timestamp = Annotated[str, AfterValidator(_timestamp)]
 
 
 class Provenance(BaseModel):
-    """What every stored PDF carries inside the file. `source_url` is absent when no linking page is known."""
+    """What every stored PDF carries inside the file."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     pdf_url: Url
-    source_url: Url | None
     captured_at: Timestamp
     original_sha256: Sha256
     title_hint: NonEmpty

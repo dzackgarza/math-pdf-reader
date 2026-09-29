@@ -171,8 +171,8 @@ fn page_tags(url: &Url, page: &Path) -> std::io::Result<Result<PageTags, NoPdf>>
     Ok(Ok(tags.into_inner()))
 }
 
-/// The PDF at URL, or on the page at URL, staged in ROOT; a failure says why there is none. A
-/// PDF URL given directly has no linking page; a page's PDF was linked from that page.
+/// The PDF at URL, or the PDF the page at URL names in its citation_pdf_url, staged in ROOT; a
+/// failure says why there is none.
 pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild, root: &Path) -> AppResult<Upload> {
     let page_url = Url::parse(url).map_err(|reason| NoPdf::BadUrl {
         url: url.to_string(),
@@ -192,7 +192,6 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild, root: &Path) ->
             },
             filename,
             pdf_url: url.to_string(),
-            source_url: None,
         });
     }
     let (read_url, page) = (page_url.clone(), answer.body.path().to_path_buf());
@@ -223,7 +222,6 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild, root: &Path) ->
         pdf: pdf.body,
         filename: url_filename(&pdf_url),
         pdf_url: pdf_url.to_string(),
-        source_url: Some(url.to_string()),
         title_hint,
     })
 }
@@ -265,12 +263,10 @@ pub async fn folder_upload(root: &Path, folder: &Path, name: &str) -> Result<Fol
     }
     let absolute = |path: &Path| format!("{} is not an absolute path", path.display());
     let pdf_url = Url::from_file_path(&path).map_err(|()| absolute(&path))?;
-    let folder_url = Url::from_directory_path(folder).map_err(|()| absolute(folder))?;
     Ok(FolderFile::Pdf(Upload {
         pdf,
         title_hint: name[..name.len() - ".pdf".len()].to_string(),
         filename: Some(name.to_string()),
         pdf_url: pdf_url.to_string(),
-        source_url: Some(folder_url.to_string()),
     }))
 }

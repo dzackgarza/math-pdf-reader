@@ -54,12 +54,10 @@ def embed_provenance_command(
     captured_at: str,
     original_sha256: str,
     title_hint: str,
-    source_url: str | None = None,
 ) -> None:
     """Write PDF to OUTPUT with the provenance embedded."""
     provenance = Provenance(
         pdf_url=pdf_url,
-        source_url=source_url,
         captured_at=captured_at,
         original_sha256=original_sha256,
         title_hint=title_hint,
@@ -107,16 +105,18 @@ def guess_metadata_command(
     *,
     pdf_url: str,
     title_hint: str,
-    source_url: str | None = None,
 ) -> None:
     """Infer title, authors, and year from a PDF and its capture context."""
-    from pdfbucket.metadata_guess import MetadataInferenceError, MetadataPacket, guess_metadata
+    from pdfbucket.metadata_guess import (
+        MetadataInferenceError,
+        MetadataPacket,
+        guess_metadata,
+    )
 
     try:
         packet = MetadataPacket.from_pdf(
             pdf,
             pdf_url=pdf_url,
-            source_url=source_url,
             title_hint=title_hint,
         )
         result = guess_metadata(packet)

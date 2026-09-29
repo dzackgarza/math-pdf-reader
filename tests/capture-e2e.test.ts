@@ -223,8 +223,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await Bun.write(join(screenshots, `${engine}-${name}.png`), png);
   };
 
-  // In Chrome a top-level PDF navigation becomes a download, so the tab stays on the linking
-  // page; in Firefox the tab passes through the capture page.
+  // In Chrome a top-level PDF navigation becomes a download, so the tab stays on the page that
+  // holds the link; in Firefox the tab passes through the capture page.
   const followLink = async (pagePath: string) => {
     await page.goto(`${site.origin}${pagePath}`);
     await page.click("a#pdf");
@@ -260,9 +260,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await page.setViewport(viewport);
   };
 
-  // After a successful capture in the tab the link was followed in, the tab is back on the
-  // linking page. The location is read in the document: the tab passes through the capture
-  // page, where Firefox reports no navigation.
+  // After a successful capture in the tab the link was followed in, the tab is back on the page
+  // that holds the link. The location is read in the document: the tab passes through the
+  // capture page, where Firefox reports no navigation.
   const captureInPlace = async (pagePath: string) => {
     const captures = await subscribeToCaptures(bucket.origin);
     await followLink(pagePath);
@@ -385,14 +385,13 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     }
   });
 
-  test("an arXiv /pdf/ URL without .pdf is captured with the linking page and link text, and the tab returns to that page", async () => {
+  test("an arXiv /pdf/ URL without .pdf is captured with its link text, and the tab returns to the page that holds the link", async () => {
     const readerUrl = await captureInPlace("/abs/2401.00001");
 
     expect(readerUrl).toBe(`${bucket.origin}/read/2401.00001`);
     expect(bucket.files()).toEqual(["2401.00001.pdf"]);
     const stored = await provenance("2401.00001");
     expect(stored.pdf_url).toBe(`${site.origin}/pdf/2401.00001`);
-    expect(stored.source_url).toBe(`${site.origin}/abs/2401.00001`);
     expect(stored.title_hint).toBe("Sphere packing in dimension 8 (PDF)");
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/pdf/2401.00001")));
   });
@@ -458,14 +457,12 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     expect(page.url()).toBe(`${site.origin}/reading-list.html`);
     const stored = await provenance("survey");
-    expect(stored.source_url).toBe(`${site.origin}/reading-list.html`);
     expect(stored.title_hint).toBe("A survey of lattices");
   });
 
   test("a .pdf URL is captured once; navigating to it again opens the existing item", async () => {
     expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
     const stored = await provenance("lecture-notes");
-    expect(stored.source_url).toBe(`${site.origin}/teaching.html`);
     expect(stored.title_hint).toBe("Lecture notes on lattices");
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/lecture-notes.pdf")));
     const storedBytes = sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")));
@@ -480,7 +477,6 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(bucket.files()).toContain("problem-set.pdf");
     const stored = await provenance("problem-set");
     expect(stored.pdf_url).toBe(`${site.origin}/download?id=problem-set`);
-    expect(stored.source_url).toBe(`${site.origin}/downloads.html`);
     expect(stored.title_hint).toBe("Problem set 3");
   });
 
@@ -499,8 +495,6 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     const stored = await provenance("chapter");
     expect(stored.pdf_url).toBe(`${site.origin}/frames/chapter.pdf`);
-    // No link was followed to the framed PDF, so no linking page is recorded.
-    expect(stored.source_url).toBeNull();
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/frames/chapter.pdf")));
   });
 
@@ -571,19 +565,17 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(bucket.files()).toEqual(before);
   });
 
-  test("a DOI link that redirects to the PDF is captured with the page the link was on", async () => {
+  test("a DOI link that redirects to the PDF is captured at its final PDF URL with its link text", async () => {
     expect(await captureInPlace("/citation.html")).toBe(`${bucket.origin}/read/redirected`);
     const stored = await provenance("redirected");
     expect(stored.pdf_url).toBe(`${site.origin}/articles/redirected.pdf`);
-    expect(stored.source_url).toBe(`${site.origin}/citation.html`);
     expect(stored.title_hint).toBe("Full text via DOI");
   });
 
-  test("a PDF link with a fragment is captured with the page the link was on", async () => {
+  test("a PDF link with a fragment is captured at its final PDF URL with its link text", async () => {
     expect(await captureInPlace("/fragment.html")).toBe(`${bucket.origin}/read/fragment`);
     const stored = await provenance("fragment");
     expect(stored.pdf_url).toBe(`${site.origin}/notes/fragment.pdf`);
-    expect(stored.source_url).toBe(`${site.origin}/fragment.html`);
     expect(stored.title_hint).toBe("Chapter two, page 2");
   });
 
@@ -608,7 +600,6 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(await captureInPlace("/ticket.html")).toBe(`${bucket.origin}/read/ticket`);
     const stored = await provenance("ticket");
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/once/ticket.pdf")));
-    expect(stored.source_url).toBe(`${site.origin}/ticket.html`);
     expect(fetches().length).toBe(1);
     if (downloads !== null) {
       while (readdirSync(downloads).length > 0) {
@@ -671,7 +662,6 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(await captureInPlace(pagePath)).toBe(`${bucket.origin}/read/${key}`);
     const stored = await provenance(key);
     expect(stored.pdf_url).toBe(`${site.origin}${pdfPath}`);
-    expect(stored.source_url).toBe(`${site.origin}${pagePath}`);
     expect(stored.original_sha256).toBe(sha256(pdfBytes(pdfPath)));
   });
 

@@ -1,9 +1,9 @@
-// The page a PDF was linked from. The content script reports every followed link, keyed by its
+// The link a PDF was followed from: its text and the title of the page that holds it, which give
+// the capture its title hint. The content script reports every followed link, keyed by its
 // absolute URL without the fragment (a request URL never carries one); the background carries
 // a report along each HTTP redirect of a navigation (a DOI resolver, a publisher's link
 // shortener), and the capture takes the report for the PDF URL, once. A report older than the
-// link-origin age names no page. Neither Chrome's declarativeNetRequest redirect nor the
-// referrer policy carries the full linking URL.
+// link-origin age names no link.
 // Reports live in session storage, which the browser clears on restart and on every extension
 // update, so no report outlives the build that wrote it. Background-only: storage access is
 // serialized by one mutex, so a lookup sees every report that arrived before it, and a failed
@@ -46,7 +46,7 @@ export function rememberLinkOrigin(href: string, origin: LinkOrigin): Promise<vo
   }));
 }
 
-// A navigation redirected from FROM to TO: a report for FROM also names TO's linking page.
+// A navigation redirected from FROM to TO: a report for FROM also names the link TO came from.
 export function followRedirect(from: string, to: string): Promise<void> {
   return update((fresh) => {
     const origin = fresh[withoutFragment(from)];

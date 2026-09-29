@@ -73,7 +73,6 @@ test.skipIf(!LIVE)(
       zoteroUrl: ZOTERO_URL,
       extractionsManifest: EXTRACTIONS_MANIFEST,
     });
-    const listing = "https://arxiv.org/list/math/new";
     const papers = [
       {
         key: "k3-surfaces",
@@ -90,7 +89,6 @@ test.skipIf(!LIVE)(
       const form = new FormData();
       form.set("pdf", new File([paper.bytes], `${paper.key}.pdf`, { type: "application/pdf" }));
       form.set("pdf_url", paper.pdfUrl);
-      form.set("source_url", listing);
       // The text of a listing page's PDF link.
       form.set("title_hint", "pdf");
       const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });

@@ -22,18 +22,13 @@ async fn guess(
 ) -> AppResult<Json<GuessMetadataResponse>> {
     let indexed = state.require(&key).await?;
     let provenance = &indexed.stored.provenance;
-    let mut args = vec![
+    let args = vec![
         "guess-metadata".to_string(),
         format!("--pdf-url={}", provenance.pdf_url),
         format!("--title-hint={}", *provenance.title_hint),
-    ];
-    if let Some(source_url) = &provenance.source_url {
-        args.push(format!("--source-url={source_url}"));
-    }
-    args.extend([
         "--".to_string(),
         indexed.path.to_string_lossy().into_owned(),
-    ]);
+    ];
 
     let output = state
         .store

@@ -9,7 +9,6 @@ import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const fixture = join(import.meta.dir, "fixtures/lecture-notes.pdf");
-const sourcePage = "https://www.math.example.edu/~author/teaching.html";
 const pdfSource = "https://www.math.example.edu/~author/lattices.pdf";
 
 async function bucket() {
@@ -30,7 +29,6 @@ function captureForm(
   const form = new FormData();
   form.set("pdf", new File([bytes], filename, { type: "application/pdf" }));
   form.set("pdf_url", pdfSource);
-  form.set("source_url", sourcePage);
   form.set("title_hint", titleHint);
   return form;
 }

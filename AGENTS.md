@@ -40,7 +40,7 @@ agent-memory maintain move <key> --to global/advice
 
 A standalone desktop app that replaces reading PDFs in the browser. Browser extensions
 intercept every PDF navigation in Chrome and Firefox and hand the PDF to the bucket, which
-stores a copy with its provenance embedded (PDF URL, source page, capture time, hash),
+stores a copy with its provenance embedded (PDF URL, capture time, hash),
 opens it in a PDF.js reader inside the app window, and lets the user file it into
 collections and tags, run extraction plugins on it, and send it to Zotero when it matters.
 Zotero stays the citation store; the bucket is the reading store.
@@ -125,7 +125,7 @@ to build from scratch.
 | library (1) | Library / Inbox, quick filters | the Library view with its PDF count; Inbox is the Unfiled quick filter (items in no collection, Zotero's term) beside Unread, Added This Week, Offline and Needs Re-fetch; the mockup's Offline Cache equals Library and is not a view |
 | library (1) | Collections, Tags, Saved Searches | `zotero-gui`'s sidebar and table, cribbed, over the bucket index; topics are a `topic:` tag namespace or saved searches |
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
-| library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256, mirrors | provenance embedded in the PDF; the Source is the PDF URL; the inspector shows the first page, the PDF URL's site as a link, date and size, the PDF URL and mirrors with their last check (Verify), and the row menu copies the links |
+| library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256, mirrors | provenance embedded in the PDF; the Source is the PDF URL; the inspector shows the first page, the PDF URL's site as a link, date and size, the PDF URL and mirrors with their last check (Verify), and the row menu copies the PDF URL |
 | library (1) | Send to Zotero | the send action: `import_from_url` with the PDF URL, then `attach_bytes`, on the local write API; or open the reader URL in a browser and press the Zotero Connector |
 | reader (2) | reader, outline, search in document, highlights, notes | PDF.js prebuilt viewer in an iframe; highlights saved into the PDF by `saveDocument()` |
 | reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width PDF.js; mirrors are in the inspector's Sources |
@@ -143,8 +143,8 @@ code and note the mockup term once in the plan's Decision Log.
 These constrain every milestone, child plan, and commit. A change that satisfies its task
 but breaks one of these is wrong.
 
-1. **Provenance travels with the PDF.** Every stored PDF carries PDF URL, source page URL when
-   one is known, capture time and original SHA-256 inside the file. The index is derivable
+1. **Provenance travels with the PDF.** Every stored PDF carries its PDF URL, capture time
+   and original SHA-256 inside the file. The index is derivable
    from the files; a sidecar-only record is not provenance.
 2. **Everything is a URL.** Every PDF and every reader page is reachable at a stable
    `http://127.0.0.1:<port>/...` URL while the bucket runs. Reader pages carry Highwire

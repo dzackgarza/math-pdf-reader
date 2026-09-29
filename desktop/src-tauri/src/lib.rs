@@ -277,7 +277,7 @@ pub fn run() -> tauri::Result<()> {
                 .clone();
             window_config.url = WebviewUrl::App("index.html".into());
             // A link that asks for a new window (a PDF's external link in a reader tab, a
-            // source page on the Timeline) opens in the default browser; the window keeps its
+            // PDF URL on the Timeline) opens in the default browser; the window keeps its
             // tabs.
             let opener = app.handle().clone();
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?

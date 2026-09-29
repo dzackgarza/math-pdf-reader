@@ -75,7 +75,6 @@ for (const [path, name] of Object.entries(papers)) {
   const filename = path === "/pdf/2401.00001" ? "2401.00001" : name;
   form.set("pdf", new File([readFileSync(join(fixtures, name))], filename));
   form.set("pdf_url", at(path));
-  form.set("source_url", at("/teaching.html"));
   form.set("title_hint", `Notes: ${name}`);
   const captured = CaptureResponseSchema.parse(
     await (await api("/capture-bytes", { method: "POST", body: form })).json(),

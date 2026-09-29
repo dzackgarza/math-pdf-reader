@@ -38,7 +38,6 @@ export type Upload = {
   bytes: Uint8Array<ArrayBuffer>;
   filename: string;
   pdfUrl: string;
-  sourceUrl: string;
   titleHint: string;
 };
 
@@ -53,7 +52,6 @@ export async function captureBytes(root: string, upload: Upload): Promise<string
   const form = new FormData();
   form.set("pdf", new File([upload.bytes], upload.filename, { type: "application/pdf" }));
   form.set("pdf_url", upload.pdfUrl);
-  form.set("source_url", upload.sourceUrl);
   form.set("title_hint", upload.titleHint);
   const response = await server.request("/capture-bytes", { method: "POST", body: form });
   const text = await response.text();
