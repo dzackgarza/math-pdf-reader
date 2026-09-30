@@ -123,14 +123,19 @@ async function until(holds: () => boolean, what: string) {
 test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_url", async () => {
   const { post, items } = await bucket();
 
-  const direct = await post("/api/import-url", { open_reader: false, url: at("/papers/lattices.pdf") });
+  const direct = await post("/api/import-url", {
+    open_reader: false,
+    url: at("/papers/lattices.pdf"),
+  });
   expect(direct.status).toBe(200);
   expect(ImportUrlResponseSchema.parse(await direct.json())).toEqual({
     key: "lattices",
     existing: false,
   });
   const fromPage = ImportUrlResponseSchema.parse(
-    await (await post("/api/import-url", { open_reader: false, url: at("/abs/2401.00001") })).json(),
+    await (
+      await post("/api/import-url", { open_reader: false, url: at("/abs/2401.00001") })
+    ).json(),
   );
   expect(fromPage).toEqual({
     key: "2401.00001",
@@ -146,7 +151,10 @@ test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_ur
     title_hint: "Problem Set on Quadratic Forms",
   });
 
-  const again = await post("/api/import-url", { open_reader: false, url: at("/papers/lattices.pdf") });
+  const again = await post("/api/import-url", {
+    open_reader: false,
+    url: at("/papers/lattices.pdf"),
+  });
   expect(ImportUrlResponseSchema.parse(await again.json())).toEqual({
     key: "lattices",
     existing: true,
@@ -176,7 +184,9 @@ test("Import URL of a PDF another bucket stored records this capture's provenanc
 
   const { post, items } = await bucket();
   const imported = ImportUrlResponseSchema.parse(
-    await (await post("/api/import-url", { open_reader: false, url: at("/shared/passed-on.pdf") })).json(),
+    await (
+      await post("/api/import-url", { open_reader: false, url: at("/shared/passed-on.pdf") })
+    ).json(),
   );
 
   const item = (await items()).find((stored) => stored.id === imported.key);

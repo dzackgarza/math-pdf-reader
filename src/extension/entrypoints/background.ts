@@ -29,7 +29,6 @@ import {
 } from "../exemptions";
 import { type FirefoxInterception, firefoxInterception } from "../firefox-interception";
 import { failureTarget } from "../interception";
-import { sendWindowTabs } from "../send-tabs";
 import { followRedirect, rememberLinkOrigin, takeLinkOrigin } from "../link-origin";
 import {
   type CaptureOutcome,
@@ -38,6 +37,7 @@ import {
   type RuntimeMessage,
   RuntimeMessageSchema,
 } from "../messages";
+import { sendWindowTabs } from "../send-tabs";
 
 // How often the badge re-reads `/status` between captures; Chrome's alarm floor is 30 s.
 const STATUS_ALARM = "bucket-status";

@@ -439,7 +439,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     );
     // WebDriver BiDi cannot activate a moz-extension tab; the extension API can, in both browsers.
     const tabs = engine === "chrome" ? "chrome.tabs" : "browser.tabs";
-    await page.evaluate(`${tabs}.getCurrent().then((tab) => ${tabs}.update(tab.id, { active: true }))`);
+    await page.evaluate(
+      `${tabs}.getCurrent().then((tab) => ${tabs}.update(tab.id, { active: true }))`,
+    );
     await shotCapturePage("status-sent-tabs");
     await noPdf.close();
   });
