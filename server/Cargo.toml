@@ -23,6 +23,7 @@ axum-range = "1.0.0"
 base64 = "0.23.1"
 chrono = "0.4.45"
 clap = { version = "4.6.7", features = ["derive"] }
+clearurls = "0.0.4"
 dirs = "7.0.0"
 futures = "0.3.34"
 hex = "0.4.3"

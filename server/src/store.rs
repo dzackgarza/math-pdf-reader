@@ -8,11 +8,12 @@
 use std::collections::{BTreeSet, HashMap};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::http::StatusCode;
+use clearurls::UrlCleaner;
 use futures::{Stream, StreamExt};
 use sha2::{Digest, Sha256};
 use tempfile::{NamedTempFile, TempPath};
@@ -27,6 +28,11 @@ use crate::index::{CachedRead, FileRead, Signature};
 use crate::layout::{self, candidate_keys, is_pdf, Key};
 use crate::python::Python;
 use crate::sources::{digest, sha256};
+
+/// The ClearURLs rule set, which names the tracking parameters a link carries (`utm_source` and
+/// the like) that do not locate the PDF.
+static URL_CLEANER: LazyLock<UrlCleaner> =
+    LazyLock::new(|| UrlCleaner::from_embedded_rules().expect("the embedded rules parse"));
 
 /// A PDF offered for storage and where it came from. `filename` is the name the PDF was
 /// offered under, if any.
@@ -370,7 +376,8 @@ impl Store {
     /// Stores an upload with its provenance embedded, under the first free key its file name
     /// gives: a key is free when no stored PDF has it and HELD, the keys the filing and the
     /// index export still list, does not contain it. The same original bytes already stored
-    /// under any key are that item, whatever URL they came from.
+    /// under any key are that item, whatever URL they came from. The PDF URL is recorded without
+    /// its tracking parameters.
     pub async fn capture(&self, upload: &Upload, held: &BTreeSet<String>) -> AppResult<Captured> {
         if !upload.pdf.is_pdf() {
             return Err(not_a_pdf(
@@ -381,8 +388,12 @@ impl Store {
         if let Some(item) = self.holding(&original_sha256).await? {
             return self.already(item).await;
         }
+        let pdf_url = URL_CLEANER
+            .clear_single_url_str(&upload.pdf_url)
+            .map_err(|error| AppError::invalid(format!("the PDF URL does not parse: {error}")))?
+            .into_owned();
         let provenance = Provenance {
-            pdf_url: upload.pdf_url.clone(),
+            pdf_url,
             captured_at: Timestamp::now(),
             original_sha256: original_sha256
                 .clone()

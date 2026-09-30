@@ -196,3 +196,19 @@ test("a foreign or torn PDF in the root is named in the library beside the items
   expect(library.items.map((item) => item.id)).toEqual(["lattices"]);
   expect(library.unreadable.map((file) => file.file)).toEqual(["foreign.pdf", "torn.pdf"]);
 });
+
+test("a captured PDF URL is recorded without its tracking parameters", async () => {
+  const { app } = await bucket();
+  const form = captureForm(readFileSync(fixture), "DAG-V.pdf", "DAG V");
+  form.set(
+    "pdf_url",
+    "https://www.math.ias.edu/~lurie/papers/DAG-V.pdf?utm_source=chatgpt.com&version=2",
+  );
+
+  const response = await app.request(`/capture-bytes`, { method: "POST", body: form });
+
+  const result = CaptureResponseSchema.parse(await response.json());
+  expect(result.provenance.pdf_url).toBe(
+    "https://www.math.ias.edu/~lurie/papers/DAG-V.pdf?version=2",
+  );
+});
