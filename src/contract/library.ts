@@ -356,10 +356,12 @@ export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
 export const THEMES = ["system", "light", "dark"] as const;
 export const ThemeSchema = z.enum(THEMES);
 
-// How the app behaves: whether the reader opens a PDF with its outline showing, and the theme.
+// How the app behaves: whether the reader opens a PDF with its outline showing, the theme, and
+// whether the reader draws the PDF's pages in dark page colours while the theme is dark.
 export const PreferencesSchema = z.strictObject({
   outlineOnOpen: z.boolean(),
   theme: ThemeSchema,
+  readerNightMode: z.boolean(),
 });
 
 export const LibraryPayloadSchema = z.strictObject({

@@ -124,6 +124,9 @@ async fn preferences(State(state): State<Shared>, body: Bytes) -> Payload {
             if let Some(theme) = update.theme {
                 org.preferences.theme = theme;
             }
+            if let Some(reader_night_mode) = update.reader_night_mode {
+                org.preferences.reader_night_mode = reader_night_mode;
+            }
             Ok(org)
         })
         .await

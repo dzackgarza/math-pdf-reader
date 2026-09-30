@@ -38,6 +38,8 @@ struct ReaderPage {
     theme: String,
     sidebar_view: u8,
     viewer_css_theme: u8,
+    /// Whether the reader draws the PDF's pages in dark page colours while the theme is dark.
+    night_mode: bool,
     title: String,
     authors: Vec<String>,
     origin: String,
@@ -64,6 +66,7 @@ pub fn reader_page(item: &BucketItem, origin: &str, preferences: &Preferences) -
         theme: preferences.theme.to_string(),
         sidebar_view: sidebar_view(preferences.outline_on_open),
         viewer_css_theme: viewer_css_theme(preferences.theme),
+        night_mode: preferences.reader_night_mode,
         title: item.title.to_string(),
         authors: item
             .authors

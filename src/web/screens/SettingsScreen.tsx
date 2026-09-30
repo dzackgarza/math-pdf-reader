@@ -112,6 +112,14 @@ export default function SettingsScreen({
           />
           <span>Open the outline when a PDF opens</span>
         </Row>
+        <Row label="Night mode">
+          <Switch
+            label="Show the PDF's pages in dark colours when the theme is dark"
+            on={preferences.readerNightMode}
+            onChange={(readerNightMode) => onPreferences({ readerNightMode })}
+          />
+          <span>Show the PDF's pages in dark colours when the theme is dark</span>
+        </Row>
         <Row label="Theme">
           <select
             aria-label="Theme"

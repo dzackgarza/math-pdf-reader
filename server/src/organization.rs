@@ -65,6 +65,7 @@ pub fn empty_organization() -> Organization {
         preferences: Preferences {
             outline_on_open: false,
             theme: Theme::System,
+            reader_night_mode: false,
         },
     }
 }

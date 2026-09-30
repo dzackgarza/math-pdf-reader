@@ -261,7 +261,7 @@ test("an export imported into an empty store and rebuilt there exports byte for 
       },
     },
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system" },
+    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
   });
   const exportFile = join(temporaryDirectory("export"), "index.json");
   await exportIndex(original.home, exportFile);
@@ -300,7 +300,7 @@ test("an export never drops an item whose PDF is missing, and import never overw
       },
     },
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system" as const },
+    preferences: { outlineOnOpen: false, theme: "system" as const, readerNightMode: false },
   };
   writeOrganization(root, filing);
   await exportIndex(home, exportFile);
@@ -524,7 +524,7 @@ test("the export carries reading sessions and extraction records, and imports in
       [lattices.key]: { ...unfiled(lattices.provenance), collections: ["forms"], tags: ["E8"] },
     },
     activity: [],
-    preferences: { outlineOnOpen: true, theme: "dark" },
+    preferences: { outlineOnOpen: true, theme: "dark", readerNightMode: false },
   });
   const sessions = SessionsSchema.parse({
     version: 1,
@@ -610,7 +610,7 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
       },
     },
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system" },
+    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
   });
   writeFileSync(
     join(root, "removed.json"),
@@ -656,7 +656,7 @@ test("a new capture never takes the key of a lost PDF that the index export stil
     savedSearches: [],
     items: {},
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system" },
+    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
   });
   const app = await serve(root, exportFile);
 

@@ -61,7 +61,7 @@ function recordSent(bucket: Bucket, key: string): void {
     savedSearches: [],
     items: { [key]: { ...unfiled({ captured_at: SENT.sentAt }), zotero: SENT } },
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system" },
+    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
   });
 }
 

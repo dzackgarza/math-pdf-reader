@@ -963,6 +963,52 @@ describe("library window", () => {
     await page.emulateMediaFeatures();
   });
 
+  test("night mode in the reader draws the PDF's pages in the dark theme's colours, and turns off again", async () => {
+    // The top-left corner of page 1 is the page's white margin; night mode paints it with the
+    // theme's background, #2E3440, which PDF.js's page-colour filter rounds by up to one step
+    // per channel.
+    const NIGHT = [0x2e, 0x34, 0x40];
+    const nearNight = (pixel: number[] | null) =>
+      pixel !== null && pixel.every((channel, index) => Math.abs(channel - NIGHT[index]) <= 1);
+    const cornerOfPage = async () => {
+      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
+      if (frame === undefined || frame === null) {
+        throw new Error("the reader has no viewer frame");
+      }
+      await frame.waitForFunction(
+        "window.PDFViewerApplication?.pdfViewer?.getPageView(0)?.renderingState === 3",
+      );
+      return frame.evaluate(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>(
+          '.page[data-page-number="1"] canvas',
+        );
+        const pixel = canvas?.getContext("2d")?.getImageData(2, 2, 1, 1).data;
+        return pixel === undefined ? null : [...pixel.slice(0, 3)];
+      });
+    };
+    const toggleNightMode = async () => {
+      const reloaded = page.waitForNavigation();
+      await page.click("#night-mode");
+      await reloaded;
+    };
+    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+    await page.goto(`${bucket.origin}/read/lattices`);
+    expect(await cornerOfPage()).toEqual([255, 255, 255]);
+
+    await toggleNightMode();
+    expect(await page.$eval("#night-mode", (button) => button.getAttribute("aria-pressed"))).toBe(
+      "true",
+    );
+    expect(nearNight(await cornerOfPage())).toBe(true);
+    expect((await organization()).preferences.readerNightMode).toBe(true);
+    await shot("reader-night-mode");
+
+    await toggleNightMode();
+    expect(await cornerOfPage()).toEqual([255, 255, 255]);
+    expect((await organization()).preferences.readerNightMode).toBe(false);
+    await page.emulateMediaFeatures();
+  });
+
   test("a text note written on a page in the reader is saved into the PDF and is there after a reload", async () => {
     const openViewer = async () => {
       await page.goto(`${bucket.origin}/read/problems`);

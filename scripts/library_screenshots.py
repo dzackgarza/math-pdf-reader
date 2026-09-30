@@ -667,7 +667,7 @@ def record_sent(root: Path, key: str) -> None:
         "savedSearches": [],
         "items": {key: filing},
         "activity": [],
-        "preferences": {"outlineOnOpen": False, "theme": "system"},
+        "preferences": {"outlineOnOpen": False, "theme": "system", "readerNightMode": False},
     }
     (root / "organization.json").write_text(json.dumps(organization))
 

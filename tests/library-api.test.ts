@@ -465,10 +465,12 @@ test("preferences are changed one field at a time", async () => {
   expect(LibraryPayloadSchema.parse(await outlined.json()).preferences).toEqual({
     outlineOnOpen: true,
     theme: "dark",
+    readerNightMode: false,
   });
   expect((await library(await open(bucket.root))).preferences).toEqual({
     outlineOnOpen: true,
     theme: "dark",
+    readerNightMode: false,
   });
   expect((await send(bucket, "PATCH", "/api/preferences", {})).status).toBe(400);
   expect((await send(bucket, "PATCH", "/api/preferences", { theme: "sepia" })).status).toBe(400);
@@ -674,7 +676,9 @@ test("a thumbnail asked for while its item is deleted is served or is unknown, n
   const thumbnails = [160, 200, 240, 280, 320, 360, 400, 440].map((width) =>
     bucket.request(`/api/items/lattices/thumbnail?width=${width}`),
   );
-  const deleted = await bucket.request("/api/items/lattices", { method: "DELETE" });
+  const deleted = await bucket.request("/api/items/lattices", {
+    method: "DELETE",
+  });
   expect(deleted.status).toBe(200);
   const statuses = (await Promise.all(thumbnails)).map((response) => response.status);
   expect(statuses.filter((status) => status !== 200 && status !== 404)).toEqual([]);
