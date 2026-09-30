@@ -239,7 +239,7 @@ export async function startFixtureSite() {
         body: `<!doctype html><html><head><title>${page.title}</title>${page.head ?? ""}</head><body>${page.body}</body></html>`,
       };
     }
-    if (cookie !== `fixture_session=${session}` && !(pdfs[path]?.open)) {
+    if (cookie !== `fixture_session=${session}` && !pdfs[path]?.open) {
       return text(403, "session cookie required");
     }
     if (method === "POST" && path === "/generate") {
