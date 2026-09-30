@@ -1,7 +1,7 @@
 // Capture background: registers PDF interception for this browser while the capture switch is
 // on, records link origins and carries them along redirects, captures PDFs for the capture
 // page, sends a tab it captured a PDF in back to the page it left or closes it, hands (tab, URL) pairs back to the
-// browser's own viewer when the capture page asks, hands the PDFs Chrome saved as downloads to
+// browser's own viewer when the capture page asks, hands the PDFs the browser saved as downloads to
 // the bucket, sends a window's tabs to the bucket's Import URL, and keeps the toolbar badge in
 // step with the bucket and the switch. Every message
 // gets exactly one reply; an error in the background is a `failed` reply at stage `extension`.
@@ -20,7 +20,7 @@ import {
   staleDetail,
 } from "../bucket-status";
 import { postDownloadToBucket, postToBucket } from "../capture";
-import { type SavedPdf, watchPdfDownloads } from "../chrome-downloads";
+import { markPdfResponses, type SavedPdf, watchPdfDownloads } from "../downloads";
 import {
   type ChromeInterception,
   capturePage,
@@ -94,11 +94,11 @@ export default defineBackground(() => {
     const origin = await takeLinkOrigin(saved.pdfUrl.href);
     switch (saved.kind) {
       case "interrupted":
-        return failed("fetch-pdf", `Chrome could not download the PDF (${saved.reason})`);
+        return failed("fetch-pdf", `the browser could not download the PDF (${saved.reason})`);
       case "lost":
         return failed(
           "extension",
-          "Chrome stopped PDF Bucket's extension each time before the bucket answered; the bucket may hold the PDF",
+          "the browser stopped PDF Bucket's extension each time before the bucket answered; the bucket may hold the PDF",
         );
       case "complete":
         return postDownloadToBucket(
@@ -111,7 +111,7 @@ export default defineBackground(() => {
     }
   }
 
-  // Chrome saved a captured PDF as a download: once the bucket holds it, the download goes;
+  // The browser saved a captured PDF as a download: once the bucket holds it, the download goes;
   // otherwise the download stays and a capture page tab shows the failure.
   async function captureDownload(saved: SavedPdf): Promise<void> {
     const pdfUrl = saved.pdfUrl.href;
@@ -121,17 +121,15 @@ export default defineBackground(() => {
       await browser.downloads.erase({ id: saved.id });
       return;
     }
-    const kept = saved.kind === "interrupted" ? "" : `; Chrome saved the PDF at ${saved.path}`;
+    const kept = saved.kind === "interrupted" ? "" : `; the browser saved the PDF at ${saved.path}`;
     const failure = failed(outcome.error.stage, `${outcome.error.detail}${kept}`);
     await browser.tabs.create({ url: failureTarget(capturePage(), pdfUrl, failure) });
   }
 
   if (chrome !== undefined) {
-    watchPdfDownloads(
-      (tabId, url) => chrome.then((active) => active.intercepts(tabId, url)),
-      captureDownload,
-    );
+    markPdfResponses((tabId, url) => chrome.then((active) => active.intercepts(tabId, url)));
   }
+  watchPdfDownloads(captureDownload);
 
   // A stale build refuses before it sends anything, as a capture does.
   async function sendTabs(windowId: number): Promise<DoneReply> {

@@ -13,6 +13,7 @@
 // response headers are rewritten to fit that document: an HTML type, no length, no
 // attachment disposition, and no Content-Security-Policy to refuse its script.
 import type { Received } from "./capture";
+import { mark } from "./downloads";
 import type { Interception } from "./exemptions";
 import { capturePage } from "./exemptions";
 import { captureTarget, isPdfResponse, PDF_FRAME_TYPES, withoutFragment } from "./interception";
@@ -134,6 +135,9 @@ export function firefoxInterception(
           leftWebPage.delete(details.tabId);
         }
       }
+      // A link with the `download` attribute arrives here as a top-level request too, and no
+      // stream filter can read a download's body; the mark lets its download take the capture.
+      await mark(async () => true, pdfUrl, header(details.responseHeaders, "content-disposition"));
       const document = savingDocument(captureTarget(capturePage(), pdfUrl));
       held.set(heldKey(details.tabId, details.frameId, pdfUrl), {
         tabId: details.tabId,

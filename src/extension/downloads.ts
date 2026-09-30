@@ -1,10 +1,13 @@
-// Chrome: a top-level PDF navigation becomes a download (interception.ts), because Chrome
-// gives an extension no way to read a navigation's response body. The PDF is then fetched once,
-// so a signed or single-use URL holds. The navigation's response headers mark its URL as a
-// capture (the decision the rules made, `isPdfResponse`); the download Chrome starts for that
-// URL takes the mark, and once the file is complete the background hands its path to the
-// bucket. A download without a mark (a link the user saved, a PDF opened natively) is left
-// alone.
+// PDFs the browser saves as downloads. A PDF link with the `download` attribute (a
+// publisher's "Download PDF" button) is saved as a download in both browsers. In Chrome, a
+// top-level PDF navigation also becomes one (interception.ts), because Chrome gives an extension
+// no way to read a navigation's response body. The PDF is fetched once, so a signed or
+// single-use URL holds. The request's PDF response (`isPdfResponse`) marks its URL as a capture:
+// in Chrome a navigation's or a download request's (of type `other`), in Firefox each response
+// its interception takes, since a download there is a top-level request whose body no stream
+// filter can read (firefox-interception.ts). The download the browser starts for that URL takes
+// the mark, and once the file is complete the background hands its path to the bucket. A
+// download without a mark (a PDF opened natively, a file that is no PDF) is left alone.
 // Marks and claims live in session storage, so a service worker that stops between the response
 // and the download keeps them. One mutex serializes every change, as in link-origin.ts.
 // A claim stays until its capture has an outcome. Chrome stops a service worker whose `fetch()`
@@ -20,7 +23,8 @@ import { z } from "zod";
 import { bucketBuild } from "./bucket-config";
 import { isPdfResponse, withoutFragment } from "./interception";
 
-// A navigation to a PDF URL (without fragment) still waiting for its download, oldest first.
+// A PDF response to a GET of a URL (without fragment) still waiting for its download, oldest
+// first.
 const MarkSchema = z.strictObject({
   pdf_url: z.string(),
   content_disposition: z.string().nullable(),
@@ -30,7 +34,7 @@ const MarkSchema = z.strictObject({
 const MarksSchema = z.array(MarkSchema);
 
 // Download id to the PDF URL it saves, the Content-Disposition it came with, and how many
-// deliveries of its capture have begun (0 while Chrome still downloads it).
+// deliveries of its capture have begun (0 while the browser still downloads it).
 const DownloadsSchema = z.record(
   z.string(),
   z.strictObject({
@@ -45,12 +49,12 @@ const MAX_DELIVERIES = 2;
 type Marks = z.infer<typeof MarksSchema>;
 type Downloads = z.infer<typeof DownloadsSchema>;
 
-const navigations = storage.defineItem<Marks>("session:pdfNavigations", { fallback: [] });
+const marked = storage.defineItem<Marks>("session:pdfMarks", { fallback: [] });
 const downloads = storage.defineItem<Downloads>("session:pdfDownloads", { fallback: {} });
 
 const lock = new Mutex();
 
-// A completed download of a captured navigation, or one Chrome gave up on.
+// A completed download of a captured request, or one the browser gave up on.
 export type SavedPdf =
   | {
       kind: "complete";
@@ -63,13 +67,13 @@ export type SavedPdf =
   // Every delivery began in a service worker that stopped before the bucket answered.
   | { kind: "lost"; id: number; pdfUrl: URL; path: string };
 
-// Whether a navigation of TAB to URL is captured now: capture is on, and neither the bucket's
+// Whether a request of TAB for URL is captured now: capture is on, and neither the bucket's
 // own origin nor an exemption lets it through.
 export type Intercepts = (tabId: number, url: string) => Promise<boolean>;
 
 // The mark is queued when the response arrives, so the download's claim, queued later, sees it.
-// Marks older than the link-origin age are dropped: their navigation never became a download.
-function mark(
+// Marks older than the link-origin age are dropped: their response never became a download.
+export function mark(
   captured: () => Promise<boolean>,
   url: string,
   contentDisposition: string | null,
@@ -79,10 +83,10 @@ function mark(
       return;
     }
     const oldest = Date.now() - bucketBuild.linkOriginMaxAgeMs;
-    const fresh = MarksSchema.parse(await navigations.getValue()).filter(
+    const fresh = MarksSchema.parse(await marked.getValue()).filter(
       (each) => each.recorded_at >= oldest,
     );
-    await navigations.setValue([
+    await marked.setValue([
       ...fresh,
       { pdf_url: url, content_disposition: contentDisposition, recorded_at: Date.now() },
     ]);
@@ -92,13 +96,13 @@ function mark(
 // The download ID saves URL: it takes the oldest mark for URL, if any.
 function claim(id: number, url: string): Promise<void> {
   return lock.runExclusive(async () => {
-    const pending = MarksSchema.parse(await navigations.getValue());
+    const pending = MarksSchema.parse(await marked.getValue());
     const index = pending.findIndex((each) => each.pdf_url === url);
     const taken = pending[index];
     if (taken === undefined) {
       return;
     }
-    await navigations.setValue(pending.toSpliced(index, 1));
+    await marked.setValue(pending.toSpliced(index, 1));
     const claimed = DownloadsSchema.parse(await downloads.getValue());
     await downloads.setValue({
       ...claimed,
@@ -158,7 +162,7 @@ async function deliver(
   const [item] = await browser.downloads.search({ id });
   if (item === undefined) {
     await release(id);
-    throw new Error(`Chrome no longer lists download ${id}`);
+    throw new Error(`the browser no longer lists download ${id}`);
   }
   const pdfUrl = new URL(claimed.pdf_url);
   if (claimed.deliveries > MAX_DELIVERIES) {
@@ -172,31 +176,25 @@ async function deliver(
       contentDisposition: claimed.content_disposition,
     });
   } else if (item.state === "interrupted") {
-    // Chrome names the interrupt reason of every interrupted download.
+    // Both browsers name the interrupt reason of every interrupted download.
     if (item.error === undefined) {
-      throw new Error(`Chrome interrupted download ${id} without a reason`);
+      throw new Error(`the browser interrupted download ${id} without a reason`);
     }
     await saved({ kind: "interrupted", id, pdfUrl, reason: item.error });
   } else {
-    throw new Error(`download ${id} is delivered while Chrome says it is ${item.state}`);
+    throw new Error(`download ${id} is delivered while the browser says it is ${item.state}`);
   }
   await release(id);
 }
 
-export function watchPdfDownloads(
-  intercepts: Intercepts,
-  saved: (pdf: SavedPdf) => Promise<void>,
-): void {
-  void resume().then((left) =>
-    Promise.all(left.map(([id, claimed]) => deliver(id, claimed, saved))),
-  );
-
+// Chrome: marks every PDF response to a top-level navigation or to a download request.
+export function markPdfResponses(intercepts: Intercepts): void {
   browser.webRequest.onHeadersReceived.addListener(
     (details) => {
-      // Asked for with "responseHeaders", so Chrome always gives them.
+      // Asked for with "responseHeaders", so the browser always gives them.
       const headers = details.responseHeaders;
       if (headers === undefined) {
-        throw new Error(`Chrome gave no response headers for ${details.url}`);
+        throw new Error(`the browser gave no response headers for ${details.url}`);
       }
       if (details.method !== "GET" || !isPdfResponse(details.url, headers)) {
         return undefined;
@@ -212,12 +210,20 @@ export function watchPdfDownloads(
       );
       return undefined;
     },
-    { urls: ["http://*/*", "https://*/*"], types: ["main_frame"] },
+    { urls: ["http://*/*", "https://*/*"], types: ["main_frame", "other"] },
     ["responseHeaders"],
   );
+}
 
+export function watchPdfDownloads(saved: (pdf: SavedPdf) => Promise<void>): void {
+  void resume().then((left) =>
+    Promise.all(left.map(([id, claimed]) => deliver(id, claimed, saved))),
+  );
+
+  // Firefox's DownloadItem has no `finalUrl`; its `url` is the URL the file came from (MDN,
+  // downloads.DownloadItem).
   browser.downloads.onCreated.addListener((item) => {
-    void claim(item.id, withoutFragment(item.finalUrl));
+    void claim(item.id, withoutFragment(import.meta.env.FIREFOX ? item.url : item.finalUrl));
   });
 
   browser.downloads.onChanged.addListener((delta) => {

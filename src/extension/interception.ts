@@ -50,7 +50,7 @@ export function pdfUrlFromCaptureQuery(search: string): URL {
 // Chrome: rules in priority order, highest first. Chrome gives an extension no way to read a
 // navigation's response body. A top-level PDF navigation is therefore turned into a download
 // (its Content-Type rewritten to octet-stream, which Chrome saves instead of rendering), so the
-// PDF is fetched once and the bucket reads the saved file (chrome-downloads.ts). A PDF in a
+// PDF is fetched once and the bucket reads the saved file (downloads.ts). A PDF in a
 // frame is redirected to the capture page, which fetches it again and keeps one line in the
 // frame, or hands a small frame back to the browser's viewer.
 export function pdfCaptureRules(capturePage: string, bucketOrigin: string): Rule[] {

@@ -8,7 +8,7 @@ import { storage } from "wxt/utils/storage";
 import { z } from "zod";
 import { bucketBuild } from "./bucket-config";
 import { type Received, refetchPdf } from "./capture";
-import type { Intercepts } from "./chrome-downloads";
+import type { Intercepts } from "./downloads";
 import { captureTarget, PDF_FRAME_TYPES, pdfCaptureRules, withoutFragment } from "./interception";
 import { failed } from "./messages";
 
@@ -88,7 +88,7 @@ function takeCaptureRedirect(tabId: number, frameId: number, pdfUrl: string): Pr
 }
 
 // Chrome: the capture rules are dynamic rules while capture is on and absent while it is off.
-// A top-level PDF becomes a download the background hands to the bucket (chrome-downloads.ts);
+// A top-level PDF becomes a download the background hands to the bucket (downloads.ts);
 // a PDF in a frame reaches the capture page, which fetches it again.
 export async function chromeInterception(
   bucketOrigin: string,
