@@ -30,6 +30,7 @@ test("the Firefox build declares the blocking webRequest interception route", as
   expect(output.manifest.permissions).toEqual([
     "webRequest",
     "webRequestBlocking",
+    "downloads",
     "storage",
     "alarms",
     "<all_urls>",
