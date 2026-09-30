@@ -504,7 +504,12 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const storedBytes = sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")));
 
     expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
-    expect(bucket.files()).toEqual(["2401.00001.pdf", "lecture-notes.pdf", "survey.pdf"]);
+    expect(bucket.files()).toEqual([
+      "2401.00001.pdf",
+      "2402.00002.pdf",
+      "lecture-notes.pdf",
+      "survey.pdf",
+    ]);
     expect(sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")))).toBe(storedBytes);
   });
 
