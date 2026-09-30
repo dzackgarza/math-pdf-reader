@@ -579,6 +579,13 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(stored.title_hint).toBe("Chapter two, page 2");
   });
 
+  test("a PDF cited in a ChatGPT answer is captured with its file name, not the citation's site label or the chat's title", async () => {
+    expect(await captureInPlace("/answer.html")).toBe(`${bucket.origin}/read/cited`);
+    const stored = await provenance("cited");
+    expect(stored.pdf_url).toBe(`${site.origin}/notes/cited.pdf`);
+    expect(stored.title_hint).toBe("cited.pdf");
+  });
+
   test("a PDF URL whose file name holds a Latin-1 escape is captured under that name", async () => {
     await captureInPlace("/latin1.html");
     expect(bucket.files()).toContain("caf%E9.pdf");

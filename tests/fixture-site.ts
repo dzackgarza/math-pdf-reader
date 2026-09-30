@@ -40,6 +40,9 @@ const inline = (bytes: Uint8Array<ArrayBuffer>): Pdf =>
 // compiled form must be under 2 KB).
 export const LONG_FRAME_PDF = `/frames/signed.pdf?signature=${"a".repeat(4000)}`;
 
+// A source cited in a ChatGPT answer: the citation's link names ChatGPT as its referral source.
+const CITED_PDF = "/notes/cited.pdf?utm_source=chatgpt.com";
+
 const pdfs: Record<string, Pdf> = {
   // arXiv serves `/pdf/<id>` without a `.pdf` suffix.
   "/pdf/2401.00001": inline(servedAt("/pdf/2401.00001", problemSet)),
@@ -71,6 +74,7 @@ const pdfs: Record<string, Pdf> = {
   "/once/ticket.pdf": { ...inline(servedAt("/once/ticket.pdf", problemSet)), singleUse: true },
   "/notes/typed.pdf": inline(servedAt("/notes/typed.pdf", lectureNotes)),
   "/notes/held.pdf": inline(servedAt("/notes/held.pdf", problemSet)),
+  [CITED_PDF]: inline(servedAt(CITED_PDF, lectureNotes)),
   // No page links or frames it: only a page that frames the capture page itself names it.
   "/private/statement.pdf": inline(servedAt("/private/statement.pdf", problemSet)),
   // Amazon S3's default type for an object uploaded without one.
@@ -161,6 +165,11 @@ const pages: Record<string, { title: string; body: string }> = {
   "/ticket.html": {
     title: "Ticket",
     body: '<a id="pdf" href="/once/ticket.pdf">Single-use ticket</a>',
+  },
+  // ChatGPT's citation shows the cited site's name and a count of further sources.
+  "/answer.html": {
+    title: "ChatGPT - Moduli problems",
+    body: `<p>Moduli problems are treated in <a id="pdf" href="${CITED_PDF}"><span>Fixture Mathematics Division</span><span>+1</span></a>.</p>`,
   },
   "/held.html": {
     title: "Held",
