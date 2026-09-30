@@ -25,6 +25,8 @@ export const RuntimeMessageSchema = z.discriminatedUnion("type", [
   // The capture succeeded in a top-level capture page, whose tab holds an entry before it
   // (`can_go_back`) or not. The background returns the tab to the web page it left, or closes it.
   z.strictObject({ type: z.literal("leave-tab"), can_go_back: z.boolean() }),
+  // The status page's Send tabs: the tabs of the window it shows in go to the bucket.
+  z.strictObject({ type: z.literal("send-tabs"), window_id: z.number() }),
 ]);
 
 export type RuntimeMessage = z.infer<typeof RuntimeMessageSchema>;
@@ -51,6 +53,9 @@ export const CaptureOutcomeSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type CaptureOutcome = z.infer<typeof CaptureOutcomeSchema>;
+
+// What became of a tab sent to the bucket's Import URL: stored under KEY, or why not.
+export type ImportOutcome = { kind: "stored"; key: string } | Failed;
 
 // The reply to every message but `capture`.
 export const DoneReplySchema = z.discriminatedUnion("kind", [

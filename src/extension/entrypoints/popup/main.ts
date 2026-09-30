@@ -1,5 +1,6 @@
 // Status page, shown as the toolbar popup and as the options page: whether the bucket answers
-// and can store PDFs, this browser's capture switch, and the last capture from this browser.
+// and can store PDFs, this browser's capture switch, the last capture from this browser, and
+// Send tabs with the result of its last run.
 // Opening it re-reads `/status` and brings the toolbar badge up to date.
 import { browser } from "wxt/browser";
 import { bucketBuild, newerThanLoaded } from "../../bucket-config";
@@ -10,6 +11,8 @@ import {
   lastCapture,
   refreshToolbar,
 } from "../../bucket-status";
+import { DoneReplySchema, failed, type RuntimeMessage } from "../../messages";
+import { lastSentTabs, type SentTabs } from "../../send-tabs";
 
 const browserName = import.meta.env.FIREFOX ? "Firefox" : "Chrome";
 
@@ -117,6 +120,69 @@ function renderLastCapture(last: LastCapture | null): void {
   container.replaceChildren(line, when);
 }
 
+function renderSentTabs(sent: SentTabs | null): void {
+  const container = element("sent-tabs", HTMLDivElement);
+  if (sent === null) {
+    container.replaceChildren();
+    return;
+  }
+  const failures = sent.tabs.flatMap(({ url, title, outcome }) =>
+    outcome.kind === "failed" ? [{ url, title, detail: outcome.error.detail }] : [],
+  );
+  const summary = document.createElement("p");
+  summary.id = "sent-summary";
+  summary.textContent = `Stored ${sent.tabs.length - failures.length} of ${sent.tabs.length} tabs.`;
+  const when = document.createElement("p");
+  when.className = "hint";
+  when.textContent = new Date(sent.at).toLocaleString();
+  const list = document.createElement("ul");
+  list.id = "not-sent";
+  list.replaceChildren(
+    ...failures.map(({ url, title, detail }) => {
+      const item = document.createElement("li");
+      item.className = "failed";
+      item.dataset.url = url;
+      item.textContent = `${title}: ${detail}`;
+      return item;
+    }),
+  );
+  container.replaceChildren(summary, when, list);
+}
+
+function renderSendFailure(detail: string): void {
+  const line = document.createElement("p");
+  line.className = "failed";
+  line.textContent = `Not sent: ${detail}`;
+  element("sent-tabs", HTMLDivElement).replaceChildren(line);
+}
+
+// The background sends the tabs, so the work goes on when this popup closes; the list is
+// rendered from the stored result.
+async function sendTabs(): Promise<void> {
+  const button = element("send-tabs", HTMLButtonElement);
+  const section = element("tabs", HTMLElement);
+  button.disabled = true;
+  section.dataset.state = "sending";
+  const current = await browser.windows.getCurrent();
+  if (current.id === undefined) {
+    throw new Error("the status page's window has no id");
+  }
+  const message: RuntimeMessage = { type: "send-tabs", window_id: current.id };
+  const reply = await browser.runtime
+    .sendMessage(message)
+    .then((raw) => DoneReplySchema.parse(raw))
+    .catch((error: unknown) =>
+      failed("extension", `PDF Bucket's extension gave no usable answer: ${String(error)}`),
+    );
+  if (reply.kind === "failed") {
+    renderSendFailure(reply.error.detail);
+  } else {
+    renderSentTabs(await lastSentTabs.getValue());
+  }
+  button.disabled = false;
+  section.dataset.state = reply.kind;
+}
+
 // A status page from a build written over the loaded extension reloads the extension, which
 // closes the page; the next one shows the new build.
 if (newerThanLoaded()) {
@@ -133,8 +199,13 @@ element("capture-enabled", HTMLInputElement).addEventListener("change", (event) 
   void captureEnabled.setValue(box.checked);
 });
 
-void Promise.all([captureEnabled.getValue(), lastCapture.getValue()]).then(([enabled, last]) => {
-  renderSwitch(enabled);
-  renderLastCapture(last);
-});
+element("send-tabs", HTMLButtonElement).addEventListener("click", () => void sendTabs());
+
+void Promise.all([captureEnabled.getValue(), lastCapture.getValue(), lastSentTabs.getValue()]).then(
+  ([enabled, last, sent]) => {
+    renderSwitch(enabled);
+    renderLastCapture(last);
+    renderSentTabs(sent);
+  },
+);
 void refreshToolbar(bucketBuild.bucketOrigin).then(renderConnection);

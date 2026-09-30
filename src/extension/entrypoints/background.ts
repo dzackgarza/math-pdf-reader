@@ -2,9 +2,11 @@
 // on, records link origins and carries them along redirects, captures PDFs for the capture
 // page, sends a tab it captured a PDF in back to the page it left or closes it, hands (tab, URL) pairs back to the
 // browser's own viewer when the capture page asks, hands the PDFs Chrome saved as downloads to
-// the bucket, and keeps the toolbar badge in step with the bucket and the switch. Every message
+// the bucket, sends a window's tabs to the bucket's Import URL, and keeps the toolbar badge in
+// step with the bucket and the switch. Every message
 // gets exactly one reply; an error in the background is a `failed` reply at stage `extension`.
-// Only the extension's own pages may ask for a capture, an exemption or a tab to be left;
+// Only the extension's own pages may ask for a capture, an exemption, a tab to be left or tabs
+// to be sent;
 // content scripts, which run in web pages, only report followed links.
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
@@ -27,6 +29,7 @@ import {
 } from "../exemptions";
 import { type FirefoxInterception, firefoxInterception } from "../firefox-interception";
 import { failureTarget } from "../interception";
+import { sendWindowTabs } from "../send-tabs";
 import { followRedirect, rememberLinkOrigin, takeLinkOrigin } from "../link-origin";
 import {
   type CaptureOutcome,
@@ -130,8 +133,18 @@ export default defineBackground(() => {
     );
   }
 
+  // A stale build refuses before it sends anything, as a capture does.
+  async function sendTabs(windowId: number): Promise<DoneReply> {
+    const state = await checkBucket(bucketOrigin);
+    if (state.kind === "stale") {
+      return failed("extension", staleDetail(state));
+    }
+    await sendWindowTabs(windowId, bucketOrigin);
+    return DONE;
+  }
+
   async function handle(
-    message: RuntimeMessage,
+    message: Exclude<RuntimeMessage, { type: "send-tabs" }>,
     tabId: number,
     frameId: number,
   ): Promise<CaptureOutcome | DoneReply> {
@@ -162,12 +175,6 @@ export default defineBackground(() => {
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     const reportFailure = (error: unknown) =>
       sendResponse(failed("extension", `PDF Bucket's extension failed: ${String(error)}`));
-    const tabId = sender.tab?.id;
-    const { frameId } = sender;
-    if (tabId === undefined || frameId === undefined) {
-      reportFailure("a runtime message came from outside a tab");
-      return false;
-    }
     const message = RuntimeMessageSchema.safeParse(raw);
     if (!message.success) {
       reportFailure(message.error);
@@ -176,6 +183,17 @@ export default defineBackground(() => {
     const fromExtensionPage = sender.url?.startsWith(browser.runtime.getURL("/")) === true;
     if (message.data.type !== "remember-link" && !fromExtensionPage) {
       reportFailure(`a ${message.data.type} message came from ${sender.url ?? "an unknown page"}`);
+      return false;
+    }
+    // The toolbar popup, which sends tabs, is in no tab.
+    if (message.data.type === "send-tabs") {
+      sendTabs(message.data.window_id).then(sendResponse, reportFailure);
+      return true;
+    }
+    const tabId = sender.tab?.id;
+    const { frameId } = sender;
+    if (tabId === undefined || frameId === undefined) {
+      reportFailure("a runtime message came from outside a tab");
       return false;
     }
     handle(message.data, tabId, frameId).then(sendResponse, reportFailure);

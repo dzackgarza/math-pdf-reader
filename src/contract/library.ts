@@ -413,8 +413,12 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
-// Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF.
-export const ImportUrlRequestSchema = z.strictObject({ url: HttpUrlSchema });
+// Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF. With
+// `open_reader`, the stored item's reader opens in the desktop window, as after a capture.
+export const ImportUrlRequestSchema = z.strictObject({
+  url: HttpUrlSchema,
+  open_reader: z.boolean(),
+});
 // A new PDF runs "Retrieve metadata" in the background, as a captured one does.
 export const ImportUrlResponseSchema = z.strictObject({
   key: NonEmptySchema,
@@ -592,6 +596,7 @@ export type SourceCheck = z.infer<typeof SourceCheckSchema>;
 export type Mirror = z.infer<typeof MirrorSchema>;
 export type MissingItem = z.infer<typeof MissingItemSchema>;
 export type RebuildOutcome = z.infer<typeof RebuildOutcomeSchema>;
+export type ImportUrlRequest = z.infer<typeof ImportUrlRequestSchema>;
 export type ImportUrlResponse = z.infer<typeof ImportUrlResponseSchema>;
 export type FolderImportResponse = z.infer<typeof FolderImportResponseSchema>;
 export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;

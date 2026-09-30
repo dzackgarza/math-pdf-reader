@@ -231,7 +231,14 @@ async fn import_url(
         )));
     }
     let upload = find_pdf_at(&request.url, &state.config.app.rebuild, state.store.root()).await?;
-    let captured = store(&state, &origin(&headers)?, &upload).await?;
+    let origin = origin(&headers)?;
+    let captured = store(&state, &origin, &upload).await?;
+    if request.open_reader {
+        state.events.publish_open_reader(OpenReader {
+            reader_url: format!("{origin}{}", reader_url_path(&captured.item.key)),
+            title: captured.item.title.text.clone(),
+        });
+    }
     Ok(Json(ImportUrlResponse {
         key: captured.item.key,
         existing: captured.existing,

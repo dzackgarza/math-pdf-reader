@@ -367,7 +367,7 @@ export function importUrl(context: ActionContext, onImported: (key: string) => v
     initialName: "",
     onSubmit: (url) =>
       context.api
-        .call(ImportUrlResponseSchema, "POST", "/api/import-url", { url })
+        .call(ImportUrlResponseSchema, "POST", "/api/import-url", { url, open_reader: false })
         .then(({ key }) => onImported(key)),
   });
 }

@@ -24,6 +24,16 @@
         <h2>Last capture</h2>
         <div id="last-capture"></div>
       </section>
+      <section id="tabs" data-state="idle">
+        <h2>Tabs</h2>
+        <button type="button" id="send-tabs">Send this window's tabs to PDF Bucket</button>
+        <p class="hint">
+          A tab that shows a PDF, or a page that names its PDF (arXiv, most journals), is stored,
+          opens in PDF Bucket and closes. PDF Bucket downloads each page itself, without this
+          browser's logins.
+        </p>
+        <div id="sent-tabs"></div>
+      </section>
       <p class="actions"><a id="open-library" target="_blank" rel="noopener">Open the library</a></p>
     </main>
     <script type="module" src="./main.ts"></script>

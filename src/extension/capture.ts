@@ -5,9 +5,19 @@
 import { parse as parseContentDisposition } from "content-disposition";
 import decodeUriComponent from "decode-uri-component";
 import { type CaptureDownloadRequest, CaptureResponseSchema } from "../contract/capture";
-import { ApiErrorSchema } from "../contract/library";
+import {
+  ApiErrorSchema,
+  type ImportUrlRequest,
+  ImportUrlResponseSchema,
+} from "../contract/library";
 import { checkedBody } from "./json";
-import { type CaptureOutcome, type Failed, failed, type LinkOrigin } from "./messages";
+import {
+  type CaptureOutcome,
+  type Failed,
+  failed,
+  type ImportOutcome,
+  type LinkOrigin,
+} from "./messages";
 
 // The PDF's bytes and the Content-Disposition header that came with them.
 export type ReceivedPdf = { bytes: Blob; contentDisposition: string | null };
@@ -118,6 +128,36 @@ export function postToBucket(
     fetch(`${bucketOrigin}/capture-bytes`, { method: "POST", body: form }),
     bucketOrigin,
   );
+}
+
+// The bucket's Import URL on a tab's URL: the bucket fetches the page itself, stores the PDF it
+// is or names, and opens its reader.
+export async function importToBucket(url: string, bucketOrigin: string): Promise<ImportOutcome> {
+  const request: ImportUrlRequest = { url, open_reader: true };
+  const posted = await settle(
+    fetch(`${bucketOrigin}/api/import-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }),
+  );
+  if (!posted.ok) {
+    return failed(
+      "post-bucket",
+      `PDF Bucket is not reachable at ${bucketOrigin} (${posted.detail})`,
+    );
+  }
+  if (!posted.value.ok) {
+    return refusal(posted.value);
+  }
+  const answer = await checkedBody(posted.value, ImportUrlResponseSchema);
+  if (!answer.ok) {
+    return failed(
+      "post-bucket",
+      `${bucketOrigin} answered, but not with an Import URL response: ${answer.detail}`,
+    );
+  }
+  return { kind: "stored", key: answer.value.key };
 }
 
 // A PDF Chrome saved as a download at PATH: the bucket reads the file.

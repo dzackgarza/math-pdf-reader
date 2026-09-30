@@ -17,13 +17,15 @@ function servedAt(route: string, fixture: Uint8Array<ArrayBuffer>): Uint8Array<A
 }
 
 // A PDF route: the bytes a browser receives, the headers they come with, whether they are sent
-// gzip-encoded, and whether the route answers only its first request (a signed or single-use
-// URL, which refuses every later request with 403).
+// gzip-encoded, whether the route answers only its first request (a signed or single-use
+// URL, which refuses every later request with 403), and whether it answers without the
+// session (an open-access PDF, as arXiv serves them).
 type Pdf = {
   bytes: Uint8Array<ArrayBuffer>;
   headers: Record<string, string>;
   gzip: boolean;
   singleUse: boolean;
+  open: boolean;
 };
 
 const servedAs = (headers: Record<string, string>, bytes: Uint8Array<ArrayBuffer>): Pdf => ({
@@ -31,6 +33,7 @@ const servedAs = (headers: Record<string, string>, bytes: Uint8Array<ArrayBuffer
   headers,
   gzip: false,
   singleUse: false,
+  open: false,
 });
 
 const inline = (bytes: Uint8Array<ArrayBuffer>): Pdf =>
@@ -53,6 +56,7 @@ const pdfs: Record<string, Pdf> = {
     },
     gzip: false,
     singleUse: false,
+    open: false,
   },
   "/embedded/figure.pdf": inline(servedAt("/embedded/figure.pdf", lectureNotes)),
   "/frames/preview.pdf": inline(servedAt("/frames/preview.pdf", problemSet)),
@@ -69,6 +73,7 @@ const pdfs: Record<string, Pdf> = {
     gzip: true,
   },
   "/once/ticket.pdf": { ...inline(servedAt("/once/ticket.pdf", problemSet)), singleUse: true },
+  "/open/pdf/2402.00002": { ...inline(servedAt("/open/pdf/2402.00002", lectureNotes)), open: true },
   "/notes/typed.pdf": inline(servedAt("/notes/typed.pdf", lectureNotes)),
   "/notes/held.pdf": inline(servedAt("/notes/held.pdf", problemSet)),
   // No page links or frames it: only a page that frames the capture page itself names it.
@@ -99,7 +104,13 @@ const redirects: Record<string, string> = {
   "/doi/10.5555/redirected": "/articles/redirected.pdf",
 };
 
-const pages: Record<string, { title: string; body: string }> = {
+const pages: Record<string, { title: string; head?: string; body: string }> = {
+  // An abstract page that names its open-access PDF with Highwire tags, as arXiv does.
+  "/open/abs/2402.00002": {
+    title: "[2402.00002] Even unimodular lattices",
+    head: '<meta name="citation_title" content="Even unimodular lattices"><meta name="citation_pdf_url" content="/open/pdf/2402.00002">',
+    body: "<h1>Even unimodular lattices</h1>",
+  },
   "/abs/2401.00001": {
     title: "[2401.00001] Sphere packing in dimension 8",
     body: '<a id="pdf" href="/pdf/2401.00001">Sphere packing in dimension 8 (PDF)</a>',
@@ -225,10 +236,10 @@ export async function startFixtureSite() {
           "Content-Type": "text/html; charset=utf-8",
           "Set-Cookie": `fixture_session=${session}; Path=/`,
         },
-        body: `<!doctype html><html><head><title>${page.title}</title></head><body>${page.body}</body></html>`,
+        body: `<!doctype html><html><head><title>${page.title}</title>${page.head ?? ""}</head><body>${page.body}</body></html>`,
       };
     }
-    if (cookie !== `fixture_session=${session}`) {
+    if (cookie !== `fixture_session=${session}` && pdfs[path]?.open !== true) {
       return text(403, "session cookie required");
     }
     if (method === "POST" && path === "/generate") {

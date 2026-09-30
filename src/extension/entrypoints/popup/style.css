@@ -131,6 +131,39 @@ code {
   color: var(--danger);
 }
 
+#send-tabs {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--card);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#send-tabs:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+#sent-tabs p,
+#sent-tabs ul {
+  margin: 0.6rem 0 0;
+}
+
+#sent-tabs ul {
+  padding-left: 1.1rem;
+}
+
+#sent-tabs li {
+  overflow-wrap: anywhere;
+}
+
+#sent-tabs .failed {
+  color: var(--danger);
+}
+
 .actions {
   margin: 0.25rem 0 0;
 }

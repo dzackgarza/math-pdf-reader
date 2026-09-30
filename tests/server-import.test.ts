@@ -123,14 +123,14 @@ async function until(holds: () => boolean, what: string) {
 test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_url", async () => {
   const { post, items } = await bucket();
 
-  const direct = await post("/api/import-url", { url: at("/papers/lattices.pdf") });
+  const direct = await post("/api/import-url", { open_reader: false, url: at("/papers/lattices.pdf") });
   expect(direct.status).toBe(200);
   expect(ImportUrlResponseSchema.parse(await direct.json())).toEqual({
     key: "lattices",
     existing: false,
   });
   const fromPage = ImportUrlResponseSchema.parse(
-    await (await post("/api/import-url", { url: at("/abs/2401.00001") })).json(),
+    await (await post("/api/import-url", { open_reader: false, url: at("/abs/2401.00001") })).json(),
   );
   expect(fromPage).toEqual({
     key: "2401.00001",
@@ -146,21 +146,21 @@ test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_ur
     title_hint: "Problem Set on Quadratic Forms",
   });
 
-  const again = await post("/api/import-url", { url: at("/papers/lattices.pdf") });
+  const again = await post("/api/import-url", { open_reader: false, url: at("/papers/lattices.pdf") });
   expect(ImportUrlResponseSchema.parse(await again.json())).toEqual({
     key: "lattices",
     existing: true,
   });
-  const noPdf = await post("/api/import-url", { url: at("/blog.html") });
+  const noPdf = await post("/api/import-url", { open_reader: false, url: at("/blog.html") });
   expect(noPdf.status).toBe(422);
   expect(ApiErrorSchema.parse(await noPdf.json()).error.kind).toBe("no_pdf_at_url");
-  const gone = await post("/api/import-url", { url: at("/gone.pdf") });
+  const gone = await post("/api/import-url", { open_reader: false, url: at("/gone.pdf") });
   expect(gone.status).toBe(422);
 });
 
 test("Import URL of a PDF another bucket stored records this capture's provenance, not the other bucket's", async () => {
   const other = await bucket();
-  await other.post("/api/import-url", { url: at("/abs/2401.00001") });
+  await other.post("/api/import-url", { open_reader: false, url: at("/abs/2401.00001") });
   const edited = await other.request("/api/items/2401.00001/metadata", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -176,7 +176,7 @@ test("Import URL of a PDF another bucket stored records this capture's provenanc
 
   const { post, items } = await bucket();
   const imported = ImportUrlResponseSchema.parse(
-    await (await post("/api/import-url", { url: at("/shared/passed-on.pdf") })).json(),
+    await (await post("/api/import-url", { open_reader: false, url: at("/shared/passed-on.pdf") })).json(),
   );
 
   const item = (await items()).find((stored) => stored.id === imported.key);
@@ -198,7 +198,7 @@ test("Import URL writes a download to a staged file in the bucket root as it arr
   const { root, post } = await bucket();
   const url = at("/slow/streamed.pdf");
 
-  const finished = post("/api/import-url", { url });
+  const finished = post("/api/import-url", { open_reader: false, url });
   await until(
     () => staging(root).some((name) => statSync(join(root, name)).size > 0),
     "the first half of the download is on disk in the bucket root",
@@ -212,7 +212,7 @@ test("Import URL writes a download to a staged file in the bucket root as it arr
   });
   expect(staging(root)).toEqual([]);
 
-  const dropped = post("/api/import-url", { url });
+  const dropped = post("/api/import-url", { open_reader: false, url });
   await until(() => staging(root).length > 0, "the second download is staged");
   stalled.shift()?.cut();
   const failed = await dropped;

@@ -410,6 +410,40 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(await badge()).toBe("ON");
   });
 
+  test("Send tabs stores the PDF a tab's page names and closes that tab; a tab whose page names none stays and is listed", async () => {
+    const captures = await subscribeToCaptures(bucket.origin);
+    const abstract = await browser.newPage();
+    await abstract.goto(`${site.origin}/open/abs/2402.00002`);
+    const noPdf = await browser.newPage();
+    await noPdf.goto(`${site.origin}/teaching.html`);
+    await openStatus("ready");
+
+    await page.$eval("#send-tabs", (button) => {
+      if (button instanceof HTMLButtonElement) {
+        button.click();
+      }
+    });
+    await page.waitForSelector('#tabs[data-state="done"]');
+
+    expect(await captures.next()).toBe(`${bucket.origin}/read/2402.00002`);
+    const stored = await provenance("2402.00002");
+    expect(stored.pdf_url).toBe(`${site.origin}/open/pdf/2402.00002`);
+    expect(stored.title_hint).toBe("Even unimodular lattices");
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/open/pdf/2402.00002")));
+    while (!(await tabGone(abstract))) {
+      await Bun.sleep(50);
+    }
+    expect(await tabGone(noPdf)).toBe(false);
+    expect(await text(`#not-sent li[data-url="${site.origin}/teaching.html"]`)).toContain(
+      "names no PDF",
+    );
+    // WebDriver BiDi cannot activate a moz-extension tab; the extension API can, in both browsers.
+    const tabs = engine === "chrome" ? "chrome.tabs" : "browser.tabs";
+    await page.evaluate(`${tabs}.getCurrent().then((tab) => ${tabs}.update(tab.id, { active: true }))`);
+    await shotCapturePage("status-sent-tabs");
+    await noPdf.close();
+  });
+
   test("with capture turned off a PDF link opens in the browser; turned back on, it is captured", async () => {
     await openStatus("ready");
     await flipCaptureSwitch();
