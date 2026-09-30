@@ -80,8 +80,9 @@ async function buildExtension(engine: Engine, bucketPort: number): Promise<strin
 const FIREFOX_EXTENSION_UUID = "5d1c2a8e-3f47-4b6e-9a0d-7c41e2b9f613";
 
 // Only launches: the suite holds the browser before anything else can fail, so its teardown
-// closes it and Puppeteer removes the temporary profile.
-function launch(engine: Engine, extension: string): Promise<Browser> {
+// closes it and Puppeteer removes the temporary profile. Firefox saves downloads to DOWNLOADS
+// without asking.
+function launch(engine: Engine, extension: string, downloads: string): Promise<Browser> {
   if (engine === "chrome") {
     return puppeteer.launch({
       browser: "chrome",
@@ -102,17 +103,22 @@ function launch(engine: Engine, extension: string): Promise<Browser> {
       "extensions.webextensions.uuids": JSON.stringify({
         "pdf-bucket@dzackgarza.com": FIREFOX_EXTENSION_UUID,
       }),
+      "browser.download.dir": downloads,
+      "browser.download.folderList": 2,
+      "browser.download.useDownloadDir": true,
+      "browser.download.always_ask_before_handling_new_types": false,
     },
   });
 }
 
-// Resolves once the extension's capture rules are in force, with its origin and the folder
-// Chrome saves captured navigations to (null in Firefox).
+// Resolves once the extension's capture rules are in force, with its origin. Chrome saves
+// downloads, among them the captured navigations, to DOWNLOADS.
 async function extensionReady(
   engine: Engine,
   browser: Browser,
   extension: string,
-): Promise<{ extensionOrigin: string; downloads: string | null }> {
+  downloads: string,
+): Promise<string> {
   if (engine === "chrome") {
     // The service worker registers its rules asynchronously after install; navigating
     // before that would reach the browser's own viewer.
@@ -136,18 +142,16 @@ async function extensionReady(
     }
     // `URL.origin` is "null" for the non-special chrome-extension: scheme.
     const workerUrl = new URL(target.url());
-    // Chrome saves each captured top-level PDF as a download, into a folder of this run's.
-    const downloads = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-downloads-"));
     const session = await browser.target().createCDPSession();
     await session.send("Browser.setDownloadBehavior", {
       behavior: "allow",
       downloadPath: downloads,
       eventsEnabled: true,
     });
-    return { extensionOrigin: `${workerUrl.protocol}//${workerUrl.host}`, downloads };
+    return `${workerUrl.protocol}//${workerUrl.host}`;
   }
   await browser.installExtension(extension);
-  return { extensionOrigin: `moz-extension://${FIREFOX_EXTENSION_UUID}`, downloads: null };
+  return `moz-extension://${FIREFOX_EXTENSION_UUID}`;
 }
 
 // The bucket announces every capture, new or existing, on the event stream the desktop
@@ -196,7 +200,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   let bucket: Awaited<ReturnType<typeof startBucket>>;
   let browser: Browser;
   let extensionOrigin: string;
-  let downloads: string | null;
+  // The folder the browser saves downloads to; a capture leaves nothing there.
+  let downloads: string;
   // The extension build this engine runs; the suite removes it.
   let extension: string | null = null;
   let page: Page;
@@ -367,8 +372,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     site = await startFixtureSite();
     bucket = await startBucket();
     extension = await buildExtension(engine, bucket.port);
-    browser = await launch(engine, extension);
-    ({ extensionOrigin, downloads } = await extensionReady(engine, browser, extension));
+    downloads = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-downloads-"));
+    browser = await launch(engine, extension, downloads);
+    extensionOrigin = await extensionReady(engine, browser, extension, downloads);
     page = await browser.newPage();
   }, 60_000);
 
@@ -377,9 +383,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     site.stop();
     await bucket.stop();
     await browser.close();
-    if (downloads !== null) {
-      rmSync(downloads, { recursive: true, force: true });
-    }
+    rmSync(downloads, { recursive: true, force: true });
     if (extension !== null) {
       rmSync(dirname(extension), { recursive: true, force: true });
     }
@@ -521,6 +525,20 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(stored.title_hint).toBe("Problem set 3");
   });
 
+  // A publisher's "Download PDF" button is a link with the `download` attribute, which starts a
+  // download, not a navigation.
+  test("a PDF link with the download attribute is captured, and no download is left", async () => {
+    const captures = await subscribeToCaptures(bucket.origin);
+    await followLink("/article.html");
+    expect(await captures.next()).toBe(`${bucket.origin}/read/offprint`);
+    const stored = await provenance("offprint");
+    expect(stored.pdf_url).toBe(`${site.origin}/content/pdf/10.5555/offprint.pdf`);
+    expect(stored.original_sha256).toBe(sha256(pdfBytes("/content/pdf/10.5555/offprint.pdf")));
+    while (readdirSync(downloads).length > 0) {
+      await Bun.sleep(50);
+    }
+  });
+
   test("a sub-frame large enough to read in is captured", async () => {
     await page.goto(`${site.origin}/frame-large.html`);
     // Chromium replaces the iframe's frame when it commits the capture page, so a handle to the
@@ -649,10 +667,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const stored = await provenance("ticket");
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/once/ticket.pdf")));
     expect(fetches().length).toBe(1);
-    if (downloads !== null) {
-      while (readdirSync(downloads).length > 0) {
-        await Bun.sleep(50);
-      }
+    while (readdirSync(downloads).length > 0) {
+      await Bun.sleep(50);
     }
   });
 
@@ -687,10 +703,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       while (!bucket.files().includes("held.pdf")) {
         await Bun.sleep(50);
       }
-      if (downloads !== null) {
-        while (readdirSync(downloads).length > 0) {
-          await Bun.sleep(50);
-        }
+      while (readdirSync(downloads).length > 0) {
+        await Bun.sleep(50);
       }
       const stored = await provenance("held");
       expect(stored.pdf_url).toBe(`${site.origin}/notes/held.pdf`);

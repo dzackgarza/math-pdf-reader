@@ -77,6 +77,9 @@ const pdfs: Record<string, Pdf> = {
   },
   "/once/ticket.pdf": { ...inline(servedAt("/once/ticket.pdf", problemSet)), singleUse: true },
   "/open/pdf/2402.00002": { ...inline(servedAt("/open/pdf/2402.00002", lectureNotes)), open: true },
+  "/content/pdf/10.5555/offprint.pdf": inline(
+    servedAt("/content/pdf/10.5555/offprint.pdf", problemSet),
+  ),
   "/notes/typed.pdf": inline(servedAt("/notes/typed.pdf", lectureNotes)),
   "/notes/held.pdf": inline(servedAt("/notes/held.pdf", problemSet)),
   [CITED_PDF]: inline(servedAt(CITED_PDF, lectureNotes)),
@@ -181,6 +184,11 @@ const pages: Record<string, { title: string; head?: string; body: string }> = {
   "/answer.html": {
     title: "ChatGPT - Moduli problems",
     body: `<p>Moduli problems are treated in <a id="pdf" href="${CITED_PDF}"><span>Fixture Mathematics Division</span><span>+1</span></a>.</p>`,
+  },
+  // A publisher's article page: its "Download PDF" button carries the `download` attribute.
+  "/article.html": {
+    title: "Chapter",
+    body: '<a id="pdf" href="/content/pdf/10.5555/offprint.pdf" download>Download PDF</a>',
   },
   "/held.html": {
     title: "Held",
