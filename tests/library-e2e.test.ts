@@ -986,24 +986,21 @@ describe("library window", () => {
         return pixel === undefined ? null : [...pixel.slice(0, 3)];
       });
     };
-    const toggleNightMode = async () => {
-      const reloaded = page.waitForNavigation();
+    // The reloaded page is the one whose button shows the new state.
+    const toggleNightMode = async (pressed: boolean) => {
       await page.click("#night-mode");
-      await reloaded;
+      await page.waitForSelector(`#night-mode[aria-pressed="${pressed}"]`);
     };
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
     await page.goto(`${bucket.origin}/read/lattices`);
     expect(await cornerOfPage()).toEqual([255, 255, 255]);
 
-    await toggleNightMode();
-    expect(await page.$eval("#night-mode", (button) => button.getAttribute("aria-pressed"))).toBe(
-      "true",
-    );
+    await toggleNightMode(true);
     expect(nearNight(await cornerOfPage())).toBe(true);
     expect((await organization()).preferences.readerNightMode).toBe(true);
     await shot("reader-night-mode");
 
-    await toggleNightMode();
+    await toggleNightMode(false);
     expect(await cornerOfPage()).toEqual([255, 255, 255]);
     expect((await organization()).preferences.readerNightMode).toBe(false);
     await page.emulateMediaFeatures();
