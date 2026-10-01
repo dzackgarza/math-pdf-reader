@@ -72,14 +72,18 @@ def data_home(tmp_path: Path) -> Path:
         (runtime / name).parent.mkdir(parents=True, exist_ok=True)
         (runtime / name).symlink_to(source)
     (runtime / "extensions").mkdir()
+    # direnv keeps its `direnv allow` records in the data home; without them the `.envrc` is blocked.
+    user_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
+    (tmp_path / "data/direnv").symlink_to(user_data / "direnv")
     return tmp_path / "data"
 
 
 @pytest.fixture
 def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
     with ExitStack() as stack:
+        # The app starts as autostart starts it: outside any shell that has loaded the `.envrc`.
         env = {
-            **os.environ,
+            **{name: value for name, value in os.environ.items() if not name.startswith("DIRENV_")},
             "WAYLAND_DISPLAY": headless_display(stack),
             "GDK_BACKEND": "wayland",
             "GSETTINGS_BACKEND": "memory",
@@ -91,9 +95,7 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         options.binary_location = str(APP)
         options.set_capability("browserName", "wry")
         # The driver and the app write to the test's output, which pytest shows when the run fails.
-        service = webdriver.WebKitGTKService(
-            executable_path="/usr/bin/WebKitWebDriver", env=env, log_output=subprocess.STDOUT
-        )
+        service = webdriver.WebKitGTKService(executable_path="/usr/bin/WebKitWebDriver", env=env, log_output=subprocess.STDOUT)
         driver = webdriver.WebKitGTK(options=options, service=service)
         stack.callback(driver.quit)
         try:
