@@ -97,7 +97,8 @@ just build          # web bundle, both extension targets, desktop binary
 just provision      # build, install and start the app
 just export-index   # write the index export
 just rebuild-cache  # re-download missing PDFs from the export
-just test-push      # full QC gate
+just test-push      # push gate: the Python and Bun suites, then provision
+just test-desktop   # the desktop workflow through the release app (CI runs it with test-ci)
 ```
 
 Agents: read `AGENTS.md` first.

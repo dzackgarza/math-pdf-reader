@@ -111,20 +111,20 @@ test-commit:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-commit
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-commit
 
-# Run the full Python and Bun test suites and the desktop crate's Rust checks before pushing, then
-# provision the desktop app from the pushed state.
+# Run the full Python and Bun test suites before pushing, then provision the desktop app from the
+# pushed state.
 test-push:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-push
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-push
-    @just desktop-rust-checks
-    @just test-desktop
     @just provision
 
-# Run CI acceptance QC through the Python, Bun and Rust central implementations.
+# Run CI acceptance QC through the Python, Bun and Rust central implementations, and the desktop
+# workflow through the release app. CI runs it on every pull request and every push to main.
 test-ci:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-ci
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-ci
     @just desktop-rust-checks
+    @just test-desktop
 
 # rustfmt check, clippy with warnings denied, and cargo test on the server and desktop crates,
 # from the central Rust implementation.
@@ -133,14 +133,17 @@ desktop-rust-checks:
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _clippy
     @just -f ~/ai-review-ci/justfiles/rust.just -d . _cargo-test
 
-# Provision the CI runner: Tauri's Linux build inputs, user namespaces for Chromium's sandbox,
-# which Ubuntu 24.04's AppArmor blocks (actions/runner-images#10443), and the pinned PDF.js viewer
-# the reader pages load (trash-cli for the recipe's cleanup). The qc-ci job runs this recipe as
-# its setup_recipe.
+# Provision the CI runner: Tauri's Linux build inputs, user namespaces for Chromium's sandbox and
+# the desktop workflow's private network, which Ubuntu 24.04's AppArmor blocks
+# (actions/runner-images#10443), Weston and WebKitWebDriver for the desktop workflow, direnv with
+# the checkout's `.envrc` allowed (the app reads the plugins' environment through it), and the
+# pinned PDF.js viewer the reader pages load (trash-cli for the recipe's cleanup). The qc jobs run
+# this recipe as their setup_recipe.
 ci-setup:
     sudo apt-get update
-    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev trash-cli
+    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev trash-cli weston webkit2gtk-driver direnv
     sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+    direnv allow .
     just fetch-pdfjs
 
 # Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.

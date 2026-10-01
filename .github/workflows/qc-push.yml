@@ -1,0 +1,16 @@
+name: Push QC
+on:
+  push:
+    branches:
+      - main
+jobs:
+  qc-ci:
+    uses: dzackgarza/ai-review-ci/.github/workflows/_qc.yml@main
+    permissions:
+      contents: read
+      issues: read
+    with:
+      tier: test-ci
+      profile: bun-python
+      infra_ref: main
+      setup_recipe: ci-setup
