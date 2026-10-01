@@ -108,21 +108,18 @@ test-desktop: fetch-pdfjs build-web
 
 # Run commit-tier Python and Bun QC through the central implementation.
 test-commit:
-    @just -f ~/ai-review-ci/justfiles/python.just -d . test-commit
-    @just -f ~/ai-review-ci/justfiles/bun.just -d . test-commit
+    @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-commit
 
 # Run the full Python and Bun test suites before pushing, then provision the desktop app from the
 # pushed state.
 test-push:
-    @just -f ~/ai-review-ci/justfiles/python.just -d . test-push
-    @just -f ~/ai-review-ci/justfiles/bun.just -d . test-push
+    @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-push
     @just provision
 
-# Run CI acceptance QC through the Python, Bun and Rust central implementations, and the desktop
+# Run CI acceptance QC through the central bun-python and Rust implementations, and the desktop
 # workflow through the release app. CI runs it on every pull request and every push to main.
 test-ci:
-    @just -f ~/ai-review-ci/justfiles/python.just -d . test-ci
-    @just -f ~/ai-review-ci/justfiles/bun.just -d . test-ci
+    @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-ci
     @just desktop-rust-checks
     @just test-desktop
 
