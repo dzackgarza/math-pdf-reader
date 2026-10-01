@@ -24,6 +24,7 @@ from pathlib import Path
 import pikepdf
 import pytest
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -89,10 +90,18 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         options = webdriver.WebKitGTKOptions()
         options.binary_location = str(APP)
         options.set_capability("browserName", "wry")
-        service = webdriver.WebKitGTKService(executable_path="/usr/bin/WebKitWebDriver", env=env)
+        # The driver and the app write to the test's output, which pytest shows when the run fails.
+        service = webdriver.WebKitGTKService(
+            executable_path="/usr/bin/WebKitWebDriver", env=env, log_output=subprocess.STDOUT
+        )
         driver = webdriver.WebKitGTK(options=options, service=service)
         stack.callback(driver.quit)
-        WebDriverWait(driver, 60).until(lambda d: d.current_url.startswith(ORIGIN))
+        try:
+            WebDriverWait(driver, 60).until(lambda d: d.current_url.startswith(ORIGIN))
+        except TimeoutException:
+            # A start failure replaces the library with a page that names the cause.
+            body = driver.find_element(By.TAG_NAME, "body").text
+            pytest.fail(f"the window stayed at {driver.current_url}: {body}")
         yield driver
 
 
