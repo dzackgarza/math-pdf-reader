@@ -5,7 +5,11 @@
 //! lock. The pikepdf work (embedding provenance and metadata, reading a PDF) runs in the Python
 //! commands (python.rs) on files the store names. A body from outside (a capture, a download)
 //! is streamed to a staged file in the root while it is hashed, so no body is held in memory.
-use std::collections::{BTreeSet, HashMap};
+//!
+//! A reader saves the bytes it opened with its annotations added. When the store wrote only
+//! metadata into the PDF after the reader opened it, the save is taken and the metadata is
+//! written into it again, as a rebase replays a commit onto the branch it missed.
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
@@ -92,6 +96,52 @@ pub(crate) struct Inner {
     placing: Mutex<()>,
     keys: std::sync::Mutex<HashMap<Key, Arc<Mutex<()>>>>,
     hashes: std::sync::Mutex<HashMap<Key, (Signature, String)>>,
+    metadata_writes: std::sync::Mutex<HashMap<Key, MetadataWrites>>,
+}
+
+/// A stored file that differs from each of BASES only by the metadata the store wrote into it.
+struct MetadataWrites {
+    stored_sha256: String,
+    bases: HashSet<String>,
+}
+
+impl From<&StoredItem> for ResolvedMetadata {
+    fn from(item: &StoredItem) -> Self {
+        Self {
+            title: item.title.text.to_string(),
+            authors: item
+                .authors
+                .iter()
+                .map(|author| author.to_string())
+                .collect(),
+            year: item.year,
+            abstract_: item.abstract_.as_ref().map(|text| text.to_string()),
+        }
+    }
+}
+
+/// The Python command that prints the PDF at PATH with METADATA, its title from SOURCE.
+fn metadata_args(path: &Path, source: TitleSource, metadata: &ResolvedMetadata) -> Vec<String> {
+    let mut args = vec!["embed-metadata".to_string()];
+    args.extend(
+        metadata
+            .authors
+            .iter()
+            .map(|author| format!("--author={author}")),
+    );
+    if let Some(year) = metadata.year {
+        args.push(format!("--year={year}"));
+    }
+    if let Some(abstract_) = &metadata.abstract_ {
+        args.push(format!("--abstract={abstract_}"));
+    }
+    args.extend([
+        "--".to_string(),
+        path.to_string_lossy().into_owned(),
+        metadata.title.clone(),
+        source.to_string(),
+    ]);
+    args
 }
 
 #[derive(Clone)]
@@ -246,6 +296,7 @@ impl Store {
                 placing: Mutex::new(()),
                 keys: std::sync::Mutex::new(HashMap::new()),
                 hashes: std::sync::Mutex::new(HashMap::new()),
+                metadata_writes: std::sync::Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -467,9 +518,45 @@ impl Store {
         Ok(Some(OpenedPdf { file, sha256 }))
     }
 
+    /// Whether KEY's file, hashing to STORED_SHA256, differs from the bytes BASE_SHA256 names
+    /// only by metadata the store wrote into it.
+    fn only_metadata_since(&self, key: &Key, stored_sha256: &str, base_sha256: &str) -> bool {
+        self.inner
+            .metadata_writes
+            .lock()
+            .expect("the metadata writes are never poisoned")
+            .get(key)
+            .is_some_and(|writes| {
+                writes.stored_sha256 == stored_sha256 && writes.bases.contains(base_sha256)
+            })
+    }
+
+    /// Notes that KEY's file, now hashing to STORED_SHA256, is the file BASE_SHA256 named with
+    /// metadata written into it.
+    fn metadata_written(&self, key: &Key, base_sha256: String, stored_sha256: String) {
+        let mut writes = self
+            .inner
+            .metadata_writes
+            .lock()
+            .expect("the metadata writes are never poisoned");
+        let mut bases = match writes.remove(key) {
+            Some(earlier) if earlier.stored_sha256 == base_sha256 => earlier.bases,
+            _ => HashSet::new(),
+        };
+        bases.insert(base_sha256);
+        writes.insert(
+            key.clone(),
+            MetadataWrites {
+                stored_sha256,
+                bases,
+            },
+        );
+    }
+
     /// Replaces KEY's stored PDF with BYTES (the reader's save, annotations included) when the
-    /// stored file still hashes to BASE_SHA256, the bytes the save was made from, and the new
-    /// bytes carry the provenance embedded in it.
+    /// new bytes carry the provenance embedded in it and the stored file hashes to BASE_SHA256,
+    /// the bytes the save was made from. A stored file that differs from those bytes only by
+    /// metadata the store wrote since takes the save with that metadata written into it again.
     pub async fn replace(
         &self,
         key: &str,
@@ -483,14 +570,29 @@ impl Store {
         let _key = self.lock(&key).await;
         let path = layout::pdf_path(self.root(), &key);
         let stored_sha256 = sha256(&tokio::fs::read(&path).await?);
-        if stored_sha256 != base_sha256 {
+        let rebased = stored_sha256 != base_sha256;
+        if rebased && !self.only_metadata_since(&key, &stored_sha256, base_sha256) {
             return Ok(Replacement::Stale { stored_sha256 });
         }
         let stored = self.require_stored(&key).await?;
+        let saved_sha256 = sha256(&bytes);
         let root = self.root().to_path_buf();
-        let staged = blocking(move || staged(&root, &bytes)).await?;
+        let saved = blocking({
+            let root = root.clone();
+            move || staged(&root, &bytes)
+        })
+        .await?;
+        let (placed, placed_sha256) = if rebased {
+            let metadata = ResolvedMetadata::from(&stored);
+            let args = metadata_args(&saved, stored.title.source, &metadata);
+            let bytes = self.inner.python.run(&args).await?;
+            let sha256 = sha256(&bytes);
+            (blocking(move || staged(&root, &bytes)).await?, sha256)
+        } else {
+            (saved, saved_sha256.clone())
+        };
         let offered = self
-            .read_records(&[staged.to_path_buf()])
+            .read_records(&[placed.to_path_buf()])
             .await?
             .pop()
             .expect("one path read gives one outcome");
@@ -507,7 +609,10 @@ impl Store {
         if serde_json::to_value(&carried)? != serde_json::to_value(&stored.provenance)? {
             return Ok(Replacement::ProvenanceMismatch);
         }
-        blocking(move || commit(staged, &path, Placement::Over)).await?;
+        blocking(move || commit(placed, &path, Placement::Over)).await?;
+        if rebased {
+            self.metadata_written(&key, saved_sha256, placed_sha256);
+        }
         Ok(Replacement::Replaced)
     }
 
@@ -521,28 +626,16 @@ impl Store {
         let key = self.existing_key(key)?;
         let _key = self.lock(&key).await;
         let path = layout::pdf_path(self.root(), &key);
-        let mut args = vec!["embed-metadata".to_string()];
-        args.extend(
-            metadata
-                .authors
-                .iter()
-                .map(|author| format!("--author={author}")),
-        );
-        if let Some(year) = metadata.year {
-            args.push(format!("--year={year}"));
-        }
-        if let Some(abstract_) = &metadata.abstract_ {
-            args.push(format!("--abstract={abstract_}"));
-        }
-        args.extend([
-            "--".to_string(),
-            path.to_string_lossy().into_owned(),
-            metadata.title.clone(),
-            source.to_string(),
-        ]);
-        let bytes = self.inner.python.run(&args).await?;
+        let base_sha256 = sha256(&tokio::fs::read(&path).await?);
+        let bytes = self
+            .inner
+            .python
+            .run(&metadata_args(&path, source, metadata))
+            .await?;
+        let stored_sha256 = sha256(&bytes);
         let root = self.root().to_path_buf();
         blocking(move || commit(staged(&root, &bytes)?, &path, Placement::Over)).await?;
+        self.metadata_written(&key, base_sha256, stored_sha256);
         self.require_stored(&key).await
     }
 

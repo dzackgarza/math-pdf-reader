@@ -233,8 +233,10 @@ pub fn entity_tag(sha256: &str) -> HeaderValue {
 }
 
 /// The reader's save: the PDF with its annotations written in by PDF.js, made from the stored
-/// bytes its If-Match names. A stored file that changed since answers 412 with its current
-/// entity tag; the answer to a save carries the new file's.
+/// bytes its If-Match names. A stored file that another save changed since answers 412 with its
+/// current entity tag. The answer to a save carries the saved bytes' entity tag, which the
+/// reader's next save names: the stored file is those bytes, or those bytes with the metadata the
+/// store wrote since written in again.
 async fn replace_pdf(
     State(state): State<Shared>,
     Path(key): Path<String>,
@@ -248,9 +250,7 @@ async fn replace_pdf(
             let mut refused = AppError::api(
                 StatusCode::PRECONDITION_FAILED,
                 ApiErrorErrorKind::StalePdf,
-                format!(
-                    "{key} changed after this reader loaded it (another window or Retrieve metadata saved it)"
-                ),
+                format!("{key} changed after this reader loaded it (another window saved it)"),
             )
             .into_response();
             refused

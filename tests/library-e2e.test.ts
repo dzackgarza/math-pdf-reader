@@ -837,10 +837,15 @@ describe("library window", () => {
     await page.click(`${tab("lattices")} button[aria-label^="Close"]`);
     await page.waitForFunction(`!document.querySelector('${tab("lattices")}')`);
 
-    const item = (
-      LibraryPayloadSchema.parse(await (await fetch(`${bucket.origin}/api/library`)).json())
+    const item = LibraryPayloadSchema.parse(
+      await (await fetch(`${bucket.origin}/api/library`)).json(),
     ).items.find((candidate) => candidate.id === "lattices");
-    expect(item).toMatchObject({ title, titleSource: "manual", authors: ["J. H. Conway"], year: 1993 });
+    expect(item).toMatchObject({
+      title,
+      titleSource: "manual",
+      authors: ["J. H. Conway"],
+      year: 1993,
+    });
     await page.goto(`${bucket.origin}/read/lattices`);
     const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
     if (reopened === undefined || reopened === null) {
@@ -854,7 +859,8 @@ describe("library window", () => {
           "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
         ),
       );
-    expect(contents).toEqual(expect.arrayContaining([first, second]));
+    expect(contents).toContain(first);
+    expect(contents).toContain(second);
   });
 
   test("a capture made while the library is open opens its PDF in a tab", async () => {
