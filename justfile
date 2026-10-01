@@ -98,6 +98,14 @@ test-capture:
 run: fetch-pdfjs build-web
     @cd desktop && bunx @tauri-apps/cli dev
 
+# Build the release app and drive one reading session through its window (tests/desktop_workflow.py):
+# WebKitWebDriver on a headless Weston, in a private network namespace and D-Bus session, so the
+# app takes its fixed port and single-instance name beside the provisioned one.
+test-desktop: fetch-pdfjs build-web
+    @cd desktop && bunx @tauri-apps/cli build --no-bundle
+    @uv sync --locked --quiet
+    @unshare -rn sh -c 'ip link set lo up && exec dbus-run-session -- uv run pytest tests/desktop_workflow.py'
+
 # Run commit-tier Python and Bun QC through the central implementation.
 test-commit:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-commit
@@ -109,6 +117,7 @@ test-push:
     @just -f ~/ai-review-ci/justfiles/python.just -d . test-push
     @just -f ~/ai-review-ci/justfiles/bun.just -d . test-push
     @just desktop-rust-checks
+    @just test-desktop
     @just provision
 
 # Run CI acceptance QC through the Python, Bun and Rust central implementations.

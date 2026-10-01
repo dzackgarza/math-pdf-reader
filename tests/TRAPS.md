@@ -22,3 +22,6 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 
 - **A native open exempts that PDF URL in that tab until the tab closes.** A later capture case that follows the same link in the same tab reaches the browser's viewer, and a wait for the capture page times out.
   Follow a link to another PDF, or use a new tab.
+
+- **WebKitWebDriver's wheel actions scroll from where the first one began.** A second `scroll_from_origin` of +400 after one of +2000 leaves the PDF.js viewer at 410, as if the first never happened, so a wait for a later page never ends.
+  Scroll the desktop workflow with Page Down, one key at a time, waiting for each scroll.
