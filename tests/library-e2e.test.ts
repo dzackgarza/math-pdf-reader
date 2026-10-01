@@ -15,7 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type Frame, type HTTPRequest, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
@@ -785,6 +785,79 @@ describe("library window", () => {
         ),
       );
     expect(contents).toContain(note);
+  });
+
+  // Drags the mouse across the first line of text on page 1 of the shown reader.
+  const dragAcrossText = async (viewer: Frame) => {
+    const line = await viewer.waitForSelector(
+      '.page[data-page-number="1"] .textLayer span[role="presentation"]',
+      { visible: true },
+    );
+    const box = await line?.boundingBox();
+    if (box === null || box === undefined) {
+      throw new Error("page 1 shows no text");
+    }
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 2, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, y, { steps: 8 });
+    await page.mouse.move(box.x + box.width - 2, y, { steps: 8 });
+    await page.mouse.up();
+  };
+  const selectedText = (viewer: Frame) =>
+    viewer.evaluate("window.getSelection().toString().trim()");
+
+  test("a plain drag across a page's text selects it, and the selection stays", async () => {
+    await openLibrary();
+    await page.click(row("problems"), { count: 2 });
+    const { viewer } = await shownReader("problems");
+    await viewer.evaluate("PDFViewerApplication.page = 1");
+    await dragAcrossText(viewer);
+    expect(await selectedText(viewer)).not.toBe("");
+    // Nothing the reader does after the drag (a save, a library refresh) clears it.
+    await Bun.sleep(2000);
+    expect(await selectedText(viewer)).not.toBe("");
+  });
+
+  test("a highlight drawn over a page's text is saved into the PDF", async () => {
+    await openLibrary();
+    await page.click(row("problems"), { count: 2 });
+    const { reader, viewer } = await shownReader("problems");
+    await viewer.evaluate("PDFViewerApplication.page = 1");
+    await viewer.waitForFunction(
+      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
+    );
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.HIGHLIGHT })",
+    );
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/problems/pdf") && response.request().method() === "PUT",
+    );
+    await dragAcrossText(viewer);
+    await viewer.waitForSelector(".highlightEditor");
+    expect((await saved).status()).toBe(200);
+    expect(await reader.$("#conflict[hidden]")).not.toBeNull();
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
+    );
+    await page.click(`${tab("problems")} button[aria-label^="Close"]`);
+    await page.waitForFunction(`!document.querySelector('${tab("problems")}')`);
+
+    await page.goto(`${bucket.origin}/read/problems`);
+    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
+    if (reopened === undefined || reopened === null) {
+      throw new Error("the reader has no viewer frame");
+    }
+    await reopened.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
+    const subtypes = z
+      .array(z.string())
+      .parse(
+        await reopened.evaluate(
+          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).map((a) => a.subtype))()",
+        ),
+      );
+    expect(subtypes).toContain("Highlight");
   });
 
   test("a note written after the bucket recorded metadata in the open PDF is saved with that metadata", async () => {
