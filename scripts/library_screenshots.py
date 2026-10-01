@@ -65,8 +65,8 @@ def closed_port_url() -> str:
 
 def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> str:
     """Start the bucket server over ROOT on a free port, with Zotero at ZOTERO_URL and the extraction
-    plugins listed in EXTRACTIONS; return its origin. It serves until its standard input closes, and
-    rewrites the index export beside ROOT."""
+    plugins listed in EXTRACTIONS; return its origin. It serves until its standard input closes,
+    rewrites the index export beside ROOT, and offers no capture extension builds."""
     subprocess.run(
         ["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"],
         cwd=REPO,
@@ -84,6 +84,8 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
             index_export,
             "--config",
             CONFIG,
+            "--extensions",
+            stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-extensions-")),
         ],
         cwd=REPO,
         stdin=subprocess.PIPE,
