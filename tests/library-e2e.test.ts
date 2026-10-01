@@ -787,6 +787,76 @@ describe("library window", () => {
     expect(contents).toContain(note);
   });
 
+  test("a note written after the bucket recorded metadata in the open PDF is saved with that metadata", async () => {
+    await openLibrary();
+    await page.click(row("lattices"), { count: 2 });
+    const { reader, viewer } = await shownReader("lattices");
+    await viewer.evaluate("PDFViewerApplication.page = 1");
+    // The bucket writes metadata into the stored PDF after this reader loaded it, as Retrieve
+    // metadata does for a new capture.
+    const title = `Integral lattices, retitled ${Date.now()}`;
+    const edited = await fetch(`${bucket.origin}/api/items/lattices/metadata`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, authors: ["J. H. Conway"], year: 1993, abstract: null }),
+    });
+    expect(edited.status).toBe(200);
+
+    await viewer.waitForFunction(
+      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
+    );
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
+    );
+    const layer = await viewer.waitForSelector(
+      '.page[data-page-number="1"] .annotationEditorLayer',
+    );
+    const saves = () =>
+      page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/items/lattices/pdf") &&
+          response.request().method() === "PUT",
+      );
+    const write = async (note: string, y: number) => {
+      const saved = saves();
+      await layer?.click({ offset: { x: 120, y } });
+      await viewer.waitForSelector(".freeTextEditor .internal:focus");
+      await page.keyboard.type(note);
+      await page.keyboard.press("Escape");
+      expect((await saved).status()).toBe(200);
+    };
+    const first = `Written after the metadata ${Date.now()}`;
+    await write(first, 160);
+    // The reader's next save is made from what it saved, not from what the bucket stored.
+    const second = `And once more ${Date.now()}`;
+    await write(second, 260);
+    await viewer.evaluate(
+      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
+    );
+    expect(await reader.$("#conflict[hidden]")).not.toBeNull();
+    await page.click(`${tab("lattices")} button[aria-label^="Close"]`);
+    await page.waitForFunction(`!document.querySelector('${tab("lattices")}')`);
+
+    const item = (
+      LibraryPayloadSchema.parse(await (await fetch(`${bucket.origin}/api/library`)).json())
+    ).items.find((candidate) => candidate.id === "lattices");
+    expect(item).toMatchObject({ title, titleSource: "manual", authors: ["J. H. Conway"], year: 1993 });
+    await page.goto(`${bucket.origin}/read/lattices`);
+    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
+    if (reopened === undefined || reopened === null) {
+      throw new Error("the reader has no viewer frame");
+    }
+    await reopened.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
+    const contents = z
+      .array(z.string())
+      .parse(
+        await reopened.evaluate(
+          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
+        ),
+      );
+    expect(contents).toEqual(expect.arrayContaining([first, second]));
+  });
+
   test("a capture made while the library is open opens its PDF in a tab", async () => {
     await openLibrary();
     const form = new FormData();
