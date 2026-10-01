@@ -60,8 +60,17 @@ fi
 # MOZILLA_JWT_ISSUER and MOZILLA_JWT_SECRET from the environment direnv loads here.
 if ! unchanged dist/firefox-mv2 "$extensions/firefox-mv2"; then
     signing=$(mktemp -d)
-    git archive --format=zip -o "$signing/source.zip" HEAD
-    direnv exec "$repo" bash -c 'WEB_EXT_API_KEY="$MOZILLA_JWT_ISSUER" WEB_EXT_API_SECRET="$MOZILLA_JWT_SECRET" bunx web-ext sign --channel unlisted --source-dir dist/firefox-mv2 --artifacts-dir "$0" --upload-source-code "$0/source.zip"' "$signing"
+    # A run that uploaded this version but lost AMO's answer left it signed there.
+    signed=0
+    direnv exec "$repo" uv run --script scripts/amo_signed.py \
+        "$(jq -r .capture.firefox_addon_id pdf-bucket.config.json)" \
+        "$(jq -r .version dist/firefox-mv2/manifest.json)" "$signing/signed.xpi" || signed=$?
+    if [[ $signed -eq 2 ]]; then
+        git archive --format=zip -o "$signing/source.zip" HEAD
+        direnv exec "$repo" bash -c 'WEB_EXT_API_KEY="$MOZILLA_JWT_ISSUER" WEB_EXT_API_SECRET="$MOZILLA_JWT_SECRET" bunx web-ext sign --channel unlisted --source-dir dist/firefox-mv2 --artifacts-dir "$0" --upload-source-code "$0/source.zip"' "$signing"
+    elif [[ $signed -ne 0 ]]; then
+        exit "$signed"
+    fi
     # The package first: the bucket names the version from the build's manifest.
     mv "$signing"/*.xpi "$extensions/firefox.xpi"
     rsync -a --delete dist/firefox-mv2/ "$extensions/firefox-mv2/"
