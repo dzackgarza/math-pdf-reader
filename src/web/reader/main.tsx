@@ -43,6 +43,7 @@ createRoot(root).render(
     <Reader
       itemKey={key}
       openAtPage={hashPage === null ? null : Number(hashPage[1])}
+      openAtZoom={null}
       shown
       inTab={false}
       onPage={(page) => window.history.replaceState(null, "", `#page=${page}`)}

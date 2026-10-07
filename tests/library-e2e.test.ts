@@ -16,7 +16,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AnnotationPlugin, EmbedPdfContainer, ScrollPlugin } from "@embedpdf/react-pdf-viewer";
+import type {
+  AnnotationPlugin,
+  EmbedPdfContainer,
+  ScrollPlugin,
+  ZoomPlugin,
+} from "@embedpdf/react-pdf-viewer";
 import { $ } from "bun";
 import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
 import { z } from "zod";
@@ -293,6 +298,18 @@ describe("library window", () => {
       }, viewerOf(key)),
     );
   };
+  // The zoom KEY's reader was given, a scale or a fit, as EmbedPDF's zoom plugin holds it.
+  const zoomOf = async (key: string) =>
+    z.union([z.number(), z.enum(["automatic", "fit-page", "fit-width"])]).parse(
+      await page.evaluate(async (css) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const zoom = (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides();
+        if (zoom === undefined) {
+          throw new Error(`${css} has no zoom plugin`);
+        }
+        return zoom.getState().zoomLevel;
+      }, viewerOf(key)),
+    );
   // The tab for KEY, once it is the tab shown and its reader has drawn the PDF.
   const shownReader = async (key: string) => {
     await page.waitForSelector(`${tab(key)}[data-state="active"]`);
@@ -710,7 +727,7 @@ describe("library window", () => {
     expect(await openTabKeys()).toEqual([]);
   });
 
-  test("past five PDF tabs the one shown longest ago sleeps, holding no reader, and wakes at its page when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
+  test("past five PDF tabs the one shown longest ago sleeps, holding no reader, and wakes at its page and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
     // The test opens and deletes its own PDFs, so later tests see the fixtures as they were.
     const captureTab = async (source: string, ordinal: string) => {
       const form = new FormData();
@@ -741,6 +758,22 @@ describe("library window", () => {
     await page.click(row(first), { count: 2 });
     await shownReader(first);
     await goToPage(first, 3);
+    // EmbedPDF's Zoom In shortcut.
+    const unzoomed = await zoomOf(first);
+    await page.keyboard.down("Control");
+    await page.keyboard.press("Equal");
+    await page.keyboard.up("Control");
+    await page.waitForFunction(
+      async (css, before) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const zoom = (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides();
+        return zoom !== undefined && zoom.getState().zoomLevel !== before;
+      },
+      {},
+      viewerOf(first),
+      unzoomed,
+    );
+    const zoomed = await zoomOf(first);
     for (const key of later) {
       await (await byRole("tab", "Library")).click();
       await page.click(row(key));
@@ -754,6 +787,7 @@ describe("library window", () => {
     await page.click(`${tab(first)} [role="tab"]`);
     await shownReader(first);
     await showsPage(first, 3);
+    expect(await zoomOf(first)).toBe(zoomed);
     await asleep(second);
     expect(await readerKeys()).not.toContain(second);
 

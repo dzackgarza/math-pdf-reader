@@ -2,7 +2,7 @@
 // which shows that PDF's reader (reader/Reader.tsx). The library and the AWAKE_READERS PDF tabs
 // shown last stay loaded while another tab is shown, so each keeps its view (and the library its
 // selection); the other PDF tabs sleep, and so does a tab put to sleep from its menu. A tab that
-// sleeps holds no reader and loads it again at the same page when shown. Opening a PDF that has
+// sleeps holds no reader and loads it again at the same page and zoom when shown. Opening a PDF that has
 // a tab shows that tab. A capture anywhere opens its PDF here too: the bucket's `open-reader`
 // event (server/src/events.rs); the title Retrieve metadata gives the PDF afterwards
 // (`metadata`) retitles its tab, and its reader retitles itself.
@@ -14,7 +14,7 @@ import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
 import { onBucketEvent } from "./bucketEvents";
 import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
-import { Reader, type ReaderControl } from "./reader/Reader";
+import { Reader, type ReaderControl, type View } from "./reader/Reader";
 import { type ItemMenu, ReaderTabsContext } from "./readerTabs";
 
 declare global {
@@ -32,13 +32,13 @@ const LIBRARY_TAB = "library";
 
 // How many PDF tabs keep their reader loaded. Past it, the tabs shown longest ago sleep: their
 // reader is dropped, which frees its PDFium engine and worker, and showing one loads it again at
-// the page it had. Firefox's tab unloader picks the tabs it unloads the same way, by the time
+// the page and zoom it had. Firefox's tab unloader picks the tabs it unloads the same way, by the time
 // each was last shown (browser/components/tabbrowser/TabUnloader.sys.mjs).
 const AWAKE_READERS = 5;
 
-// A PDF tab: PAGE is the page its reader opens at, which a tab put to sleep keeps from the reader
-// it had; null opens at the page last viewed.
-type ReaderTab = { key: string; title: string; page: number | null; asleep: boolean };
+// A PDF tab: VIEW is the page and zoom its reader opens at, which a tab put to sleep keeps from the
+// reader it had; null opens at the page last viewed, at the viewer's own zoom.
+type ReaderTab = { key: string; title: string; view: View | null; asleep: boolean };
 
 // RECENT holds the keys of the PDF tabs, the one shown last first.
 type TabsState = { open: ReaderTab[]; shown: string; recent: string[] };
@@ -74,11 +74,11 @@ function closing(state: TabsState, key: string): TabsState {
   return state.shown === key ? showing(closed, neighbour(state, key)) : closed;
 }
 
-// KEY's tab asleep at PAGE; when it was shown, its neighbour is shown instead.
-function sleeping(state: TabsState, key: string, page: number | null): TabsState {
+// KEY's tab asleep at VIEW; when it was shown, its neighbour is shown instead.
+function sleeping(state: TabsState, key: string, view: View | null): TabsState {
   const asleep = {
     ...state,
-    open: state.open.map((tab) => (tab.key === key ? { ...tab, page, asleep: true } : tab)),
+    open: state.open.map((tab) => (tab.key === key ? { ...tab, view, asleep: true } : tab)),
   };
   return state.shown === key ? showing(asleep, neighbour(state, key)) : asleep;
 }
@@ -143,7 +143,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       showing(
         previous.open.some((tab) => tab.key === key)
           ? previous
-          : { ...previous, open: [...previous.open, { key, title, page: null, asleep: false }] },
+          : { ...previous, open: [...previous.open, { key, title, view: null, asleep: false }] },
         key,
       ),
     );
@@ -164,7 +164,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     [closeReader],
   );
 
-  // Settles KEY's reader, then drops it, keeping the page it shows. A sleep the tab row chose
+  // Settles KEY's reader, then drops it, keeping the page and zoom it shows. A sleep the tab row chose
   // (AUTOMATIC) is called off when the tab was shown again meanwhile.
   const sleepReader = useCallback(async (key: string, automatic: boolean) => {
     if (settling.current.has(key)) {
@@ -186,7 +186,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       if (tab === undefined) {
         return previous;
       }
-      return sleeping(previous, key, reader === undefined ? tab.page : reader.page());
+      return sleeping(previous, key, reader === undefined ? tab.view : reader.view());
     });
   }, []);
 
@@ -365,7 +365,8 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
               {!tab.asleep && (
                 <Reader
                   itemKey={tab.key}
-                  openAtPage={tab.page}
+                  openAtPage={tab.view?.page ?? null}
+                  openAtZoom={tab.view?.zoom ?? null}
                   shown={state.shown === tab.key}
                   inTab
                   onControl={(control) => readers.current.set(tab.key, control)}

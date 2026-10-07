@@ -30,6 +30,8 @@ import {
   type PluginRegistry,
   ScrollPlugin,
   UIPlugin,
+  type ZoomLevel,
+  ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
 import { ArrowLeft, ArrowRight, LibraryBig, Link, Moon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,7 +53,10 @@ import { ReadingSession } from "./readingSession";
 // What a reader offers whoever shows it: settle sends the reading session and waits for every
 // annotation to be saved, rejecting while a save has failed or a save conflict is open; page is
 // the page it shows.
-export type ReaderControl = { settle: () => Promise<void>; page: () => number };
+// Where a reader is in its PDF: the page it shows and the zoom it was given (a number or a fit).
+export type View = { page: number; zoom: ZoomLevel };
+
+export type ReaderControl = { settle: () => Promise<void>; view: () => View };
 
 // How long after an annotation change the reader saves, so a burst of changes is one save.
 const SAVE_PAUSE_MS = 700;
@@ -86,7 +91,8 @@ function plugin<
     | AnnotationPlugin
     | CommandsPlugin
     | UIPlugin
-    | InteractionManagerPlugin,
+    | InteractionManagerPlugin
+    | ZoomPlugin,
 >(registry: PluginRegistry, id: string): ReturnType<T["provides"]> {
   const found = registry.getPlugin<T>(id);
   if (found === null) {
@@ -167,6 +173,8 @@ type ReaderProps = {
   itemKey: string;
   // The page to open at; null opens at the page last viewed, or the first.
   openAtPage: number | null;
+  // The zoom to open at; null keeps the viewer's own.
+  openAtZoom: ZoomLevel | null;
   shown: boolean;
   inTab: boolean;
   onControl?: (control: ReaderControl) => void;
@@ -226,6 +234,7 @@ const BAR_BUTTON =
 function LoadedReader({
   itemKey,
   openAtPage,
+  openAtZoom,
   shown,
   inTab,
   onControl,
@@ -378,6 +387,7 @@ function LoadedReader({
     state.commands.registerCommand(DEFAULT_TOOL);
     scopeShortcuts();
     const scroll = plugin<ScrollPlugin>(registry, ScrollPlugin.id);
+    const zoom = plugin<ZoomPlugin>(registry, ZoomPlugin.id);
     const annotations = plugin<AnnotationPlugin>(registry, AnnotationPlugin.id);
     state.exporter = plugin<ExportPlugin>(registry, ExportPlugin.id);
     state.scroll = scroll;
@@ -388,6 +398,9 @@ function LoadedReader({
       const reading = loaded.item.reading;
       const page = openAtPage ?? (reading.status === "viewed" ? reading.page : 1);
       state.recordedPage = page;
+      if (openAtZoom !== null) {
+        zoom.requestZoom(openAtZoom);
+      }
       if (page > 1 && page <= totalPages) {
         state.walking = true;
         scroll.scrollToPage({ pageNumber: page, behavior: "instant" });
@@ -467,7 +480,7 @@ function LoadedReader({
       }
       state.pendingSave = setTimeout(startSave, SAVE_PAUSE_MS);
     });
-    onControl?.({ settle, page: () => state.page });
+    onControl?.({ settle, view: () => ({ page: state.page, zoom: zoom.getState().zoomLevel }) });
   };
 
   // A reader shown again starts reading its page; one hidden ends its stretch and reports.
