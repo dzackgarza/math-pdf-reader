@@ -282,7 +282,6 @@ class Reader:
         ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
         self.wait("P('interaction-manager').getActiveMode() === P('interaction-manager').getDefaultMode() && P('annotation').getActiveTool() === null")
 
-
     def highlighted_pixels(self, page: int) -> tuple[int, int]:
         """The window's pixels inside the line boxes of PAGE's highlights, counted as text (dark)
         and as highlight (yellow)."""
