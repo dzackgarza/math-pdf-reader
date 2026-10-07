@@ -2,7 +2,7 @@
 // served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -85,23 +85,26 @@ const publisher = Bun.serve({
 });
 const published = (path: string) => new URL(path, publisher.url).href;
 
+// The bucket over ROOT. Zotero's URL is a port nothing listens on, so a send reaches for Zotero
+// and fails instead of writing.
+async function serveLibrary(root: string, indexExport: string) {
+  const app = await serveBucket({
+    root,
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    indexExport,
+  });
+  return { root, origin: app.origin, indexExport, stop: app.stop };
+}
+
 async function startBucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-"));
   const indexExport = join(
     mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")),
     "index.json",
   );
-  // A port nothing listens on, so a send reaches for Zotero and fails instead of writing.
-  const probe = Bun.serve({ port: 0, fetch: () => new Response() });
-  const zoteroUrl = probe.url.origin;
-  probe.stop(true);
-  const app = await serveBucket({
-    root,
-    zoteroUrl,
-    extractionsManifest: EXTRACTIONS_MANIFEST,
-    indexExport,
-  });
-  const origin = app.origin;
+  const bucket = await serveLibrary(root, indexExport);
+  const origin = bucket.origin;
   for (const [key, bytes, linkText] of CAPTURES) {
     const form = new FormData();
     form.set("pdf", new File([bytes], `${key}.pdf`));
@@ -115,7 +118,7 @@ async function startBucket() {
       throw new Error(`capture of ${key} failed: ${response.status} ${await response.text()}`);
     }
   }
-  return { root, origin, indexExport, stop: app.stop };
+  return bucket;
 }
 
 describe("library window", () => {
@@ -323,12 +326,8 @@ describe("library window", () => {
     await readerLoaded(key);
   };
 
-  beforeAll(async () => {
-    mkdirSync(screenshots, { recursive: true });
-    // The app serves the bundle in dist/web; build it from the current source as `just provision`
-    // does. `bun test` sets NODE_ENV=test, under which Vite bundles React's development build.
-    await $`just build-web`.env({ ...process.env, NODE_ENV: "production" }).quiet();
-    bucket = await startBucket();
+  // A new browser with one page, which may read and write the clipboard on the bucket's origin.
+  const openBrowser = async () => {
     browser = await puppeteer.launch({
       browser: "chrome",
       executablePath: executable("chromium"),
@@ -339,7 +338,39 @@ describe("library window", () => {
       .defaultBrowserContext()
       .overridePermissions(bucket.origin, ["clipboard-read", "clipboard-sanitized-write"]);
     page = await browser.newPage();
+  };
+
+  beforeAll(async () => {
+    mkdirSync(screenshots, { recursive: true });
+    // The app serves the bundle in dist/web; build it from the current source as `just provision`
+    // does. `bun test` sets NODE_ENV=test, under which Vite bundles React's development build.
+    await $`just build-web`.env({ ...process.env, NODE_ENV: "production" }).quiet();
+    bucket = await startBucket();
+    await openBrowser();
   }, 60_000);
+
+  // A test that runs past its time limit leaves the next one a broken bucket and browser: Bun stops
+  // the test and kills the processes the file spawned that still run
+  // (https://bun.com/docs/test/writing-tests#zombie-process-killer). The bucket's server dies at
+  // once; the browser's helpers die with it, and the browser goes down later. A bucket that does
+  // not answer marks that kill: the test starts with a new bucket over the same store and a new
+  // browser.
+  beforeEach(async () => {
+    const answers = await fetch(bucket.origin).then(
+      (response) => response.ok,
+      () => false,
+    );
+    if (answers) {
+      return;
+    }
+    bucket = await serveLibrary(bucket.root, bucket.indexExport);
+    const stale = browser.process();
+    if (stale === null) {
+      throw new Error("the browser was launched without a process of its own");
+    }
+    stale.kill("SIGKILL");
+    await openBrowser();
+  });
 
   // Runs also when a test or the setup fails; closing the browser removes its profile.
   afterAll(async () => {
