@@ -19,11 +19,7 @@
   },
   "plugins": {
     "extraction_timeout_seconds": 1800,
-    "send_extraction_chain": [
-      "mineru-flash",
-      "mistral-ocr",
-      "mineru-precise"
-    ]
+    "send_extraction_chain": ["mineru-flash", "mistral-ocr", "mineru-precise"]
   },
   "store": {
     "command_timeout_seconds": 120
