@@ -439,19 +439,19 @@ describe("library window", () => {
 
   test("a PDF tab's context menu holds its item's menu: Add Tag… there tags the item", async () => {
     await openLibrary();
-    await page.click(row("lattices"), { count: 2 });
-    await shownReader("lattices");
-    await page.click(tab("lattices"), { button: "right" });
+    await page.click(row("notes"), { count: 2 });
+    await shownReader("notes");
+    await page.click(tab("notes"), { button: "right" });
     await (await menuItem("Send to Zotero")).hover();
     await shot("tab-context-menu");
     await (await menuItem("Add Tag…")).click();
     await page.type('[role="dialog"] input', "from-tab");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null);
-    expect((await organization()).items.lattices?.tags).toContain("from-tab");
-    await page.click(tab("lattices"), { button: "right" });
+    expect((await organization()).items.notes?.tags).toContain("from-tab");
+    await page.click(tab("notes"), { button: "right" });
     await (await menuItem("Close Tab")).click();
-    await page.waitForSelector(tab("lattices"), { hidden: true });
+    await page.waitForSelector(tab("notes"), { hidden: true });
   });
 
   test("Delete in the row context menu moves the PDF to the trash and drops the item", async () => {
