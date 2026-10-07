@@ -1,4 +1,4 @@
-# PDF Bucket — standalone PDF reading bucket: browser capture, PDF.js reader, send to Zotero.
+# PDF Bucket — standalone PDF reading bucket: browser capture, EmbedPDF reader, send to Zotero.
 #
 # One Cargo workspace: server/ is the bucket server (axum), desktop/src-tauri the Tauri app that
 # runs it in its own process. One Bun package: src/contract (the zod contracts the server's types
@@ -24,15 +24,15 @@ default:
 # extensions are built only by `just provision`, which installs them.
 # NO_STRIP: linuxdeploy's bundled strip cannot read the `.relr.dyn` sections of current distro
 # libraries and fails the AppImage (tauri-apps/tauri#8929; Tauri's AppImage guide).
-build: fetch-pdfjs
+build:
     @bun run build
     @cd desktop && NO_STRIP=true bunx @tauri-apps/cli build
 
-# Build the web bundle, the PDF.js viewer and the release app; install the app with its launcher
+# Build the web bundle and the release app; install the app with its launcher
 # and login autostart entry (pdf-bucket-desktop.desktop) and icons, and start it. The app is the
 # bucket server; it runs against its own copy of the runtime files ($XDG_DATA_HOME/pdf-bucket-app),
 # so later changes to the checkout reach it only through the next provision.
-provision: fetch-pdfjs
+provision:
     @scripts/provision.sh
 
 # Write the index export ($XDG_DATA_HOME/pdf-bucket-export/index.json): every stored item's
@@ -59,21 +59,7 @@ rebuild-cache:
     @uv sync --locked --quiet
     @cargo run --quiet --package pdf-bucket --bin pdf-bucket -- rebuild-cache
 
-# Unpack the pinned prebuilt PDF.js viewer release into vendor/ (version and hash in pdf-bucket.config.json).
-fetch-pdfjs:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    version=$(jq -r .pdfjs.version pdf-bucket.config.json)
-    dest="vendor/pdfjs-$version"
-    [[ -f "$dest/web/viewer.html" ]] && exit 0
-    zip=$(mktemp --suffix=.zip)
-    curl -fsSL -o "$zip" "https://github.com/mozilla/pdf.js/releases/download/v$version/pdfjs-$version-dist.zip"
-    echo "$(jq -r .pdfjs.sha256 pdf-bucket.config.json)  $zip" | sha256sum --check --quiet
-    mkdir -p "$dest"
-    unzip -q "$zip" -d "$dest"
-    trash "$zip"
-
-# Build the library UI that the server serves at /.
+# Build the web bundle the server serves: the library at / and the reader of /read/<key>.
 build-web:
     @bunx vite build --config src/web/vite.config.ts
 
@@ -95,13 +81,13 @@ test-capture:
     @bun test tests/capture-e2e.test.ts
 
 # Open the desktop app from source (`tauri dev`); it serves the configured bucket itself.
-run: fetch-pdfjs build-web
+run: build-web
     @cd desktop && bunx @tauri-apps/cli dev
 
 # Build the release app and drive one reading session through its window (tests/desktop_workflow.py):
 # WebKitWebDriver on a headless Weston, in a private network namespace and D-Bus session, so the
 # app takes its fixed port and single-instance name beside the provisioned one.
-test-desktop: fetch-pdfjs build-web
+test-desktop: build-web
     @cd desktop && bunx @tauri-apps/cli build --no-bundle
     @uv sync --locked --quiet
     @unshare -rn sh -c 'ip link set lo up && exec dbus-run-session -- uv run pytest tests/desktop_workflow.py'
@@ -132,16 +118,14 @@ desktop-rust-checks:
 
 # Provision the CI runner: Tauri's Linux build inputs, user namespaces for Chromium's sandbox and
 # the desktop workflow's private network, which Ubuntu 24.04's AppArmor blocks
-# (actions/runner-images#10443), Weston and WebKitWebDriver for the desktop workflow, direnv with
-# the checkout's `.envrc` allowed (the app reads the plugins' environment through it), and the
-# pinned PDF.js viewer the reader pages load (trash-cli for the recipe's cleanup). The qc jobs run
-# this recipe as their setup_recipe.
+# (actions/runner-images#10443), Weston and WebKitWebDriver for the desktop workflow, and direnv
+# with the checkout's `.envrc` allowed (the app reads the plugins' environment through it). The
+# qc jobs run this recipe as their setup_recipe.
 ci-setup:
     sudo apt-get update
-    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev trash-cli weston webkit2gtk-driver direnv
+    sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev weston webkit2gtk-driver direnv
     sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
     direnv allow .
-    just fetch-pdfjs
 
 # Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
 extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
@@ -163,17 +147,17 @@ extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":
 
 # Seed empty, broken and 1,000-PDF bucket stores; screenshot every library state into docs/m2 (Chromium at
 # 1600x1000, WebKitGTK on a headless 1400x900 display, the desktop window size) and print the load timings.
-library-screenshots: fetch-pdfjs build-web
+library-screenshots: build-web
     @uv run --script scripts/library_screenshots.py docs/m2
 
 # Screenshot the send action's states (idle, sending, failed, sent, refused, remove) into docs/m3
 # against a two-item bucket whose Zotero is a closed port, so nothing reaches a real library.
-send-screenshots: fetch-pdfjs build-web
+send-screenshots: build-web
     @uv run --script scripts/library_screenshots.py send docs/m3
 
 # Screenshot the inspector's extraction runs (idle, running, succeeded, failed, rejected) into
 # docs/m4 against the committed fixture extractor, so no provider is called.
-extract-screenshots: fetch-pdfjs build-web
+extract-screenshots: build-web
     @uv run --script scripts/library_screenshots.py extract docs/m4
 
 # Export, wipe, import and rebuild a temporary store through the recipes above, then delete three

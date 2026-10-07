@@ -142,14 +142,6 @@ async fn settings(State(state): State<Shared>) -> Json<Settings> {
     Json(Settings {
         root: text(&state.config.root),
         organization_file: text(&organization_file(&state.config.root)),
-        pdfjs_version: state
-            .config
-            .app
-            .pdfjs
-            .version
-            .to_string()
-            .try_into()
-            .expect("the PDF.js version is not empty"),
     })
 }
 
@@ -232,7 +224,7 @@ pub fn entity_tag(sha256: &str) -> HeaderValue {
     HeaderValue::from_str(&format!("\"{sha256}\"")).expect("a hex digest is a header value")
 }
 
-/// The reader's save: the PDF with its annotations written in by PDF.js, made from the stored
+/// The reader's save: the PDF with its annotations written in by the reader, made from the stored
 /// bytes its If-Match names. A stored file that another save changed since answers 412 with its
 /// current entity tag. The answer to a save carries the saved bytes' entity tag, which the
 /// reader's next save names: the stored file is those bytes, or those bytes with the metadata the

@@ -1,5 +1,5 @@
 //! Where the bucket's settings come from: pdf-bucket.config.json (compiled in), the runtime
-//! files (the PDF.js viewer, the library bundle, the plugin manifest and the Python environment)
+//! files (the web bundle, the plugin manifest and the Python environment)
 //! under the checkout this binary was built from or under the installed app's own copy of them,
 //! the XDG directories, and the tunables below.
 use std::collections::HashMap;
@@ -77,14 +77,6 @@ pub fn installed() -> PathBuf {
     xdg_data_home().join("pdf-bucket-app")
 }
 
-/// The prebuilt PDF.js viewer under RUNTIME, unpacked from the pinned release by
-/// `just fetch-pdfjs`.
-pub fn pdfjs_dir(runtime: &Path, config: &AppConfig) -> PathBuf {
-    runtime
-        .join("vendor")
-        .join(format!("pdfjs-{}", *config.pdfjs.version))
-}
-
 /// The library UI bundle under RUNTIME, built by `just build-web`.
 pub fn web_dir(runtime: &Path) -> PathBuf {
     runtime.join("dist/web")
@@ -141,7 +133,6 @@ pub type ProcessEnv = HashMap<String, Option<String>>;
 #[derive(Clone, Debug)]
 pub struct BucketConfig {
     pub root: PathBuf,
-    pub pdfjs_dir: PathBuf,
     pub web_dir: PathBuf,
     pub cache_dir: PathBuf,
     /// Zotero's local HTTP server, which carries the write API the send action uses.
@@ -166,7 +157,6 @@ impl BucketConfig {
         let runtime = installed();
         Self {
             root: data_root(),
-            pdfjs_dir: pdfjs_dir(&runtime, &app),
             web_dir: web_dir(&runtime),
             cache_dir: cache_root(),
             zotero_url: app.zotero.url.clone(),
@@ -192,6 +182,3 @@ pub const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'\'')
     .remove(b'(')
     .remove(b')');
-
-/// Minutes without input after which the reader stops counting time as reading.
-pub const READER_IDLE_MINUTES: u32 = 10;

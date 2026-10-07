@@ -6,9 +6,9 @@ WebDriver path on Linux). `just test-desktop` runs it in a private network names
 can take its fixed port. pytest collects this file only when it is named on the command line.
 
 Every step goes through the window: pointer drags over the page's text, clicks on the reader's
-and the library's controls, typing into the inspector. The state is read from the frames by
-script, because the reader rewrites its address on every view change, which ends WebDriver frame
-contexts. The stored PDFs are checked at the end with pikepdf, not through the app.
+and the library's controls, typing into the inspector. The reader's state is read by script from
+EmbedPDF's plugins, and its controls are found in the viewer's shadow root. The stored PDFs are
+checked at the end with pikepdf, not through the app.
 """
 
 from __future__ import annotations
@@ -39,7 +39,6 @@ FIXTURES = REPO / "tests/fixtures"
 # The runtime files `just provision` installs, taken from the checkout.
 RUNTIME = {
     "dist/web": REPO / "dist/web",
-    "vendor": REPO / "vendor",
     "plugins/manifests": REPO / "plugins/manifests",
     ".venv": REPO / ".venv",
 }
@@ -132,27 +131,48 @@ def capture(fixture: str) -> str:
     return key
 
 
+# The first line of body text on pages 2 to 10 of outlined-notes.pdf, and on page 1 of
+# ten-page-notes.pdf, as fractions of the page's width and height (pdftotext -bbox).
+NOTES_LINE = (134 / 612, 154 / 792)
+PROBLEMS_LINE = (134 / 595.276, 268 / 841.89)
+# A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
+PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]'
+HIGHLIGHT = 9  # PdfAnnotationSubtype.HIGHLIGHT
+
+
+def watch(driver: webdriver.WebKitGTK) -> None:
+    """Record the window's saves of PDFs and its script errors from here on. The readers are in
+    the library's own window, so one record holds every reader's."""
+    driver.execute_script("""
+      window.__saves = []; window.__errors = [];
+      const fetch = window.fetch;
+      window.fetch = async (...args) => {
+        const response = await fetch(...args);
+        if (args[1]?.method === 'PUT' && String(args[0]).endsWith('/pdf')) window.__saves.push([String(args[0]), response.status]);
+        return response;
+      };
+      window.addEventListener('error', (e) => window.__errors.push(String(e.message)));
+      window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
+    """)
+
+
 class Reader:
-    """The reader tab of one item: the reader page's window, and the PDF.js viewer framed in it."""
+    """The reader of one item, and the EmbedPDF viewer in it, whose UI is in its shadow root."""
 
     def __init__(self, driver: webdriver.WebKitGTK, key: str) -> None:
         self.driver = driver
         self.key = key
-        self.page = f"document.querySelector(\"iframe[data-reader-key='{key}']\").contentWindow"
-        self.viewer = f"{self.page}.document.querySelector('iframe').contentWindow"
+        self.reader = f"[data-reader-key={json.dumps(key)}]"
+        self.viewer = f"document.querySelector({json.dumps(self.reader + ' embedpdf-container')})"
 
     def run(self, script: str) -> Script:
-        result: Script = self.driver.execute_script(f"const R = {self.page}, V = {self.viewer};\n{script}")
+        """Run SCRIPT with V the viewer, S its shadow root and P(id) the capability of its plugin ID."""
+        result: Script = self.driver.execute_script(f"const V = {self.viewer}, S = V?.shadowRoot, P = (id) => V.__registry.getPlugin(id).provides();\n{script}")
         return result
 
     def number(self, expression: str) -> float:
         value = self.run(f"return {expression}")
         assert isinstance(value, int | float), value
-        return value
-
-    def text(self, expression: str) -> str:
-        value = self.run(f"return {expression}")
-        assert isinstance(value, str), value
         return value
 
     def items(self, expression: str) -> list[Script]:
@@ -161,104 +181,103 @@ class Reader:
         return value
 
     def wait(self, condition: str, timeout: float = 30) -> None:
-        WebDriverWait(self.driver, timeout).until(
-            lambda d: d.execute_script(f"try {{ const R = {self.page}, V = {self.viewer}; return Boolean({condition}) }} catch (e) {{ return false }}")
-        )
+        WebDriverWait(self.driver, timeout).until(lambda _: self.run(f"return Boolean({condition})"))
 
     def loaded(self) -> None:
-        """Wait until the PDF is shown with its text and the editors are on, then record the
-        reader's saves and the viewer's script errors from here on."""
-        self.wait("V.document.querySelector('.textLayer span') !== null && V.PDFViewerApplication.pdfViewer.annotationEditorMode !== V.pdfjsLib.AnnotationEditorType.DISABLE")
-        self.run("""
-          R.__saves = []; V.__errors = [];
-          const fetch = R.fetch;
-          R.fetch = async (...args) => {
-            const response = await fetch(...args);
-            if (args[1]?.method === 'PUT') R.__saves.push(response.status);
-            return response;
-          };
-          V.addEventListener('error', (e) => V.__errors.push(String(e.message)));
-          V.addEventListener('unhandledrejection', (e) => V.__errors.push(String(e.reason)));
-        """)
+        """Wait until the viewer has drawn a page of the PDF, and keep its plugin registry."""
+        self.wait(f"[...(S?.querySelectorAll('{PAGE_BOX} img') ?? [])].some((image) => image.complete && image.naturalWidth > 0)")
+        self.driver.execute_async_script(f"const done = arguments[arguments.length - 1], V = {self.viewer}; V.registry.then((R) => {{ V.__registry = R; done(); }});")
 
     def page_number(self) -> int:
-        return int(self.number("V.PDFViewerApplication.page"))
+        return int(self.number("P('scroll').getCurrentPage()"))
 
-    def box(self, selector: str) -> tuple[float, float, float, float]:
-        """The first SELECTOR element's box in the viewer, in the window's coordinates."""
+    def page_box(self, page: int) -> tuple[float, float, float, float]:
+        """The box of PAGE in the window. EmbedPDF draws only the pages near the one shown, and
+        its page boxes name no page: the boxes drawn are the rendered pages in order."""
         x, y, w, h = self.items(f"""(() => {{
-          const box = V.document.querySelector({json.dumps(selector)}).getBoundingClientRect();
-          let x = box.x, y = box.y;
-          for (let w = V; w !== window; w = w.parent) {{
-            const frame = w.frameElement.getBoundingClientRect();
-            x += frame.x; y += frame.y;
-          }}
-          return [x, y, box.width, box.height] }})()""")
+          const boxes = [...S.querySelectorAll('{PAGE_BOX}')].map((e) => e.getBoundingClientRect()).sort((one, other) => one.y - other.y);
+          const pages = [...P('scroll').getMetrics().renderedPageIndexes].sort((one, other) => one - other);
+          const box = boxes[pages.indexOf({page - 1})];
+          return [box.x, box.y, box.width, box.height] }})()""")
         assert isinstance(x, int | float) and isinstance(y, int | float)
         assert isinstance(w, int | float) and isinstance(h, int | float)
         return x, y, w, h
 
     def click(self, selector: str) -> None:
-        x, y, w, h = self.box(selector)
+        """Click the first SELECTOR element in the viewer's shadow root."""
+        self.click_element(f"S.querySelector({json.dumps(selector)})")
+
+    def click_element(self, element: str) -> None:
+        """Click the middle of the element the script expression ELEMENT names."""
+        x, y, w, h = self.items(f"(() => {{ const box = ({element}).getBoundingClientRect(); return [box.x, box.y, box.width, box.height] }})()")
+        assert isinstance(x, int | float) and isinstance(y, int | float)
+        assert isinstance(w, int | float) and isinstance(h, int | float)
         actions = ActionChains(self.driver)
         actions.w3c_actions.pointer_action.move_to_location(int(x + w / 2), int(y + h / 2)).click()
         actions.perform()
 
-    def click_header(self, button: str) -> None:
+    def click_header(self, label: str) -> None:
         """Click a button in the reader's own header, above the viewer."""
-        box = f"R.document.getElementById('{button}').getBoundingClientRect()"
-        x = self.number(f"R.frameElement.getBoundingClientRect().x + {box}.x")
-        y = self.number(f"R.frameElement.getBoundingClientRect().y + {box}.y")
-        w, h = self.number(f"{box}.width"), self.number(f"{box}.height")
-        actions = ActionChains(self.driver)
-        actions.w3c_actions.pointer_action.move_to_location(int(x + w / 2), int(y + h / 2)).click()
-        actions.perform()
+        self.driver.find_element(By.CSS_SELECTOR, f"{self.reader} header button[aria-label={json.dumps(label)}]").click()
 
-    def drag_across(self, page: int) -> None:
-        """Press on the first text of PAGE and drag down and to the right across three lines."""
-        x, y, w, h = self.box(f'.page[data-page-number="{page}"] .textLayer span[role="presentation"]')
+    def drag_across(self, page: int, line: tuple[float, float]) -> None:
+        """Press on LINE of PAGE and drag down and to the right across it into the next."""
+        x, y, w, h = self.page_box(page)
+        start_x, start_y = x + w * line[0], y + h * line[1]
         actions = ActionChains(self.driver)
         pointer = actions.w3c_actions.pointer_action
-        pointer.move_to_location(int(x + 2), int(y + h / 2)).pointer_down()
+        pointer.move_to_location(int(start_x), int(start_y)).pointer_down()
         for step in range(1, 11):
-            pointer.move_to_location(int(x + 2 + w / 2 * step / 10), int(y + h / 2 + 3 * h * step / 10))
+            pointer.move_to_location(int(start_x + 0.3 * w * step / 10), int(start_y + 0.03 * h * step / 10))
         pointer.pointer_up()
         actions.perform()
 
-    def page_down(self) -> None:
-        """Press Page Down and wait for the scroll it starts. WebKitWebDriver's wheel actions
-        scroll from where the first one began, so reading scrolls with the keyboard."""
-        top = self.number("V.document.getElementById('viewerContainer').scrollTop")
-        ActionChains(self.driver).send_keys(Keys.PAGE_DOWN).perform()
-        self.wait(f"V.document.getElementById('viewerContainer').scrollTop > {top}")
-        time.sleep(0.5)
+    def shows(self, condition: str) -> None:
+        """Wait until the page shown, `page`, meets CONDITION and the scroll to it has ended: the
+        page shown changes while a scroll moves the pages."""
+        self.wait(f"(() => {{ const page = P('scroll').getCurrentPage(); return ({condition}) && !P('scroll').getPageChangeState().isChanging }})()")
+
+    def next_page(self) -> None:
+        """Go to the next page with the page controls below the PDF."""
+        page = self.page_number()
+        self.click("[data-epdf-i='page-controls'] button[aria-label='Next Page']")
+        self.shows(f"page > {page}")
 
     def selection(self) -> str:
-        return self.text("V.getSelection().toString()")
+        result = self.driver.execute_async_script(f"""
+          const done = arguments[arguments.length - 1], V = {self.viewer};
+          V.__registry.getPlugin('selection').provides().getSelectedText().toPromise().then(
+            (lines) => done(lines.join('\\n')),
+            (error) => done({{ error: String(error) }}));""")
+        assert isinstance(result, str), result
+        return result
 
     def highlights(self) -> int:
-        return int(self.number("V.document.querySelectorAll('.highlightEditor').length"))
+        return int(self.number(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length"))
+
+    def saves(self) -> list[Script]:
+        """The statuses of the saves of this reader's PDF since `watch`."""
+        return self.items(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).map(([, status]) => status)")
 
     def assert_saved(self) -> None:
-        """Every save since the PDF loaded was taken, and the conflict bar is hidden."""
-        saves = self.items("R.__saves")
+        """Every save since `watch` was taken, and the reader shows no conflict or failure."""
+        saves = self.saves()
         assert saves and set(saves) == {200}, saves
-        assert self.run("return R.document.getElementById('conflict').hidden")
+        assert not self.driver.find_elements(By.CSS_SELECTOR, f"{self.reader} [role='alert']")
 
-    def errors(self) -> list[Script]:
-        return self.items("V.__errors")
-
-    def highlight(self, page: int) -> None:
-        """Draw a highlight with the toolbar's highlight tool over PAGE's first lines; wait for its save."""
-        saved = self.number("R.__saves.length")
+    def highlight(self, page: int, line: tuple[float, float]) -> None:
+        """Draw a highlight with the Annotate toolbar's highlight tool over LINE of PAGE; wait for its save."""
+        saved = len(self.saves())
         before = self.highlights()
-        self.click("#editorHighlightButton")
-        self.wait("V.PDFViewerApplication.pdfViewer.annotationEditorMode === V.pdfjsLib.AnnotationEditorType.HIGHLIGHT")
-        self.drag_across(page)
-        self.wait(f"V.document.querySelectorAll('.highlightEditor').length > {before}")
-        self.wait(f"R.__saves.length > {saved}")
+        self.click("[data-epdf-i='annotate-mode'] button")
+        self.click("[data-epdf-i='add-highlight'] button")
+        # The Annotate toolbar opens below the main one and moves the pages down, so the page is
+        # found once it is open.
+        self.drag_across(page, line)
+        self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
+        self.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).length > {saved}")
         time.sleep(SETTLE)
-        self.click("#editorHighlightButton")
+        self.click("[data-epdf-i='add-highlight'] button")
 
 
 def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
@@ -288,7 +307,7 @@ def show_tab(driver: webdriver.WebKitGTK, key: str) -> None:
 
 def close_tab(driver: webdriver.WebKitGTK, key: str) -> None:
     driver.find_element(By.CSS_SELECTOR, f"[data-tab-key='{key}'] button[aria-label^='Close']").click()
-    WebDriverWait(driver, 30).until(lambda d: not d.find_elements(By.CSS_SELECTOR, f"iframe[data-reader-key='{key}']"))
+    WebDriverWait(driver, 30).until(lambda d: not d.find_elements(By.CSS_SELECTOR, f"[data-reader-key='{key}']"))
 
 
 def replace_text(field: WebElement, text: str) -> None:
@@ -312,42 +331,38 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     for key in (notes, problems):
         if app.find_elements(By.CSS_SELECTOR, f"[data-tab-key='{key}']"):
             close_tab(app, key)
+    watch(app)
 
-    # Open the notes from the library and read: scroll down past the first page.
+    # Open the notes from the library and read: go on past the first pages.
     reader = open_from_library(app, notes)
     assert reader.page_number() == 1
-    reader.click('.page[data-page-number="1"]')
     while reader.page_number() < 3:
-        reader.page_down()
+        reader.next_page()
 
     # Select a passage with a plain drag; the selection stays.
     page = reader.page_number()
-    reader.drag_across(page)
+    reader.drag_across(page, NOTES_LINE)
     selected = reader.selection()
     assert selected.strip()
     time.sleep(SETTLE)
     assert reader.selection() == selected
 
     # Highlight it.
-    reader.highlight(page)
+    reader.highlight(page, NOTES_LINE)
     reader.assert_saved()
 
-    # Jump to a section from the outline, go back, then type a page number.
-    reader.click("#viewsManagerToggleButton")
-    reader.click("#viewsManagerSelectorButton")
-    reader.click("#outlinesViewMenu")
-    reader.wait("V.document.querySelector('#outlinesView .treeItem a')?.getBoundingClientRect().width > 0")
-    reader.click("#outlinesView .treeItem:nth-child(6) a")
-    reader.wait(f"V.PDFViewerApplication.page !== {page}")
-    assert reader.page_number() != page
-    reader.click_header("back")
-    reader.wait(f"V.PDFViewerApplication.page === {page}")
-    page_field = reader.box("#pageNumber")
-    actions = ActionChains(app)
-    actions.w3c_actions.pointer_action.move_to_location(int(page_field[0] + page_field[2] / 2), int(page_field[1] + page_field[3] / 2)).click()
-    actions.perform()
+    # Jump to a section from the outline, go back, then type a page number. The sidebar holds
+    # the page thumbnails, then the outline, whose entries are the notes' section titles.
+    reader.click("[data-epdf-i='sidebar-button'] button")
+    reader.click_element("S.querySelectorAll('[role=tab]')[1]")
+    reader.wait("[...S.querySelectorAll('span')].some((entry) => entry.textContent === 'The lattice E8')")
+    reader.click_element("[...S.querySelectorAll('span')].find((entry) => entry.textContent === 'The lattice E8')")
+    reader.shows(f"page !== {page}")
+    reader.click_header("Back")
+    reader.shows(f"page === {page}")
+    reader.click("[data-epdf-i='page-controls'] input")
     ActionChains(app).key_down(Keys.CONTROL).send_keys("a").key_up(Keys.CONTROL).send_keys("7", Keys.ENTER).perform()
-    reader.wait("V.PDFViewerApplication.page === 7")
+    reader.shows("page === 7")
     # Read it: a page counts as read after MIN_PAGE_SECONDS (src/contract/library.ts).
     time.sleep(6)
 
@@ -358,7 +373,7 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     WebDriverWait(app, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, f"[data-timeline-key='{notes}']"))
     nav_to(app, "Library")
     other = open_from_library(app, problems)
-    other.highlight(1)
+    other.highlight(1, PROBLEMS_LINE)
     other.assert_saved()
 
     # Back in the notes, the page and the highlight are where they were.
@@ -380,17 +395,16 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     # The notes' reader opened the PDF before the bucket wrote that metadata into it; a new
     # highlight is saved all the same.
     show_tab(app, notes)
-    reader.highlight(7)
+    reader.highlight(7, NOTES_LINE)
     reader.assert_saved()
 
     # Close the notes and open them again: both highlights and the new title are there.
-    errors = reader.errors() + other.errors()
     close_tab(app, notes)
     reader = open_from_library(app, notes)
-    reader.wait("V.document.querySelectorAll('.highlightEditor, .annotationLayer .highlightAnnotation').length > 0")
-    assert "Lectures on Lattices" in reader.text("R.document.querySelector('h1').textContent")
+    reader.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > 0")
+    assert "Lectures on Lattices" in app.find_element(By.CSS_SELECTOR, f"{reader.reader} h1").get_attribute("textContent")
 
-    assert errors + reader.errors() == []
+    assert app.execute_script("return window.__errors") == []
 
     with stored_pdf(data_home, notes) as pdf:
         assert highlights_in(pdf) == 2

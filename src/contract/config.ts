@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { NonEmptySchema, Sha256Schema } from "./text";
+import { NonEmptySchema } from "./text";
 
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 export const CONFIG_PATH = join(REPO_ROOT, "pdf-bucket.config.json");
@@ -13,10 +13,6 @@ export const AppConfigSchema = z.strictObject({
   server: z.strictObject({
     host: NonEmptySchema,
     port: z.number().int().positive(),
-  }),
-  pdfjs: z.strictObject({
-    version: z.string().regex(/^\d+\.\d+\.\d+$/),
-    sha256: Sha256Schema,
   }),
   // The capture extension: sub-frames smaller than the minimum keep the browser's own viewer
   // (embedded previews); a followed link gives its text as the title hint for a PDF that arrives

@@ -41,14 +41,14 @@ agent-memory maintain move <key> --to global/advice
 A standalone desktop app that replaces reading PDFs in the browser. Browser extensions
 intercept every PDF navigation in Chrome and Firefox and hand the PDF to the bucket, which
 stores a copy with its provenance embedded (PDF URL, capture time, hash),
-opens it in a PDF.js reader inside the app window, and lets the user file it into
+opens it in an EmbedPDF reader inside the app window, and lets the user file it into
 collections and tags, run extraction plugins on it, and send it to Zotero when it matters.
 Zotero stays the citation store; the bucket is the reading store.
 
 ## Provisioning
 
 The desktop app the user runs is an installed copy: the binary in `~/.local/bin` and its runtime
-files (library bundle, PDF.js viewer, extraction manifest, Python environment, capture
+files (library bundle with the reader, extraction manifest, Python environment, capture
 extensions) in `$XDG_DATA_HOME/pdf-bucket-app`. A commit to this checkout does not change it. The
 user sees a change only after `just provision`, which builds, installs and restarts the app, and
 builds both capture extensions, has addons.mozilla.org sign a changed Firefox build, and installs
@@ -91,7 +91,7 @@ confirmed the current architecture.
 
 Nothing in this repo is invented. Two kinds of source, handled differently:
 
-- **Mature external projects** (PDF.js, Tauri, WXT, React, the Zotero Connector, the local
+- **Mature external projects** (EmbedPDF, Tauri, WXT, React, the Zotero Connector, the local
   write API addon): import directly, or fork. Cribbing code from them is also fine.
 - **The user's own prior repos** (below): reference implementations. Crib their code into
   this repo because it is already written and debugged, then treat it as this repo's code.
@@ -127,8 +127,8 @@ to build from scratch.
 | library (1) | Chrome / Firefox capture toggles | capture extension options, one build per browser |
 | library (1) | Details: Source, Source URL, First captured, File path, Cache status, SHA256, mirrors | provenance embedded in the PDF; the Source is the PDF URL; the inspector shows the first page, the PDF URL's site as a link, date and size, the PDF URL and mirrors with their last check (Verify), and the row menu copies the PDF URL |
 | library (1) | Send to Zotero | the send action: `import_from_url` with the PDF URL, then `attach_bytes`, on the local write API; or open the reader URL in a browser and press the Zotero Connector |
-| reader (2) | reader, outline, search in document, highlights, notes | PDF.js prebuilt viewer in an iframe; highlights saved into the PDF by `saveDocument()` |
-| reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width PDF.js; mirrors are in the inspector's Sources |
+| reader (2) | reader, outline, search in document, highlights, notes | EmbedPDF's viewer (`@embedpdf/react-pdf-viewer`); annotations saved into the PDF by its export plugin and a PUT of the bytes |
+| reader (2) | Provenance panel, mirror URLs | not in the reader: reading is full-width EmbedPDF; mirrors are in the inspector's Sources |
 | reader (2) | Rebuild from metadata | Rebuild in the library's Needs Re-fetch list, and the cache-rebuild recipe; both try the PDF URL, then each mirror |
 | collections (3) | Smart Collection rules, subcollections, collection cards, Keep offline, activity | rule-based saved searches; nested collections, description, pin, Keep offline and activity in the filing document |
 | settings (4) | Browser Capture | each extension's toolbar popup and options page; the library's status bar shows whether captures can land |
@@ -160,7 +160,7 @@ but breaks one of these is wrong.
 6. **Plugins are commands.** Extraction plugins are external commands with a
    JSON manifest and contract. The app imports no provider SDK and holds no credentials.
 7. **This repo owns wiring only.** No hand-rolled PDF viewer, library table, search index,
-   metadata scraper or citation database. PDF.js renders; components cribbed from
+   metadata scraper or citation database. EmbedPDF renders; components cribbed from
    `zotero-gui` display; the capture extension cribbed from `mathread` captures; plugins
    cribbed from `zotero-library-tools` extract; Zotero cites. Cribbing is how this repo
    avoids writing those pieces; the cribbed code carries no mention of where it came from.

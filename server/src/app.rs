@@ -1,5 +1,5 @@
 //! The bucket's HTTP surface: capture, import, status, the PDF and reader URLs, the event
-//! stream, the API route groups, the PDF.js viewer and the library UI bundle.
+//! stream, the API route groups and the web bundle (the library and the reader).
 use std::io::ErrorKind;
 use std::path::Path as FsPath;
 use std::sync::Arc;
@@ -395,7 +395,7 @@ async fn status(State(state): State<Shared>, headers: HeaderMap) -> AppResult<Js
     }))
 }
 
-/// A stored PDF, with range requests (which PDF.js makes for a large PDF) and its SHA-256 as the
+/// A stored PDF, with range requests and its SHA-256 as the
 /// entity tag, both taken from the one file opened.
 async fn pdf(
     State(state): State<Shared>,
@@ -438,7 +438,6 @@ async fn read(
 }
 
 pub fn router(state: Shared) -> Router {
-    let pdfjs = ServeDir::new(&state.config.pdfjs_dir);
     let web = ServeDir::new(&state.config.web_dir);
     Router::new()
         .route("/status", get(status))
@@ -457,7 +456,6 @@ pub fn router(state: Shared) -> Router {
         .merge(extensions::routes())
         .merge(extractions::routes())
         .merge(thumbnails::routes())
-        .nest_service("/pdfjs", pdfjs)
         .fallback_service(web)
         // PDFs arrive whole in one request (a capture, a reader save); axum's 2 MB default
         // would refuse most of them.

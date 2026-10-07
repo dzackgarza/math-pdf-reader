@@ -481,7 +481,7 @@ impl Store {
     }
 
     /// Opens KEY's stored PDF with the SHA-256 of what the opened file holds, cached per file
-    /// so that PDF.js's range requests do not hash the file again.
+    /// so that range requests do not hash the file again.
     pub async fn open(&self, key: &str) -> AppResult<Option<OpenedPdf>> {
         let Some(key) = Key::parse(key) else {
             return Ok(None);

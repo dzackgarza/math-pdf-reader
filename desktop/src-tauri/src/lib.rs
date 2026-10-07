@@ -78,7 +78,7 @@ fn show_failure(app: &AppHandle, page: Option<&Url>, failure: &str) {
 enum StartFailure {
     Envrc(process_config::EnvrcFailure),
     Root(PathBuf, std::io::Error),
-    NoViewer(PathBuf),
+    NoWebBundle(PathBuf),
     Port(u64),
     Bind(String, std::io::Error),
 }
@@ -94,10 +94,10 @@ impl fmt::Display for StartFailure {
                     root.display()
                 )
             }
-            Self::NoViewer(viewer) => write!(
+            Self::NoWebBundle(page) => write!(
                 formatter,
-                "The PDF.js viewer is missing at {}; run `just fetch-pdfjs`.",
-                viewer.display()
+                "The web bundle is missing at {}; run `just build-web`.",
+                page.display()
             ),
             Self::Port(port) => write!(
                 formatter,
@@ -117,9 +117,9 @@ fn start(config: &AppConfig) -> Result<Serving, StartFailure> {
         BucketConfig::configured(process_config::process_env().map_err(StartFailure::Envrc)?);
     std::fs::create_dir_all(&bucket.root)
         .map_err(|error| StartFailure::Root(bucket.root.clone(), error))?;
-    let viewer = bucket.pdfjs_dir.join("web/viewer.html");
-    if !viewer.is_file() {
-        return Err(StartFailure::NoViewer(viewer));
+    let page = bucket.web_dir.join("index.html");
+    if !page.is_file() {
+        return Err(StartFailure::NoWebBundle(page));
     }
     let host = config.server.host.to_string();
     let port = u16::try_from(config.server.port.get())

@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { AnnotationPlugin, EmbedPdfContainer, ScrollPlugin } from "@embedpdf/react-pdf-viewer";
 import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
 import { build } from "vite";
 import { z } from "zod";
@@ -164,13 +165,24 @@ describe("library window", () => {
     await page.waitForSelector("nav a");
   };
   const tab = (key: string) => `[data-tab-key="${key}"]`;
-  // True in the window once the PDF.js viewer of the reader page in FRAME has the PDF's pages.
-  const pdfLoadedIn = (frame: string) =>
-    `document.querySelector('${frame}')?.contentDocument?.querySelector("iframe")?.contentWindow?.PDFViewerApplication?.pdfViewer?.pagesCount > 0`;
+  // The reader of KEY, in a tab or on its own page, and the EmbedPDF viewer in it, whose UI is in
+  // the viewer's shadow root (puppeteer's `>>>` reaches into it).
+  const readerOf = (key: string) => `[data-reader-key="${key}"]`;
+  const viewerOf = (key: string) => `${readerOf(key)} embedpdf-container`;
+  const inViewer = (key: string, css: string) => `${viewerOf(key)} >>> ${css}`;
+  // A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
+  const PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]';
   const openTabKeys = () =>
     page.$$eval("[data-tab-key]", (tabs) =>
       tabs.map((element) => element.getAttribute("data-tab-key")),
     );
+  // The keys of the readers loaded in the window.
+  const readerKeys = async () =>
+    (
+      await page.$$eval("[data-reader-key]", (readers) =>
+        readers.map((reader) => reader.getAttribute("data-reader-key")),
+      )
+    ).sort();
   // What the desktop app's tray Quit hears back from the library (follow-open-events.js).
   const quitOutcome = () =>
     page.evaluate(
@@ -190,26 +202,101 @@ describe("library window", () => {
           );
         }),
     );
-  // The PDF tab for KEY, once it is the tab shown and its viewer has the PDF's pages: the
-  // reader page it frames and that page's PDF.js viewer.
+  // Waits until KEY's reader has drawn a page of its PDF, as an image in a page box.
+  const readerLoaded = (key: string) =>
+    page.waitForFunction(
+      (css, box) =>
+        [...(document.querySelector(css)?.shadowRoot?.querySelectorAll(`${box} img`) ?? [])].some(
+          (image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+        ),
+      {},
+      viewerOf(key),
+      PAGE_BOX,
+    );
+  // The page KEY's reader shows, as its page box below the PDF reads.
+  const pageInput = (key: string) => inViewer(key, '[data-epdf-i="page-controls"] input');
+  const showsPage = (key: string, pageNumber: number) =>
+    page.waitForFunction(
+      (css, wanted) => {
+        const input = document
+          .querySelector(css)
+          ?.shadowRoot?.querySelector('[data-epdf-i="page-controls"] input');
+        return input instanceof HTMLInputElement && input.value === wanted;
+      },
+      {},
+      viewerOf(key),
+      String(pageNumber),
+    );
+  // Goes to a page of KEY's PDF as a reader does: typed into the page box.
+  const goToPage = async (key: string, pageNumber: number) => {
+    await page.click(pageInput(key), { count: 3 });
+    await page.keyboard.type(String(pageNumber));
+    await page.keyboard.press("Enter");
+    await showsPage(key, pageNumber);
+  };
+  // The top left corner of page 1 of KEY's PDF, once the reader shows it. The scroll goes
+  // through EmbedPDF itself: its page box is absent from a PDF of one page. EmbedPDF draws only
+  // the pages near the one shown, so page 1 is the highest page drawn once its top is in the
+  // window, and a page above the window is still on the way to it.
+  const firstPageCorner = async (key: string) => {
+    await page.evaluate(async (css) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const scroll = (await viewer?.registry)?.getPlugin<ScrollPlugin>("scroll")?.provides();
+      if (scroll === undefined) {
+        throw new Error(`${css} has no scroll plugin`);
+      }
+      scroll.scrollToPage({ pageNumber: 1, behavior: "instant" });
+    }, viewerOf(key));
+    const corner = await page.waitForFunction(
+      (css, box) => {
+        const tops = [...(document.querySelector(css)?.shadowRoot?.querySelectorAll(box) ?? [])]
+          .map((element) => element.getBoundingClientRect())
+          .sort((one, other) => one.y - other.y);
+        const first = tops[0];
+        return first !== undefined && first.y >= 0 && { x: first.x, y: first.y };
+      },
+      {},
+      viewerOf(key),
+      PAGE_BOX,
+    );
+    return z.object({ x: z.number(), y: z.number() }).parse(await corner.jsonValue());
+  };
+  // Writes NOTE on page 1 of KEY's PDF with EmbedPDF's free-text tool, from its Annotate toolbar.
+  const writeNote = async (key: string, note: string) => {
+    // The Annotate toolbar opens below the main one and moves the pages down, so the page's
+    // corner is found once it is open.
+    await page.click(inViewer(key, '[data-epdf-i="annotate-mode"] button'));
+    await page.click(inViewer(key, '[data-epdf-i="add-text"] button'));
+    const corner = await firstPageCorner(key);
+    await page.mouse.click(corner.x + 120, corner.y + 160);
+    await page.waitForSelector(inViewer(key, '[contenteditable="true"]'));
+    await page.keyboard.type(note);
+    await page.keyboard.press("Escape");
+  };
+  // The contents of the annotations on page 1 of KEY's PDF, as its reader reads them from the
+  // stored file.
+  const notesOnFirstPage = async (key: string) => {
+    await readerLoaded(key);
+    return z.array(z.string()).parse(
+      await page.evaluate(async (css) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const annotations = (await viewer?.registry)
+          ?.getPlugin<AnnotationPlugin>("annotation")
+          ?.provides();
+        if (annotations === undefined) {
+          throw new Error(`${css} has no annotation plugin`);
+        }
+        return (await annotations.getPageAnnotations({ pageIndex: 0 }).toPromise()).flatMap(
+          (annotation) => (annotation.contents === undefined ? [] : [annotation.contents]),
+        );
+      }, viewerOf(key)),
+    );
+  };
+  // The tab for KEY, once it is the tab shown and its reader has drawn the PDF.
   const shownReader = async (key: string) => {
     await page.waitForSelector(`${tab(key)}[data-state="active"]`);
-    // A frame handle taken while a new tab's frame still holds its initial empty document can
-    // detach when the reader page replaces it, so the handles are taken once the PDF is up.
-    const frameSelector = `iframe[data-reader-key="${key}"]`;
-    await page.waitForFunction(pdfLoadedIn(frameSelector));
-    const reader = await (
-      await page.waitForSelector(frameSelector, { visible: true })
-    )?.contentFrame();
-    if (reader === undefined || reader === null) {
-      throw new Error(`the tab of ${key} frames no reader`);
-    }
-    const viewer = await (await reader.waitForSelector("iframe"))?.contentFrame();
-    if (viewer === undefined || viewer === null) {
-      throw new Error("the reader has no viewer frame");
-    }
-    await viewer.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount > 0");
-    return { reader, viewer };
+    await page.waitForSelector(readerOf(key), { visible: true });
+    await readerLoaded(key);
   };
 
   beforeAll(async () => {
@@ -462,37 +549,37 @@ describe("library window", () => {
   test("reader back and forward walk the positions visited in the PDF and stay in it; on its own, the reader's Library returns to the view the library last showed", async () => {
     await page.goto(`${bucket.origin}/#/unfiled`);
     await page.waitForSelector(row("reading"));
-    await page.goto(`${bucket.origin}/read/reading`);
-    const viewer = await (await page.waitForSelector("iframe"))?.contentFrame();
-    if (viewer === undefined || viewer === null) {
-      throw new Error("the reader has no viewer frame");
+    await page.goto(`${bucket.origin}/read/reading#page=1`);
+    await readerLoaded("reading");
+    // A page typed into the page box is a jump, as a link or an outline entry is; the reader's
+    // address names the page it shows.
+    for (const pageNumber of [7, 3]) {
+      await goToPage("reading", pageNumber);
+      await page.waitForFunction((n) => location.hash === `#page=${n}`, {}, pageNumber);
     }
-    await viewer.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount === 10");
-    // Follows a link to a page, as an outline entry or an internal link in the PDF does, and
-    // waits for the view update that records the position reached.
-    const followLinkTo = async (pageNumber: number) => {
-      await viewer.evaluate(`PDFViewerApplication.pdfLinkService.goToPage(${pageNumber})`);
-      await page.waitForFunction((n) => location.hash.startsWith(`#page=${n}&`), {}, pageNumber);
-    };
-    await followLinkTo(7);
-    await followLinkTo(3);
     await shot("reader");
 
     const back = 'button[aria-label="Back"]';
     const forward = 'button[aria-label="Forward"]';
     await page.click(back);
-    await viewer.waitForFunction("PDFViewerApplication.page === 7");
+    await showsPage("reading", 7);
     await page.click(back);
-    await viewer.waitForFunction("PDFViewerApplication.page === 1");
+    await showsPage("reading", 1);
     expect(await page.$eval(back, (button) => (button as HTMLButtonElement).disabled)).toBe(true);
     await page.keyboard.down("Alt");
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.up("Alt");
     expect(new URL(page.url()).pathname).toBe("/read/reading");
-    expect(await viewer.evaluate("PDFViewerApplication.page")).toBe(1);
+    await showsPage("reading", 1);
+    await page.keyboard.down("Alt");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.up("Alt");
+    await showsPage("reading", 7);
+    await page.click(back);
+    await showsPage("reading", 1);
     await page.click(forward);
-    await viewer.waitForFunction("PDFViewerApplication.page === 7");
-    await page.waitForFunction(() => location.hash.includes("page=7"));
+    await showsPage("reading", 7);
+    await page.waitForFunction(() => location.hash === "#page=7");
     const address = page.url();
 
     await page.click('a[aria-label="Library"]');
@@ -500,11 +587,8 @@ describe("library window", () => {
     expect(new URL(page.url()).hash).toBe("#/unfiled");
 
     await page.goto(address);
-    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
-    if (reopened === undefined || reopened === null) {
-      throw new Error("the reader has no viewer frame");
-    }
-    await reopened.waitForFunction("window.PDFViewerApplication?.page === 7");
+    await readerLoaded("reading");
+    await showsPage("reading", 7);
     await page.setViewport({ width: 700, height: 900 });
     await shot("reader-narrow");
     await page.setViewport(viewport);
@@ -512,9 +596,7 @@ describe("library window", () => {
 
   test("the reader link button copies the captured PDF URL", async () => {
     await page.goto(`${bucket.origin}/read/lattices`);
-    await page.waitForFunction(
-      'document.querySelector("iframe")?.contentWindow?.PDFViewerApplication?.pdfViewer?.pagesCount > 0',
-    );
+    await readerLoaded("lattices");
     await page.evaluate(() => navigator.clipboard.writeText("probe"));
 
     await page.click('button[aria-label="Copy PDF link"]');
@@ -544,32 +626,29 @@ describe("library window", () => {
       visible: true,
     });
     expect(new URL(page.url()).pathname).toBe("/");
-    await page.waitForFunction(pdfLoadedIn('iframe[data-reader-key="problems"]'));
+    // Loaded while hidden, the PDF has drawn its pages when its tab is shown.
+    await readerLoaded("problems");
     // The Library tab has focus and answers Enter itself; the row takes it back.
     await page.click(row("problems"));
     await page.keyboard.press("Enter");
-    const problems = await shownReader("problems");
+    await shownReader("problems");
     expect(await openTabKeys()).toEqual(["problems"]);
-    // Loaded while hidden, the PDF still draws its pages once its tab is shown.
-    await problems.viewer.waitForFunction(
-      `document.querySelector('.page[data-page-number="1"] canvas')?.width > 0`,
-    );
     expect(await page.$eval(tab("problems"), (element) => element.textContent)).toBe(
       titleOf("problems"),
     );
     // The tab strip holds the way back, so the reader in a tab shows no Library link.
-    expect(await problems.reader.$eval("#library", (link) => link.checkVisibility())).toBe(false);
+    expect(await page.$(`${readerOf("problems")} a[aria-label="Library"]`)).toBeNull();
     await shot("tabs-reader");
 
     await (await byRole("tab", "Library")).click();
     await page.click(row("reading"));
     await page.keyboard.press("Enter");
-    const reading = await shownReader("reading");
+    await shownReader("reading");
     expect(await openTabKeys()).toEqual(["problems", "reading"]);
     await shot("tabs-two");
 
     // Keys pressed while reading reach the tab strip from inside the PDF.
-    await reading.viewer.click("#viewerContainer");
+    await page.click(inViewer("reading", PAGE_BOX));
     await page.keyboard.down("Control");
     await page.keyboard.press("Tab");
     await page.waitForSelector(row("reading"), { visible: true });
@@ -588,9 +667,7 @@ describe("library window", () => {
   });
 
   test("past five PDF tabs the one shown longest ago sleeps, holding no reader, and wakes at its page when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
-    // The test opens and deletes its own PDFs, so later tests see the fixtures as they were. The
-    // first is a PDF no other test opens: PDF.js reopens a document at the page last viewed in any
-    // PDF with the same fingerprint.
+    // The test opens and deletes its own PDFs, so later tests see the fixtures as they were.
     const captureTab = async (source: string, ordinal: string) => {
       const form = new FormData();
       const bytes = new Uint8Array([
@@ -615,18 +692,11 @@ describe("library window", () => {
     ]);
     const [second, third] = later;
     const asleep = (key: string) => page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
-    const readerFrames = async () =>
-      (
-        await page.$$eval("iframe[data-reader-key]", (frames) =>
-          frames.map((frame) => frame.getAttribute("data-reader-key")),
-        )
-      ).sort();
 
     await openLibrary();
     await page.click(row(first), { count: 2 });
-    const opened = await shownReader(first);
-    await opened.viewer.evaluate("PDFViewerApplication.page = 3");
-    await opened.reader.waitForFunction(() => location.hash.includes("page=3"));
+    await shownReader(first);
+    await goToPage(first, 3);
     for (const key of later) {
       await (await byRole("tab", "Library")).click();
       await page.click(row(key));
@@ -634,25 +704,25 @@ describe("library window", () => {
       await shownReader(key);
     }
     await asleep(first);
-    expect(await readerFrames()).toEqual([...later].sort());
+    expect(await readerKeys()).toEqual([...later].sort());
     await shot("tabs-asleep");
 
     await page.click(`${tab(first)} [role="tab"]`);
-    const woken = await shownReader(first);
-    await woken.viewer.waitForFunction("PDFViewerApplication.page === 3");
+    await shownReader(first);
+    await showsPage(first, 3);
     await asleep(second);
-    expect(await readerFrames()).not.toContain(second);
+    expect(await readerKeys()).not.toContain(second);
 
     await page.click(tab(third), { button: "right" });
     await (await menuItem("Sleep Tab")).click();
     await asleep(third);
-    expect(await readerFrames()).not.toContain(third);
+    expect(await readerKeys()).not.toContain(third);
 
     await page.click(tab(first), { button: "right" });
     await (await menuItem("Sleep Tab")).click();
     await asleep(first);
     await shownReader(second);
-    expect(await readerFrames()).toEqual(later.filter((key) => key !== third).sort());
+    expect(await readerKeys()).toEqual(later.filter((key) => key !== third).sort());
 
     for (const key of [first, ...later]) {
       const deleted = await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
@@ -663,54 +733,21 @@ describe("library window", () => {
   test("closing a PDF's tab right after a note is written saves the note into the PDF first", async () => {
     await openLibrary();
     await page.click(row("outlined"), { count: 2 });
-    const { viewer } = await shownReader("outlined");
-    await viewer.waitForFunction(
-      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
-    );
-    await viewer.evaluate(
-      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
-    );
-    const layer = await viewer.waitForSelector(
-      '.page[data-page-number="1"] .annotationEditorLayer',
-    );
-    await layer?.click({ offset: { x: 120, y: 160 } });
-    await viewer.waitForSelector(".freeTextEditor .internal");
+    await shownReader("outlined");
     const note = `Closed at once ${Date.now()}`;
-    await page.keyboard.type(note);
-    await page.keyboard.press("Escape");
-    await viewer.evaluate(
-      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
-    );
-    const saved = page.waitForResponse(
-      (response) =>
-        response.url().endsWith("/api/items/outlined/pdf") && response.request().method() === "PUT",
-    );
+    await writeNote("outlined", note);
     await page.click(`${tab("outlined")} button[aria-label^="Close"]`);
-    expect((await saved).status()).toBe(200);
     await page.waitForSelector(row("outlined"), { visible: true });
+    expect(await openTabKeys()).toEqual([]);
 
     await page.goto(`${bucket.origin}/read/outlined`);
-    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
-    if (reopened === undefined || reopened === null) {
-      throw new Error("the reader has no viewer frame");
-    }
-    await reopened.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
-    const contents = z
-      .array(z.string())
-      .parse(
-        await reopened.evaluate(
-          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
-        ),
-      );
-    expect(contents).toContain(note);
+    expect(await notesOnFirstPage("outlined")).toContain(note);
   });
 
   test("a note saved over a PDF changed elsewhere shows the conflict and keeps the tab until the copy is saved over it", async () => {
     await openLibrary();
     await page.click(row("reading"), { count: 2 });
-    const { reader, viewer } = await shownReader("reading");
-    // The reader resumes at the page an earlier test last viewed; the note goes on page 1.
-    await viewer.evaluate("PDFViewerApplication.page = 1");
+    await shownReader("reading");
     // Another window saves the PDF after this reader loaded it.
     const stored = await fetch(`${bucket.origin}/pdf/reading.pdf`);
     const tag = stored.headers.get("ETag");
@@ -728,29 +765,15 @@ describe("library window", () => {
     });
     expect(other.status).toBe(200);
 
-    await viewer.waitForFunction(
-      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
-    );
-    await viewer.evaluate(
-      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
-    );
-    const layer = await viewer.waitForSelector(
-      '.page[data-page-number="1"] .annotationEditorLayer',
-    );
     const refused = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
     );
-    await layer?.click({ offset: { x: 120, y: 160 } });
-    await viewer.waitForSelector(".freeTextEditor .internal");
     const note = `Written over a stale PDF ${Date.now()}`;
-    await page.keyboard.type(note);
-    await page.keyboard.press("Escape");
-    await viewer.evaluate(
-      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
-    );
+    await writeNote("reading", note);
     expect((await refused).status()).toBe(412);
-    await reader.waitForSelector("#conflict", { visible: true });
+    const conflict = `${readerOf("reading")} [role="alert"]`;
+    await page.waitForSelector(conflict, { visible: true });
     await shot("reader-save-conflict");
 
     // The tab stays while the conflict is open.
@@ -764,27 +787,15 @@ describe("library window", () => {
       (response) =>
         response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
     );
-    await reader.click("#keep-mine");
+    await page.click(`${conflict} button::-p-text(Save my copy over it)`);
     expect((await kept).status()).toBe(200);
-    await reader.waitForSelector("#conflict", { hidden: true });
+    await page.waitForSelector(conflict, { hidden: true });
     expect(await quitOutcome()).toBe("settled");
     await page.click(`${tab("reading")} button[aria-label^="Close"]`);
     await page.waitForFunction(`!document.querySelector('${tab("reading")}')`);
 
     await page.goto(`${bucket.origin}/read/reading`);
-    const reopened = await (await page.waitForSelector("iframe"))?.contentFrame();
-    if (reopened === undefined || reopened === null) {
-      throw new Error("the reader has no viewer frame");
-    }
-    await reopened.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
-    const contents = z
-      .array(z.string())
-      .parse(
-        await reopened.evaluate(
-          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
-        ),
-      );
-    expect(contents).toContain(note);
+    expect(await notesOnFirstPage("reading")).toContain(note);
   });
 
   test("a capture made while the library is open opens its PDF in a tab", async () => {
@@ -801,7 +812,7 @@ describe("library window", () => {
     await shownReader("problems");
   });
 
-  test("the status bar shows Zotero's state; a capture's reader opened before Retrieve metadata answers takes the title it resolves, and a source nothing identifies shows why", async () => {
+  test("the status bar shows Zotero's state; a capture's reader opened before Retrieve metadata answers takes the title it resolves, in its tab and on its own page, and a source nothing identifies shows why", async () => {
     // Zotero identifies the arXiv URL, once the test lets it answer; no method identifies any
     // other URL. The PDF captured there has no title of its own, so it opens under its hint.
     const arxivPdf = "https://arxiv.org/pdf/2609.21174v1";
@@ -847,6 +858,10 @@ describe("library window", () => {
       expect(response.status).toBe(200);
       return CaptureResponseSchema.parse(await response.json()).key;
     };
+    // A new page comes to the front, and Chromium draws no frames for a page behind it: the
+    // library goes back to the front, so the reader in its tab draws the PDF.
+    const own = await browser.newPage();
+    await page.bringToFront();
     try {
       await page.goto(`${app.origin}/`);
       await page.waitForSelector(
@@ -854,12 +869,17 @@ describe("library window", () => {
       );
 
       const key = await capture("lecture-notes.pdf", arxivPdf, "View PDF");
-      const { reader } = await shownReader(key);
+      await shownReader(key);
       expect(await page.$eval(tab(key), (element) => element.textContent)).toContain("View PDF");
+      // The same PDF on its own reader page, whose title and citation tags a Zotero Connector
+      // reads.
+      await own.goto(`${app.origin}/read/${key}`);
+      await own.waitForSelector(`${readerOf(key)} h1`);
       answer();
       const title = "On The Cyclicity of Algebraic Lattices";
       await shows(tab(key), title);
-      await reader.waitForFunction(
+      await shows(`${readerOf(key)} h1`, title);
+      await own.waitForFunction(
         (wanted) =>
           document.querySelector('meta[name="citation_title"]')?.getAttribute("content") ===
             wanted &&
@@ -880,31 +900,25 @@ describe("library window", () => {
       );
       await shot("zotero-not-running");
     } finally {
+      await own.close();
       zotero.stop(true);
       await app.stop();
     }
   });
 
   test("a PDF that asks for its outline opens with the outline closed, unless the setting opens it", async () => {
-    const sidebarOnOpen = async () => {
-      await page.goto(`${bucket.origin}/read/outlined`);
-      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
-      if (frame === undefined || frame === null) {
-        throw new Error("the reader has no viewer frame");
-      }
-      // ViewsManager.setInitialView marks the sidebar state applied.
-      await frame.waitForFunction(
-        "PDFViewerApplication.pdfViewer?.pagesCount === 10 && PDFViewerApplication.viewsManager?.isInitialViewSet",
+    // Whether EmbedPDF's sidebar shows an entry of the outline, whose entries are the section
+    // titles of outlined-notes.pdf. EmbedPDF draws the page's own text into images, not elements.
+    const outlineShown = (css: string) =>
+      [...(document.querySelector(css)?.shadowRoot?.querySelectorAll("span") ?? [])].some(
+        (entry) => entry.textContent === "Gram matrices" && entry.checkVisibility(),
       );
-      return z
-        .tuple([z.boolean(), z.int()])
-        .parse(
-          await frame.evaluate(
-            "[PDFViewerApplication.viewsManager.isOpen, PDFViewerApplication.viewsManager.visibleView]",
-          ),
-        );
+    const openOutlined = async () => {
+      await page.goto(`${bucket.origin}/read/outlined`);
+      await readerLoaded("outlined");
     };
-    expect((await sidebarOnOpen())[0]).toBe(false);
+    await openOutlined();
+    expect(await page.evaluate(outlineShown, viewerOf("outlined"))).toBe(false);
     await shot("reader-outline-closed");
 
     const toggle = 'button[role="switch"][aria-label="Open the outline when a PDF opens"]';
@@ -915,8 +929,8 @@ describe("library window", () => {
     await openSettings();
     await page.click(toggle);
     await page.waitForSelector(`${toggle}[aria-checked="true"]`);
-    // SidebarView.OUTLINE is 2.
-    expect(await sidebarOnOpen()).toEqual([true, 2]);
+    await openOutlined();
+    await page.waitForFunction(outlineShown, {}, viewerOf("outlined"));
     await shot("reader-outline-open");
 
     await openSettings();
@@ -925,28 +939,29 @@ describe("library window", () => {
   });
 
   test("the theme follows a dark system setting until Settings chooses Light, in the library and the reader", async () => {
-    // Background colours: the library's surface token (index.css) and PDF.js's --body-bg-color.
+    // The library's surface token (index.css) as its background, and EmbedPDF's colour scheme.
     const LIBRARY = { light: "rgb(247, 248, 250)", dark: "rgb(15, 20, 27)" };
-    const VIEWER = { light: "rgb(212, 212, 215)", dark: "rgb(42, 42, 46)" };
     const themeSelect = 'select[aria-label="Theme"]';
     const libraryBackground = async () => {
       await page.goto(`${bucket.origin}/#/settings`);
       await page.waitForSelector(themeSelect);
       return page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     };
-    const viewerBackground = async () => {
+    const viewerScheme = async () => {
       await page.goto(`${bucket.origin}/read/lattices`);
-      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
-      if (frame === undefined || frame === null) {
-        throw new Error("the reader has no viewer frame");
-      }
-      await frame.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
-      return frame.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      await readerLoaded("lattices");
+      return page.evaluate((css) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        if (viewer === null) {
+          throw new Error(`no ${css}`);
+        }
+        return viewer.activeColorScheme;
+      }, viewerOf("lattices"));
     };
     await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
 
     expect(await libraryBackground()).toBe(LIBRARY.dark);
-    expect(await viewerBackground()).toBe(VIEWER.dark);
+    expect(await viewerScheme()).toBe("dark");
     await shot("reader-dark");
 
     await libraryBackground();
@@ -955,7 +970,7 @@ describe("library window", () => {
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
       LIBRARY.light,
     );
-    expect(await viewerBackground()).toBe(VIEWER.light);
+    expect(await viewerScheme()).toBe("light");
     expect(await libraryBackground()).toBe(LIBRARY.light);
 
     await page.select(themeSelect, "system");
@@ -963,117 +978,77 @@ describe("library window", () => {
     await page.emulateMediaFeatures();
   });
 
-  test("night mode in the reader draws the PDF's pages in the dark theme's colours, and turns off again", async () => {
-    // The top-left corner of page 1 is the page's white margin; night mode paints it with the
-    // theme's background, #2E3440, which PDF.js's page-colour filter rounds by up to one step
-    // per channel.
-    const NIGHT = [0x2e, 0x34, 0x40];
-    const nearNight = (pixel: number[] | null) =>
-      pixel !== null && pixel.every((channel, index) => Math.abs(channel - NIGHT[index]) <= 1);
-    const cornerOfPage = async () => {
-      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
-      if (frame === undefined || frame === null) {
-        throw new Error("the reader has no viewer frame");
-      }
-      await frame.waitForFunction(
-        "window.PDFViewerApplication?.pdfViewer?.getPageView(0)?.renderingState === 3",
-      );
-      return frame.evaluate(() => {
-        const canvas = document.querySelector<HTMLCanvasElement>(
-          '.page[data-page-number="1"] canvas',
-        );
-        const pixel = canvas?.getContext("2d")?.getImageData(2, 2, 1, 1).data;
-        return pixel === undefined ? null : [...pixel.slice(0, 3)];
+  test("night mode in the reader draws the PDF's pages light on dark, and turns off again", async () => {
+    // The colour of the window's pixel at POINT, as a screenshot shows it.
+    const pixelAt = async (point: { x: number; y: number }) => {
+      const png = await page.screenshot({
+        clip: { x: point.x, y: point.y, width: 1, height: 1 },
+        encoding: "base64",
       });
+      return z.array(z.int()).parse(
+        await page.evaluate(async (data) => {
+          const image = await createImageBitmap(
+            await (await fetch(`data:image/png;base64,${data}`)).blob(),
+          );
+          const context = new OffscreenCanvas(1, 1).getContext("2d");
+          if (context === null) {
+            throw new Error("no 2d canvas");
+          }
+          context.drawImage(image, 0, 0);
+          return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+        }, png),
+      );
     };
-    // The reloaded page is the one whose button shows the new state.
+    // A point in the white margin of page 1.
+    const margin = async () => {
+      await readerLoaded("lattices");
+      const corner = await firstPageCorner("lattices");
+      return { x: corner.x + 4, y: corner.y + 4 };
+    };
+    const nightMode = 'button[aria-label="Night mode"]';
     const toggleNightMode = async (pressed: boolean) => {
-      await page.click("#night-mode");
-      await page.waitForSelector(`#night-mode[aria-pressed="${pressed}"]`);
+      await page.click(nightMode);
+      await page.waitForSelector(`${nightMode}[aria-pressed="${pressed}"]`);
     };
-    await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
     await page.goto(`${bucket.origin}/read/lattices`);
-    expect(await cornerOfPage()).toEqual([255, 255, 255]);
+    expect(await pixelAt(await margin())).toEqual([255, 255, 255]);
 
     await toggleNightMode(true);
-    expect(nearNight(await cornerOfPage())).toBe(true);
+    expect(await pixelAt(await margin())).toEqual([0, 0, 0]);
     expect((await organization()).preferences.readerNightMode).toBe(true);
     await shot("reader-night-mode");
+    // A reader opened later reads in night mode too.
+    await page.reload();
+    expect(await pixelAt(await margin())).toEqual([0, 0, 0]);
 
     await toggleNightMode(false);
-    expect(await cornerOfPage()).toEqual([255, 255, 255]);
+    expect(await pixelAt(await margin())).toEqual([255, 255, 255]);
     expect((await organization()).preferences.readerNightMode).toBe(false);
-    await page.emulateMediaFeatures();
   });
 
   test("a text note written on a page in the reader is saved into the PDF and is there after a reload", async () => {
-    const openViewer = async () => {
-      await page.goto(`${bucket.origin}/read/problems`);
-      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
-      if (frame === undefined || frame === null) {
-        throw new Error("the reader has no viewer frame");
-      }
-      await frame.waitForFunction("window.PDFViewerApplication?.pdfDocument?.numPages > 0");
-      return frame;
-    };
+    await page.goto(`${bucket.origin}/read/problems`);
+    await readerLoaded("problems");
     const note = `Checked the Hasse–Minkowski step ${Date.now()}`;
-    const viewer = await openViewer();
-    // PDF.js builds its annotation editor once the first page and the document's permissions
-    // have loaded, after the page count is known; until then no editor mode can be selected.
-    await viewer.waitForFunction(
-      "PDFViewerApplication.pdfViewer.annotationEditorMode !== pdfjsLib.AnnotationEditorType.DISABLE",
-    );
-    // PDF.js's free-text tool, as its toolbar button selects it; a click on the page places a
-    // note there.
-    await viewer.evaluate(
-      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.FREETEXT })",
-    );
-    const layer = await viewer.waitForSelector(
-      '.page[data-page-number="1"] .annotationEditorLayer',
-    );
-    await layer?.click({ offset: { x: 120, y: 160 } });
-    await viewer.waitForSelector(".freeTextEditor .internal");
-    const saved = page.waitForResponse(
-      (response) =>
-        response.url().endsWith("/api/items/problems/pdf") && response.request().method() === "PUT",
-    );
-    await page.keyboard.type(note);
-    await page.keyboard.press("Escape");
-    await viewer.evaluate(
-      "PDFViewerApplication.eventBus.dispatch('switchannotationeditormode', { source: null, mode: pdfjsLib.AnnotationEditorType.NONE })",
-    );
-    expect((await saved).status()).toBe(200);
+    await writeNote("problems", note);
     await shot("reader-annotated");
+    // The reader's Library link leaves once every annotation is saved.
+    await page.click('a[aria-label="Library"]');
+    await page.waitForSelector("nav a");
 
-    const reopened = await openViewer();
-    // The annotations PDF.js reads from the stored file, not from the editor it drew.
-    const contents = z
-      .array(z.string())
-      .parse(
-        await reopened.evaluate(
-          "(async () => (await (await PDFViewerApplication.pdfDocument.getPage(1)).getAnnotations()).filter((a) => a.contentsObj).map((a) => a.contentsObj.str))()",
-        ),
-      );
-    expect(contents).toContain(note);
+    await page.goto(`${bucket.origin}/read/problems`);
+    expect(await notesOnFirstPage("problems")).toContain(note);
   });
 
   test("the reader records the last viewed page, the library shows it out of the page count, and the reader reopens there", async () => {
-    const openReading = async () => {
-      await page.goto(`${bucket.origin}/read/reading`);
-      const frame = await (await page.waitForSelector("iframe"))?.contentFrame();
-      if (frame === undefined || frame === null) {
-        throw new Error("the reader has no viewer frame");
-      }
-      await frame.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount === 10");
-      return frame;
-    };
-    const viewer = await openReading();
+    await page.goto(`${bucket.origin}/read/reading`);
+    await readerLoaded("reading");
     const recorded = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/items/reading/reading") &&
         response.request().postData() === JSON.stringify({ page: 4, pages: 10 }),
     );
-    await viewer.evaluate("PDFViewerApplication.page = 4");
+    await goToPage("reading", 4);
     expect((await recorded).status()).toBe(200);
 
     await openLibrary();
@@ -1085,23 +1060,20 @@ describe("library window", () => {
     );
     await shot("library-reading");
 
-    const reopened = await openReading();
-    await reopened.waitForFunction("PDFViewerApplication.page === 4");
+    await page.goto(`${bucket.origin}/read/reading`);
+    await readerLoaded("reading");
+    await showsPage("reading", 4);
   });
 
   test("the Timeline shows a reading session with the pages read for at least five seconds, and its title reopens the PDF in a tab", async () => {
     await page.goto(`${bucket.origin}/read/reading`);
-    const viewer = await (await page.waitForSelector("iframe"))?.contentFrame();
-    if (viewer === undefined || viewer === null) {
-      throw new Error("the reader has no viewer frame");
-    }
-    await viewer.waitForFunction("window.PDFViewerApplication?.pdfViewer?.pagesCount === 10");
+    await readerLoaded("reading");
     // Pages 1 and 2 are read for six seconds each; page 3 is passed through at once.
     for (const pageNumber of [1, 2]) {
-      await viewer.evaluate(`PDFViewerApplication.page = ${pageNumber}`);
+      await goToPage("reading", pageNumber);
       await Bun.sleep(6000);
     }
-    await viewer.evaluate("PDFViewerApplication.page = 3");
+    await goToPage("reading", 3);
     const reported = page.waitForResponse((response) =>
       response.url().endsWith("/api/reading-sessions"),
     );

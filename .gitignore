@@ -13,5 +13,4 @@ __pycache__/
 .ruff_cache/
 *.log
 *.tsbuildinfo
-vendor/
 .claude/

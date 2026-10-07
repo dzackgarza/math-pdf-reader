@@ -93,13 +93,11 @@ fi
 # The app runs an installed copy, so later builds can rewrite the build tree while it runs.
 install -D -m 755 target/release/pdf-bucket-desktop "$HOME/.local/bin/pdf-bucket-desktop"
 # It runs against its own copy of the runtime files, in the checkout's layout (config::installed),
-# so a later change to the checkout leaves the installed app as it was built: the library bundle,
-# the PDF.js viewer, the extraction manifest, and a Python environment made from a wheel of this
-# checkout's package with the locked dependencies.
-pdfjs="vendor/pdfjs-$(jq -r .pdfjs.version pdf-bucket.config.json)"
-mkdir -p "$installed/dist/web" "$installed/$pdfjs"
+# so a later change to the checkout leaves the installed app as it was built: the web bundle (the
+# library and the reader), the extraction manifest, and a Python environment made from a wheel of
+# this checkout's package with the locked dependencies.
+mkdir -p "$installed/dist/web"
 rsync -a --delete dist/web/ "$installed/dist/web/"
-rsync -a --delete "$pdfjs/" "$installed/$pdfjs/"
 install -D -m 644 plugins/manifests/extractions.json "$installed/plugins/manifests/extractions.json"
 wheels=$(mktemp -d)
 uv build --wheel --out-dir "$wheels"

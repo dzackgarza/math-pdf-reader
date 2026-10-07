@@ -323,6 +323,8 @@ export const MissingItemSchema = z.strictObject({
 // moment it was read (idle time excluded), and each page read, with the seconds spent on it in
 // stretches of at least MIN_PAGE_SECONDS; a page scrolled past in less is not read.
 export const MIN_PAGE_SECONDS = 5;
+// Minutes without input after which the reader stops counting time as reading.
+export const READER_IDLE_MINUTES = 10;
 
 export const ReadingSessionReportSchema = z.strictObject({
   id: z.uuid(),
@@ -545,7 +547,6 @@ export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({
 export const SettingsSchema = z.strictObject({
   root: NonEmptySchema,
   organizationFile: NonEmptySchema,
-  pdfjsVersion: NonEmptySchema,
 });
 
 // The collection and every collection below it.

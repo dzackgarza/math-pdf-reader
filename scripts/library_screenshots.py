@@ -46,6 +46,19 @@ FILED_COUNT = 300
 SHIPPED_EXTRACTIONS = REPO / "plugins/manifests/extractions.json"
 SERVER = REPO / "target/debug/pdf-bucket"
 CONFIG = REPO / "pdf-bucket.config.json"
+# A page a reader has drawn: EmbedPDF draws each page as an image in a white box (its snippet's
+# renderPage), inside the viewer's shadow root, which Playwright's CSS selectors reach into.
+DRAWN_PAGE = 'div[style*="transform-origin"][style*="background-color"] img'
+
+
+def drawn(key: str) -> str:
+    """A WebDriver script that answers whether the reader of KEY has drawn a page of its PDF."""
+    viewer = f"document.querySelector(\"[data-reader-key='{key}'] embedpdf-container\")"
+    return (
+        f"return [...({viewer}?.shadowRoot?.querySelectorAll('{DRAWN_PAGE}') ?? [])]"
+        ".some((image) => image.complete && image.naturalWidth > 0)"
+    )
+
 
 app = App()
 
@@ -390,7 +403,7 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         shoot(page, out, "timeline")
 
         page.goto(f"{origins['seeded']}/read/{quote(filed['reader'])}")
-        page.frame_locator("iframe").locator(".page canvas").first.wait_for()
+        page.locator(f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}").first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "reader")
 
@@ -399,10 +412,10 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         first = page.locator(f"tbody tr:not([data-item-id='{filed['reader']}'])").first
         first_key = first.get_attribute("data-item-id")
         first.dblclick()
-        page.frame_locator(f"iframe[data-reader-key='{first_key}']").frame_locator("iframe").locator(".page canvas").first.wait_for()
+        page.locator(f"[data-reader-key='{first_key}'] {DRAWN_PAGE}").first.wait_for()
         page.get_by_role("tab", name="Library", exact=True).click()
         page.locator(f"tr[data-item-id='{filed['reader']}']").dblclick()
-        page.frame_locator(f"iframe[data-reader-key='{filed['reader']}']").frame_locator("iframe").locator(".page canvas").first.wait_for()
+        page.locator(f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}").first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "tabs")
         dark_screens(
@@ -448,7 +461,7 @@ def dark_screens(page: Page, out: Path, origins: dict[str, str], filed: dict[str
     shoot(page, out, "dark-timeline")
 
     page.goto(f"{origins['seeded']}/read/{quote(filed['reader'])}")
-    page.frame_locator("iframe").locator(".page canvas").first.wait_for()
+    page.locator(f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}").first.wait_for()
     page.wait_for_timeout(500)
     shoot(page, out, "dark-reader")
 
@@ -520,21 +533,17 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
     driver.save_screenshot(str(out / "webkit-library-populated.png"))
     driver.get(f"{origins['seeded']}/read/{quote(filed['reader'])}")
-    # The reader rewrites its own address as the view changes, which ends a WebDriver frame
-    # context; the viewer is same-origin, so the page itself reports when PDF.js has drawn.
-    wait.until(lambda d: d.execute_script("return document.querySelector('iframe').contentDocument?.querySelector('.page canvas') != null"))
+    wait.until(lambda d: d.execute_script(drawn(filed["reader"])))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-reader.png"))
 
     # The same PDF opened from the library, in its tab.
     driver.get(origins["seeded"])
     reader_cell = f"//tbody/tr[@data-item-id={json.dumps(filed['reader'])}]/td[@data-column='title']"
-    ActionChains(driver).double_click(wait.until(expected_conditions.element_to_be_clickable((By.XPATH, reader_cell)))).perform()
-    tab_canvas = (
-        f"return document.querySelector(\"iframe[data-reader-key='{filed['reader']}']\")"
-        "?.contentDocument?.querySelector('iframe')?.contentDocument?.querySelector('.page canvas') != null"
-    )
-    wait.until(lambda d: d.execute_script(tab_canvas))
+    wait.until(expected_conditions.element_to_be_clickable((By.XPATH, reader_cell))).click()
+    open_button = "//aside[@aria-label='Item details']//button[normalize-space()='Open']"
+    wait.until(expected_conditions.element_to_be_clickable((By.XPATH, open_button))).click()
+    wait.until(lambda d: d.execute_script(drawn(filed["reader"])))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-tabs.png"))
 
@@ -546,7 +555,7 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
     driver.save_screenshot(str(out / "webkit-dark-library-populated.png"))
     driver.get(f"{origins['seeded']}/read/{quote(filed['reader'])}")
-    wait.until(lambda d: d.execute_script("return document.querySelector('iframe').contentDocument?.querySelector('.page canvas') != null"))
+    wait.until(lambda d: d.execute_script(drawn(filed["reader"])))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-dark-reader.png"))
     call(origins["seeded"], "PATCH", "/api/preferences", {"theme": "system"})

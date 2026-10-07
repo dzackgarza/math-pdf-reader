@@ -189,7 +189,6 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 .map_err(|violation| Failure::Config(config_file, violation))?;
             let bucket = BucketConfig {
                 root,
-                pdfjs_dir: config::pdfjs_dir(&config::checkout(), &app),
                 web_dir: config::web_dir(&config::checkout()),
                 cache_dir: config::cache_root(),
                 zotero_url,

@@ -13,7 +13,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CaptureResponse, CaptureResponseSchema } from "../src/contract/capture";
-import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -29,7 +28,6 @@ import {
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { listItems } from "./store";
 
-const config = loadAppConfig(CONFIG_PATH);
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 const problemSet = join(import.meta.dir, "fixtures/problem-set.pdf");
 
@@ -545,7 +543,7 @@ test("renames, note deletions and saved-search deletions persist, and unknown id
   expect(await errorKind(deleteUnknownSearch)).toBe("unknown_saved_search");
 });
 
-test("settings report the served root, its filing file and the pinned PDF.js version", async () => {
+test("settings report the served root and its filing file", async () => {
   const bucket = await emptyBucket();
 
   const settings = SettingsSchema.parse(await (await bucket.request("/api/settings")).json());
@@ -553,7 +551,6 @@ test("settings report the served root, its filing file and the pinned PDF.js ver
   expect(settings).toEqual({
     root: bucket.root,
     organizationFile: join(bucket.root, "organization.json"),
-    pdfjsVersion: config.pdfjs.version,
   });
 });
 
@@ -578,7 +575,7 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
   const served = await bucket.request("/pdf/lattices.pdf");
   expect(served.headers.get("ETag")).toBe(tag(before));
 
-  // An incremental update, as PDF.js writes one: the stored bytes with objects appended.
+  // An incremental update: the stored bytes with objects appended.
   const annotated = new Uint8Array([
     ...before,
     ...new TextEncoder().encode("\n% an incremental update\n"),

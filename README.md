@@ -1,7 +1,7 @@
 # PDF Bucket
 
 A standalone desktop app that replaces reading PDFs in the browser.
-Browser extensions intercept PDF navigations in Chrome and Firefox and hand the PDF to the bucket, which stores it with embedded provenance, opens it in a PDF.js reader, and lets you file it, extract it, and send it to Zotero when it matters.
+Browser extensions intercept PDF navigations in Chrome and Firefox and hand the PDF to the bucket, which stores it with embedded provenance, opens it in an EmbedPDF reader, and lets you file it, extract it, and send it to Zotero when it matters.
 
 ## Layout
 
@@ -35,7 +35,7 @@ If the whole data root is lost, `just import-index` restores the filing and the 
 PDF Bucket runs while its app runs, like Zotero: the app is the bucket's server, as Zotero is the server of its local API, and **Quit PDF Bucket** in the tray stops it.
 Closing the window hides it to the tray; the bucket keeps capturing.
 Click the tray icon for **Show PDF Bucket** and **Quit PDF Bucket**. Starting PDF Bucket while it runs shows the running window.
-If the bucket cannot serve (its port is taken, the PDF.js viewer is missing, the `.envrc` is blocked), the window shows why.
+If the bucket cannot serve (its port is taken, the web bundle is missing, the `.envrc` is blocked), the window shows why.
 
 `just provision` builds the app, installs it at `~/.local/bin/pdf-bucket-desktop` with a launcher entry, an icon and a login autostart entry, and starts it.
 Desktop sessions that run XDG autostart start it at login.

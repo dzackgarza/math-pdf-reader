@@ -1,12 +1,11 @@
 // The window's tabs: the Library tab, always first and never closed, and one tab per open PDF,
-// which frames that PDF's reader page (server/templates/reader.html). The library and the
-// AWAKE_READERS PDF tabs shown last stay loaded while another tab is shown, so each keeps its
-// view (and the library its selection); the other PDF tabs sleep, and so does a tab put to sleep
-// from its menu. A tab that sleeps holds no reader and loads it again at the same view when shown.
-// Opening a PDF that has a tab shows that tab. A capture anywhere opens its PDF here too: the
-// bucket's `open-reader` event (server/src/events.rs); the title Retrieve metadata gives the PDF
-// afterwards (`metadata`) retitles its tab and its reader page, whose title and citation tags a
-// Zotero Connector reads.
+// which shows that PDF's reader (reader/Reader.tsx). The library and the AWAKE_READERS PDF tabs
+// shown last stay loaded while another tab is shown, so each keeps its view (and the library its
+// selection); the other PDF tabs sleep, and so does a tab put to sleep from its menu. A tab that
+// sleeps holds no reader and loads it again at the same page when shown. Opening a PDF that has
+// a tab shows that tab. A capture anywhere opens its PDF here too: the bucket's `open-reader`
+// event (server/src/events.rs); the title Retrieve metadata gives the PDF afterwards
+// (`metadata`) retitles its tab, and its reader retitles itself.
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, Moon, X } from "lucide-react";
@@ -15,20 +14,10 @@ import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
 import { onBucketEvent } from "./bucketEvents";
 import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
+import { Reader, type ReaderControl } from "./reader/Reader";
 import { ReaderTabsContext } from "./readerTabs";
-import { readerPath } from "./routes";
-
-// What a reader page offers once its viewer is up (server/templates/reader.html): settle sends
-// the reading session and waits for every annotation to be saved, rejecting while a save has
-// failed or a save conflict is open; refresh reloads the page's title and citation tags from the
-// server and gives the title.
-type ReaderControl = { settle: () => Promise<void>; refresh: () => Promise<string> };
 
 declare global {
-  interface Window {
-    // Set by a reader page just before it dispatches `reader-ready` on its frame element.
-    readerControl: ReaderControl | undefined;
-  }
   interface WindowEventMap {
     // The desktop app's tray Quit (desktop/src-tauri/src/follow-open-events.js): the app quits
     // once every promise handed to waitUntil settles, and asks first when one rejects.
@@ -36,26 +25,20 @@ declare global {
   }
 }
 
-// A reader page shows why its refresh or its settling failed; its tab stays as it is.
+// A reader shows why its settling failed; its tab stays as it is.
 const shownInReader = () => undefined;
-
-// What the tab strip knows of a tab's reader: still loading (its viewer is not up, so it holds
-// nothing unsaved), and stale when its item was retitled meanwhile; or ready, with its control.
-type ReaderState =
-  | { status: "loading"; stale: boolean }
-  | { status: "ready"; control: ReaderControl };
 
 const LIBRARY_TAB = "library";
 
 // How many PDF tabs keep their reader loaded. Past it, the tabs shown longest ago sleep: their
-// frame is dropped, which frees its PDF.js viewer and worker, and showing one loads it again at
-// the view it had. Firefox's tab unloader picks the tabs it unloads the same way, by the time
+// reader is dropped, which frees its PDFium engine and worker, and showing one loads it again at
+// the page it had. Firefox's tab unloader picks the tabs it unloads the same way, by the time
 // each was last shown (browser/components/tabbrowser/TabUnloader.sys.mjs).
 const AWAKE_READERS = 5;
 
-// A PDF tab: SRC is the reader page its frame loads, which a tab put to sleep keeps with the view
-// its reader had (the reader writes its page and zoom into its address).
-type ReaderTab = { key: string; title: string; src: string; asleep: boolean };
+// A PDF tab: PAGE is the page its reader opens at, which a tab put to sleep keeps from the reader
+// it had; null opens at the page last viewed.
+type ReaderTab = { key: string; title: string; page: number | null; asleep: boolean };
 
 // RECENT holds the keys of the PDF tabs, the one shown last first.
 type TabsState = { open: ReaderTab[]; shown: string; recent: string[] };
@@ -91,11 +74,11 @@ function closing(state: TabsState, key: string): TabsState {
   return state.shown === key ? showing(closed, neighbour(state, key)) : closed;
 }
 
-// KEY's tab asleep with the reader page SRC; when it was shown, its neighbour is shown instead.
-function sleeping(state: TabsState, key: string, src: string): TabsState {
+// KEY's tab asleep at PAGE; when it was shown, its neighbour is shown instead.
+function sleeping(state: TabsState, key: string, page: number | null): TabsState {
   const asleep = {
     ...state,
-    open: state.open.map((tab) => (tab.key === key ? { ...tab, src, asleep: true } : tab)),
+    open: state.open.map((tab) => (tab.key === key ? { ...tab, page, asleep: true } : tab)),
   };
   return state.shown === key ? showing(asleep, neighbour(state, key)) : asleep;
 }
@@ -121,69 +104,13 @@ const TAB_CLASSES =
 const TAB_STATE_CLASSES =
   "border-transparent text-muted hover:bg-ink/[0.04] hover:text-ink data-[state=active]:border-line data-[state=active]:bg-panel data-[state=active]:font-medium data-[state=active]:text-ink";
 
-function ReaderFrame({
-  tab,
-  shown,
-  onTitle,
-  onLoad,
-  onReady,
-}: {
-  tab: ReaderTab;
-  shown: boolean;
-  onTitle: (title: string) => void;
-  onLoad: (frame: HTMLIFrameElement) => void;
-  onReady: (control: ReaderControl) => void;
-}) {
-  const frame = useRef<HTMLIFrameElement>(null);
-  useEffect(() => {
-    const element = frame.current;
-    if (element === null) {
-      throw new Error(`the tab of ${tab.key} has no frame`);
-    }
-    const ready = () => {
-      const control = element.contentWindow?.readerControl;
-      if (control === undefined) {
-        throw new Error(`the reader of ${tab.key} announced itself without its control`);
-      }
-      onReady(control);
-    };
-    element.addEventListener("reader-ready", ready);
-    return () => element.removeEventListener("reader-ready", ready);
-  }, [tab.key, onReady]);
-  // A frame's document stays "visible" while its tab is hidden, so the reader page is told to
-  // look again (it reads its frame's own visibility), and a shown tab takes the keyboard.
-  useEffect(() => {
-    const reader = frame.current?.contentWindow;
-    reader?.document.dispatchEvent(new Event("visibilitychange"));
-    if (shown) {
-      reader?.focus();
-    }
-  }, [shown]);
-  return (
-    <iframe
-      ref={frame}
-      src={tab.src}
-      title={tab.title}
-      data-reader-key={tab.key}
-      className="block h-full w-full border-0 bg-surface"
-      onLoad={(event) => {
-        const loaded = event.currentTarget;
-        if (loaded.contentDocument === null) {
-          throw new Error(`the tab of ${tab.key} frames a page of another origin`);
-        }
-        onTitle(loaded.contentDocument.title);
-        onLoad(loaded);
-      }}
-    />
-  );
-}
-
 export function ReaderTabs({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TabsState>({ open: [], shown: LIBRARY_TAB, recent: [] });
   const stateRef = useRef(state);
   stateRef.current = state;
-  const frames = useRef(new Map<string, HTMLIFrameElement>());
-  const readers = useRef(new Map<string, ReaderState>());
+  // The control of each awake reader whose PDF is up; a reader still loading holds nothing
+  // unsaved.
+  const readers = useRef(new Map<string, ReaderControl>());
   // The tabs whose reader is settling before it sleeps.
   const settling = useRef(new Set<string>());
 
@@ -192,61 +119,16 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       showing(
         previous.open.some((tab) => tab.key === key)
           ? previous
-          : {
-              ...previous,
-              open: [...previous.open, { key, title, src: readerPath(key), asleep: false }],
-            },
+          : { ...previous, open: [...previous.open, { key, title, page: null, asleep: false }] },
         key,
       ),
     );
   }, []);
 
-  // A tab opened or woken frames a reader that is loading.
-  useEffect(() => {
-    for (const tab of state.open) {
-      if (!tab.asleep && !readers.current.has(tab.key)) {
-        readers.current.set(tab.key, { status: "loading", stale: false });
-      }
-    }
-  }, [state.open]);
-
-  const retitle = useCallback(
-    (key: string) => (title: string) =>
-      setState((previous) => ({
-        ...previous,
-        open: previous.open.map((tab) => (tab.key === key ? { ...tab, title } : tab)),
-      })),
-    [],
-  );
-
-  const readerReady = useCallback(
-    (key: string) => (control: ReaderControl) => {
-      const previous = readers.current.get(key);
-      readers.current.set(key, { status: "ready", control });
-      if (previous?.status === "loading" && previous.stale) {
-        control.refresh().then(retitle(key), shownInReader);
-      }
-    },
-    [retitle],
-  );
-
-  // A loading reader that is stale gets its title from refresh once ready, never from its page.
-  const pageTitled = (key: string) => (title: string) => {
-    const reader = readers.current.get(key);
-    if (reader?.status === "loading" && reader.stale) {
-      return;
-    }
-    retitle(key)(title);
-  };
-
   // A sleeping tab has no reader to settle.
   const closeReader = useCallback(async (key: string) => {
-    const reader = readers.current.get(key);
-    if (reader?.status === "ready") {
-      await reader.control.settle();
-    }
+    await readers.current.get(key)?.settle();
     readers.current.delete(key);
-    frames.current.delete(key);
     setState((previous) => closing(previous, key));
   }, []);
 
@@ -258,34 +140,29 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     [closeReader],
   );
 
-  // Settles KEY's reader, then drops its frame, keeping the view it shows. A sleep the tab row
-  // chose (AUTOMATIC) is called off when the tab was shown again meanwhile.
+  // Settles KEY's reader, then drops it, keeping the page it shows. A sleep the tab row chose
+  // (AUTOMATIC) is called off when the tab was shown again meanwhile.
   const sleepReader = useCallback(async (key: string, automatic: boolean) => {
     if (settling.current.has(key)) {
       return;
     }
     settling.current.add(key);
+    const reader = readers.current.get(key);
     try {
-      const reader = readers.current.get(key);
-      if (reader?.status === "ready") {
-        await reader.control.settle();
-      }
+      await reader?.settle();
     } finally {
       settling.current.delete(key);
     }
     if (automatic && !drowsy(stateRef.current).includes(key)) {
       return;
     }
-    const page = frames.current.get(key)?.contentWindow?.location;
     readers.current.delete(key);
-    frames.current.delete(key);
     setState((previous) => {
       const tab = previous.open.find((open) => open.key === key);
       if (tab === undefined) {
         return previous;
       }
-      const src = page === undefined ? tab.src : page.pathname + page.search + page.hash;
-      return sleeping(previous, key, src);
+      return sleeping(previous, key, reader === undefined ? tab.page : reader.page());
     });
   }, []);
 
@@ -308,20 +185,17 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   // Quitting waits for every open reader to settle; one that cannot rejects the quit's wait.
   useEffect(() => {
     const quitting = (event: WindowEventMap["pdf-bucket-quit"]) => {
-      const settling = [...readers.current.values()].map((reader) =>
-        reader.status === "ready" ? reader.control.settle() : Promise.resolve(),
-      );
-      event.detail.waitUntil(Promise.all(settling).then(() => undefined));
+      const settled = [...readers.current.values()].map((reader) => reader.settle());
+      event.detail.waitUntil(Promise.all(settled).then(() => undefined));
     };
     window.addEventListener("pdf-bucket-quit", quitting);
     return () => window.removeEventListener("pdf-bucket-quit", quitting);
   }, []);
 
-  // One handler for the window and every reader frame, which receive their own keys.
   const shownRef = useRef(state.shown);
   shownRef.current = state.shown;
-  const onKeyDown = useCallback(
-    (event: KeyboardEvent) => {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (matchesShortcut(event, KEYBOARD_SHORTCUTS.closeTab)) {
         event.preventDefault();
         if (shownRef.current !== LIBRARY_TAB) {
@@ -336,24 +210,10 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
         event.preventDefault();
         setState((previous) => stepping(previous, -1));
       }
-    },
-    [close],
-  );
-  useEffect(() => {
+    };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onKeyDown]);
-  // A reader page and the PDF.js viewer it frames are same-origin frames with their own keys.
-  const frameLoaded = (key: string) => (frame: HTMLIFrameElement) => {
-    frames.current.set(key, frame);
-    const reader = frame.contentWindow;
-    if (reader === null) {
-      return;
-    }
-    for (const target of [reader, ...Array.from({ length: reader.length }, (_, i) => reader[i])]) {
-      target?.addEventListener("keydown", onKeyDown);
-    }
-  };
+  }, [close]);
 
   useEffect(() => {
     return onBucketEvent("open-reader", (event) => {
@@ -368,16 +228,14 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       if (outcome.status !== "resolved") {
         return;
       }
-      retitle(key)(outcome.title);
-      const reader = readers.current.get(key);
-      if (reader?.status === "ready") {
-        reader.control.refresh().then(retitle(key), shownInReader);
-      }
-      if (reader?.status === "loading") {
-        readers.current.set(key, { status: "loading", stale: true });
-      }
+      setState((previous) => ({
+        ...previous,
+        open: previous.open.map((tab) =>
+          tab.key === key ? { ...tab, title: outcome.title } : tab,
+        ),
+      }));
     });
-  }, [retitle]);
+  }, []);
 
   return (
     <ReaderTabsContext.Provider
@@ -456,9 +314,9 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
             </ContextMenu.Root>
           ))}
         </Tabs.List>
-        {/* Every tab fills the same box and a hidden one is only invisible: PDF.js lays out its
-            pages from its frame's size, and a frame under display: none has none, so a PDF
-            opened while another tab shows would stay blank. */}
+        {/* Every tab fills the same box and a hidden one is only invisible: EmbedPDF lays out its
+            pages from its container's size, and a container under display: none has none, so a
+            PDF opened while another tab shows would stay blank. */}
         <div className="relative min-h-0 flex-1">
           <Tabs.Content
             value={LIBRARY_TAB}
@@ -475,12 +333,12 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
               className="absolute inset-0 data-[state=inactive]:invisible"
             >
               {!tab.asleep && (
-                <ReaderFrame
-                  tab={tab}
+                <Reader
+                  itemKey={tab.key}
+                  openAtPage={tab.page}
                   shown={state.shown === tab.key}
-                  onTitle={pageTitled(tab.key)}
-                  onLoad={frameLoaded(tab.key)}
-                  onReady={readerReady(tab.key)}
+                  inTab
+                  onControl={(control) => readers.current.set(tab.key, control)}
                 />
               )}
             </Tabs.Content>
