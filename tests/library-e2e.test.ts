@@ -1,7 +1,7 @@
 // End-to-end proof of the library window's workflows in the real UI: the built web bundle
 // served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
-import { $ } from "bun";
+
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AnnotationPlugin, EmbedPdfContainer, ScrollPlugin } from "@embedpdf/react-pdf-viewer";
+import { $ } from "bun";
 import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
