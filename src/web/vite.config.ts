@@ -38,11 +38,7 @@ const fontTargets: Target[] = fontPackages.flatMap((meta) =>
 // (server/templates/reader.html) and which loads /reader.js by a fixed name.
 export default defineConfig({
   root: entry("."),
-  plugins: [
-    react(),
-    tailwindcss(),
-    viteStaticCopy({ targets: fontTargets }),
-  ],
+  plugins: [react(), tailwindcss(), viteStaticCopy({ targets: fontTargets })],
   build: {
     outDir: entry("../../dist/web"),
     emptyOutDir: true,
