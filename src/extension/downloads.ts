@@ -1,9 +1,10 @@
 // PDFs the browser saves as downloads. A PDF link with the `download` attribute (a
 // publisher's "Download PDF" button) is saved as a download in both browsers. In Chrome, a
-// top-level PDF navigation also becomes one (interception.ts), because Chrome gives an extension
-// no way to read a navigation's response body. The PDF is fetched once, so a signed or
+// PDF navigation, top-level or in a frame, also becomes one (interception.ts), because Chrome gives
+// an extension no way to read a navigation's response body. The PDF is fetched once, so a signed or
 // single-use URL holds. The request's PDF response (`isPdfResponse`) marks its URL as a capture:
-// in Chrome a navigation's or a download request's (of type `other`), in Firefox each response
+// in Chrome a navigation's (with its frame, for a PDF in a frame) or a download request's (of type
+// `other`), in Firefox each response
 // its interception takes, since a download there is a top-level request whose body no stream
 // filter can read (firefox-interception.ts). The download the browser starts for that URL takes
 // the mark, and once the file is complete the background hands its path to the bucket. A
@@ -23,23 +24,30 @@ import { z } from "zod";
 import { bucketBuild } from "./bucket-config";
 import { isPdfResponse, withoutFragment } from "./interception";
 
+// The frame of a tab whose navigation to a PDF became a download.
+const FrameSchema = z.strictObject({ tab_id: z.number().int(), frame_id: z.number().int() });
+
+export type PdfFrame = z.infer<typeof FrameSchema>;
+
 // A PDF response to a GET of a URL (without fragment) still waiting for its download, oldest
-// first.
+// first, with its frame when it came to a frame (Chrome) and null otherwise.
 const MarkSchema = z.strictObject({
   pdf_url: z.string(),
   content_disposition: z.string().nullable(),
+  frame: FrameSchema.nullable(),
   recorded_at: z.number(),
 });
 
 const MarksSchema = z.array(MarkSchema);
 
-// Download id to the PDF URL it saves, the Content-Disposition it came with, and how many
-// deliveries of its capture have begun (0 while the browser still downloads it).
+// Download id to the PDF URL it saves, the Content-Disposition and frame it came with, and how
+// many deliveries of its capture have begun (0 while the browser still downloads it).
 const DownloadsSchema = z.record(
   z.string(),
   z.strictObject({
     pdf_url: z.string(),
     content_disposition: z.string().nullable(),
+    frame: FrameSchema.nullable(),
     deliveries: z.number().int().nonnegative(),
   }),
 );
@@ -54,18 +62,14 @@ const downloads = storage.defineItem<Downloads>("session:pdfDownloads", { fallba
 
 const lock = new Mutex();
 
-// A completed download of a captured request, or one the browser gave up on.
-export type SavedPdf =
-  | {
-      kind: "complete";
-      id: number;
-      pdfUrl: URL;
-      path: string;
-      contentDisposition: string | null;
-    }
-  | { kind: "interrupted"; id: number; pdfUrl: URL; reason: string }
+// A completed download of a captured request, or one the browser gave up on, with the frame
+// whose navigation it was when that was a frame.
+export type SavedPdf = { id: number; pdfUrl: URL; frame: PdfFrame | null } & (
+  | { kind: "complete"; path: string; contentDisposition: string | null }
+  | { kind: "interrupted"; reason: string }
   // Every delivery began in a service worker that stopped before the bucket answered.
-  | { kind: "lost"; id: number; pdfUrl: URL; path: string };
+  | { kind: "lost"; path: string }
+);
 
 // Whether a request of TAB for URL is captured now: capture is on, and neither the bucket's
 // own origin nor an exemption lets it through.
@@ -77,6 +81,7 @@ export function mark(
   captured: () => Promise<boolean>,
   url: string,
   contentDisposition: string | null,
+  frame: PdfFrame | null,
 ): Promise<void> {
   return lock.runExclusive(async () => {
     if (!(await captured())) {
@@ -88,7 +93,7 @@ export function mark(
     );
     await marked.setValue([
       ...fresh,
-      { pdf_url: url, content_disposition: contentDisposition, recorded_at: Date.now() },
+      { pdf_url: url, content_disposition: contentDisposition, frame, recorded_at: Date.now() },
     ]);
   });
 }
@@ -106,7 +111,12 @@ function claim(id: number, url: string): Promise<void> {
     const claimed = DownloadsSchema.parse(await downloads.getValue());
     await downloads.setValue({
       ...claimed,
-      [String(id)]: { pdf_url: url, content_disposition: taken.content_disposition, deliveries: 0 },
+      [String(id)]: {
+        pdf_url: url,
+        content_disposition: taken.content_disposition,
+        frame: taken.frame,
+        deliveries: 0,
+      },
     });
   });
 }
@@ -164,14 +174,13 @@ async function deliver(
     await release(id);
     throw new Error(`the browser no longer lists download ${id}`);
   }
-  const pdfUrl = new URL(claimed.pdf_url);
+  const download = { id, pdfUrl: new URL(claimed.pdf_url), frame: claimed.frame };
   if (claimed.deliveries > MAX_DELIVERIES) {
-    await saved({ kind: "lost", id, pdfUrl, path: item.filename });
+    await saved({ ...download, kind: "lost", path: item.filename });
   } else if (item.state === "complete") {
     await saved({
+      ...download,
       kind: "complete",
-      id,
-      pdfUrl,
       path: item.filename,
       contentDisposition: claimed.content_disposition,
     });
@@ -180,14 +189,14 @@ async function deliver(
     if (item.error === undefined) {
       throw new Error(`the browser interrupted download ${id} without a reason`);
     }
-    await saved({ kind: "interrupted", id, pdfUrl, reason: item.error });
+    await saved({ ...download, kind: "interrupted", reason: item.error });
   } else {
     throw new Error(`download ${id} is delivered while the browser says it is ${item.state}`);
   }
   await release(id);
 }
 
-// Chrome: marks every PDF response to a top-level navigation or to a download request.
+// Chrome: marks every PDF response to a navigation or to a download request.
 export function markPdfResponses(intercepts: Intercepts): void {
   browser.webRequest.onHeadersReceived.addListener(
     (details) => {
@@ -207,10 +216,11 @@ export function markPdfResponses(intercepts: Intercepts): void {
         () => intercepts(details.tabId, url),
         url,
         disposition?.value === undefined ? null : disposition.value,
+        details.type === "sub_frame" ? { tab_id: details.tabId, frame_id: details.frameId } : null,
       );
       return undefined;
     },
-    { urls: ["http://*/*", "https://*/*"], types: ["main_frame", "other"] },
+    { urls: ["http://*/*", "https://*/*"], types: ["main_frame", "sub_frame", "other"] },
     ["responseHeaders"],
   );
 }

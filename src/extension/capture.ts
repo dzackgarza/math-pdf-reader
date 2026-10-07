@@ -1,7 +1,7 @@
 // The capture client, run in the background: post the PDF the browser received to the bucket
 // and report exactly one outcome. Where the bytes come from is the interception's business
-// (Firefox: the navigation's own response; Chrome: a download it saved, or `refetchPdf` for a
-// PDF in a frame). The bucket derives the item key from the posted filename.
+// (Firefox: the navigation's own response; Chrome: a download it saved). The bucket derives the
+// item key from the posted filename.
 import { parse as parseContentDisposition } from "content-disposition";
 import decodeUriComponent from "decode-uri-component";
 import { type CaptureDownloadRequest, CaptureResponseSchema } from "../contract/capture";
@@ -55,27 +55,6 @@ function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
     (value) => ({ ok: true, value }),
     (error: unknown) => ({ ok: false, detail: String(error) }),
   );
-}
-
-// Chrome cannot read a PDF's response body in a frame, so the background fetches it again
-// with the browser's cookies.
-export async function refetchPdf(pdfUrl: URL): Promise<Received> {
-  const answered = await settle(fetch(pdfUrl, { credentials: "include" }));
-  if (!answered.ok) {
-    return failed("fetch-pdf", answered.detail);
-  }
-  const response = answered.value;
-  if (!response.ok) {
-    return failed("fetch-pdf", `${response.status} ${response.statusText}`);
-  }
-  const bytes = await settle(response.blob());
-  if (!bytes.ok) {
-    return failed("fetch-pdf", `the PDF's body could not be read (${bytes.detail})`);
-  }
-  return {
-    kind: "received",
-    pdf: { bytes: bytes.value, contentDisposition: response.headers.get("content-disposition") },
-  };
 }
 
 // The bucket refuses a capture with its error envelope; any other body did not come from it.

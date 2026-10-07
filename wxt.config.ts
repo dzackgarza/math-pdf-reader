@@ -42,15 +42,16 @@ export default defineConfig({
     permissions:
       browser === "firefox"
         ? ["webRequest", "webRequestBlocking", "downloads", "storage", "alarms"]
-        : ["declarativeNetRequestWithHostAccess", "webRequest", "downloads", "storage", "alarms"],
+        : ["declarativeNetRequestWithHostAccess", "webRequest", "downloads", "scripting", "storage", "alarms"],
     // The toolbar popup doubles as the options page, which holds the capture switch.
     options_ui: { page: "popup.html", open_in_tab: false },
     host_permissions: ["<all_urls>"],
-    // A capture rule can redirect a frame only to a web-accessible page, and any http(s) page
-    // can frame a PDF. The background fetches a PDF only for a frame its own rule redirected
-    // (exemptions.ts). Chrome's `use_dynamic_url` is not set: `runtime.getURL` does not return
-    // the per-session URL it creates (Chromium issue 375973466), and the rules are built from
-    // that URL. Firefox (MV2) takes a plain list of resources, which WXT derives from this.
+    // The capture page shows a capture's outcome in the web page's own frame: Chrome's background
+    // navigates the frame there (`scripting`), and Firefox's interception answers the frame with a
+    // document that opens it, so the page must be web-accessible. Any web page can therefore frame
+    // it with a PDF URL of its choice; it then captures nothing (exemptions.ts,
+    // firefox-interception.ts). Firefox (MV2) takes a plain list of resources, which WXT derives
+    // from this.
     web_accessible_resources: [
       { resources: ["capture.html"], matches: ["http://*/*", "https://*/*"] },
     ],

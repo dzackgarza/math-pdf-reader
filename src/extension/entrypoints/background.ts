@@ -10,6 +10,7 @@
 // content scripts, which run in web pages, only report followed links.
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
+import { z } from "zod";
 import { bucketBuild, newerThanLoaded } from "../bucket-config";
 import {
   captureEnabled,
@@ -20,15 +21,10 @@ import {
   staleDetail,
 } from "../bucket-status";
 import { postDownloadToBucket, postToBucket } from "../capture";
-import { markPdfResponses, type SavedPdf, watchPdfDownloads } from "../downloads";
-import {
-  type ChromeInterception,
-  capturePage,
-  chromeInterception,
-  recordCaptureRedirect,
-} from "../exemptions";
+import { markPdfResponses, type PdfFrame, type SavedPdf, watchPdfDownloads } from "../downloads";
+import { type ChromeInterception, capturePage, chromeInterception } from "../exemptions";
 import { type FirefoxInterception, firefoxInterception } from "../firefox-interception";
-import { failureTarget } from "../interception";
+import { outcomeTarget } from "../interception";
 import { followRedirect, rememberLinkOrigin, takeLinkOrigin } from "../link-origin";
 import {
   type CaptureOutcome,
@@ -111,19 +107,63 @@ export default defineBackground(() => {
     }
   }
 
-  // The browser saved a captured PDF as a download: once the bucket holds it, the download goes;
-  // otherwise the download stays and a capture page tab shows the failure.
+  // Scripts run in a frame whose navigation became a download see the document it showed before:
+  // a download commits no document.
+  const frameTarget = (frame: PdfFrame) => ({ tabId: frame.tab_id, frameIds: [frame.frame_id] });
+
+  async function smallFrame(frame: PdfFrame): Promise<boolean> {
+    const [injection] = await browser.scripting.executeScript({
+      target: frameTarget(frame),
+      func: () => [window.innerWidth, window.innerHeight],
+    });
+    const [width, height] = z.tuple([z.number(), z.number()]).parse(injection?.result);
+    return width < bucketBuild.minFrameWidth || height < bucketBuild.minFrameHeight;
+  }
+
+  async function showInFrame(frame: PdfFrame, url: string): Promise<void> {
+    await browser.scripting.executeScript({
+      target: frameTarget(frame),
+      func: (target: string) => location.replace(target),
+      args: [url],
+    });
+  }
+
+  async function discard(saved: SavedPdf): Promise<void> {
+    if (saved.kind !== "interrupted") {
+      await browser.downloads.removeFile(saved.id);
+    }
+    await browser.downloads.erase({ id: saved.id });
+  }
+
+  // The browser saved a captured PDF as a download. A frame too small to read in is handed back
+  // to the browser's viewer, which fetches the PDF again. Otherwise, once the bucket holds the
+  // PDF, the download goes and a frame shows the stored item; a failed capture keeps the download
+  // and shows the failure in the frame, or in a capture page tab for a top-level navigation.
   async function captureDownload(saved: SavedPdf): Promise<void> {
     const pdfUrl = saved.pdfUrl.href;
+    const { frame } = saved;
+    if (frame !== null && (await smallFrame(frame))) {
+      await discard(saved);
+      await (await interception).exempt(frame.tab_id, pdfUrl);
+      await showInFrame(frame, pdfUrl);
+      return;
+    }
     const outcome = await record(pdfUrl, await downloadOutcome(saved));
     if (outcome.kind === "stored") {
-      await browser.downloads.removeFile(saved.id);
-      await browser.downloads.erase({ id: saved.id });
+      await discard(saved);
+      if (frame !== null) {
+        await showInFrame(frame, outcomeTarget(capturePage(), pdfUrl, outcome));
+      }
       return;
     }
     const kept = saved.kind === "interrupted" ? "" : `; the browser saved the PDF at ${saved.path}`;
     const failure = failed(outcome.error.stage, `${outcome.error.detail}${kept}`);
-    await browser.tabs.create({ url: failureTarget(capturePage(), pdfUrl, failure) });
+    const target = outcomeTarget(capturePage(), pdfUrl, failure);
+    if (frame === null) {
+      await browser.tabs.create({ url: target });
+    } else {
+      await showInFrame(frame, target);
+    }
   }
 
   if (chrome !== undefined) {
@@ -199,16 +239,10 @@ export default defineBackground(() => {
   });
 
   // A followed link's report also names the page for each URL the navigation is redirected to.
-  // In Chrome, a capture rule's redirect of a frame to the capture page is recorded too: it is
-  // what lets that capture page ask for the PDF.
   browser.webRequest.onBeforeRedirect.addListener(
     (details) => {
       if (/^https?:/.test(details.redirectUrl)) {
         void followRedirect(details.url, details.redirectUrl);
-        return;
-      }
-      if (chrome !== undefined && details.type === "sub_frame") {
-        recordCaptureRedirect(details.tabId, details.frameId, details.url, details.redirectUrl);
       }
     },
     { urls: ["http://*/*", "https://*/*"], types: ["main_frame", "sub_frame"] },

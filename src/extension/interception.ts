@@ -9,7 +9,7 @@
 
 import { MIMEType } from "whatwg-mimetype";
 import type { Browser } from "wxt/browser";
-import { type Failed, FailedSchema } from "./messages";
+import { type CaptureOutcome, CaptureOutcomeSchema } from "./messages";
 
 type Rule = Browser.declarativeNetRequest.Rule;
 
@@ -33,8 +33,7 @@ function mediaTypePatterns(types: string[]): string[] {
   return types.flatMap((type) => [type, `${type};*`, `${type} *;*`, `${type}\t*;*`]);
 }
 
-// The capture page receives the PDF URL verbatim as its whole query string:
-// declarativeNetRequest cannot encode the matched URL, so Firefox does the same.
+// The capture page receives the PDF URL verbatim as its whole query string.
 export function captureTarget(capturePage: string, pdfUrl: string): string {
   return `${capturePage}?${pdfUrl}`;
 }
@@ -48,16 +47,10 @@ export function pdfUrlFromCaptureQuery(search: string): URL {
 }
 
 // Chrome: rules in priority order, highest first. Chrome gives an extension no way to read a
-// navigation's response body. A top-level PDF navigation is therefore turned into a download
-// (its Content-Type rewritten to octet-stream, which Chrome saves instead of rendering), so the
-// PDF is fetched once and the bucket reads the saved file (downloads.ts). A PDF in a
-// frame is redirected to the capture page, which fetches it again and keeps one line in the
-// frame, or hands a small frame back to the browser's viewer.
-export function pdfCaptureRules(capturePage: string, bucketOrigin: string): Rule[] {
-  const redirect: Rule["action"] = {
-    type: "redirect",
-    redirect: { regexSubstitution: captureTarget(capturePage, "\\0") },
-  };
+// navigation's response body. A PDF navigation, top-level or in a frame, is therefore turned
+// into a download (its Content-Type rewritten to octet-stream, which Chrome saves instead of
+// rendering), so the PDF is fetched once and the bucket reads the saved file (downloads.ts).
+export function pdfCaptureRules(bucketOrigin: string): Rule[] {
   const download: Rule["action"] = {
     type: "modifyHeaders",
     responseHeaders: [{ header: "content-type", operation: "set", value: OCTET_STREAM }],
@@ -95,10 +88,10 @@ export function pdfCaptureRules(capturePage: string, bucketOrigin: string): Rule
         resourceTypes: PDF_FRAME_TYPES,
       },
     },
-    ...pdfConditions.flatMap((condition) => [
-      { action: download, condition: { ...condition, resourceTypes: ["main_frame" as const] } },
-      { action: redirect, condition: { ...condition, resourceTypes: ["sub_frame" as const] } },
-    ]),
+    ...pdfConditions.map((condition) => ({
+      action: download,
+      condition: { ...condition, resourceTypes: PDF_FRAME_TYPES },
+    })),
   ];
   return rules.map((rule, index) => ({ ...rule, id: index + 1, priority: rules.length - index }));
 }
@@ -150,12 +143,14 @@ export function withoutFragment(href: string): string {
   return url.href;
 }
 
-// A capture that failed outside the capture page (a Chrome download): the capture page shows
-// the failure its fragment carries.
-export function failureTarget(capturePage: string, pdfUrl: string, failure: Failed): string {
-  return `${captureTarget(capturePage, pdfUrl)}#${encodeURIComponent(JSON.stringify(failure))}`;
+// A capture's outcome outside the capture page (a Chrome download): the capture page shows the
+// outcome its fragment carries.
+export function outcomeTarget(capturePage: string, pdfUrl: string, outcome: CaptureOutcome): string {
+  return `${captureTarget(capturePage, pdfUrl)}#${encodeURIComponent(JSON.stringify(outcome))}`;
 }
 
-export function failureFromCaptureHash(hash: string): Failed | null {
-  return hash === "" ? null : FailedSchema.parse(JSON.parse(decodeURIComponent(hash.slice(1))));
+export function outcomeFromCaptureHash(hash: string): CaptureOutcome | null {
+  return hash === ""
+    ? null
+    : CaptureOutcomeSchema.parse(JSON.parse(decodeURIComponent(hash.slice(1))));
 }

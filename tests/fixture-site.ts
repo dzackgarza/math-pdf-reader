@@ -76,6 +76,10 @@ const pdfs: Record<string, Pdf> = {
     gzip: true,
   },
   "/once/ticket.pdf": { ...inline(servedAt("/once/ticket.pdf", problemSet)), singleUse: true },
+  "/once/framed-ticket.pdf": {
+    ...inline(servedAt("/once/framed-ticket.pdf", lectureNotes)),
+    singleUse: true,
+  },
   "/open/pdf/2402.00002": { ...inline(servedAt("/open/pdf/2402.00002", lectureNotes)), open: true },
   "/content/pdf/10.5555/offprint.pdf": inline(
     servedAt("/content/pdf/10.5555/offprint.pdf", problemSet),
@@ -149,6 +153,10 @@ const pages: Record<string, { title: string; head?: string; body: string }> = {
   "/frame-large.html": {
     title: "Chapter",
     body: '<iframe src="/frames/chapter.pdf" style="width: 1000px; height: 700px"></iframe>',
+  },
+  "/frame-ticket.html": {
+    title: "Framed ticket",
+    body: '<iframe src="/once/framed-ticket.pdf" style="width: 1000px; height: 700px"></iframe>',
   },
   "/frame-small-signed.html": {
     title: "Signed preview",

@@ -137,7 +137,12 @@ export function firefoxInterception(
       }
       // A link with the `download` attribute arrives here as a top-level request too, and no
       // stream filter can read a download's body; the mark lets its download take the capture.
-      await mark(async () => true, pdfUrl, header(details.responseHeaders, "content-disposition"));
+      await mark(
+        async () => true,
+        pdfUrl,
+        header(details.responseHeaders, "content-disposition"),
+        null,
+      );
       const document = savingDocument(captureTarget(capturePage(), pdfUrl));
       held.set(heldKey(details.tabId, details.frameId, pdfUrl), {
         tabId: details.tabId,

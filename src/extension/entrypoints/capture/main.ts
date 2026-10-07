@@ -1,5 +1,6 @@
-// Capture page: every intercepted PDF navigation lands here, except Chrome's top-level ones,
-// which become downloads and open this page only to show a failure. It hands a small frame back to
+// Capture page: every intercepted PDF navigation lands here in Firefox. In Chrome every one
+// becomes a download, and this page only shows the outcome: in the frame the PDF was to show in,
+// or, for a failed top-level one, in a tab of its own. In Firefox it hands a small frame back to
 // the browser, or captures the PDF. A captured PDF opens in the desktop window, so the page
 // then gets out of the way: a top-level tab goes back to the page the PDF was opened from,
 // or closes when it was opened for the PDF alone; a frame keeps one line naming the item.
@@ -10,7 +11,7 @@ import { browser } from "wxt/browser";
 import type { CaptureResponse } from "../../../contract/capture";
 import { bucketBuild, newerThanLoaded } from "../../bucket-config";
 import { reopenAfterReload } from "../../bucket-status";
-import { failureFromCaptureHash, pdfUrlFromCaptureQuery } from "../../interception";
+import { outcomeFromCaptureHash, pdfUrlFromCaptureQuery } from "../../interception";
 import {
   type CaptureOutcome,
   CaptureOutcomeSchema,
@@ -83,7 +84,12 @@ async function leaveTab(pdfUrl: URL): Promise<void> {
   }
 }
 
+// The outcome may come from the fragment, which any page that frames this one sets; the link
+// goes only to the bucket.
 function renderStoredInFrame(response: CaptureResponse): void {
+  if (!response.reader_url.startsWith(`${bucketBuild.bucketOrigin}/`)) {
+    throw new Error(`the reader URL ${response.reader_url} is not at PDF Bucket`);
+  }
   const reader = link(response.reader_url, response.provenance.title_hint);
   reader.target = "_blank";
   element("heading").replaceChildren(reader);
@@ -119,7 +125,7 @@ function settle(pdfUrl: URL, outcome: CaptureOutcome, inFrame: boolean): void {
 }
 
 const pdfUrl = pdfUrlFromCaptureQuery(location.search);
-const shownFailure = failureFromCaptureHash(location.hash);
+const shownOutcome = outcomeFromCaptureHash(location.hash);
 const inFrame = window.self !== window.top;
 const smallFrame =
   inFrame &&
@@ -130,8 +136,8 @@ if (newerThanLoaded()) {
   // understand it. The reload closes this tab; the reloaded background opens the PDF again.
   element("heading").textContent = "PDF Bucket's extension is reloading to a new build";
   void reopenAfterReload.setValue(pdfUrl.href).then(() => browser.runtime.reload());
-} else if (shownFailure !== null) {
-  settle(pdfUrl, shownFailure, inFrame);
+} else if (shownOutcome !== null) {
+  settle(pdfUrl, shownOutcome, inFrame);
 } else if (smallFrame) {
   void openNatively(pdfUrl);
 } else {

@@ -140,7 +140,7 @@ async function extensionReady(
             "chrome.declarativeNetRequest.getDynamicRules().then((rules) => rules.length)",
           ),
         );
-    while ((await registered()) < pdfCaptureRules("", "").length) {
+    while ((await registered()) < pdfCaptureRules("").length) {
       await Bun.sleep(50);
     }
     // `URL.origin` is "null" for the non-special chrome-extension: scheme.
@@ -558,6 +558,27 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const stored = await provenance("chapter");
     expect(stored.pdf_url).toBe(`${site.origin}/frames/chapter.pdf`);
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/frames/chapter.pdf")));
+  });
+
+  // Firefox keeps the frame's own response; Chrome saves it as a download, which the bucket reads
+  // and the extension then removes before it shows the stored item in the frame.
+  test("a single-use PDF in a sub-frame is captured from the browser's one request", async () => {
+    const pdfPath = "/once/framed-ticket.pdf";
+    await page.goto(`${site.origin}/frame-ticket.html`);
+    const frame = await page.waitForFrame(
+      (candidate) =>
+        candidate.parentFrame() === page.mainFrame() &&
+        (engine === "firefox" || candidate.url().startsWith(extensionOrigin)),
+    );
+    await captureState(frame, "stored");
+
+    const stored = await provenance("framed-ticket");
+    expect(stored.pdf_url).toBe(`${site.origin}${pdfPath}`);
+    expect(stored.original_sha256).toBe(sha256(pdfBytes(pdfPath)));
+    expect(site.requests.filter((request) => request.path === pdfPath).length).toBe(1);
+    while (readdirSync(downloads).length > 0) {
+      await Bun.sleep(50);
+    }
   });
 
   // The capture page is web-accessible, so a web page can frame it with any PDF URL. Only a
