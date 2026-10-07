@@ -45,6 +45,7 @@ import {
 } from "../../contract/library";
 import { onBucketEvent } from "../bucketEvents";
 import { request, requestError } from "../useLibraryApi";
+import { fallbackFonts } from "./fallbackFonts";
 import { ReadingSession } from "./readingSession";
 
 // What a reader offers whoever shows it: settle sends the reading session and waits for every
@@ -559,6 +560,7 @@ function LoadedReader({
     () => ({
       // The engine fetches it from a worker, where a path names nothing.
       wasmUrl: new URL(pdfiumWasm, window.location.href).href,
+      fontFallback: fallbackFonts(new URL("/", window.location.href)),
       tabBar: "never",
       theme: { preference: ThemeSchema.parse(document.documentElement.dataset.theme) },
       fonts: {

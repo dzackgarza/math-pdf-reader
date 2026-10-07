@@ -11,6 +11,14 @@
     "cache-evidence": "bun tests/cache-evidence.ts"
   },
   "dependencies": {
+    "@embedpdf/engines": "2.15.1",
+    "@embedpdf/fonts-arabic": "1.0.0",
+    "@embedpdf/fonts-hebrew": "1.0.0",
+    "@embedpdf/fonts-jp": "1.0.0",
+    "@embedpdf/fonts-kr": "1.0.0",
+    "@embedpdf/fonts-latin": "1.0.0",
+    "@embedpdf/fonts-sc": "1.0.0",
+    "@embedpdf/fonts-tc": "1.0.0",
     "@embedpdf/pdfium": "2.15.1",
     "@embedpdf/react-pdf-viewer": "^2.15.1",
     "@fontsource-variable/inter": "^5.3.0",
@@ -52,6 +60,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
+    "vite-plugin-static-copy": "^4.1.1",
     "web-ext": "^10.5.0",
     "wxt": "^0.21.3"
   }

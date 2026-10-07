@@ -610,6 +610,34 @@ describe("library window", () => {
     await page.setViewport(viewport);
   });
 
+  test("the reader draws a font the PDF does not embed with a fallback font the bucket serves", async () => {
+    const form = new FormData();
+    form.set("pdf", new File([fixture("japanese-text.pdf")], "japanese.pdf"));
+    form.set("pdf_url", published("/~author/japanese.pdf"));
+    form.set("title_hint", "Lattice notes in Japanese");
+    const response = await fetch(`${bucket.origin}/capture-bytes`, { method: "POST", body: form });
+    expect(response.status).toBe(200);
+    const { key } = CaptureResponseSchema.parse(await response.json());
+    const requested: string[] = [];
+    const record = (request: HTTPRequest) => requested.push(request.url());
+    page.on("request", record);
+    try {
+      const font = page.waitForRequest((request) => /\.(ttf|otf)$/.test(request.url()));
+      await page.goto(`${bucket.origin}/read/${key}`);
+      await readerLoaded(key);
+      await font;
+      const fonts = requested.filter((url) => /\.(ttf|otf)$/.test(url));
+      expect(fonts.length).toBeGreaterThan(0);
+      for (const url of fonts) {
+        expect(url).toStartWith(`${bucket.origin}/fonts/jp/`);
+        expect((await fetch(url)).status).toBe(200);
+      }
+    } finally {
+      page.off("request", record);
+      await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+    }
+  });
+
   test("the reader link button copies the captured PDF URL", async () => {
     await page.goto(`${bucket.origin}/read/lattices`);
     await readerLoaded("lattices");
