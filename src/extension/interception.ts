@@ -145,7 +145,11 @@ export function withoutFragment(href: string): string {
 
 // A capture's outcome outside the capture page (a Chrome download): the capture page shows the
 // outcome its fragment carries.
-export function outcomeTarget(capturePage: string, pdfUrl: string, outcome: CaptureOutcome): string {
+export function outcomeTarget(
+  capturePage: string,
+  pdfUrl: string,
+  outcome: CaptureOutcome,
+): string {
   return `${captureTarget(capturePage, pdfUrl)}#${encodeURIComponent(JSON.stringify(outcome))}`;
 }
 
