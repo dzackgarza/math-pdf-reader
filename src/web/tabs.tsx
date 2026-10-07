@@ -9,13 +9,13 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, Moon, X } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
 import { onBucketEvent } from "./bucketEvents";
 import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import { Reader, type ReaderControl } from "./reader/Reader";
-import { ReaderTabsContext } from "./readerTabs";
+import { type ItemMenu, ReaderTabsContext } from "./readerTabs";
 
 declare global {
   interface WindowEventMap {
@@ -104,6 +104,24 @@ const TAB_CLASSES =
 const TAB_STATE_CLASSES =
   "border-transparent text-muted hover:bg-ink/[0.04] hover:text-ink data-[state=active]:border-line data-[state=active]:bg-panel data-[state=active]:font-medium data-[state=active]:text-ink";
 
+// A PDF tab's context menu, drawn when it opens: the tab's ENTRIES and then its item's menu, or
+// the entries alone before the library has loaded and once it holds no item for the tab.
+function TabMenu({
+  itemMenu,
+  itemKey,
+  entries,
+}: {
+  itemMenu: RefObject<ItemMenu | null>;
+  itemKey: string;
+  entries: ReactNode;
+}) {
+  return (
+    itemMenu.current?.(itemKey, entries) ?? (
+      <ContextMenu.Content className={MENU_PANEL}>{entries}</ContextMenu.Content>
+    )
+  );
+}
+
 export function ReaderTabs({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TabsState>({ open: [], shown: LIBRARY_TAB, recent: [] });
   const stateRef = useRef(state);
@@ -113,6 +131,12 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   const readers = useRef(new Map<string, ReaderControl>());
   // The tabs whose reader is settling before it sleeps.
   const settling = useRef(new Set<string>());
+  // The library's item menu, which the library gives again at each of its renders; a tab's menu
+  // reads it when it opens.
+  const itemMenu = useRef<ItemMenu | null>(null);
+  const setItemMenu = useCallback((menu: ItemMenu | null) => {
+    itemMenu.current = menu;
+  }, []);
 
   const openReader = useCallback((key: string, title: string) => {
     setState((previous) =>
@@ -237,9 +261,26 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // A PDF tab's own menu entries, which its item's menu follows.
+  const tabEntries = (tab: ReaderTab) => (
+    <>
+      <ContextMenu.Item disabled={tab.asleep} onSelect={() => sleep(tab.key)} className={MENU_ITEM}>
+        Sleep Tab
+      </ContextMenu.Item>
+      <ContextMenu.Item onSelect={() => close(tab.key)} className={MENU_ITEM}>
+        Close Tab
+      </ContextMenu.Item>
+    </>
+  );
+
   return (
     <ReaderTabsContext.Provider
-      value={{ openReader, closeReader, libraryShown: state.shown === LIBRARY_TAB }}
+      value={{
+        openReader,
+        closeReader,
+        libraryShown: state.shown === LIBRARY_TAB,
+        setItemMenu,
+      }}
     >
       <Tabs.Root
         value={state.shown}
@@ -298,18 +339,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                 </div>
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
-                <ContextMenu.Content className={MENU_PANEL}>
-                  <ContextMenu.Item
-                    disabled={tab.asleep}
-                    onSelect={() => sleep(tab.key)}
-                    className={MENU_ITEM}
-                  >
-                    Sleep Tab
-                  </ContextMenu.Item>
-                  <ContextMenu.Item onSelect={() => close(tab.key)} className={MENU_ITEM}>
-                    Close Tab
-                  </ContextMenu.Item>
-                </ContextMenu.Content>
+                <TabMenu itemMenu={itemMenu} itemKey={tab.key} entries={tabEntries(tab)} />
               </ContextMenu.Portal>
             </ContextMenu.Root>
           ))}

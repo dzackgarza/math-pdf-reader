@@ -25,6 +25,8 @@ import {
   RetrieveMetadataResponseSchema,
   type SavedSearch,
   SavedSearchSchema,
+  type SendAndExtractResponse,
+  SendAndExtractResponseSchema,
   SendResponseSchema,
 } from "../contract/library";
 import {
@@ -549,21 +551,71 @@ export type SendAttempt =
   | { kind: "refused"; message: string }
   | { kind: "failed"; message: string };
 
+// How a send goes to Zotero: to the Zotero item the write API finds for the PDF URL; the same,
+// then the configured chain of extraction plugins, whose Markdown it attaches; or the PDF alone,
+// as a standalone attachment, for a PDF whose URL names no paper.
+export type SendWay = "item" | "extracted" | "pdf_only";
+
+const SEND_ROUTES: Record<SendWay, string> = {
+  item: "zotero",
+  extracted: "zotero/extracted",
+  pdf_only: "zotero/pdf-only",
+};
+
+function outcomeLine(outcome: ExtractionOutcome): string {
+  switch (outcome.status) {
+    case "succeeded":
+      return `${outcome.plugin_id}: extracted`;
+    case "rejected":
+      return `${outcome.plugin_id}: did not run (${outcome.violations.length} limits exceeded)`;
+    case "timed_out":
+      return `${outcome.plugin_id}: stopped at its ${outcome.seconds} s limit`;
+    case "failed":
+      return `${outcome.plugin_id}: exited with code ${outcome.exit_code}`;
+  }
+}
+
+// What the window says once the item has left: which plugin's Markdown went to Zotero, or that
+// none extracted the PDF, which is in Zotero all the same.
+function reportChain(context: ActionContext, answer: SendAndExtractResponse): void {
+  const { extractions } = answer;
+  if (extractions.length === 0) {
+    context.notify("Sent to Zotero with the Markdown the item already had");
+    return;
+  }
+  const lines = extractions.map(outcomeLine).join("\n");
+  if (extractions.some((outcome) => outcome.status === "succeeded")) {
+    context.notify(`Sent to Zotero with its Markdown\n${lines}`);
+    return;
+  }
+  context.report(`Sent to Zotero, but no plugin extracted the PDF\n${lines}`);
+}
+
 // Closes the item's reader tab once its annotations are saved, so the send carries them, then
 // sends.
 export function sendToZotero(
   context: ActionContext,
   key: string,
+  way: SendWay,
   onAttempt: (attempt: SendAttempt | null) => void,
 ): void {
   onAttempt({ kind: "sending" });
+  const path = `${itemPath(key)}/${SEND_ROUTES[way]}`;
   context
     .closeReader(key)
-    .then(() => context.api.call(SendResponseSchema, "POST", `${itemPath(key)}/zotero`))
+    .then(async () => {
+      if (way === "extracted") {
+        reportChain(context, await context.api.call(SendAndExtractResponseSchema, "POST", path));
+        return;
+      }
+      await context.api.call(SendResponseSchema, "POST", path);
+    })
     .then(
       () => onAttempt(null),
       (error: Error) => {
-        const refused = error instanceof BucketRequestError && error.kind === "already_sent";
+        const refused =
+          error instanceof BucketRequestError &&
+          (error.kind === "already_sent" || error.kind === "pdf_only_refused");
         onAttempt({
           kind: refused ? "refused" : "failed",
           message: error.message,

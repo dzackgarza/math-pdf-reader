@@ -48,6 +48,7 @@ import {
   rebuildLost,
   run,
   type SendAttempt,
+  type SendWay,
   saveItemMetadata,
   saveSearch,
   saveSmartCollection,
@@ -294,8 +295,8 @@ export default function Workspace({
   const deselect = () => setSelectedId(null);
   // Runs an action outside the page; a failure shows as a toast.
   const attempt = (action: Promise<void>): void => run(context, action);
-  const send = (key: string) =>
-    sendToZotero(context, key, (sending) => setSendAttempt(key, sending));
+  const send = (key: string, way: SendWay) =>
+    sendToZotero(context, key, way, (sending) => setSendAttempt(key, sending));
   const extract = (key: string, pluginId: string) =>
     extractWith(context, key, pluginId, (running) => setExtractionAttempt(key, running));
   const rebuild = (key: string) => {
@@ -330,7 +331,7 @@ export default function Workspace({
   });
 
   // The menu of an item that has left the library (deleted in another window) closes.
-  const rowMenu = (key: string) => {
+  const rowMenu = (key: string, leading: ReactNode = null) => {
     const item = payload.items.find((candidate) => candidate.id === key);
     if (item === undefined) {
       return null;
@@ -340,6 +341,7 @@ export default function Workspace({
       <ItemContextMenu
         item={item}
         collections={payload.collections}
+        leading={leading}
         commands={{
           open: () => openReader(key),
           openInBrowser: () => attempt(openInBrowser(readerHref(key))),
@@ -352,7 +354,7 @@ export default function Workspace({
           fileIn: actions.fileIn,
           fileInNewCollection: actions.fileInNewCollection,
           addTag: actions.addTag,
-          send: () => send(key),
+          send: (way) => send(key, way),
           copy: (text) => attempt(navigator.clipboard.writeText(text)),
           showInFolder: reveal === null ? null : () => attempt(reveal(item.file.path)),
           delete: actions.delete,
@@ -360,6 +362,10 @@ export default function Workspace({
       />
     );
   };
+  // A PDF's tab offers its item's menu too, as this render's library has it.
+  const setItemMenu = tabs.setItemMenu;
+  useEffect(() => setItemMenu(rowMenu));
+  useEffect(() => () => setItemMenu(null), [setItemMenu]);
 
   const commands = createAppCommands({
     navigate,
@@ -370,7 +376,7 @@ export default function Workspace({
       selected === undefined ? null : () => attempt(openInBrowser(readerHref(selected.id))),
     showSelectedInFolder:
       selected === undefined || reveal === null ? null : () => attempt(reveal(selected.file.path)),
-    sendSelectedToZotero: selected === undefined ? null : () => send(selected.id),
+    sendSelectedToZotero: selected === undefined ? null : (way) => send(selected.id, way),
     reloadLibrary: api.refresh,
     verifyAllSources: () => attempt(api.change("POST", "/api/verify").then(() => undefined)),
     rebuildAllLost: rebuildAll,
@@ -525,7 +531,7 @@ export default function Workspace({
               }}
               send={{
                 attempt: sendAttempts.get(selected.id),
-                onSend: () => send(selected.id),
+                onSend: (way) => send(selected.id, way),
               }}
               extraction={{
                 plugins,

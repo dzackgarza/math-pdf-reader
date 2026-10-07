@@ -2,6 +2,7 @@
 // Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
 import { ImportMethodSchema, ProvenanceSchema, RetrieveMetadataOutcomeSchema } from "./capture";
+import { ExtractionOutcomeSchema } from "./extraction";
 import { NonEmptySchema, Sha256Schema, TrimmedSchema } from "./text";
 
 export const SEARCH_FIELDS = ["title", "source", "pdfUrl", "tags", "notes", "key"] as const;
@@ -209,11 +210,16 @@ export const SendStepSchema = z.discriminatedUnion("step", [
   }),
 ]);
 
-// The Zotero item a send goes to, and the steps done on it so far.
+// How a send made its Zotero item: by one of the write API's methods, or as a standalone
+// attachment ("Send PDF Only"), the PDF with no parent item, which owes only the `pdf` step.
+export const SendMethodSchema = z.enum([...ImportMethodSchema.options, "standalone_attachment"]);
+
+// The Zotero item a send goes to (for a standalone attachment, the attachment), and the steps
+// done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
   itemKey: NonEmptySchema,
   sentAt: z.iso.datetime({ offset: true }),
-  method: ImportMethodSchema,
+  method: SendMethodSchema,
   steps: z.array(SendStepSchema),
 });
 
@@ -237,6 +243,16 @@ export const SendResponseSchema = z.strictObject({
   created: z.boolean(),
   performed: z.array(z.enum(SEND_STEPS)),
   kept: z.boolean(),
+});
+
+// The answer to "Send to Zotero and Extract": the send, made before any extraction, and each
+// plugin of the configured chain tried after it, in order, up to the first that extracted the
+// PDF, whose Markdown the send's `performed` then lists. An item with Markdown already tries no
+// plugin, and its send attaches that Markdown. The item leaves the bucket once the chain has
+// ended, as a send's does, unless `send.kept`.
+export const SendAndExtractResponseSchema = z.strictObject({
+  send: SendResponseSchema,
+  extractions: z.array(ExtractionOutcomeSchema),
 });
 
 // Where an item's title came from: a manual edit, Zotero's resolution of its URL ("Retrieve
@@ -467,6 +483,8 @@ export const API_ERROR_KINDS = [
   // The bucket was given no signed Firefox build to offer.
   "unknown_extension_build",
   "already_sent",
+  // "Send PDF Only" for an item with notes or Markdown, which a standalone attachment cannot hold.
+  "pdf_only_refused",
   "provenance_mismatch",
   "no_pdf_at_url",
   "not_a_folder",
@@ -591,6 +609,8 @@ export type ImportMethod = z.infer<typeof ImportMethodSchema>;
 export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
 export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;
+export type SendAndExtractResponse = z.infer<typeof SendAndExtractResponseSchema>;
+export type SendMethod = z.infer<typeof SendMethodSchema>;
 export type TitleSource = z.infer<typeof TitleSourceSchema>;
 export type Reading = z.infer<typeof ReadingSchema>;
 export type SourceCheck = z.infer<typeof SourceCheckSchema>;

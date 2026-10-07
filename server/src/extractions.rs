@@ -224,12 +224,10 @@ async fn run(
     placed(state, &key, plugin.id.clone())
 }
 
-async fn extract(
-    State(state): State<Shared>,
-    UrlPath((key, plugin_id)): UrlPath<(String, String)>,
-) -> AppResult<(StatusCode, Json<ExtractionOutcome>)> {
-    let indexed = state.require(&key).await?;
-    let manifest = manifest(&state).await?;
+/// Runs the manifest's plugin PLUGIN_ID on the stored item KEY.
+async fn extract_with(state: &Shared, key: &str, plugin_id: &str) -> AppResult<ExtractionOutcome> {
+    let indexed = state.require(key).await?;
+    let manifest = manifest(state).await?;
     let Some(plugin) = manifest
         .plugins
         .iter()
@@ -242,15 +240,36 @@ async fn extract(
         ));
     };
     let violations = violations(plugin, &indexed);
-    let outcome = if violations.is_empty() {
-        run(&state, plugin, &indexed).await?
-    } else {
-        ExtractionOutcome::Rejected {
+    if !violations.is_empty() {
+        return Ok(ExtractionOutcome::Rejected {
             key: indexed.stored.key.clone(),
             plugin_id: plugin.id.clone(),
             violations,
+        });
+    }
+    run(state, plugin, &indexed).await
+}
+
+/// Runs the plugins of `plugins.send_extraction_chain` on KEY in order, up to the first that
+/// extracts it; answers each run's outcome.
+pub async fn extract_by_chain(state: &Shared, key: &str) -> AppResult<Vec<ExtractionOutcome>> {
+    let mut outcomes = Vec::new();
+    for plugin_id in &state.config.app.plugins.send_extraction_chain {
+        let outcome = extract_with(state, key, plugin_id).await?;
+        let extracted = matches!(outcome, ExtractionOutcome::Succeeded { .. });
+        outcomes.push(outcome);
+        if extracted {
+            break;
         }
-    };
+    }
+    Ok(outcomes)
+}
+
+async fn extract(
+    State(state): State<Shared>,
+    UrlPath((key, plugin_id)): UrlPath<(String, String)>,
+) -> AppResult<(StatusCode, Json<ExtractionOutcome>)> {
+    let outcome = extract_with(&state, &key, &plugin_id).await?;
     // A plugin that exits non-zero is a failed upstream, one past its time limit a timed-out
     // upstream; a PDF outside its limits is unprocessable.
     let status = match outcome {

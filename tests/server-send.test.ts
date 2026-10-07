@@ -278,3 +278,79 @@ test("a JSON route refuses a body a form on another site can send", async () => 
   expect(await errorKind(response)).toBe("unsupported_media_type");
   expect((await item(bucket, "lattices"))?.notes).toEqual([]);
 });
+
+test("Send PDF Only refuses an item with notes or Markdown, which a standalone PDF cannot hold", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, "lattices");
+  const noted = await bucket.request("/api/items/lattices/notes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note: "Lemma 2 needs the sign convention of section 1." }),
+  });
+  expect(noted.status).toBe(200);
+  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Quadratic Forms\n");
+
+  const response = await bucket.request("/api/items/lattices/zotero/pdf-only", { method: "POST" });
+
+  // Refused before the health check: a request that reached for the closed port would answer 503.
+  expect(response.status).toBe(409);
+  expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
+    kind: "pdf_only_refused",
+    message:
+      "lattices has a note and an extraction's Markdown, which a standalone PDF in Zotero cannot hold: send it to a Zotero item",
+  });
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+});
+
+test("Send PDF Only while Zotero is not running says to start Zotero and records nothing", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, "lattices");
+
+  const response = await bucket.request("/api/items/lattices/zotero/pdf-only", { method: "POST" });
+
+  expect(response.status).toBe(503);
+  expect(await errorKind(response)).toBe("zotero_unavailable");
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+});
+
+// A Send PDF Only that stored the PDF as the standalone attachment QRST2345.
+const STANDALONE: ZoteroRecord = {
+  itemKey: "QRST2345",
+  sentAt: "2026-09-23T18:00:00.000Z",
+  method: "standalone_attachment",
+  steps: [{ step: "pdf", attachmentKey: "QRST2345" }],
+};
+
+test("a standalone PDF in Zotero owes nothing more, and every send of it is refused", async () => {
+  const bucket = await emptyBucket();
+  await capture(bucket, "lattices");
+  writeOrganization(bucket.root, {
+    version: 2,
+    collections: [],
+    savedSearches: [],
+    items: {
+      lattices: { ...unfiled({ captured_at: STANDALONE.sentAt }), zotero: STANDALONE },
+    },
+    activity: [],
+    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
+  });
+  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Quadratic Forms\n");
+
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "sent",
+    record: STANDALONE,
+    pending: [],
+  });
+  const sends = await Promise.all(
+    ["/zotero", "/zotero/extracted", "/zotero/pdf-only"].map((route) =>
+      bucket.request(`/api/items/lattices${route}`, { method: "POST" }),
+    ),
+  );
+
+  expect(sends.map((response) => response.status)).toEqual([409, 409, 409]);
+  expect(await Promise.all(sends.map(errorKind))).toEqual([
+    "already_sent",
+    "already_sent",
+    "already_sent",
+  ]);
+});

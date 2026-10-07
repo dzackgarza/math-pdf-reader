@@ -20,8 +20,10 @@
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
 import {
   AnnotationPlugin,
+  type Command,
   CommandsPlugin,
   ExportPlugin,
+  InteractionManagerPlugin,
   PDFViewer,
   type PDFViewerConfig,
   type PDFViewerRef,
@@ -77,7 +79,13 @@ function entityTag(response: Response): string {
 }
 
 function plugin<
-  T extends ExportPlugin | ScrollPlugin | AnnotationPlugin | CommandsPlugin | UIPlugin,
+  T extends
+    | ExportPlugin
+    | ScrollPlugin
+    | AnnotationPlugin
+    | CommandsPlugin
+    | UIPlugin
+    | InteractionManagerPlugin,
 >(registry: PluginRegistry, id: string): ReturnType<T["provides"]> {
   const found = registry.getPlugin<T>(id);
   if (found === null) {
@@ -85,6 +93,19 @@ function plugin<
   }
   return found.provides() as ReturnType<T["provides"]>;
 }
+
+// Escape puts down the tool in hand (a highlighter, a shape) and takes up the default one, which
+// selects text, as the toolbar's pointer button does. EmbedPDF binds no key to it.
+const DEFAULT_TOOL: Command = {
+  id: "bucket:default-tool",
+  label: "Default tool",
+  shortcuts: ["Escape"],
+  categories: ["tools", "pointer"],
+  action: ({ registry, documentId }) =>
+    plugin<InteractionManagerPlugin>(registry, InteractionManagerPlugin.id)
+      .forDocument(documentId)
+      .activateDefaultMode(),
+};
 
 type Loaded = {
   item: BucketItem;
@@ -353,6 +374,7 @@ function LoadedReader({
 
   const onReady = (registry: PluginRegistry) => {
     state.commands = plugin<CommandsPlugin>(registry, CommandsPlugin.id);
+    state.commands.registerCommand(DEFAULT_TOOL);
     scopeShortcuts();
     const scroll = plugin<ScrollPlugin>(registry, ScrollPlugin.id);
     const annotations = plugin<AnnotationPlugin>(registry, AnnotationPlugin.id);

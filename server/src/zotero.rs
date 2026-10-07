@@ -383,6 +383,25 @@ impl ZoteroWriteApi {
             .attachment_key)
     }
 
+    /// Stores the bytes as a standalone attachment, with no parent item, in the collection
+    /// selected in Zotero (the library root when none is); answers the attachment's key.
+    pub async fn attach_standalone(
+        &self,
+        file_name: &str,
+        title: &str,
+        bytes: &[u8],
+    ) -> AppResult<String> {
+        let body = json!({
+            "title": title,
+            "file_name": file_name,
+            "file_bytes_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        });
+        Ok(self
+            .post::<Attached>("/attach", &body)
+            .await?
+            .attachment_key)
+    }
+
     /// Adds a child note holding `html` to the item; answers the note's key.
     pub async fn attach_note(&self, item_key: &str, html: &str) -> AppResult<String> {
         let body = json!({

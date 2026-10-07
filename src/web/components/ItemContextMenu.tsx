@@ -3,6 +3,7 @@ import * as ContextMenu from "@radix-ui/react-context-menu";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import type { BucketItem, Collection } from "../../contract/library";
+import type { SendWay } from "../libraryActions";
 
 export type ItemCommands = {
   open: () => void;
@@ -12,7 +13,7 @@ export type ItemCommands = {
   fileIn: (collectionId: string) => void;
   fileInNewCollection: () => void;
   addTag: () => void;
-  send: () => void;
+  send: (way: SendWay) => void;
   copy: (text: string) => void;
   // Null where no file manager is reachable (a browser tab).
   showInFolder: (() => void) | null;
@@ -54,14 +55,23 @@ export default function ItemContextMenu({
   item,
   collections,
   commands,
+  leading = null,
 }: {
   item: BucketItem;
   collections: Collection[];
   commands: ItemCommands;
+  // Entries above the item's, as a PDF's tab gives its own (tabs.tsx).
+  leading?: ReactNode;
 }) {
   const unfiledIn = collections.filter((collection) => !item.collections.includes(collection.id));
   return (
     <ContextMenu.Content className={MENU_PANEL}>
+      {leading !== null && (
+        <>
+          {leading}
+          <ContextMenu.Separator className={MENU_SEPARATOR} />
+        </>
+      )}
       <Item onSelect={commands.open}>Open</Item>
       <Item onSelect={commands.openInBrowser}>Open in Browser</Item>
       <ContextMenu.Separator className={MENU_SEPARATOR} />
@@ -78,7 +88,9 @@ export default function ItemContextMenu({
       <ContextMenu.Separator className={MENU_SEPARATOR} />
       <Item onSelect={commands.retrieveMetadata}>Retrieve Metadata</Item>
       <Item onSelect={commands.guessMetadata}>Guess Metadata</Item>
-      <Item onSelect={commands.send}>Send to Zotero</Item>
+      <Item onSelect={() => commands.send("item")}>Send to Zotero</Item>
+      <Item onSelect={() => commands.send("extracted")}>Send to Zotero and Extract</Item>
+      <Item onSelect={() => commands.send("pdf_only")}>Send PDF Only to Zotero</Item>
       <Item onSelect={() => commands.copy(item.provenance.pdf_url)}>Copy PDF Link</Item>
       {commands.showInFolder !== null && (
         <Item onSelect={commands.showInFolder}>Show in Folder</Item>

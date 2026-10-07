@@ -1,17 +1,20 @@
 // The send against a real running Zotero with the local write API: each paper becomes its own
 // Zotero item, even when several papers were captured from one listing page or imported from
-// one folder.
+// one folder; Send PDF Only stores a PDF as a standalone attachment; and Send to Zotero and
+// Extract sends, then tries the configured plugins in order and attaches the first one's Markdown.
 //
 // MUTATING: the send writes into the Zotero library, so the test is opt-in with ZOTERO_LIVE=1.
 // Every item a send reports as created is trashed in `afterAll`, with its attachments; an item
 // the library already held is never touched. Opted in but unreachable is a failure, not a skip.
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   FolderImportResponseSchema,
   LibraryPayloadSchema,
+  SendAndExtractResponseSchema,
   SendResponseSchema,
 } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
@@ -125,6 +128,135 @@ test.skipIf(!LIVE)(
     FolderImportResponseSchema.parse(await imported.json());
 
     expect(new Set(await sendAll(bucket)).size).toBe(2);
+    await bucket.stop();
+  },
+  REMOTE_TIMEOUT_MS,
+);
+
+// What Zotero's local API answers for the item KEY: its type, its parent, and its title.
+async function zoteroItem(
+  key: string,
+): Promise<{ itemType: string; parentItem?: string; title: string }> {
+  const response = await fetch(`${ZOTERO_URL}/api/users/0/items/${key}`);
+  if (!response.ok) {
+    throw new Error(`Zotero's local API answered ${response.status} for ${key}`);
+  }
+  const { data } = (await response.json()) as {
+    data: { itemType: string; parentItem?: string; title: string };
+  };
+  return data;
+}
+
+// Zotero's child items of KEY: each one's type and title.
+async function zoteroChildren(key: string): Promise<{ itemType: string; title: string }[]> {
+  const response = await fetch(`${ZOTERO_URL}/api/users/0/items/${key}/children`);
+  if (!response.ok) {
+    throw new Error(`Zotero's local API answered ${response.status} for ${key}'s children`);
+  }
+  const children = (await response.json()) as { data: { itemType: string; title: string } }[];
+  return children.map(({ data }) => ({ itemType: data.itemType, title: data.title }));
+}
+
+async function captureOne(bucket: Bucket, key: string, pdfUrl: string): Promise<void> {
+  const form = new FormData();
+  form.set(
+    "pdf",
+    new File(
+      [readFileSync(join(import.meta.dir, "fixtures/arxiv-2609.21174v1.pdf"))],
+      `${key}.pdf`,
+      { type: "application/pdf" },
+    ),
+  );
+  form.set("pdf_url", pdfUrl);
+  form.set("title_hint", "K3 surfaces");
+  const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
+  expect(captured.status).toBe(200);
+}
+
+test.skipIf(!LIVE)(
+  "Send PDF Only stores a PDF from a one-off link as a standalone attachment, and the item leaves",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
+    const bucket = await serveBucket({
+      root,
+      zoteroUrl: ZOTERO_URL,
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+    });
+    // A download link that names no paper and expires, as a shadow library's does.
+    await captureOne(bucket, "k3-surfaces", "https://download.example.org/get.php?md5=0f3a&key=X1");
+
+    const response = await bucket.request("/api/items/k3-surfaces/zotero/pdf-only", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    const sent = SendResponseSchema.parse(await response.json());
+    createdItemKeys.push(sent.itemKey);
+    expect(sent).toMatchObject({ created: true, performed: ["pdf"], kept: false });
+    const attachment = await zoteroItem(sent.itemKey);
+    expect(attachment.itemType).toBe("attachment");
+    expect(attachment.parentItem).toBeUndefined();
+    const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
+    expect(library.items).toEqual([]);
+    await bucket.stop();
+  },
+  REMOTE_TIMEOUT_MS,
+);
+
+test.skipIf(!LIVE)(
+  "Send to Zotero and Extract sends, tries the chain in order, and attaches the first success's Markdown",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
+    const extractor = join(import.meta.dir, "fixtures/plugins/extractor.sh");
+    const manifestPath = join(
+      mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-")),
+      "extractions.json",
+    );
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        plugins: ["fail", "markdown", "record"].map((mode) => ({
+          id: mode,
+          name: `Fixture extractor (${mode})`,
+          command: ["sh", extractor, mode, "$pdf", "$output"],
+          accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+        })),
+      }),
+    );
+    const config = loadAppConfig(CONFIG_PATH);
+    const bucket = await serveBucket({
+      root,
+      zoteroUrl: ZOTERO_URL,
+      extractionsManifest: manifestPath,
+      config: {
+        ...config,
+        plugins: { ...config.plugins, send_extraction_chain: ["fail", "markdown", "record"] },
+      },
+    });
+    await captureOne(bucket, "k3-surfaces", "https://arxiv.org/pdf/2609.21174v1");
+
+    const response = await bucket.request("/api/items/k3-surfaces/zotero/extracted", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    const answer = SendAndExtractResponseSchema.parse(await response.json());
+    if (answer.send.created) {
+      createdItemKeys.push(answer.send.itemKey);
+    }
+    // The chain stops at the first success: `record` never runs.
+    expect(answer.extractions.map((outcome) => [outcome.plugin_id, outcome.status])).toEqual([
+      ["fail", "failed"],
+      ["markdown", "succeeded"],
+    ]);
+    expect(answer.send.performed).toEqual(["fields", "pdf", "markdown"]);
+    const markdown = `${answer.send.itemKey}_extracted.md`;
+    expect(await zoteroChildren(answer.send.itemKey)).toContainEqual({
+      itemType: "attachment",
+      title: markdown,
+    });
+    const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
+    expect(library.items).toEqual([]);
     await bucket.stop();
   },
   REMOTE_TIMEOUT_MS,

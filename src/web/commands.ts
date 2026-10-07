@@ -1,4 +1,5 @@
 // The commands the palette runs.
+import type { SendWay } from "./libraryActions";
 import { QUICK_FILTERS, quickFilterName } from "./librarySelectors";
 
 export type Command = {
@@ -15,7 +16,7 @@ export type AppCommandActions = {
   openSelectedInReader: (() => void) | null;
   openSelectedInBrowser: (() => void) | null;
   showSelectedInFolder: (() => void) | null;
-  sendSelectedToZotero: (() => void) | null;
+  sendSelectedToZotero: ((way: SendWay) => void) | null;
   reloadLibrary: () => void;
   verifyAllSources: () => void;
   rebuildAllLost: () => void;
@@ -34,6 +35,9 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
   // Folder, only where a file manager is reachable).
   const onSelected = (id: string, name: string, action: (() => void) | null): Command[] =>
     action === null ? [] : [{ id, name, category: "Library", action }];
+  const send = actions.sendSelectedToZotero;
+  const sendSelected = (id: string, name: string, way: SendWay): Command[] =>
+    onSelected(id, name, send === null ? null : () => send(way));
   return [
     goTo("go-library", "Library", "/"),
     ...QUICK_FILTERS.map((filter) =>
@@ -47,7 +51,9 @@ export function createAppCommands(actions: AppCommandActions): Command[] {
     ...onSelected("open-reader", "Open Selected PDF", actions.openSelectedInReader),
     ...onSelected("open-browser", "Open Selected PDF in Browser", actions.openSelectedInBrowser),
     ...onSelected("show-folder", "Show Selected PDF in Folder", actions.showSelectedInFolder),
-    ...onSelected("send-zotero", "Send Selected PDF to Zotero", actions.sendSelectedToZotero),
+    ...sendSelected("send-zotero", "Send Selected PDF to Zotero", "item"),
+    ...sendSelected("send-zotero-extract", "Send Selected PDF to Zotero and Extract", "extracted"),
+    ...sendSelected("send-zotero-pdf-only", "Send Selected PDF Only to Zotero", "pdf_only"),
     {
       id: "new-collection",
       name: "New Collection",

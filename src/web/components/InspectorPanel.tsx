@@ -1,8 +1,10 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   AlertTriangle,
   BookOpen,
   Check,
+  ChevronDown,
   CircleDashed,
   FileText,
   LoaderCircle,
@@ -32,7 +34,7 @@ import {
   topicName,
   topicTag,
 } from "../format";
-import type { ItemSourceActions, SendAttempt } from "../libraryActions";
+import type { ItemSourceActions, SendAttempt, SendWay } from "../libraryActions";
 import type { Related } from "../librarySelectors";
 import { CollectionChip, TagChip } from "./Chips";
 import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
@@ -57,7 +59,7 @@ export type NoteDraft = { text: string; onChange: (text: string) => void };
 
 export type ItemSendActions = {
   attempt: SendAttempt | undefined;
-  onSend: () => void;
+  onSend: (way: SendWay) => void;
 };
 
 export type ItemMetadataActions = {
@@ -553,6 +555,9 @@ function SendNotice({ attempt }: { attempt: SendAttempt | undefined }) {
   );
 }
 
+const SEND_MENU_ITEM =
+  "flex cursor-default items-center gap-2 rounded px-2.5 py-1.5 outline-none data-highlighted:bg-accent-soft";
+
 const TAB_CLASSES =
   "border-b-2 border-transparent px-1 pb-2 text-sm font-medium text-muted data-[state=active]:border-accent data-[state=active]:text-accent";
 
@@ -667,19 +672,50 @@ export default function InspectorPanel(props: InspectorPanelProps) {
           >
             <BookOpen className="h-4 w-4" /> Open
           </button>
-          <button
-            type="button"
-            onClick={send.onSend}
-            disabled={sending || inZotero}
-            className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-60"
-          >
-            {sending ? (
-              <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-accent" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            {inZotero ? "In Zotero" : "Send to Zotero"}
-          </button>
+          <div className="inline-flex rounded-md border border-line">
+            <button
+              type="button"
+              onClick={() => send.onSend("item")}
+              disabled={sending || inZotero}
+              className="inline-flex items-center gap-2 rounded-l-md px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-60"
+            >
+              {sending ? (
+                <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-accent" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              {inZotero ? "In Zotero" : "Send to Zotero"}
+            </button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger
+                aria-label="Other sends"
+                disabled={sending || inZotero}
+                className="inline-flex items-center rounded-r-md border-l border-line px-1.5 hover:bg-surface disabled:opacity-60"
+              >
+                <ChevronDown aria-hidden className="h-4 w-4" />
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={4}
+                  className="z-50 min-w-52 rounded-lg border border-line bg-panel p-1 text-sm shadow-lg"
+                >
+                  <DropdownMenu.Item
+                    onSelect={() => send.onSend("extracted")}
+                    className={SEND_MENU_ITEM}
+                  >
+                    Send to Zotero and Extract
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    onSelect={() => send.onSend("pdf_only")}
+                    className={SEND_MENU_ITEM}
+                  >
+                    Send PDF Only to Zotero
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </div>
         </div>
       </footer>
     </aside>

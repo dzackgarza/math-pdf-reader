@@ -277,7 +277,9 @@ class Reader:
         self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
         self.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).length > {saved}")
         time.sleep(SETTLE)
-        self.click("[data-epdf-i='add-highlight'] button")
+        # Escape puts the highlighter down: the default tool, which selects text, is in hand.
+        ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+        self.wait("P('interaction-manager').getActiveMode() === P('interaction-manager').getDefaultMode() && P('annotation').getActiveTool() === null")
 
 
 def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
