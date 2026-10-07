@@ -804,11 +804,9 @@ describe("library window", () => {
     await page.click(row(first), { count: 2 });
     await shownReader(first);
     await goToPage(first, 3);
-    // EmbedPDF's Zoom In shortcut.
+    // EmbedPDF's Zoom In button.
     const unzoomed = await zoomOf(first);
-    await page.keyboard.down("Control");
-    await page.keyboard.press("Equal");
-    await page.keyboard.up("Control");
+    await page.click(inViewer(first, 'button[aria-label="Zoom In"]'));
     await page.waitForFunction(
       async (css, before) => {
         const viewer = document.querySelector<EmbedPdfContainer>(css);
