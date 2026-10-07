@@ -22,6 +22,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import pikepdf
+import pymupdf
 import pytest
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -282,6 +283,35 @@ class Reader:
         self.wait("P('interaction-manager').getActiveMode() === P('interaction-manager').getDefaultMode() && P('annotation').getActiveTool() === null")
 
 
+    def highlighted_pixels(self, page: int) -> tuple[int, int]:
+        """The window's pixels inside the line boxes of PAGE's highlights, counted as text (dark)
+        and as highlight (yellow)."""
+        x, y, _, _ = self.page_box(page)
+        boxes = self.items(f"""(() => {{
+          const scale = P('zoom').getState().currentZoomLevel, ratio = window.devicePixelRatio;
+          return P('annotation').getAnnotations().map((tracked) => tracked.object)
+            .filter((object) => object.type === {HIGHLIGHT} && object.pageIndex === {page - 1})
+            .flatMap((object) => object.segmentRects)
+            .map((r) => [({x} + r.origin.x * scale) * ratio, ({y} + r.origin.y * scale) * ratio, r.size.width * scale * ratio, r.size.height * scale * ratio]) }})()""")
+        assert boxes
+        return pixel_counts(pymupdf.Pixmap(self.driver.get_screenshot_as_png()), boxes)
+
+
+def pixel_counts(pixmap: pymupdf.Pixmap, boxes: list[Script]) -> tuple[int, int]:
+    """The pixels of PIXMAP inside BOXES ([x, y, w, h] each) that are dark, as glyphs are, and that
+    are yellow, as a highlight over white paper is."""
+    dark = yellow = 0
+    for box in boxes:
+        assert isinstance(box, list)
+        left, top, width, height = (int(value) for value in box)
+        for py in range(top + 1, top + height - 1):
+            for px in range(left + 1, left + width - 1):
+                red, green, blue = pixmap.pixel(px, py)[:3]
+                dark += max(red, green, blue) < 140
+                yellow += red > 180 and green > 180 and blue < 140
+    return dark, yellow
+
+
 def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
     show_library(driver)
     row = f"//tbody/tr[@data-item-id={json.dumps(key)}]/td[@data-column='title']"
@@ -323,6 +353,19 @@ def stored_pdf(data_home: Path, key: str) -> pikepdf.Pdf:
     return pikepdf.open(data_home / "pdf-bucket" / f"{key}.pdf")
 
 
+def highlighted_pixels_in(path: Path) -> tuple[int, int]:
+    """The pixels inside the highlights of the PDF at PATH, as MuPDF, a second PDF renderer, draws them
+    from their saved appearance, counted as `pixel_counts` does."""
+    dark = yellow = 0
+    with pymupdf.open(path) as document:
+        for page in document:
+            for annotation in page.annots(types=[pymupdf.PDF_ANNOT_HIGHLIGHT]):
+                pixmap = page.get_pixmap(dpi=144, clip=annotation.rect)
+                counted = pixel_counts(pixmap, [[0, 0, pixmap.width, pixmap.height]])
+                dark, yellow = dark + counted[0], yellow + counted[1]
+    return dark, yellow
+
+
 def highlights_in(pdf: pikepdf.Pdf) -> int:
     return sum(1 for page in pdf.pages for annotation in page.get("/Annots", []) if annotation.get("/Subtype") == "/Highlight")
 
@@ -349,9 +392,11 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     time.sleep(SETTLE)
     assert reader.selection() == selected
 
-    # Highlight it.
+    # Highlight it. The text shows through the highlight.
     reader.highlight(page, NOTES_LINE)
     reader.assert_saved()
+    dark, yellow = reader.highlighted_pixels(page)
+    assert dark > 0 and yellow > 0, (dark, yellow)
 
     # Jump to a section from the outline, go back, then type a page number. The sidebar holds
     # the page thumbnails, then the outline, whose entries are the notes' section titles.
@@ -408,6 +453,9 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
 
     assert app.execute_script("return window.__errors") == []
 
+    # Another PDF reader draws the saved highlights with the text showing through them too.
+    dark, yellow = highlighted_pixels_in(data_home / "pdf-bucket" / f"{notes}.pdf")
+    assert dark > 0 and yellow > 0, (dark, yellow)
     with stored_pdf(data_home, notes) as pdf:
         assert highlights_in(pdf) == 2
         assert str(pdf.docinfo["/Title"]) == "Lectures on Lattices"
