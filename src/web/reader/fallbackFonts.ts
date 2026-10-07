@@ -12,14 +12,18 @@ import {
 
 function local(variant: FontVariant, base: URL): FontVariant {
   const found = Object.entries(FONT_CDN_URLS).find(([, cdn]) => variant.url.startsWith(`${cdn}/`));
-  if (found === undefined) {throw new Error(`EmbedPDF's font ${variant.url} is in no font package`);}
+  if (found === undefined) {
+    throw new Error(`EmbedPDF's font ${variant.url} is in no font package`);
+  }
   const [name, cdn] = found;
   const file = variant.url.slice(cdn.length + 1);
   return { ...variant, url: new URL(`fonts/${name}/${file}`, base).href };
 }
 
 function entry(font: FontEntry, base: URL): FontVariant[] {
-  if (!Array.isArray(font)) {throw new Error("EmbedPDF's CDN font entry is not a list of variants");}
+  if (!Array.isArray(font)) {
+    throw new Error("EmbedPDF's CDN font entry is not a list of variants");
+  }
   return font.map((variant) => local(variant, base));
 }
 
