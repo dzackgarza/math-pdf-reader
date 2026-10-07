@@ -90,6 +90,9 @@ function launch(engine: Engine, extension: string, downloads: string): Promise<B
       headless: true,
       enableExtensions: [extension],
       defaultViewport: viewport,
+      // Chromium's own output in the test log: a launch that times out waiting for the DevTools
+      // endpoint says nothing else about why.
+      dumpio: true,
     });
   }
   return puppeteer.launch({
