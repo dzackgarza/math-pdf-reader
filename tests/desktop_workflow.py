@@ -216,9 +216,9 @@ class Reader:
         actions.w3c_actions.pointer_action.move_to_location(int(x + w / 2), int(y + h / 2)).click()
         actions.perform()
 
-    def click_header(self, label: str) -> None:
-        """Click a button in the reader's own header, above the viewer."""
-        self.driver.find_element(By.CSS_SELECTOR, f"{self.reader} header button[aria-label={json.dumps(label)}]").click()
+    def click_command(self, command: str) -> None:
+        """Click the button of the reader's COMMAND in EmbedPDF's toolbar."""
+        self.click(f"[data-epdf-i='bucket:{command}'] button")
 
     def drag_across(self, page: int, line: tuple[float, float]) -> None:
         """Press on LINE of PAGE and drag down and to the right across it into the next."""
@@ -360,7 +360,7 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     reader.wait("[...S.querySelectorAll('span')].some((entry) => entry.textContent === 'The lattice E8')")
     reader.click_element("[...S.querySelectorAll('span')].find((entry) => entry.textContent === 'The lattice E8')")
     reader.shows(f"page !== {page}")
-    reader.click_header("Back")
+    reader.click_command("back")
     reader.shows(f"page === {page}")
     reader.click("[data-epdf-i='page-controls'] input")
     ActionChains(app).key_down(Keys.CONTROL).send_keys("a").key_up(Keys.CONTROL).send_keys("7", Keys.ENTER).perform()
@@ -404,7 +404,7 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     close_tab(app, notes)
     reader = open_from_library(app, notes)
     reader.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > 0")
-    assert "Lectures on Lattices" in app.find_element(By.CSS_SELECTOR, f"{reader.reader} h1").get_attribute("textContent")
+    assert "Lectures on Lattices" in app.find_element(By.CSS_SELECTOR, f"[data-tab-key='{notes}'] [role='tab']").get_attribute("textContent")
 
     assert app.execute_script("return window.__errors") == []
 

@@ -1,7 +1,8 @@
-// The reader: one stored PDF in EmbedPDF (PDFium compiled to WebAssembly), under a bar with a
-// Library link (only when the reader is not in a library tab), back and forward, the title, the
-// save state, night mode and a button that copies the captured PDF link. The library's tabs
-// (tabs.tsx) and the `/read/<key>` page (main.tsx) both show it.
+// The reader: one stored PDF in EmbedPDF (PDFium compiled to WebAssembly), whose one toolbar also
+// holds the reader's buttons: Library (only when the reader is not in a library tab), back and
+// forward, night mode and a button that copies the captured PDF link. The save state shows over
+// the PDF's corner. The library's tabs (tabs.tsx) and the `/read/<key>` page (main.tsx) both show
+// it; the tab or the page names the PDF.
 //
 // Saving (RFC 9110 conditional requests): the reader keeps the entity tag `/pdf/<key>.pdf`
 // answered with, the stored bytes' SHA-256. A short pause after EmbedPDF commits an annotation
@@ -22,6 +23,7 @@ import {
   AnnotationPlugin,
   type Command,
   CommandsPlugin,
+  type CustomIconConfig,
   ExportPlugin,
   InteractionManagerPlugin,
   PDFViewer,
@@ -29,13 +31,13 @@ import {
   type PDFViewerRef,
   type PluginRegistry,
   ScrollPlugin,
+  type ToolbarItem,
   UIPlugin,
   type ZoomLevel,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
-import { ArrowLeft, ArrowRight, LibraryBig, Link, Moon } from "lucide-react";
+import { ArrowLeft, ArrowRight, type IconNode, Library, Link, Moon } from "lucide";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MetadataEventSchema } from "../../contract/capture";
 import {
   type BucketItem,
   LIBRARY_VIEW_KEY,
@@ -45,17 +47,16 @@ import {
   READER_IDLE_MINUTES,
   ThemeSchema,
 } from "../../contract/library";
-import { onBucketEvent } from "../bucketEvents";
 import { request, requestError } from "../useLibraryApi";
 import { fallbackFonts } from "./fallbackFonts";
 import { ReadingSession } from "./readingSession";
 
-// What a reader offers whoever shows it: settle sends the reading session and waits for every
-// annotation to be saved, rejecting while a save has failed or a save conflict is open; page is
-// the page it shows.
 // Where a reader is in its PDF: the page it shows and the zoom it was given (a number or a fit).
 export type View = { page: number; zoom: ZoomLevel };
 
+// What a reader offers whoever shows it: settle sends the reading session and waits for every
+// annotation to be saved, rejecting while a save has failed or a save conflict is open; view is
+// where it is in its PDF.
 export type ReaderControl = { settle: () => Promise<void>; view: () => View };
 
 // How long after an annotation change the reader saves, so a burst of changes is one save.
@@ -64,6 +65,10 @@ const SAVE_PAUSE_MS = 700;
 const RECORD_PAUSE_MS = 1000;
 
 const ENTITY_TAG = /^"[0-9a-f]{64}"$/;
+
+// What the reader's status says after Copy PDF link, and for how long.
+const COPIED = "PDF link copied";
+const COPIED_SHOWN_MS = 1500;
 
 // The bucket opens, closes, prints and redacts nothing from inside a reader.
 const VIEWER_DISABLED = ["document", "redaction"];
@@ -113,6 +118,65 @@ const DEFAULT_TOOL: Command = {
       .forDocument(documentId)
       .activateDefaultMode(),
 };
+
+// A lucide icon as EmbedPDF's icon registry takes it. Lucide draws paths with strokes of width 2,
+// round ends and joins, in the text colour (lucide's default attributes); EmbedPDF draws paths
+// only, so an icon with another element is refused.
+function embedIcon(node: IconNode): CustomIconConfig {
+  return {
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    paths: node.map(([tag, attributes]) => {
+      if (tag !== "path" || typeof attributes.d !== "string") {
+        throw new Error(`EmbedPDF draws icon paths, not a lucide ${tag}`);
+      }
+      return { d: attributes.d, stroke: "currentColor" };
+    }),
+  };
+}
+
+const READER_ICONS = {
+  "bucket-library": embedIcon(Library),
+  "bucket-back": embedIcon(ArrowLeft),
+  "bucket-forward": embedIcon(ArrowRight),
+  "bucket-night-mode": embedIcon(Moon),
+  "bucket-copy-link": embedIcon(Link),
+};
+
+// The reader's buttons in EmbedPDF's main toolbar, one command each: Library, Back and Forward
+// open its left group, Night mode and Copy PDF link close its right group. The reader in a tab
+// has no Library button: the tab strip holds the way back.
+function commandButton(commandId: string): ToolbarItem {
+  return { type: "command-button", id: commandId, commandId, variant: "icon" };
+}
+
+function withReaderButtons(items: ToolbarItem[], inTab: boolean): ToolbarItem[] {
+  const leading = [
+    ...(inTab ? [] : [commandButton("bucket:library")]),
+    commandButton("bucket:back"),
+    commandButton("bucket:forward"),
+  ];
+  const trailing = [commandButton("bucket:night-mode"), commandButton("bucket:copy-link")];
+  const groups = new Set(items.flatMap((item) => (item.type === "group" ? [item.id] : [])));
+  for (const id of ["left-group", "right-group"]) {
+    if (!groups.has(id)) {
+      throw new Error(`EmbedPDF's main toolbar has no ${id}`);
+    }
+  }
+  return items.map((item) => {
+    if (item.type !== "group") {
+      return item;
+    }
+    if (item.id === "left-group") {
+      return { ...item, items: [...leading, ...item.items] };
+    }
+    if (item.id === "right-group") {
+      return { ...item, items: [...item.items, ...trailing] };
+    }
+    return item;
+  });
+}
 
 type Loaded = {
   item: BucketItem;
@@ -228,9 +292,6 @@ function ReaderShell({ children }: { children: ReactNode }) {
   return <div className="flex h-full flex-col bg-surface text-ink">{children}</div>;
 }
 
-const BAR_BUTTON =
-  "inline-flex h-8 w-8 flex-none items-center justify-center rounded-md text-muted hover:bg-surface hover:text-ink disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent aria-pressed:bg-surface aria-pressed:text-accent";
-
 function LoadedReader({
   itemKey,
   openAtPage,
@@ -243,13 +304,10 @@ function LoadedReader({
   reload,
 }: ReaderProps & { loaded: Loaded; reload: () => void }) {
   const viewerRef = useRef<PDFViewerRef>(null);
-  const [title, setTitle] = useState(loaded.item.title);
   const [nightMode, setNightMode] = useState(loaded.preferences.readerNightMode);
   const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
   // True while the stored PDF changed since it was loaded and the reader holds an unsaved copy.
   const [conflict, setConflict] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [bounds, setBounds] = useState({ back: false, forward: false });
 
   const shownRef = useRef(shown);
   shownRef.current = shown;
@@ -275,6 +333,8 @@ function LoadedReader({
     exporter: null as ReturnType<ExportPlugin["provides"]> | null,
     scroll: null as ReturnType<ScrollPlugin["provides"]> | null,
     commands: null as ReturnType<CommandsPlugin["provides"]> | null,
+    // What the toolbar's Night mode button shows pressed.
+    nightMode: loaded.preferences.readerNightMode,
   }).current;
   state.conflict = conflict;
 
@@ -357,12 +417,14 @@ function LoadedReader({
     }
     state.walking = true;
     state.scroll.scrollToPage({ pageNumber: page, behavior: "instant" });
-    setBounds({ back: state.positions.canStep(-1), forward: state.positions.canStep(1) });
+    scopeShortcuts();
   };
 
   // EmbedPDF answers its keyboard shortcuts on the whole document (plugin-commands' keyboard
   // utility), so a hidden reader disables every category that holds a shortcut command, and the
-  // keys reach the library or the reader shown.
+  // keys reach the library or the reader shown. Setting the disabled categories is a change of
+  // EmbedPDF's store, on which EmbedPDF resolves its commands again, so the toolbar's reader
+  // buttons also show the reader's own state (Back, Forward, Night mode) once this runs.
   const scopeShortcuts = useCallback(() => {
     const commands = state.commands;
     if (commands === null) {
@@ -385,6 +447,19 @@ function LoadedReader({
   const onReady = (registry: PluginRegistry) => {
     state.commands = plugin<CommandsPlugin>(registry, CommandsPlugin.id);
     state.commands.registerCommand(DEFAULT_TOOL);
+    for (const command of readerCommands) {
+      state.commands.registerCommand(command);
+    }
+    const ui = plugin<UIPlugin>(registry, UIPlugin.id);
+    const toolbar = ui.getSchema().toolbars["main-toolbar"];
+    if (toolbar === undefined) {
+      throw new Error("EmbedPDF has no main-toolbar");
+    }
+    ui.mergeSchema({
+      toolbars: {
+        "main-toolbar": { ...toolbar, items: withReaderButtons(toolbar.items, inTab) },
+      },
+    });
     scopeShortcuts();
     const scroll = plugin<ScrollPlugin>(registry, ScrollPlugin.id);
     const zoom = plugin<ZoomPlugin>(registry, ZoomPlugin.id);
@@ -408,7 +483,6 @@ function LoadedReader({
       if (loaded.preferences.outlineOnOpen) {
         // EmbedPDF's left sidebar (`sidebar-panel`) holds the thumbnails and outline tabs, and
         // opens on its first tab whatever its `defaultTab` says, so the outline goes first.
-        const ui = plugin<UIPlugin>(registry, UIPlugin.id);
         const sidebar = ui.getSchema().sidebars["sidebar-panel"];
         if (sidebar === undefined || sidebar.content.type !== "tabs") {
           throw new Error("EmbedPDF's sidebar-panel has no tabs");
@@ -442,7 +516,7 @@ function LoadedReader({
       }
       if (!state.walking && change.fromPage !== change.targetPage) {
         state.positions.jumped(change.fromPage, change.targetPage);
-        setBounds({ back: state.positions.canStep(-1), forward: state.positions.canStep(1) });
+        scopeShortcuts();
       }
     });
     scroll.onPageChange(({ pageNumber, totalPages }) => {
@@ -537,17 +611,6 @@ function LoadedReader({
     return () => document.removeEventListener("visibilitychange", changed);
   });
 
-  useEffect(
-    () =>
-      onBucketEvent("metadata", (event) => {
-        const { key, outcome } = MetadataEventSchema.parse(JSON.parse(event.data));
-        if (key === itemKey && outcome.status === "resolved") {
-          setTitle(outcome.title);
-        }
-      }),
-    [itemKey],
-  );
-
   // The viewer follows the theme preference the page's root carries (index.css).
   useEffect(() => {
     const root = document.documentElement;
@@ -574,6 +637,7 @@ function LoadedReader({
       // The engine fetches it from a worker, where a path names nothing.
       wasmUrl: new URL(pdfiumWasm, window.location.href).href,
       fontFallback: fallbackFonts(new URL("/", window.location.href)),
+      icons: READER_ICONS,
       tabBar: "never",
       theme: { preference: ThemeSchema.parse(document.documentElement.dataset.theme) },
       fonts: {
@@ -593,13 +657,15 @@ function LoadedReader({
 
   const toggleNightMode = async () => {
     const library = await request(LibraryPayloadSchema, "PATCH", "/api/preferences", {
-      readerNightMode: !nightMode,
+      readerNightMode: !state.nightMode,
     }).catch((error: Error) => {
       showFailure(`Night mode: ${error.message}`);
       return null;
     });
     if (library !== null) {
       setNightMode(library.preferences.readerNightMode);
+      state.nightMode = library.preferences.readerNightMode;
+      scopeShortcuts();
     }
   };
 
@@ -623,94 +689,70 @@ function LoadedReader({
   const libraryView = sessionStorage.getItem(LIBRARY_VIEW_KEY);
   const libraryHref = libraryView === null ? "/" : `/${libraryView}`;
 
+  // The reader's buttons in EmbedPDF's toolbar (withReaderButtons). EmbedPDF calls their state
+  // when it resolves its commands, and the reader's state they read is in `state`.
+  const readerCommands: Command[] = [
+    {
+      id: "bucket:library",
+      label: "Library",
+      icon: "bucket-library",
+      // Leaving waits until the reading session is reported and every annotation saved.
+      action: () => {
+        settle().then(
+          () => window.location.assign(libraryHref),
+          (error: Error) => showFailure(error.message),
+        );
+      },
+    },
+    {
+      id: "bucket:back",
+      label: "Back (Alt+←)",
+      icon: "bucket-back",
+      disabled: () => !state.positions.canStep(-1),
+      action: () => walk(-1),
+    },
+    {
+      id: "bucket:forward",
+      label: "Forward (Alt+→)",
+      icon: "bucket-forward",
+      disabled: () => !state.positions.canStep(1),
+      action: () => walk(1),
+    },
+    {
+      id: "bucket:night-mode",
+      label: "Night mode",
+      icon: "bucket-night-mode",
+      active: () => state.nightMode,
+      action: () => void toggleNightMode(),
+    },
+    {
+      id: "bucket:copy-link",
+      label: "Copy PDF link",
+      icon: "bucket-copy-link",
+      action: () => {
+        navigator.clipboard.writeText(loaded.item.provenance.pdf_url).then(
+          () => {
+            setStatus({ text: COPIED, failed: false });
+            setTimeout(
+              () => setStatus((current) => (current?.text === COPIED ? null : current)),
+              COPIED_SHOWN_MS,
+            );
+          },
+          (error: Error) => showFailure(`Copy link: ${error.message}`),
+        );
+      },
+    },
+  ];
+
   return (
     <div
-      className="flex h-full flex-col bg-surface text-ink"
+      className="relative flex h-full flex-col bg-surface text-ink"
       data-reader-key={itemKey}
       data-night-mode={nightMode}
       onPointerDown={() => session.input(state.page, isShown())}
       onPointerMove={() => session.input(state.page, isShown())}
       onWheel={() => session.input(state.page, isShown())}
     >
-      <header className="flex min-w-0 items-center gap-1 border-b border-line bg-panel px-2 py-1">
-        {!inTab && (
-          <a
-            id="library"
-            href={libraryHref}
-            aria-label="Library"
-            title="Library"
-            onClick={(event) => {
-              event.preventDefault();
-              settle().then(
-                () => window.location.assign(libraryHref),
-                (error: Error) => showFailure(error.message),
-              );
-            }}
-            className="mr-1 inline-flex h-8 flex-none items-center gap-1.5 rounded-l-md border-r border-line pr-2.5 pl-2 text-[0.8125rem] font-medium text-muted no-underline hover:bg-surface hover:text-ink"
-          >
-            <LibraryBig aria-hidden className="h-[18px] w-[18px]" />
-            <span>Library</span>
-          </a>
-        )}
-        <button
-          type="button"
-          aria-label="Back"
-          title="Back (Alt+←)"
-          disabled={!bounds.back}
-          onClick={() => walk(-1)}
-          className={BAR_BUTTON}
-        >
-          <ArrowLeft aria-hidden className="h-[18px] w-[18px]" />
-        </button>
-        <button
-          type="button"
-          aria-label="Forward"
-          title="Forward (Alt+→)"
-          disabled={!bounds.forward}
-          onClick={() => walk(1)}
-          className={BAR_BUTTON}
-        >
-          <ArrowRight aria-hidden className="h-[18px] w-[18px]" />
-        </button>
-        <h1 title={title} className="mx-2 min-w-0 flex-1 truncate text-sm font-semibold">
-          {title}
-        </h1>
-        <span
-          role="status"
-          data-failed={status?.failed}
-          className="flex-none text-xs text-muted data-[failed=true]:text-danger"
-        >
-          {status?.text}
-        </span>
-        <button
-          type="button"
-          aria-label="Night mode"
-          title="Night mode"
-          aria-pressed={nightMode}
-          onClick={() => void toggleNightMode()}
-          className={BAR_BUTTON}
-        >
-          <Moon aria-hidden className="h-[18px] w-[18px]" />
-        </button>
-        <button
-          type="button"
-          aria-label="Copy PDF link"
-          title="Copy PDF link"
-          data-copied={copied}
-          onClick={() => {
-            navigator.clipboard.writeText(loaded.item.provenance.pdf_url).then(
-              () => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1500);
-              },
-              (error: Error) => showFailure(`Copy link: ${error.message}`),
-            );
-          }}
-          className={`${BAR_BUTTON} data-[copied=true]:text-accent`}
-        >
-          <Link aria-hidden className="h-[18px] w-[18px]" />
-        </button>
-      </header>
       {conflict && (
         <div
           role="alert"
@@ -743,6 +785,14 @@ function LoadedReader({
         onReady={onReady}
         className="reader-viewer min-h-0 flex-1"
       />
+      {/* The save state and the reader's failures, over the PDF's bottom left corner. */}
+      <span
+        role="status"
+        data-failed={status?.failed}
+        className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-panel/95 px-2.5 py-1 text-xs text-muted shadow empty:hidden data-[failed=true]:text-danger"
+      >
+        {status?.text}
+      </span>
     </div>
   );
 }

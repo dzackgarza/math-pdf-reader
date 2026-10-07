@@ -176,6 +176,12 @@ describe("library window", () => {
   const readerOf = (key: string) => `[data-reader-key="${key}"]`;
   const viewerOf = (key: string) => `${readerOf(key)} embedpdf-container`;
   const inViewer = (key: string, css: string) => `${viewerOf(key)} >>> ${css}`;
+  // The button of a reader command in EmbedPDF's toolbar, and the classes with which EmbedPDF
+  // draws a disabled button and an active one.
+  const readerButton = (key: string, command: string) =>
+    inViewer(key, `[data-epdf-i="bucket:${command}"] button`);
+  const DISABLED = ".cursor-not-allowed";
+  const ACTIVE = ".bg-interactive-selected";
   // A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
   const PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]';
   const openTabKeys = () =>
@@ -592,13 +598,13 @@ describe("library window", () => {
     }
     await shot("reader");
 
-    const back = 'button[aria-label="Back"]';
-    const forward = 'button[aria-label="Forward"]';
+    const back = readerButton("reading", "back");
+    const forward = readerButton("reading", "forward");
     await page.click(back);
     await showsPage("reading", 7);
     await page.click(back);
     await showsPage("reading", 1);
-    expect(await page.$eval(back, (button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    await page.waitForSelector(`${back}${DISABLED}`);
     await page.keyboard.down("Alt");
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.up("Alt");
@@ -615,7 +621,7 @@ describe("library window", () => {
     await page.waitForFunction(() => location.hash === "#page=7");
     const address = page.url();
 
-    await page.click('a[aria-label="Library"]');
+    await page.click(readerButton("reading", "library"));
     await page.waitForSelector(row("reading"));
     expect(new URL(page.url()).hash).toBe("#/unfiled");
 
@@ -660,7 +666,8 @@ describe("library window", () => {
     await readerLoaded("lattices");
     await page.evaluate(() => navigator.clipboard.writeText("probe"));
 
-    await page.click('button[aria-label="Copy PDF link"]');
+    await page.click(readerButton("lattices", "copy-link"));
+    await page.waitForSelector(`${readerOf("lattices")} [role="status"]::-p-text(PDF link copied)`);
 
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       published("/~author/lattices.pdf"),
@@ -697,8 +704,8 @@ describe("library window", () => {
     expect(await page.$eval(tab("problems"), (element) => element.textContent)).toBe(
       titleOf("problems"),
     );
-    // The tab strip holds the way back, so the reader in a tab shows no Library link.
-    expect(await page.$(`${readerOf("problems")} a[aria-label="Library"]`)).toBeNull();
+    // The tab strip holds the way back, so the reader in a tab shows no Library button.
+    expect(await page.$(readerButton("problems", "library"))).toBeNull();
     await shot("tabs-reader");
 
     await (await byRole("tab", "Library")).click();
@@ -952,17 +959,14 @@ describe("library window", () => {
       // The same PDF on its own reader page, whose title and citation tags a Zotero Connector
       // reads.
       await own.goto(`${app.origin}/read/${key}`);
-      await own.waitForSelector(`${readerOf(key)} h1`);
+      await own.waitForSelector(readerOf(key));
       answer();
       const title = "On The Cyclicity of Algebraic Lattices";
       await shows(tab(key), title);
-      await shows(`${readerOf(key)} h1`, title);
       await own.waitForFunction(
         (wanted) =>
           document.querySelector('meta[name="citation_title"]')?.getAttribute("content") ===
-            wanted &&
-          document.title === wanted &&
-          document.querySelector("header h1")?.textContent === wanted,
+            wanted && document.title === wanted,
         {},
         title,
       );
@@ -1083,10 +1087,10 @@ describe("library window", () => {
       const corner = await firstPageCorner("lattices");
       return { x: corner.x + 4, y: corner.y + 4 };
     };
-    const nightMode = 'button[aria-label="Night mode"]';
+    const nightMode = readerButton("lattices", "night-mode");
     const toggleNightMode = async (pressed: boolean) => {
       await page.click(nightMode);
-      await page.waitForSelector(`${nightMode}[aria-pressed="${pressed}"]`);
+      await page.waitForSelector(pressed ? `${nightMode}${ACTIVE}` : `${nightMode}:not(${ACTIVE})`);
     };
     await page.goto(`${bucket.origin}/read/lattices`);
     expect(await pixelAt(await margin())).toEqual([255, 255, 255]);
@@ -1110,8 +1114,8 @@ describe("library window", () => {
     const note = `Checked the Hasse–Minkowski step ${Date.now()}`;
     await writeNote("problems", note);
     await shot("reader-annotated");
-    // The reader's Library link leaves once every annotation is saved.
-    await page.click('a[aria-label="Library"]');
+    // The reader's Library button leaves once every annotation is saved.
+    await page.click(readerButton("problems", "library"));
     await page.waitForSelector("nav a");
 
     await page.goto(`${bucket.origin}/read/problems`);
@@ -1155,8 +1159,8 @@ describe("library window", () => {
     const reported = page.waitForResponse((response) =>
       response.url().endsWith("/api/reading-sessions"),
     );
-    // The link leaves once the session is reported and every annotation saved.
-    await page.click('a[aria-label="Library"]');
+    // The Library button leaves once the session is reported and every annotation saved.
+    await page.click(readerButton("reading", "library"));
     expect((await reported).status()).toBe(200);
     await page.waitForSelector("nav a");
 
