@@ -1,6 +1,7 @@
 // End-to-end proof of the library window's workflows in the real UI: the built web bundle
 // served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
+import { $ } from "bun";
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
@@ -17,7 +18,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AnnotationPlugin, EmbedPdfContainer, ScrollPlugin } from "@embedpdf/react-pdf-viewer";
 import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
-import { build } from "vite";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
@@ -301,11 +301,9 @@ describe("library window", () => {
 
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
-    // The app serves the bundle in dist/web; build it from the current source.
-    await build({
-      configFile: join(import.meta.dir, "../src/web/vite.config.ts"),
-      logLevel: "warn",
-    });
+    // The app serves the bundle in dist/web; build it from the current source as `just provision`
+    // does. `bun test` sets NODE_ENV=test, under which Vite bundles React's development build.
+    await $`just build-web`.env({ ...process.env, NODE_ENV: "production" }).quiet();
     bucket = await startBucket();
     browser = await puppeteer.launch({
       browser: "chrome",
