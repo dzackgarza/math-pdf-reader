@@ -2,7 +2,15 @@
 // served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
