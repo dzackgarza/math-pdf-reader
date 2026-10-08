@@ -1002,7 +1002,7 @@ describe("library window", () => {
     try {
       await page.goto(`${app.origin}/`);
       await page.waitForSelector(
-        '[role="status"][aria-label="Zotero is running with its local write API 3.4.0"]',
+        '[role="status"][aria-label="Zotero is running with its local write API 3.7.0"]',
       );
 
       const key = await capture("lecture-notes.pdf", arxivPdf, "View PDF");
