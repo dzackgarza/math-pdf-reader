@@ -31,6 +31,7 @@ import {
   type PDFViewerRef,
   type PluginRegistry,
   ScrollPlugin,
+  SearchPlugin,
   type ToolbarItem,
   UIPlugin,
   type ZoomLevel,
@@ -97,6 +98,7 @@ function plugin<
     | CommandsPlugin
     | UIPlugin
     | InteractionManagerPlugin
+    | SearchPlugin
     | ZoomPlugin,
 >(registry: PluginRegistry, id: string): ReturnType<T["provides"]> {
   const found = registry.getPlugin<T>(id);
@@ -118,6 +120,36 @@ const DEFAULT_TOOL: Command = {
       .forDocument(documentId)
       .activateDefaultMode(),
 };
+
+// EmbedPDF's search panel (its sidebar `search-panel`) and the field in it.
+const SEARCH_PANEL = "search-panel";
+const SEARCH_FIELD = `[data-sidebar-id="${SEARCH_PANEL}"] input[type="text"]`;
+
+// Ctrl+F opens EmbedPDF's search panel and puts the cursor in its field with the query selected,
+// as a browser's find bar does. EmbedPDF's own Ctrl+F only toggles the panel and leaves the focus
+// where it was; the panel's toolbar button still toggles it.
+function findCommand(root: () => ShadowRoot): Command {
+  return {
+    id: "bucket:find",
+    label: "Find in document",
+    shortcuts: ["Ctrl+F", "Meta+F"],
+    categories: ["panel", "panel-search"],
+    action: ({ registry, documentId }) => {
+      const ui = plugin<UIPlugin>(registry, UIPlugin.id).forDocument(documentId);
+      if (!ui.isSidebarOpen("right", "main", SEARCH_PANEL)) {
+        ui.setActiveSidebar("right", "main", SEARCH_PANEL);
+      }
+      requestAnimationFrame(() => {
+        const field = root().querySelector<HTMLInputElement>(SEARCH_FIELD);
+        if (field === null) {
+          throw new Error("EmbedPDF's search panel has no search field");
+        }
+        field.focus();
+        field.select();
+      });
+    },
+  };
+}
 
 // A lucide icon as EmbedPDF's icon registry takes it. Lucide draws paths with strokes of width 2,
 // round ends and joins, in the text colour (lucide's default attributes); EmbedPDF draws paths
@@ -304,6 +336,13 @@ function LoadedReader({
   reload,
 }: ReaderProps & { loaded: Loaded; reload: () => void }) {
   const viewerRef = useRef<PDFViewerRef>(null);
+  const viewerRoot = useCallback(() => {
+    const root = viewerRef.current?.container?.shadowRoot;
+    if (root === null || root === undefined) {
+      throw new Error("the reader's viewer has no shadow root");
+    }
+    return root;
+  }, []);
   const [nightMode, setNightMode] = useState(loaded.preferences.readerNightMode);
   const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
   // True while the stored PDF changed since it was loaded and the reader holds an unsaved copy.
@@ -332,6 +371,7 @@ function LoadedReader({
     walking: false,
     exporter: null as ReturnType<ExportPlugin["provides"]> | null,
     scroll: null as ReturnType<ScrollPlugin["provides"]> | null,
+    search: null as ReturnType<SearchPlugin["provides"]> | null,
     commands: null as ReturnType<CommandsPlugin["provides"]> | null,
     // What the toolbar's Night mode button shows pressed.
     nightMode: loaded.preferences.readerNightMode,
@@ -447,6 +487,7 @@ function LoadedReader({
   const onReady = (registry: PluginRegistry) => {
     state.commands = plugin<CommandsPlugin>(registry, CommandsPlugin.id);
     state.commands.registerCommand(DEFAULT_TOOL);
+    state.commands.registerCommand(findCommand(viewerRoot));
     for (const command of readerCommands) {
       state.commands.registerCommand(command);
     }
@@ -461,6 +502,7 @@ function LoadedReader({
       },
     });
     scopeShortcuts();
+    state.search = plugin<SearchPlugin>(registry, SearchPlugin.id);
     const scroll = plugin<ScrollPlugin>(registry, ScrollPlugin.id);
     const zoom = plugin<ZoomPlugin>(registry, ZoomPlugin.id);
     const annotations = plugin<AnnotationPlugin>(registry, AnnotationPlugin.id);
@@ -589,16 +631,38 @@ function LoadedReader({
     return () => document.removeEventListener("keydown", pressed);
   });
 
+  // Enter in the search field goes to the next match and Shift+Enter to the one before, as in a
+  // browser's find bar; EmbedPDF's field answers no key.
   useEffect(() => {
-    const root = viewerRef.current?.container?.shadowRoot;
-    if (root === null || root === undefined) {
-      throw new Error("the reader's viewer has no shadow root");
-    }
+    const pressed = (event: Event) => {
+      if (!(event instanceof KeyboardEvent) || event.key !== "Enter") {
+        return;
+      }
+      if (!(event.target instanceof HTMLInputElement) || !event.target.matches(SEARCH_FIELD)) {
+        return;
+      }
+      if (state.search === null) {
+        throw new Error("Enter reached the search field before the viewer was ready");
+      }
+      event.preventDefault();
+      if (event.shiftKey) {
+        state.search.previousResult();
+      } else {
+        state.search.nextResult();
+      }
+    };
+    const root = viewerRoot();
+    root.addEventListener("keydown", pressed);
+    return () => root.removeEventListener("keydown", pressed);
+  }, [state, viewerRoot]);
+
+  useEffect(() => {
+    const root = viewerRoot();
     const sheet = document.createElement("style");
     sheet.textContent = nightMode ? `${NIGHT_PAGES} { filter: invert(1) hue-rotate(180deg); }` : "";
     root.append(sheet);
     return () => sheet.remove();
-  }, [nightMode]);
+  }, [nightMode, viewerRoot]);
   useEffect(() => {
     const changed = () => {
       if (isShown()) {
