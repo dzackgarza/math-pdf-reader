@@ -1184,6 +1184,39 @@ describe("library window", () => {
     await showsPage("reading", 4);
   });
 
+  test("a PDF tab whose item left the bucket closes once Close Without Saving confirms the reading it cannot record", async () => {
+    await openLibrary();
+    const form = new FormData();
+    const bytes = new Uint8Array([
+      ...fixture("problem-set.pdf"),
+      ...new TextEncoder().encode("% sent away while open\n"),
+    ]);
+    form.set("pdf", new File([bytes], "sent-away.pdf"));
+    form.set("pdf_url", published("/~author/sent-away.pdf"));
+    form.set("title_hint", "Sent away while open");
+    const captured = await fetch(`${bucket.origin}/capture-bytes`, { method: "POST", body: form });
+    expect(captured.status).toBe(200);
+    const key = CaptureResponseSchema.parse(await captured.json()).key;
+    await shownReader(key);
+    // A page read for six seconds is a reading the tab owes the bucket when it closes.
+    await Bun.sleep(6000);
+    const deleted = await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+    expect(deleted.ok).toBe(true);
+
+    await page.click(`${tab(key)} button[aria-label^="Close"]`);
+    const dialog = await page.waitForSelector('[role="alertdialog"]', { visible: true });
+    expect(await dialog?.evaluate((element) => element.textContent)).toContain(
+      `no stored PDF has key ${key}`,
+    );
+    await page.click('[role="alertdialog"] button::-p-text(Keep Open)');
+    await page.waitForSelector('[role="alertdialog"]', { hidden: true });
+    expect(await openTabKeys()).toContain(key);
+
+    await page.click(`${tab(key)} button[aria-label^="Close"]`);
+    await page.click('[role="alertdialog"] button::-p-text(Close Without Saving)');
+    await page.waitForFunction(`!document.querySelector('${tab(key)}')`);
+  }, 30_000);
+
   test("the Timeline shows a reading session with the pages read for at least five seconds, and its title reopens the PDF in a tab", async () => {
     await page.goto(`${bucket.origin}/read/reading`);
     await readerLoaded("reading");
