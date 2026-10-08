@@ -1199,6 +1199,37 @@ describe("library window", () => {
     await showsPage("reading", 4);
   });
 
+  test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Shift+Enter step through the matches", async () => {
+    await page.goto(`${bucket.origin}/read/reading`);
+    await readerLoaded("reading");
+    const field = inViewer("reading", '[data-sidebar-id="search-panel"] input[type="text"]');
+    await page.keyboard.down("Control");
+    await page.keyboard.press("f");
+    await page.keyboard.up("Control");
+    await page.waitForFunction(
+      (css) => {
+        const root = document.querySelector(css)?.shadowRoot;
+        return root?.activeElement?.matches('[data-sidebar-id="search-panel"] input') === true;
+      },
+      {},
+      viewerOf("reading"),
+    );
+    // "unimodular" is on pages 6 and 10; the first match is shown once the search answers.
+    await page.keyboard.type("unimodular");
+    await showsPage("reading", 6);
+    await page.keyboard.press("Enter");
+    await showsPage("reading", 10);
+    await page.keyboard.press("Enter");
+    await showsPage("reading", 6);
+    await page.keyboard.down("Shift");
+    await page.keyboard.press("Enter");
+    await page.keyboard.up("Shift");
+    await showsPage("reading", 10);
+    expect(await page.$eval(field, (input) => (input as HTMLInputElement).value)).toBe(
+      "unimodular",
+    );
+  });
+
   test("a PDF tab whose item left the bucket closes once Close Without Saving confirms the reading it cannot record", async () => {
     await openLibrary();
     const form = new FormData();
