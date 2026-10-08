@@ -12,6 +12,7 @@ import { FileText, Library, Moon, X } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
 import { onBucketEvent } from "./bucketEvents";
+import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
 import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
 import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
 import { Reader, type ReaderControl, type View } from "./reader/Reader";
@@ -156,10 +157,24 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     setState((previous) => closing(previous, key));
   }, []);
 
-  // A tab whose reader cannot settle stays open and is shown: its reader names the failure.
+  // A tab whose reader cannot settle asks first, as a browser's beforeunload prompt does: the
+  // dialog names the failure, and Close Without Saving drops what the reader could not save.
+  const [closeRequest, setCloseRequest] = useState<ConfirmRequest | null>(null);
   const close = useCallback(
     (key: string) => {
-      closeReader(key).catch(() => setState((previous) => showing(previous, key)));
+      closeReader(key).catch((error: Error) => {
+        setState((previous) => showing(previous, key));
+        const title = stateRef.current.open.find((tab) => tab.key === key)?.title ?? key;
+        setCloseRequest({
+          title: "Close without saving?",
+          description: `${title}: ${error.message}`,
+          confirmLabel: "Close Without Saving",
+          onConfirm: () => {
+            readers.current.delete(key);
+            setState((previous) => closing(previous, key));
+          },
+        });
+      });
     },
     [closeReader],
   );
@@ -376,6 +391,9 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
           ))}
         </div>
       </Tabs.Root>
+      {closeRequest !== null && (
+        <ConfirmDialog request={closeRequest} onClose={() => setCloseRequest(null)} />
+      )}
     </ReaderTabsContext.Provider>
   );
 }

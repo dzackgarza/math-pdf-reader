@@ -182,6 +182,17 @@ describe("library window", () => {
     await page.waitForSelector("nav a");
   };
   const tab = (key: string) => `[data-tab-key="${key}"]`;
+  // Presses the button labelled LABEL in the open confirmation dialog, once the dialog is shown.
+  const pressInDialog = async (label: string) => {
+    await page.waitForSelector('[role="alertdialog"]', { visible: true });
+    for (const button of await page.$$('[role="alertdialog"] button')) {
+      if ((await button.evaluate((element) => element.textContent)) === label) {
+        await button.click();
+        return;
+      }
+    }
+    throw new Error(`the dialog has no button labelled ${label}`);
+  };
   // The reader of KEY, in a tab or on its own page, and the EmbedPDF viewer in it, whose UI is in
   // the viewer's shadow root (puppeteer's `>>>` reaches into it).
   const readerOf = (key: string) => `[data-reader-key="${key}"]`;
@@ -866,7 +877,7 @@ describe("library window", () => {
     expect(await notesOnFirstPage("outlined")).toContain(note);
   });
 
-  test("a note saved over a PDF changed elsewhere shows the conflict and keeps the tab until the copy is saved over it", async () => {
+  test("a note saved over a PDF changed elsewhere shows the conflict, and closing its tab asks first until the copy is saved over it", async () => {
     await openLibrary();
     await page.click(row("reading"), { count: 2 });
     await shownReader("reading");
@@ -898,8 +909,12 @@ describe("library window", () => {
     await page.waitForSelector(conflict, { visible: true });
     await shot("reader-save-conflict");
 
-    // The tab stays while the conflict is open.
+    // Closing while the conflict is open asks first; Cancel keeps the tab.
     await page.click(`${tab("reading")} button[aria-label^="Close"]`);
+    const ask = await page.waitForSelector('[role="alertdialog"]', { visible: true });
+    expect(await ask?.evaluate((element) => element.textContent)).toContain("changed elsewhere");
+    await pressInDialog("Cancel");
+    await page.waitForSelector('[role="alertdialog"]', { hidden: true });
     await page.waitForSelector(`${tab("reading")}[data-state="active"]`);
     expect(await openTabKeys()).toContain("reading");
     // The desktop tray's Quit waits for the readers, and hears that one cannot settle.
@@ -1208,12 +1223,12 @@ describe("library window", () => {
     expect(await dialog?.evaluate((element) => element.textContent)).toContain(
       `no stored PDF has key ${key}`,
     );
-    await page.click('[role="alertdialog"] button::-p-text(Keep Open)');
+    await pressInDialog("Cancel");
     await page.waitForSelector('[role="alertdialog"]', { hidden: true });
     expect(await openTabKeys()).toContain(key);
 
     await page.click(`${tab(key)} button[aria-label^="Close"]`);
-    await page.click('[role="alertdialog"] button::-p-text(Close Without Saving)');
+    await pressInDialog("Close Without Saving");
     await page.waitForFunction(`!document.querySelector('${tab(key)}')`);
   }, 30_000);
 
