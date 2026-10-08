@@ -370,6 +370,7 @@ function LoadedReader({
     // True while the reader itself moves (opening at a page, back, forward), which is no jump.
     walking: false,
     exporter: null as ReturnType<ExportPlugin["provides"]> | null,
+    annotations: null as ReturnType<AnnotationPlugin["provides"]> | null,
     scroll: null as ReturnType<ScrollPlugin["provides"]> | null,
     search: null as ReturnType<SearchPlugin["provides"]> | null,
     commands: null as ReturnType<CommandsPlugin["provides"]> | null,
@@ -434,8 +435,32 @@ function LoadedReader({
       });
   };
 
+  // EmbedPDF writes an annotation edit into its document asynchronously, and raises the edit's
+  // committed event (which schedules the save) before it clears hasPendingChanges. Once that flag
+  // is clear, every edit made so far has scheduled its save.
+  const annotationsCommitted = async () => {
+    const annotations = state.annotations;
+    if (annotations === null) {
+      throw new Error("the reader settled before the viewer was ready");
+    }
+    await annotations.commit().toPromise();
+    await new Promise<void>((resolve) => {
+      if (!annotations.getState().hasPendingChanges) {
+        resolve();
+        return;
+      }
+      const stop = annotations.onStateChange((change) => {
+        if (!change.state.hasPendingChanges) {
+          stop();
+          resolve();
+        }
+      });
+    });
+  };
+
   const settle = async () => {
     await session.send(false);
+    await annotationsCommitted();
     // The click or key that settles can itself commit an annotation (a deselected note), so a
     // save scheduled while one runs is started too, until none is left.
     while (state.pendingSave !== null || state.saving > 0) {
@@ -507,6 +532,7 @@ function LoadedReader({
     const zoom = plugin<ZoomPlugin>(registry, ZoomPlugin.id);
     const annotations = plugin<AnnotationPlugin>(registry, AnnotationPlugin.id);
     state.exporter = plugin<ExportPlugin>(registry, ExportPlugin.id);
+    state.annotations = annotations;
     state.scroll = scroll;
     scroll.onLayoutReady(({ isInitial, totalPages }) => {
       if (!isInitial) {
