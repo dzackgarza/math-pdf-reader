@@ -93,6 +93,19 @@ def read(*paths: Path) -> None:
     print(READ_OUTCOMES.dump_json([read_one(path) for path in paths]).decode())
 
 
+# Annotations that hold no reader's mark: a link, a form field, and the pop-up window a markup
+# annotation opens (ISO 32000-1, 12.5.6).
+NOT_MARKS = frozenset({"/Link", "/Widget", "/Popup"})
+
+
+@app.command(name="annotations")
+def annotation_count(pdf: Path) -> None:
+    """Print the number of annotations a reader made in PDF: highlights, notes, ink and the like."""
+    with pikepdf.open(pdf) as document:
+        marks = sum(1 for page in document.pages for annotation in page.get("/Annots", []) if str(annotation.get("/Subtype")) not in NOT_MARKS)
+    print(marks)
+
+
 @app.command
 def thumbnail(pdf: Path, width: int) -> None:
     """Print PDF's first page, WIDTH pixels wide, as a PNG."""

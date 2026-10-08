@@ -1,8 +1,10 @@
 //! The Zotero local write API: the endpoints the local-write-api addon adds to Zotero's own
 //! HTTP server (`GET /version`, its health check; `POST /write` with an `operation`;
-//! `POST /attach`). The send action is the only caller that writes to Zotero; Retrieve metadata
+//! `POST /attach`), and the reads of Zotero's own local API (`/api/users/0/...`) the send makes
+//! to keep one PDF on an item. The send action is the only caller that writes to Zotero; Retrieve metadata
 //! only asks it to resolve a URL, which saves nothing. Every action checks Zotero's health
 //! first, then waits for Zotero's answer as long as Zotero takes, as the Zotero Connector does.
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Bytes;
@@ -136,6 +138,25 @@ struct NoteAttached {
     note_key: String,
 }
 
+#[derive(Deserialize)]
+struct Trashed {
+    details: UpdatedItem,
+}
+
+/// A child item as Zotero's local API answers it. A note has no media type.
+#[derive(Deserialize)]
+struct Child {
+    key: String,
+    data: ChildData,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChildData {
+    item_type: String,
+    content_type: Option<String>,
+}
+
 /// update_item_fields merges the fields into the item's API JSON, where Zotero reads a
 /// date-time only in the API's ISO 8601 UTC form `YYYY-MM-DDTHH:MM:SSZ` and drops any other.
 pub fn zotero_date_time(timestamp: &crate::contract::Timestamp) -> String {
@@ -252,7 +273,10 @@ impl ZoteroWriteApi {
                 version,
                 capabilities,
                 ..
-            }) if capabilities.iter().any(|name| name == IMPORT_STORE_ATTACHMENTS) => {
+            }) if capabilities
+                .iter()
+                .any(|name| name == IMPORT_STORE_ATTACHMENTS) =>
+            {
                 ZoteroHealth::Ready { version }
             }
             Ok(Version {
@@ -331,7 +355,8 @@ impl ZoteroWriteApi {
     /// methods, and answers the library's item for that work when it already holds one. A new
     /// item gets no attachment: the send attaches the bucket's copy.
     pub async fn import_from_url(&self, url: &str) -> AppResult<Imported> {
-        let body = json!({ "operation": "import_from_url", "url": url, "store_attachments": false });
+        let body =
+            json!({ "operation": "import_from_url", "url": url, "store_attachments": false });
         self.post("/write", &body).await
     }
 
@@ -427,6 +452,95 @@ impl ZoteroWriteApi {
             "note_text": html,
         });
         Ok(self.post::<NoteAttached>("/write", &body).await?.note_key)
+    }
+
+    /// Moves the item, with its children, to Zotero's trash.
+    pub async fn trash_item(&self, item_key: &str) -> AppResult<()> {
+        let body = json!({ "operation": "trash_item", "item_key": item_key });
+        let trashed: Trashed = self.post("/write", &body).await?;
+        if trashed.details.item_key != item_key {
+            return Err(AppError::Zotero(format!(
+                "Zotero trashed {} where {item_key} was asked for",
+                trashed.details.item_key
+            )));
+        }
+        Ok(())
+    }
+
+    /// A 2xx answer of Zotero's own local API to `GET path`; any other status is Zotero's failure.
+    async fn read(&self, path: &str) -> AppResult<Response> {
+        let response = self
+            .client
+            .get(self.url(path))
+            .send()
+            .await
+            .map_err(|error| self.unanswered(error))?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
+        }
+        let answer = response
+            .bytes()
+            .await
+            .map_err(|error| self.unanswered(error))?;
+        Err(refused(path, status, &answer))
+    }
+
+    /// The attachment keys of the PDFs the item holds, outside the trash.
+    pub async fn pdfs(&self, item_key: &str) -> AppResult<Vec<String>> {
+        let path = format!("/api/users/0/items/{item_key}/children");
+        let answer = self
+            .read(&path)
+            .await?
+            .bytes()
+            .await
+            .map_err(|error| self.unanswered(error))?;
+        let children: Vec<Child> = parsed(&path, &answer)?;
+        Ok(children
+            .into_iter()
+            .filter(|child| {
+                child.data.item_type == "attachment"
+                    && child.data.content_type.as_deref() == Some("application/pdf")
+            })
+            .map(|child| child.key)
+            .collect())
+    }
+
+    /// The number of annotation items Zotero holds on the PDF attachment: its `Total-Results`.
+    pub async fn annotation_items(&self, attachment_key: &str) -> AppResult<u64> {
+        let path = format!("/api/users/0/items/{attachment_key}/children?itemType=annotation");
+        let response = self.read(&path).await?;
+        let total = response.headers().get("Total-Results").ok_or_else(|| {
+            AppError::Zotero(format!("Zotero answered {path} with no Total-Results"))
+        })?;
+        total
+            .to_str()
+            .ok()
+            .and_then(|text| text.parse().ok())
+            .ok_or_else(|| {
+                AppError::Zotero(format!(
+                    "Zotero answered {path} with Total-Results {total:?}"
+                ))
+            })
+    }
+
+    /// The file of the PDF attachment on this machine.
+    pub async fn attachment_file(&self, attachment_key: &str) -> AppResult<PathBuf> {
+        let path = format!("/api/users/0/items/{attachment_key}/file/view/url");
+        let answer = self
+            .read(&path)
+            .await?
+            .text()
+            .await
+            .map_err(|error| self.unanswered(error))?;
+        Url::parse(answer.trim())
+            .ok()
+            .and_then(|url| url.to_file_path().ok())
+            .ok_or_else(|| {
+                AppError::Zotero(format!(
+                    "Zotero answered {path} with {answer:?}, no file URL"
+                ))
+            })
     }
 }
 

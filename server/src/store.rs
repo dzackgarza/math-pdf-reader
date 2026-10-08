@@ -322,6 +322,16 @@ impl Store {
         &self.inner.python
     }
 
+    /// The number of annotations a reader made in the PDF at PATH, any PDF, stored or not.
+    pub async fn annotations(&self, path: &Path) -> AppResult<u64> {
+        let args = [
+            "annotations".to_string(),
+            "--".to_string(),
+            path.to_string_lossy().into_owned(),
+        ];
+        Ok(self.python().json(&args).await?)
+    }
+
     /// The stored PDF for a key, or `None` when the text is no key or names no stored PDF. Only
     /// the operating system's answer that no file is there (ENOENT, ENOTDIR from stat(2), or a
     /// stat of something else) is `None`; any other error is a failure of the check.

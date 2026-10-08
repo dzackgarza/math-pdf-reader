@@ -1,7 +1,8 @@
 //! The send action: the Zotero local write API makes or finds the Zotero item for the item's PDF
 //! URL, then the send sets its URL and access date,
-//! attach the stored PDF (the bucket's copy, with its annotations) and the extraction Markdown,
-//! add each of the item's notes as a Zotero child note, and record the Zotero key in the filing
+//! leaves the item one PDF (the bucket's copy, with its annotations, or the item's own PDF when that
+//! has as many annotations), attaches the extraction Markdown,
+//! adds each of the item's notes as a Zotero child note, and records the Zotero key in the filing
 //! document after each step. Once every step is done the item leaves the bucket, since Zotero
 //! holds it now, unless a collection holding it (or holding a collection that holds it) keeps
 //! its items offline. "Send to Zotero and Extract" sends, then runs the configured chain of
@@ -164,6 +165,52 @@ async fn find_or_create(
     Ok((record, !imported.existing))
 }
 
+/// Attaches the bucket's stored PDF, which carries the reader's annotations and the provenance,
+/// to the item; answers the attachment's key.
+async fn attach_copy(state: &Shared, item_key: &str, indexed: &IndexedItem) -> AppResult<String> {
+    let bytes = tokio::fs::read(&indexed.path).await?;
+    let name = format!("{}.pdf", indexed.stored.key.as_str());
+    state
+        .zotero
+        .attach_bytes(item_key, &name, "Full Text PDF", &bytes)
+        .await
+}
+
+/// The annotations on a Zotero PDF: the larger of its annotation items and the annotations in
+/// its file. Zotero's reader imports a file's annotations as items when it opens the PDF
+/// (zotero/zotero, reader.js, `Zotero.PDFWorker.import`), so the items include the file's once
+/// the PDF was opened, and the file holds all of them until it is.
+async fn zotero_annotations(state: &Shared, attachment_key: &str) -> AppResult<u64> {
+    let items = state.zotero.annotation_items(attachment_key).await?;
+    let file = state.zotero.attachment_file(attachment_key).await?;
+    Ok(items.max(state.store.annotations(&file).await?))
+}
+
+/// Leaves the Zotero item one PDF, as a work holds one: the bucket's copy when the item holds
+/// none, or when it has more annotations than the item's PDF, which then goes to Zotero's trash;
+/// otherwise the item's own PDF. An item with several PDFs is refused. Answers the kept PDF's
+/// attachment key.
+async fn one_pdf(state: &Shared, item_key: &str, indexed: &IndexedItem) -> AppResult<String> {
+    let held = state.zotero.pdfs(item_key).await?;
+    let zotero_pdf = match held.as_slice() {
+        [] => return attach_copy(state, item_key, indexed).await,
+        [one] => one,
+        several => {
+            return Err(AppError::Zotero(format!(
+                "Zotero's item {item_key} holds {} PDFs where a work holds one: keep one, then send again",
+                several.len()
+            )))
+        }
+    };
+    let ours = state.store.annotations(&indexed.path).await?;
+    if ours <= zotero_annotations(state, zotero_pdf).await? {
+        return Ok(zotero_pdf.clone());
+    }
+    let attachment = attach_copy(state, item_key, indexed).await?;
+    state.zotero.trash_item(zotero_pdf).await?;
+    Ok(attachment)
+}
+
 async fn perform(
     state: &Shared,
     step: Step<'_>,
@@ -181,17 +228,9 @@ async fn perform(
                 .await?;
             SendStep::Fields
         }
-        // The bucket's stored PDF, which carries the reader's annotations and the provenance.
-        Step::Pdf => {
-            let bytes = tokio::fs::read(&indexed.path).await?;
-            let attachment = state
-                .zotero
-                .attach_bytes(item_key, &format!("{key}.pdf"), "Full Text PDF", &bytes)
-                .await?;
-            SendStep::Pdf {
-                attachment_key: attached(attachment),
-            }
-        }
+        Step::Pdf => SendStep::Pdf {
+            attachment_key: attached(one_pdf(state, item_key, indexed).await?),
+        },
         // Named as the extraction loop names a Markdown child, which marks an item extracted.
         Step::Markdown => {
             let name = format!("{item_key}_extracted.md");
@@ -338,7 +377,10 @@ async fn send_and_extract_item(
             return Err(AppError::api(
                 StatusCode::CONFLICT,
                 ApiErrorErrorKind::AlreadySent,
-                format!("{key} is already in Zotero as the standalone PDF {}", *record.item_key),
+                format!(
+                    "{key} is already in Zotero as the standalone PDF {}",
+                    *record.item_key
+                ),
             ));
         }
     }
