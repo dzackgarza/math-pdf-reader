@@ -7,6 +7,7 @@ import {
   OpenReaderSchema,
   ZoteroHealthSchema,
 } from "../src/contract/capture";
+import { z } from "zod";
 import { LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket, subscribeEvents } from "./bucket";
 
@@ -51,7 +52,7 @@ test("every capture, new or existing, broadcasts its reader URL and stored title
   await events.close();
 });
 
-test("the event stream reports Zotero's health: not running while its port is closed, then ready with the write API's version", async () => {
+test("the event stream reports Zotero's health: not running while its port is closed, ready with the write API's version, and unavailable when that write API cannot import without attachments", async () => {
   const zoteroUrl = closedPortUrl();
   const app = await serveBucket({
     root: mkdtempSync(join(tmpdir(), "pdf-bucket-events-")),
@@ -72,16 +73,29 @@ test("the event stream reports Zotero's health: not running while its port is cl
 
   const { hostname, port } = new URL(zoteroUrl);
   const version = readFileSync(join(import.meta.dir, "fixtures/zotero/version.json"), "utf8");
+  let answer = version;
   const started = Bun.serve({
     hostname,
     port: Number(port),
     fetch: (request) =>
       new URL(request.url).pathname === "/version"
-        ? new Response(version, { headers: { "Content-Type": "application/json" } })
+        ? new Response(answer, { headers: { "Content-Type": "application/json" } })
         : new Response("not the health check", { status: 404 }),
   });
-  expect(await zotero()).toEqual({ status: "ready", version: "3.4.0" });
+  expect(await zotero()).toEqual({ status: "ready", version: "3.7.0" });
+
+  const parsed = z.object({ capabilities: z.array(z.string()) }).loose().parse(JSON.parse(version));
+  answer = JSON.stringify({
+    ...parsed,
+    version: "3.6.1",
+    capabilities: parsed.capabilities.filter((name) => name !== "import_store_attachments"),
+  });
+  expect(await zotero()).toEqual({
+    status: "unavailable",
+    message: "Zotero's local write API 3.6.1 lacks import_store_attachments: update the addon",
+  });
 
   started.stop(true);
   await events.close();
-});
+  // The bucket checks Zotero's health every 5 s; the test waits for three checks.
+}, 20_000);

@@ -27,7 +27,12 @@ struct Version {
     healthy: bool,
     version: NonEmpty,
     message: String,
+    capabilities: Vec<String>,
 }
+
+/// The capability of a write API whose `import_from_url` takes `store_attachments`. The send
+/// attaches the bucket's own copy, so the import must store no PDF of its own.
+const IMPORT_STORE_ATTACHMENTS: &str = "import_store_attachments";
 
 #[derive(Deserialize)]
 struct Refusal {
@@ -245,8 +250,19 @@ impl ZoteroWriteApi {
             Ok(Version {
                 healthy: true,
                 version,
+                capabilities,
                 ..
-            }) => ZoteroHealth::Ready { version },
+            }) if capabilities.iter().any(|name| name == IMPORT_STORE_ATTACHMENTS) => {
+                ZoteroHealth::Ready { version }
+            }
+            Ok(Version {
+                healthy: true,
+                version,
+                ..
+            }) => unavailable(format!(
+                "Zotero's local write API {} lacks {IMPORT_STORE_ATTACHMENTS}: update the addon",
+                version.as_str()
+            )),
             Ok(Version { message, .. }) => unavailable(format!(
                 "Zotero's local write API reports it is not healthy: {message}"
             )),
@@ -312,9 +328,10 @@ impl ZoteroWriteApi {
     }
 
     /// The item for the source at `url`: the write API identifies the source by its own
-    /// methods, and answers the library's item for that work when it already holds one.
+    /// methods, and answers the library's item for that work when it already holds one. A new
+    /// item gets no attachment: the send attaches the bucket's copy.
     pub async fn import_from_url(&self, url: &str) -> AppResult<Imported> {
-        let body = json!({ "operation": "import_from_url", "url": url });
+        let body = json!({ "operation": "import_from_url", "url": url, "store_attachments": false });
         self.post("/write", &body).await
     }
 

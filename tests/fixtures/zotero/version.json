@@ -3,7 +3,7 @@
   "healthy": true,
   "status": "ok",
   "message": "Local Write API is running.",
-  "version": "3.4.0",
+  "version": "3.7.0",
   "addon_id": "local-write-api@dzackgarza.com",
   "homepage_url": "https://github.com/dzackgarza/zotero-local-write-api",
   "update_url": "https://raw.githubusercontent.com/dzackgarza/zotero-local-write-api/main/updates.json",
@@ -31,6 +31,8 @@
     "run_javascript",
     "openapi_spec",
     "import_from_url",
-    "resolve_url"
+    "resolve_url",
+    "attach_standalone",
+    "import_store_attachments"
   ]
 }
