@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import {
   CaptureResponseSchema,
   OpenReaderSchema,
   ZoteroHealthSchema,
 } from "../src/contract/capture";
-import { z } from "zod";
 import { LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket, subscribeEvents } from "./bucket";
 
@@ -84,7 +84,10 @@ test("the event stream reports Zotero's health: not running while its port is cl
   });
   expect(await zotero()).toEqual({ status: "ready", version: "3.7.0" });
 
-  const parsed = z.object({ capabilities: z.array(z.string()) }).loose().parse(JSON.parse(version));
+  const parsed = z
+    .object({ capabilities: z.array(z.string()) })
+    .loose()
+    .parse(JSON.parse(version));
   answer = JSON.stringify({
     ...parsed,
     version: "3.6.1",
