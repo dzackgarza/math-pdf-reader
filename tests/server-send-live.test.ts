@@ -147,14 +147,20 @@ async function zoteroItem(
   return data;
 }
 
-// Zotero's child items of KEY: each one's type and title.
-async function zoteroChildren(key: string): Promise<{ itemType: string; title: string }[]> {
+// Zotero's child items of KEY: each one's type, title and, for an attachment, media type.
+type ZoteroChild = { itemType: string; title: string; contentType?: string };
+
+async function zoteroChildren(key: string): Promise<ZoteroChild[]> {
   const response = await fetch(`${ZOTERO_URL}/api/users/0/items/${key}/children`);
   if (!response.ok) {
     throw new Error(`Zotero's local API answered ${response.status} for ${key}'s children`);
   }
-  const children = (await response.json()) as { data: { itemType: string; title: string } }[];
-  return children.map(({ data }) => ({ itemType: data.itemType, title: data.title }));
+  const children = (await response.json()) as { data: ZoteroChild }[];
+  return children.map(({ data }) => ({
+    itemType: data.itemType,
+    title: data.title,
+    ...(data.contentType === undefined ? {} : { contentType: data.contentType }),
+  }));
 }
 
 async function captureOne(bucket: Bucket, key: string, pdfUrl: string): Promise<void> {
@@ -251,12 +257,49 @@ test.skipIf(!LIVE)(
     ]);
     expect(answer.send.performed).toEqual(["fields", "pdf", "markdown"]);
     const markdown = `${answer.send.itemKey}_extracted.md`;
-    expect(await zoteroChildren(answer.send.itemKey)).toContainEqual({
-      itemType: "attachment",
-      title: markdown,
-    });
+    const children = await zoteroChildren(answer.send.itemKey);
+    expect(children.filter((child) => child.title === markdown).map((child) => child.itemType)).toEqual(["attachment"]);
     const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
     expect(library.items).toEqual([]);
+    await bucket.stop();
+  },
+  REMOTE_TIMEOUT_MS,
+);
+
+test.skipIf(!LIVE)(
+  "a send of a PDF URL Zotero identifies leaves one PDF on the new item: the bucket's copy",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
+    const bucket = await serveBucket({
+      root,
+      zoteroUrl: ZOTERO_URL,
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+    });
+    const form = new FormData();
+    form.set(
+      "pdf",
+      new File([await arxivPdf("2609.21173v1")], "actors.pdf", { type: "application/pdf" }),
+    );
+    form.set("pdf_url", "https://arxiv.org/pdf/2609.21173v1");
+    form.set("title_hint", "pdf");
+    const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
+    expect(captured.status).toBe(200);
+    const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
+
+    const response = await bucket.request(`/api/items/${library.items[0]?.id}/zotero`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    const sent = SendResponseSchema.parse(await response.json());
+    createdItemKeys.push(sent.itemKey);
+    expect(sent.created).toBe(true);
+    const pdfs = (await zoteroChildren(sent.itemKey)).filter(
+      (child) => child.contentType === "application/pdf",
+    );
+    expect(pdfs).toEqual([
+      { itemType: "attachment", title: "Full Text PDF", contentType: "application/pdf" },
+    ]);
     await bucket.stop();
   },
   REMOTE_TIMEOUT_MS,
