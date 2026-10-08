@@ -258,7 +258,9 @@ test.skipIf(!LIVE)(
     expect(answer.send.performed).toEqual(["fields", "pdf", "markdown"]);
     const markdown = `${answer.send.itemKey}_extracted.md`;
     const children = await zoteroChildren(answer.send.itemKey);
-    expect(children.filter((child) => child.title === markdown).map((child) => child.itemType)).toEqual(["attachment"]);
+    expect(
+      children.filter((child) => child.title === markdown).map((child) => child.itemType),
+    ).toEqual(["attachment"]);
     const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
     expect(library.items).toEqual([]);
     await bucket.stop();
