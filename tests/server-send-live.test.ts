@@ -306,3 +306,62 @@ test.skipIf(!LIVE)(
   },
   REMOTE_TIMEOUT_MS,
 );
+
+// The keys of the PDFs the Zotero item KEY holds.
+async function zoteroPdfKeys(key: string): Promise<string[]> {
+  const response = await fetch(`${ZOTERO_URL}/api/users/0/items/${key}/children`);
+  if (!response.ok) {
+    throw new Error(`Zotero's local API answered ${response.status} for ${key}'s children`);
+  }
+  const children = (await response.json()) as { key: string; data: ZoteroChild }[];
+  return children
+    .filter(({ data }) => data.contentType === "application/pdf")
+    .map((child) => child.key);
+}
+
+// Sends the fixture FILE, captured from the paper's PDF URL into a bucket of its own; answers
+// the PDF keys of the Zotero item the send names.
+async function sendCopy(file: string): Promise<string[]> {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
+  const bucket = await serveBucket({
+    root,
+    zoteroUrl: ZOTERO_URL,
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
+  const form = new FormData();
+  form.set(
+    "pdf",
+    new File([readFileSync(join(import.meta.dir, "fixtures", file))], "k3-surfaces.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  form.set("pdf_url", "https://arxiv.org/pdf/2609.21174v1");
+  form.set("title_hint", "K3 surfaces");
+  const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
+  expect(captured.status).toBe(200);
+  const response = await bucket.request("/api/items/k3-surfaces/zotero", { method: "POST" });
+  expect(response.status).toBe(200);
+  const sent = SendResponseSchema.parse(await response.json());
+  if (sent.created) {
+    createdItemKeys.push(sent.itemKey);
+  }
+  await bucket.stop();
+  return zoteroPdfKeys(sent.itemKey);
+}
+
+test.skipIf(!LIVE)(
+  "a send of a paper Zotero holds leaves its entry one PDF: the copy with more annotations",
+  async () => {
+    const plain = await sendCopy("arxiv-2609.21174v1.pdf");
+    expect(plain).toHaveLength(1);
+
+    // The bucket's copy has a highlight, Zotero's has none: the bucket's copy replaces it.
+    const highlighted = await sendCopy("arxiv-2609.21174v1-highlighted.pdf");
+    expect(highlighted).toHaveLength(1);
+    expect(highlighted).not.toEqual(plain);
+
+    // Zotero's copy has the highlight now, the bucket's has none: Zotero's copy stays.
+    expect(await sendCopy("arxiv-2609.21174v1.pdf")).toEqual(highlighted);
+  },
+  3 * REMOTE_TIMEOUT_MS,
+);
