@@ -720,6 +720,78 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(app: webdriver.WebKitG
     WebDriverWait(app, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, f"tr[data-item-id='{other}'].bg-accent-soft"))
 
 
+def test_stylus_opens_annotate_and_native_tools_keep_working(app: webdriver.WebKitGTK, data_home: Path) -> None:
+    """A pen tap in View opens Annotate. WebKit's native pointer path must then operate
+    the annotation toolbar and drawing tools, before a native click returns to View.
+
+    The native editing path is exercised with real WebDriver pointer input because
+    WebKitGTK currently maps tablet input to that mouse-compatible path. This does
+    not emulate a physical GDK tablet device; its delivery is left to GTK/GDK.
+    """
+    notes = capture("outlined-notes.pdf")
+    watch(app)
+    reader = open_from_library(app, notes)
+    while reader.page_number() < 2:
+        reader.next_page()
+    reader.wait("V.dataset.bucketStylusMode === 'view'")
+
+    # GDK's View-mode bridge generates pen PointerEvents, including button activation;
+    # the Annotate button is inside EmbedPDF's shadow DOM.
+    x, y, w, h = reader.items("""(() => {
+      const b = S.querySelector("[data-epdf-i='annotate-mode'] button").getBoundingClientRect();
+      return [b.x, b.y, b.width, b.height];
+    })()""")
+    center = (x + w / 2, y + h / 2)
+    reader.shell_pen_event("pointerdown", *center)
+    reader.shell_pen_event("pointerup", *center)
+    reader.wait("V.dataset.bucketStylusMode === 'edit'")
+    reader.wait("P('ui').forDocument(P('document-manager').getActiveDocumentId()).getActiveToolbar('top', 'secondary') === 'annotation-toolbar'")
+
+    # WebKit must receive native clicks and a native pointer drag in Annotate. This covers
+    # actual toolbar interaction, not only programmatic setActiveTool('ink').
+    reader.click("[data-epdf-i='add-ink'] button")
+    reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
+    reader.drag_across(2, (0.15, 0.56))
+    reader.wait("P('annotation').getAnnotations().some((a) => a.object.type === 15)")
+    reader.click("[data-epdf-i='add-ink-highlighter'] button")
+    reader.wait("P('annotation').getActiveTool()?.id === 'inkHighlighter'")
+    # EmbedPDF opens an annotation action menu above a new ink stroke. Start the next
+    # stroke elsewhere on the same page rather than pressing that floating menu.
+    reader.drag_across(2, (0.58, 0.65))
+    reader.wait("P('annotation').getAnnotations().filter((a) => a.object.type === 15).length === 2")
+
+    # Escape Annotate with the normal browser click pathway and resume the View-only
+    # pen highlighter, without interference from the earlier pointer-capture strokes.
+    reader.click("[data-epdf-i='view-mode'] button")
+    reader.wait("V.dataset.bucketStylusMode === 'view'")
+    reader.wait("P('annotation').getActiveTool() === null")
+    reader.shell_pen_drag_across(2, NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 1")
+    reader.wait("window.__saves.length > 0")
+    time.sleep(SETTLE)
+    with stored_pdf(data_home, notes) as pdf:
+        assert highlights_in(pdf) == 1
+        assert sum(1 for page in pdf.pages for annotation in page.get("/Annots", []) if annotation.get("/Subtype") == "/Ink") == 2
+
+    # An annotation toolbar can activate on pointerdown (rather than click). If a View-mode
+    # pen press changes the mode before its release, the bridge must still finish its click,
+    # otherwise toolbar controls intermittently stop responding.
+    reader.run("""window.__annotatePenClicks = 0;
+      S.querySelector("[data-epdf-i='annotate-mode'] button").addEventListener(
+        'click', () => { window.__annotatePenClicks += 1; }
+      );""")
+    reader.shell_pen_event("pointerdown", *center)
+    reader.run("""P('ui').forDocument(
+      P('document-manager').getActiveDocumentId()
+    ).setActiveToolbar('top', 'secondary', 'annotation-toolbar');""")
+    reader.wait("V.dataset.bucketStylusMode === 'edit'")
+    reader.shell_pen_event("pointerup", *center)
+    reader.wait("window.__annotatePenClicks === 1")
+    reader.click("[data-epdf-i='view-mode'] button")
+    reader.wait("V.dataset.bucketStylusMode === 'view'")
+    assert app.execute_script("return window.__errors") == []
+
+
 def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, data_home: Path) -> None:
     """Native eraser reports button 5/buttons 32. A fast stroke deletes a crossed highlight,
     preserving a nearby highlight, the pen's tool, and the stored PDF's remaining highlights."""
@@ -744,6 +816,7 @@ def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, d
     # ink or make its hit test use stale page coordinates.
     reader.run("P('zoom').requestZoom(1.25)")
     reader.wait("Math.abs(P('zoom').getState().currentZoomLevel - 1.25) < 0.01")
+    reader.wait("!P('scroll').getPageChangeState().isChanging")
     reader.run("P('annotation').setActiveTool('ink')")
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
     x, y, w, h = reader.page_box(2)
@@ -766,6 +839,10 @@ def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, d
     first = rects[0]
     assert isinstance(first, list)
     rx, ry, rw, rh = first
+    # Zoom changes the scroll position as well as the size of a page. Re-read its rendered
+    # coordinates *after* the zoom/layout settles; the earlier page_box is stale if EmbedPDF
+    # repositions the viewport while the first eraser stroke is being delivered.
+    x, y, w, h = reader.page_box(2)
     start = (x + w * (rx / 612 - 0.06), y + h * ((ry + rh / 2) / 792))
     end = (x + w * ((rx + rw) / 612 + 0.06), start[1])
     reader.shell_pen_event("pointerdown", *start, tool="eraser")

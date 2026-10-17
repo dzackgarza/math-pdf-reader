@@ -125,6 +125,13 @@ function TabMenu({
 
 export function ReaderTabs({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TabsState>({ open: [], shown: LIBRARY_TAB, recent: [] });
+  useEffect(() => {
+    if (state.shown === LIBRARY_TAB) {
+      // View-mode pen highlighting applies only to a visible PDF. Return tablet clicks
+      // to WebKit when the Library is shown, even though sleeping readers remain mounted.
+      window.dispatchEvent(new CustomEvent("bucket-stylus-view-mode", { detail: false }));
+    }
+  }, [state.shown]);
   const stateRef = useRef(state);
   stateRef.current = state;
   // The control of each awake reader whose PDF is up; a reader still loading holds nothing

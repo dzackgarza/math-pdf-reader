@@ -1,8 +1,7 @@
-// Injected into the desktop window only. WebKitGTK currently converts tablet input to mouse
-// events; GTK's GestureStylus supplies the actual pen events from the native widget instead.
-// A pen is forwarded as a DOM PointerEvent with pointerType 'pen', targeted exactly as a browser
-// would hit-test it (including inside EmbedPDF's shadow root). GTK prevents the same native pen
-// event from being delivered a second time by WebKit as a mouse event.
+// Injected into the desktop window only. GTK/GDK identifies the tablet tool even though
+// WebKitGTK exposes tablet input to the page as mouse input. View strokes are forwarded as pen
+// PointerEvents; editing modes use the original GDK/WebKit stream so buttons and tools receive
+// trusted native click and pointer-capture events.
 (bucketOrigin) => {
   if (location.origin !== bucketOrigin) {
     return;
@@ -33,14 +32,28 @@
       const contact = kind === "pointerdown" || (kind === "pointermove" && pressed);
       // GTK identifies the physical eraser. In View it deletes highlights; in editing modes
       // the inverted end is an ordinary pen stroke for whichever EmbedPDF tool is selected.
-      const root = target.getRootNode();
-      const viewer = root instanceof ShadowRoot ? root.host : target.closest("embedpdf-container");
+      let viewer = target instanceof Element ? target.closest("embedpdf-container") : null;
+      let root = target.getRootNode();
+      // EmbedPDF owns nested shadow trees. The mode belongs to the outer viewer, even when
+      // a button or canvas lives in a component's own nested shadow root.
+      while (!viewer && root instanceof ShadowRoot) {
+        viewer = root.host.closest("embedpdf-container");
+        root = root.host.getRootNode();
+      }
       // In editing modes, native GTK events must pass into WebKit, not become synthetic
       // events (EmbedPDF's native pointer-capture tools require a registered browser pointer).
-      if (viewer?.dataset.bucketStylusMode === "edit") {
+      // If a pen press began in View, finish that same press through the bridge even if the
+      // button switched the viewer to Annotate before release. Dropping the release strands
+      // controls without a click and can strand the reader's temporary highlighter state.
+      if (type === "pointerdown" && viewer?.dataset.bucketStylusMode === "edit") {
+        pressed = null;
         return;
       }
-      const eraseHighlights = eraser && viewer?.dataset.bucketStylusMode === "view";
+      if (viewer?.dataset.bucketStylusMode === "edit" && pressed === null) {
+        return;
+      }
+      const eraseHighlights =
+        pressed?.eraseHighlights ?? (eraser && viewer?.dataset.bucketStylusMode === "view");
       // Pointer Events specifies button 5 / buttons 32 for a pen eraser. Forward the
       // native GdkDeviceToolType rather than inventing a second input protocol.
       const pointer = new PointerEvent(type, {
@@ -65,7 +78,17 @@
           target instanceof Element
             ? target.closest("button, a[href], input, label, summary, [role=button], [role=tab]")
             : null;
-        pressed = { control, target, x, y, moved: false, handled: pointer.defaultPrevented };
+        pressed = {
+          control,
+          target,
+          x,
+          y,
+          moved: false,
+          eraseHighlights,
+          // A toolbar button can prevent pointerdown while still needing its normal click.
+          // Only a consumed eraser stroke must prevent the bridge's synthetic click.
+          handled: eraseHighlights && pointer.defaultPrevented,
+        };
       } else if (kind === "pointermove" && pressed) {
         if (Math.hypot(x - pressed.x, y - pressed.y) > 6) pressed.moved = true;
       } else if (kind === "pointerup" || kind === "pointercancel") {
