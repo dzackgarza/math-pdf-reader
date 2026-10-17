@@ -18,7 +18,7 @@
 // to B keeps the positions up to the current one, then A, then B; a step back or forward is not
 // itself a jump.
 
-import { PdfAnnotationSubtype } from "@embedpdf/models";
+import { expandRect, PdfAnnotationSubtype, rectFromPoints } from "@embedpdf/models";
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
 import {
   AnnotationPlugin,
@@ -538,13 +538,20 @@ function LoadedReader({
     // annotation-toolbar; the other editing modes open their own secondary toolbars.
     // Track precisely this existing UI state, including transitions through its compact menu.
     const updateStylusMode = (documentId: string) => {
-      const view = ui.forDocument(documentId).getActiveToolbar("top", "secondary") === null;
+      const activeToolbar = ui.forDocument(documentId).getActiveToolbar("top", "secondary");
+      const view = activeToolbar === null;
+      const annotate = activeToolbar === "annotation-toolbar";
       const host = viewerRef.current?.container;
       if (host !== null && host !== undefined) {
         host.dataset.bucketStylusMode = view ? "view" : "edit";
+        host.dataset.bucketStylusAnnotation = String(annotate);
         host.dispatchEvent(new Event("bucket-stylus-mode-changed"));
         if (shownRef.current) {
-          window.dispatchEvent(new CustomEvent("bucket-stylus-view-mode", { detail: view }));
+          window.dispatchEvent(
+            new CustomEvent("bucket-stylus-mode", {
+              detail: view ? "view" : annotate ? "annotate" : "edit",
+            }),
+          );
         }
       }
     };
@@ -732,17 +739,76 @@ function LoadedReader({
     return () => root.removeEventListener("keydown", pressed);
   }, [state, viewerRoot]);
 
-  // Only in EmbedPDF's View mode does the pen automatically highlight and its eraser delete
-  // crossed highlights. In Annotate and all other editing modes the selected upstream tool
-  // handles both ends of the stylus without any override.
+  // EmbedPDF's Annotation plugin owns selection and deletion but binds no Delete/Backspace
+  // shortcut in the viewer. Keep those keys scoped to the visible Annotate toolbar; inputs,
+  // editable annotation text and modifier-key shortcuts retain their native behavior.
+  useEffect(() => {
+    if (!shown) {
+      return;
+    }
+    const pressed = (event: KeyboardEvent) => {
+      if (
+        (event.key !== "Delete" && event.key !== "Backspace") ||
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.isComposing
+      ) {
+        return;
+      }
+      const typing = event
+        .composedPath()
+        .some(
+          (node) =>
+            node instanceof Element &&
+            (node.matches(
+              "input, textarea, select, [contenteditable]:not([contenteditable='false'])",
+            ) ||
+              (node instanceof HTMLElement && node.isContentEditable)),
+        );
+      if (typing) {
+        return;
+      }
+      const documentId = state.documents?.getActiveDocumentId();
+      if (
+        documentId === null ||
+        documentId === undefined ||
+        state.ui?.forDocument(documentId).getActiveToolbar("top", "secondary") !==
+          "annotation-toolbar"
+      ) {
+        return;
+      }
+      const annotations = state.annotations;
+      const selected = annotations?.getSelectedAnnotations() ?? [];
+      if (selected.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      annotations?.deleteAnnotations(
+        selected.map(({ object }) => ({ pageIndex: object.pageIndex, id: object.id })),
+      );
+    };
+    document.addEventListener("keydown", pressed, { capture: true });
+    return () => document.removeEventListener("keydown", pressed, { capture: true });
+  }, [shown, state]);
+
+  // View forces pen highlighting; Annotate keeps pen tools native but its eraser deletes
+  // annotations. Other editing modes retain their existing native input.
   useEffect(() => {
     if (!shown || state.ui === null || state.documents === null) {
       return;
     }
     const documentId = state.documents.getActiveDocumentId();
     if (documentId !== null) {
-      const view = state.ui.forDocument(documentId).getActiveToolbar("top", "secondary") === null;
-      window.dispatchEvent(new CustomEvent("bucket-stylus-view-mode", { detail: view }));
+      const toolbar = state.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
+      window.dispatchEvent(
+        new CustomEvent("bucket-stylus-mode", {
+          detail:
+            toolbar === null ? "view" : toolbar === "annotation-toolbar" ? "annotate" : "edit",
+        }),
+      );
     }
   }, [shown, state]);
 
@@ -756,18 +822,17 @@ function LoadedReader({
     let restoring: string | null = null;
     let erasing: number | null = null;
     let eraserLast: { x: number; y: number } | null = null;
-    const inView = () => {
+    const activeToolbar = () => {
       const documentId = state.documents?.getActiveDocumentId();
-      return (
-        documentId !== null &&
-        documentId !== undefined &&
-        state.ui?.forDocument(documentId).getActiveToolbar("top", "secondary") === null
-      );
+      return documentId === null || documentId === undefined || state.ui === null
+        ? undefined
+        : state.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
     };
+    const inView = () => activeToolbar() === null;
+    const inAnnotate = () => activeToolbar() === "annotation-toolbar";
 
-    // Liang–Barsky segment/rectangle clipping, with the eraser nib's 3 CSS-pixel radius.
-    // Intersect the complete distance between pointer samples, not just the endpoints: fast
-    // stylus movement must still erase a highlight crossed between successive GTK events.
+    // Liang–Barsky segment/rectangle clipping with a 3 CSS-pixel nib tolerance. Intersect
+    // the complete distance between samples: fast eraser movement must not skip an annotation.
     const crosses = (
       from: { x: number; y: number },
       to: { x: number; y: number },
@@ -799,7 +864,11 @@ function LoadedReader({
       return true;
     };
 
-    const eraseBetween = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    const eraseBetween = (
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+      annotate: boolean,
+    ) => {
       const annotations = state.annotations;
       const scroll = state.scroll;
       const root = host.shadowRoot;
@@ -837,15 +906,43 @@ function LoadedReader({
           continue;
         }
         for (const tracked of annotations.getAnnotations({ pageIndex })) {
-          const highlight = tracked.object;
+          const annotation = tracked.object;
           if (
             tracked.commitState === "deleted" ||
-            highlight.type !== PdfAnnotationSubtype.HIGHLIGHT
+            (!annotate && annotation.type !== PdfAnnotationSubtype.HIGHLIGHT) ||
+            (annotate &&
+              (annotation.type === PdfAnnotationSubtype.LINK ||
+                annotation.type === PdfAnnotationSubtype.WIDGET ||
+                annotation.flags?.includes("locked") === true ||
+                annotation.flags?.includes("readOnly") === true))
           ) {
             continue;
           }
+          // Text markup is a union of disjoint glyph rectangles, not one bounding box.
+          // Ink has independent pen strokes; test their short segment bounds rather than
+          // deleting unrelated ink in the whitespace between distant strokes. For shapes,
+          // stamps, and notes EmbedPDF's own annotation rectangle supplies the hit region.
+          const regions =
+            annotation.type === PdfAnnotationSubtype.INK
+              ? annotation.inkList.flatMap(({ points }) =>
+                  points.length < 2
+                    ? points.map((point) =>
+                        expandRect(rectFromPoints([point]), annotation.strokeWidth / 2),
+                      )
+                    : points
+                        .slice(1)
+                        .map((point, i) =>
+                          expandRect(
+                            rectFromPoints([points[i], point]),
+                            annotation.strokeWidth / 2,
+                          ),
+                        ),
+                )
+              : "segmentRects" in annotation && Array.isArray(annotation.segmentRects)
+                ? annotation.segmentRects
+                : [annotation.rect];
           if (
-            highlight.segmentRects.some((segment) => {
+            regions.some((segment) => {
               const rect = scroll.getRectPositionForPage(pageIndex, segment);
               if (rect === null) {
                 return false;
@@ -861,7 +958,7 @@ function LoadedReader({
               return crosses(from, to, left, top, right, bottom);
             })
           ) {
-            deleted.push({ pageIndex, id: highlight.id });
+            deleted.push({ pageIndex, id: annotation.id });
           }
         }
       }
@@ -879,7 +976,7 @@ function LoadedReader({
         return;
       }
       const point = { x: event.clientX, y: event.clientY };
-      eraseBetween(eraserLast, point);
+      eraseBetween(eraserLast, point, inAnnotate());
       eraserLast = point;
       suppress(event);
     };
@@ -888,7 +985,7 @@ function LoadedReader({
         return;
       }
       if (event.type === "pointerup" && eraserLast !== null) {
-        eraseBetween(eraserLast, { x: event.clientX, y: event.clientY });
+        eraseBetween(eraserLast, { x: event.clientX, y: event.clientY }, inAnnotate());
       }
       erasing = null;
       eraserLast = null;
@@ -900,7 +997,7 @@ function LoadedReader({
     const pressed = (event: PointerEvent) => {
       if (
         event.pointerType !== "pen" ||
-        !inView() ||
+        (!inView() && !inAnnotate()) ||
         penDown ||
         erasing !== null ||
         !onPage(event)
@@ -914,8 +1011,11 @@ function LoadedReader({
       if (event.button === 5 || (event.buttons & 32) !== 0) {
         erasing = event.pointerId;
         eraserLast = { x: event.clientX, y: event.clientY };
-        eraseBetween(eraserLast, eraserLast);
+        eraseBetween(eraserLast, eraserLast, inAnnotate());
         suppress(event); // do not select text, draw, or activate annotations with the eraser
+        return;
+      }
+      if (!inView()) {
         return;
       }
       penDown = true;

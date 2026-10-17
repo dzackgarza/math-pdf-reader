@@ -792,6 +792,61 @@ def test_stylus_opens_annotate_and_native_tools_keep_working(app: webdriver.WebK
     assert app.execute_script("return window.__errors") == []
 
 
+def test_annotate_delete_and_backspace_remove_selected_annotations(app: webdriver.WebKitGTK, data_home: Path) -> None:
+    """Delete and Backspace remove selected annotations through the reader's keyboard.
+    Editable fields retain these keys, and deleting the selection persists to the PDF.
+    """
+    notes = capture("outlined-notes.pdf")
+    watch(app)
+    reader = open_from_library(app, notes)
+    while reader.page_number() < 2:
+        reader.next_page()
+    reader.highlight(2, NOTES_LINE)
+    reader.click("[data-epdf-i='add-highlight'] button")
+    reader.drag_across(2, BELOW_NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 2")
+    ActionChains(app).send_keys(Keys.ESCAPE).perform()
+    reader.wait("P('annotation').getActiveTool() === null")
+    reader.wait("V.dataset.bucketStylusAnnotation === 'true'")
+
+    ids = reader.items(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).map((a) => a.object.id)")
+    assert len(ids) == 2
+    # Select the highlighted text through an actual WebKit pointer click, not a
+    # programmatic annotation selection, then use a real keyboard Delete press.
+    rx, ry, rw, rh = reader.items(f"""(() => {{
+      const a = P('annotation').getAnnotations().find((a) => a.object.id === {json.dumps(ids[0])});
+      const r = a.object.segmentRects[0];
+      return [r.origin.x,r.origin.y,r.size.width,r.size.height];
+    }})()""")
+    x, y, w, h = reader.page_box(2)
+    click = ActionChains(app)
+    click.w3c_actions.pointer_action.move_to_location(int(x + (rx + rw / 2) * w / 612), int(y + (ry + rh / 2) * h / 792)).click()
+    click.perform()
+    reader.wait(f"P('annotation').getSelectedAnnotations().some((a) => a.object.id === {json.dumps(ids[0])})")
+
+    # A text-editing field must consume Backspace rather than deleting an annotation.
+    reader.click("[data-epdf-i='page-controls'] input")
+    reader.run(f"P('annotation').selectAnnotation(1, {json.dumps(ids[0])})")
+    reader.wait("P('annotation').getSelectedAnnotations().length === 1")
+    ActionChains(app).send_keys(Keys.BACKSPACE).perform()
+    assert reader.highlights() == 2
+    assert reader.run("return P('annotation').getSelectedAnnotations().length") == 1
+    reader.run("S.activeElement?.blur()")
+    ActionChains(app).send_keys(Keys.DELETE).perform()
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 1")
+
+    last_id = reader.run(f"return P('annotation').getAnnotations().find((a) => a.object.type === {HIGHLIGHT}).object.id")
+    reader.run(f"P('annotation').selectAnnotation(1, {json.dumps(last_id)})")
+    reader.wait("P('annotation').getSelectedAnnotations().length === 1")
+    ActionChains(app).send_keys(Keys.BACKSPACE).perform()
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 0")
+    reader.wait("window.__saves.length >= 2")
+    time.sleep(SETTLE)
+    with stored_pdf(data_home, notes) as pdf:
+        assert highlights_in(pdf) == 0
+    assert app.execute_script("return window.__errors") == []
+
+
 def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, data_home: Path) -> None:
     """Native eraser reports button 5/buttons 32. A fast stroke deletes a crossed highlight,
     preserving a nearby highlight, the pen's tool, and the stored PDF's remaining highlights."""
@@ -863,9 +918,8 @@ def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, d
     reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 2")
     assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
 
-    # In Annotate, the physical eraser passes through WebKit as the same trusted pointer
-    # stream as a normal pen: the selected ink tool owns it. The bridge no longer injects
-    # synthetic events there (pointer capture requires a native pointer).
+    # In Annotate, ordinary pen input still draws with the selected tool, but the flipped
+    # eraser deletes annotations it crosses instead of drawing more ink.
     reader.click("[data-epdf-i='annotate-mode'] button")
     reader.wait("V.dataset.bucketStylusMode === 'edit'")
     reader.run("P('annotation').setActiveTool('ink')")
@@ -877,10 +931,27 @@ def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, d
     assert reader.highlights() == before_highlights
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
 
-    # Even a late View-mode bridge event must not draw or erase when Annotate is visible.
+    # The eraser must also remove an actual ink stroke, not merely a text-markup annotation.
+    ink_points = reader.items("""(() => {
+      const ink = P('annotation').getAnnotations().find((a) => a.object.type === 15).object;
+      return ink.inkList[0].points.map(({x, y}) => [x, y]);
+    })()""")
+    assert len(ink_points) > 1
+    x, y, w, h = reader.page_box(2)
+    point = ink_points[len(ink_points) // 2]
+    mid = (x + w * point[0] / 612, y + h * point[1] / 792)
+    reader.shell_pen_event("pointerdown", *mid, tool="eraser")
+    reader.shell_pen_event("pointerup", *mid, tool="eraser")
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === 15).length === {before_ink}")
+    assert reader.highlights() == before_highlights
+    assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
+
+    # The eraser must delete this text markup in Annotate without altering the active pen tool.
     x, y, w, h = reader.page_box(2)
     start = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
     reader.shell_pen_event("pointerdown", *start, tool="eraser")
     reader.shell_pen_event("pointermove", start[0] + w * 0.15, start[1], tool="eraser")
     reader.shell_pen_event("pointerup", start[0] + w * 0.15, start[1], tool="eraser")
-    assert reader.highlights() == before_highlights
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === {before_highlights - 1}")
+    assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
+    assert reader.number("P('annotation').getAnnotations().filter((a) => a.object.type === 15).length") == before_ink

@@ -8,7 +8,7 @@
 //! toolbar clicks and EmbedPDF's real pointer-capture-based ink tools.
 
 use std::cell::Cell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use gtk::prelude::*;
@@ -32,6 +32,12 @@ fn cursor_from_png(
     ))
 }
 
+/// In editing modes, keep the pen native for WebKit pointer capture; the physical eraser
+/// instead needs the bridge to delete annotations. View always bridges tablet events.
+fn bridge_tool(mode: u8, tool: gdk::DeviceToolType) -> bool {
+    mode == 1 || (mode == 2 && tool == gdk::DeviceToolType::Eraser)
+}
+
 /// Observe GDK tablet events on the webview without claiming the native input sequence.
 pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
     let app = window.app_handle().clone();
@@ -48,15 +54,21 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
         if pencil.is_none() || highlighter.is_none() || eraser_cursor.is_none() {
             eprintln!("stylus: could not load pen cursors from GTK's PNG loader");
         }
-        // Only the visible reader's mode changes this state; the GTK widget remains the
-        // authority on device identity and distinguishes its cursor from mouse input.
-        // No PDF is open at startup. Before the active reader explicitly reports View,
-        // pen clicks in the Library must be ordinary native WebKit input.
-        let view_mode = Arc::new(AtomicBool::new(false));
-        let mode_from_page = view_mode.clone();
-        app.listen("bucket-stylus-view-mode", move |event| {
-            if let Ok(view) = serde_json::from_str::<bool>(event.payload()) {
-                mode_from_page.store(view, Ordering::Release);
+        // 0 = no active reader / other editing toolbar, 1 = View, 2 = Annotate.
+        // WebKit owns ordinary pen sequences in Annotate; the physical eraser is different:
+        // it needs native GDK tool identification to remove annotations, not draw more ink.
+        let mode = Arc::new(AtomicU8::new(0));
+        let mode_from_page = mode.clone();
+        app.listen("bucket-stylus-mode", move |event| {
+            if let Ok(mode) = serde_json::from_str::<String>(event.payload()) {
+                mode_from_page.store(
+                    match mode.as_str() {
+                        "view" => 1,
+                        "annotate" => 2,
+                        _ => 0,
+                    },
+                    Ordering::Release,
+                );
             }
         });
         // A tablet press uses one routing path for its *whole* sequence, even if its press
@@ -104,12 +116,12 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
                 {
                     let cursor = if event.event_type() == gdk::EventType::ProximityOut {
                         default_cursor.as_ref()
-                    } else if view_mode.load(Ordering::Acquire) {
-                        if tool.tool_type() == gdk::DeviceToolType::Eraser {
-                            eraser_cursor.as_ref()
-                        } else {
-                            highlighter.as_ref()
-                        }
+                    } else if tool.tool_type() == gdk::DeviceToolType::Eraser
+                        && mode.load(Ordering::Acquire) != 0
+                    {
+                        eraser_cursor.as_ref()
+                    } else if mode.load(Ordering::Acquire) == 1 {
+                        highlighter.as_ref()
                     } else {
                         pencil.as_ref()
                     };
@@ -118,20 +130,21 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
                     }
                 }
             }
-            let in_view = view_mode.load(Ordering::Acquire);
+            let current_mode = mode.load(Ordering::Acquire);
+            let bridge = bridge_tool(current_mode, tool.tool_type());
             let bridge = match event.event_type() {
                 gdk::EventType::ButtonPress => {
-                    stroke_route.set(Some(in_view));
-                    in_view
+                    stroke_route.set(Some(bridge));
+                    bridge
                 }
-                gdk::EventType::ButtonRelease => stroke_route.take().unwrap_or(in_view),
+                gdk::EventType::ButtonRelease => stroke_route.take().unwrap_or(bridge),
                 // Hover is not a highlighter stroke. Let WebKit handle its native hover,
                 // hit testing and tooltips, even when the next press would use View's bridge.
                 gdk::EventType::MotionNotify => stroke_route.get() == Some(true),
                 _ => false,
             };
-            // In editing modes, pass the *real* GDK pen event to WebKit unchanged. EmbedPDF
-            // needs trusted mouse-compatible pointer events for click activation and capture.
+            // In Annotate, the pen remains WebKit-native for pointer capture. Only the flipped
+            // eraser uses the synthetic bridge so it cannot activate ink or shape tools.
             if bridge {
                 if let (Some(kind), Some((x, y))) = (kind, event.coords()) {
                     let eraser = tool.tool_type() == gdk::DeviceToolType::Eraser;
@@ -157,4 +170,19 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
             glib::Propagation::Proceed
         });
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_tablet_routing_distinguishes_pen_and_eraser_in_annotation_mode() {
+        assert!(bridge_tool(1, gdk::DeviceToolType::Pen));
+        assert!(bridge_tool(1, gdk::DeviceToolType::Eraser));
+        assert!(!bridge_tool(2, gdk::DeviceToolType::Pen));
+        assert!(bridge_tool(2, gdk::DeviceToolType::Eraser));
+        assert!(!bridge_tool(0, gdk::DeviceToolType::Pen));
+        assert!(!bridge_tool(0, gdk::DeviceToolType::Eraser));
+    }
 }

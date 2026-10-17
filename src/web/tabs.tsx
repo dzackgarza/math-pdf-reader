@@ -129,7 +129,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     if (state.shown === LIBRARY_TAB) {
       // View-mode pen highlighting applies only to a visible PDF. Return tablet clicks
       // to WebKit when the Library is shown, even though sleeping readers remain mounted.
-      window.dispatchEvent(new CustomEvent("bucket-stylus-view-mode", { detail: false }));
+      window.dispatchEvent(new CustomEvent("bucket-stylus-mode", { detail: "inactive" }));
     }
   }, [state.shown]);
   const stateRef = useRef(state);

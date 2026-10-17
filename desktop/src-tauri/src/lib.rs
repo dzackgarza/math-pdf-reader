@@ -325,8 +325,8 @@ pub fn run() -> tauri::Result<()> {
                     }
                 })
                 .build()?;
-            // WebKitGTK reports pen events as mouse input. GTK's GestureStylus identifies and
-            // forwards them separately; the reader receives real pen PointerEvents.
+            // WebKitGTK reports pen events as mouse input. GDK identifies tablet tools:
+            // View pen input and the Annotate eraser use the bridge; other pens stay native.
             #[cfg(target_os = "linux")]
             if let Err(error) = app
                 .get_webview_window("main")
