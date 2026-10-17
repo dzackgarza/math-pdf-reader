@@ -3410,6 +3410,7 @@ dependencies = [
 name = "pdf-bucket-desktop"
 version = "1.0.0"
 dependencies = [
+ "gtk",
  "pdf-bucket",
  "percent-encoding",
  "serde",

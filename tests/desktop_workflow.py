@@ -52,7 +52,15 @@ def headless_display(stack: ExitStack) -> str:
     """Start a headless Weston for the run; return its Wayland socket name."""
     socket = f"pdf-bucket-workflow-{os.getpid()}"
     weston = subprocess.Popen(
-        ["weston", "--backend=headless", "--shell=kiosk", "--renderer=pixman", "--width=1400", "--height=900", f"--socket={socket}"],
+        [
+            "weston",
+            "--backend=headless",
+            "--shell=kiosk",
+            "--renderer=pixman",
+            "--width=1400",
+            "--height=900",
+            f"--socket={socket}",
+        ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -95,7 +103,11 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         options.binary_location = str(APP)
         options.set_capability("browserName", "wry")
         # The driver and the app write to the test's output, which pytest shows when the run fails.
-        service = webdriver.WebKitGTKService(executable_path="/usr/bin/WebKitWebDriver", env=env, log_output=subprocess.STDOUT)
+        service = webdriver.WebKitGTKService(
+            executable_path="/usr/bin/WebKitWebDriver",
+            env=env,
+            log_output=subprocess.STDOUT,
+        )
         driver = webdriver.WebKitGTK(options=options, service=service)
         stack.callback(driver.quit)
         try:
@@ -135,6 +147,9 @@ def capture(fixture: str) -> str:
 # The first line of body text on pages 2 to 10 of outlined-notes.pdf, and on page 1 of
 # ten-page-notes.pdf, as fractions of the page's width and height (pdftotext -bbox).
 NOTES_LINE = (134 / 612, 154 / 792)
+# The next paragraph's line below NOTES_LINE's line on page 2 of outlined-notes.pdf ("A change of
+# basis..."), clear of a highlight drawn over that line (pdftotext -bbox).
+BELOW_NOTES_LINE = (134 / 612, 197 / 792)
 PROBLEMS_LINE = (134 / 595.276, 268 / 841.89)
 # A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
 PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]'
@@ -282,6 +297,77 @@ class Reader:
         ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
         self.wait("P('interaction-manager').getActiveMode() === P('interaction-manager').getDefaultMode() && P('annotation').getActiveTool() === null")
 
+    def pen_event(self, kind: str, x: float, y: float) -> None:
+        """Deliver one PointerEvent of KIND (a pen's pointerdown, pointermove, pointerup or
+        pointercancel) at the window's X and Y. The platform delivers a stylus's input as pointer
+        events whose pointerType is `pen`, hit-tested to the element under the point as any
+        pointer's is: this is that event, dispatched at the element the point lands on, the
+        viewer's page interaction surface inside the drawn page box."""
+        self.run(
+            "(() => {"
+            f"const target = S.elementFromPoint({int(x)}, {int(y)});"
+            f"target.dispatchEvent(new PointerEvent({json.dumps(kind)}, {{ pointerType: 'pen', pointerId: 5,"
+            f"isPrimary: true, bubbles: true, composed: true, buttons: {0 if kind in ('pointerup', 'pointercancel') else 1},"
+            f"clientX: {int(x)}, clientY: {int(y)} }}));"
+            "})()"
+        )
+
+    def pen_press(self, page: int, line: tuple[float, float]) -> tuple[float, float]:
+        """Press LINE of PAGE with a stylus; return the window point pressed, for `pen_release`."""
+        x, y, w, h = self.page_box(page)
+        point = (x + w * line[0], y + h * line[1])
+        self.pen_event("pointerdown", *point)
+        return point
+
+    def pen_release(self, point: tuple[float, float]) -> None:
+        """Lift the stylus at POINT, pressed by `pen_press`."""
+        self.pen_event("pointerup", *point)
+
+    def shell_pen_event(self, kind: str, x: float, y: float) -> None:
+        """Send the native bridge's GTK GestureStylus payload through the actual Tauri event
+        bus. This tests the injected pen-bridge script, its shadow-DOM hit testing, and the
+        reader, rather than spoofing either its pointerType or a proximity flag in the reader."""
+        result = self.driver.execute_async_script(
+            """
+            const [kind, x, y, done] = arguments;
+            window.__TAURI__.event.emit('stylus-pointer', {kind, x, y}).then(
+                () => done(null), (error) => done(String(error))
+            );
+            """,
+            kind,
+            x,
+            y,
+        )
+        assert result is None, result
+
+    def shell_pen_drag_across(self, page: int, line: tuple[float, float]) -> None:
+        """Send a complete stylus stroke as GTK GestureStylus sends it to the Tauri bridge."""
+        x, y, w, h = self.page_box(page)
+        start_x, start_y = x + w * line[0], y + h * line[1]
+        self.shell_pen_event("pointerhover", start_x, start_y)
+        self.shell_pen_event("pointerdown", start_x, start_y)
+        for step in range(1, 11):
+            self.shell_pen_event(
+                "pointermove",
+                start_x + 0.3 * w * step / 10,
+                start_y + 0.03 * h * step / 10,
+            )
+        self.shell_pen_event("pointerup", start_x + 0.3 * w, start_y + 0.03 * h)
+
+    def pen_drag_across(self, page: int, line: tuple[float, float]) -> None:
+        """Draw a stroke with a stylus: press on LINE of PAGE, drag down and to the right across it
+        into the next line, and release, as `drag_across` does with the mouse."""
+        x, y, w, h = self.page_box(page)
+        start_x, start_y = x + w * line[0], y + h * line[1]
+        self.pen_event("pointerdown", start_x, start_y)
+        for step in range(1, 11):
+            self.pen_event(
+                "pointermove",
+                start_x + 0.3 * w * step / 10,
+                start_y + 0.03 * h * step / 10,
+            )
+        self.pen_event("pointerup", start_x + 0.3 * w, start_y + 0.03 * h)
+
     def highlighted_pixels(self, page: int) -> tuple[int, int]:
         """The window's pixels inside the line boxes of PAGE's highlights, counted as text (dark)
         and as highlight (yellow)."""
@@ -315,9 +401,23 @@ def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
     show_library(driver)
     row = f"//tbody/tr[@data-item-id={json.dumps(key)}]/td[@data-column='title']"
     cell = WebDriverWait(driver, 30).until(lambda d: d.find_element(By.XPATH, row))
-    ActionChains(driver).double_click(cell).perform()
+    cell.click()
+    # The reader's normal Enter shortcut opens the selected item without relying on a
+    # platform-dependent double-click interval or moving across an inspector overlay.
+    ActionChains(driver).send_keys(Keys.ENTER).perform()
     reader = Reader(driver, key)
-    WebDriverWait(driver, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, f"[data-tab-key='{key}'][data-state='active']"))
+    try:
+        WebDriverWait(driver, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, f"[data-tab-key='{key}'][data-state='active']"))
+    except TimeoutException:
+        state = driver.execute_script("""
+            return {
+                tabs: [...document.querySelectorAll('[data-tab-key]')].map((tab) =>
+                    ({key: tab.dataset.tabKey, state: tab.dataset.state})),
+                errors: window.__errors ?? [],
+                body: document.body.innerText.slice(0, 3000)
+            };
+        """)
+        pytest.fail(f"Opening reader {key} did not select its tab: {state}")
     reader.loaded()
     return reader
 
@@ -328,7 +428,10 @@ def show_library(driver: webdriver.WebKitGTK) -> None:
 
 
 def nav_to(driver: webdriver.WebKitGTK, label: str) -> None:
-    driver.find_element(By.XPATH, f"//nav[@aria-label='Library']//a[contains(normalize-space(), '{label}')]").click()
+    driver.find_element(
+        By.XPATH,
+        f"//nav[@aria-label='Library']//a[contains(normalize-space(), '{label}')]",
+    ).click()
 
 
 def show_tab(driver: webdriver.WebKitGTK, key: str) -> None:
@@ -429,11 +532,20 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
 
     # Correct the notes' metadata in the library's inspector.
     show_library(app)
-    app.find_element(By.XPATH, f"//tbody/tr[@data-item-id={json.dumps(notes)}]/td[@data-column='title']").click()
+    app.find_element(
+        By.XPATH,
+        f"//tbody/tr[@data-item-id={json.dumps(notes)}]/td[@data-column='title']",
+    ).click()
     inspector = app.find_element(By.CSS_SELECTOR, "aside[aria-label='Item details']")
     inspector.find_element(By.CSS_SELECTOR, "button[aria-label='Edit metadata']").click()
-    replace_text(inspector.find_element(By.CSS_SELECTOR, "[aria-label='Title']"), "Lectures on Lattices")
-    replace_text(inspector.find_element(By.CSS_SELECTOR, "[aria-label='Authors, one per line']"), "J. H. Conway")
+    replace_text(
+        inspector.find_element(By.CSS_SELECTOR, "[aria-label='Title']"),
+        "Lectures on Lattices",
+    )
+    replace_text(
+        inspector.find_element(By.CSS_SELECTOR, "[aria-label='Authors, one per line']"),
+        "J. H. Conway",
+    )
     replace_text(inspector.find_element(By.CSS_SELECTOR, "[aria-label='Year']"), "1988")
     inspector.find_element(By.XPATH, ".//button[normalize-space()='Save metadata']").click()
     WebDriverWait(app, 30).until(lambda _: not inspector.find_elements(By.CSS_SELECTOR, "[aria-label='Title']"))
@@ -461,3 +573,128 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
         assert str(pdf.docinfo["/Author"]) == "J. H. Conway"
     with stored_pdf(data_home, problems) as pdf:
         assert highlights_in(pdf) == 1
+
+
+def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> None:
+    """A stylus is read differentially: a pen press on a page takes up the text highlighter for the
+    stroke, whatever tool was in hand, and the pen's release puts that tool back. A mouse is not a
+    pen and changes no tool. The window receives a stylus's input as pointer events whose
+    pointerType is `pen`; this test delivers those events to a page, as the window would."""
+    notes = capture("outlined-notes.pdf")
+    watch(app)
+    reader = open_from_library(app, notes)
+    while reader.page_number() < 2:
+        reader.next_page()
+
+    # A pen press, and the pen's release: the highlighter is in hand only while the pen is down,
+    # and the tool the pen found, the default one (none), is back afterwards.
+    point = reader.pen_press(2, NOTES_LINE)
+    reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
+    reader.pen_release(point)
+    reader.wait("P('annotation').getActiveTool() === null")
+
+    # A mouse at the same point changes no tool.
+    x, y, w, h = reader.page_box(2)
+    actions = ActionChains(app)
+    actions.w3c_actions.pointer_action.move_to_location(int(x + w * NOTES_LINE[0]), int(y + h * NOTES_LINE[1])).click()
+    actions.perform()
+    assert reader.run("return P('annotation').getActiveTool()") is None
+
+    # A whole stroke with the pen: press, drag across the line, release. The highlight is made and
+    # saved, and the tool the pen found is back in hand.
+    saved, before = len(reader.saves()), reader.highlights()
+    reader.pen_drag_across(2, NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
+    reader.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{reader.key}/pdf')})).length > {saved}")
+    reader.wait("P('annotation').getActiveTool() === null")
+
+    # With the highlighter in hand from the Annotate toolbar, a pen press leaves it in hand on
+    # release: the tool put back is the one the pen found.
+    reader.click("[data-epdf-i='annotate-mode'] button")
+    reader.click("[data-epdf-i='add-highlight'] button")
+    reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
+    point = reader.pen_press(2, NOTES_LINE)
+    reader.pen_release(point)
+    assert reader.run("return P('annotation').getActiveTool()?.id ?? null") == "highlight"
+    ActionChains(app).send_keys(Keys.ESCAPE).perform()
+    reader.wait("P('annotation').getActiveTool() === null")
+
+    # Even with the ink tool selected, a pen stroke must make *text markup*, never ink, and
+    # restore the ink tool afterwards. This exercises a non-default competing annotation tool.
+    reader.run("P('annotation').setActiveTool('ink')")
+    reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
+    before_ink = reader.highlights()
+    reader.pen_drag_across(2, BELOW_NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length > {before_ink}")
+    reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
+    assert reader.run("return P('annotation').getAnnotations().filter((a) => a.object.type === 15).length") == 0
+    ActionChains(app).send_keys(Keys.ESCAPE).perform()
+    reader.wait("P('annotation').getActiveTool() === null")
+
+    assert reader.highlights() == before + 2
+    assert app.execute_script("return window.__errors") == []
+
+
+def test_gtk_stylus_bridge_preserves_mouse_and_highlights(app: webdriver.WebKitGTK, data_home: Path) -> None:
+    """GTK's pen-only gesture event goes through Tauri's IPC and the page's actual bridge,
+    not through a fake proximity flag. Mouse drag still selects while the pen is hovering."""
+    other = capture("ten-page-notes.pdf")
+    notes = capture("outlined-notes.pdf")
+    watch(app)
+    reader = open_from_library(app, notes)
+    while reader.page_number() < 2:
+        reader.next_page()
+
+    # The pen is hovering: ordinary mouse drag selects without activating the highlighter.
+    x, y, w, h = reader.page_box(2)
+    reader.shell_pen_event("pointerhover", x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
+    reader.drag_across(2, BELOW_NOTES_LINE)
+    assert reader.selection().strip()
+    assert reader.highlights() == 0
+    assert reader.run("return P('annotation').getActiveTool()") is None
+
+    # Interrupted stylus contact restores the previous tool, not a stuck highlighter.
+    point = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
+    reader.shell_pen_event("pointerdown", *point)
+    reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
+    reader.shell_pen_event("pointercancel", *point)
+    reader.wait("P('annotation').getActiveTool() === null")
+
+    # GTK's own pen recognizer sends down/motion/up, which the bridge forwards as pen events.
+    saved, before = len(reader.saves()), reader.highlights()
+    reader.shell_pen_drag_across(2, NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
+    reader.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{reader.key}/pdf')})).length > {saved}")
+    reader.wait("P('annotation').getActiveTool() === null")
+    time.sleep(SETTLE)
+    assert set(reader.saves()) == {200}
+    after_near = len(reader.saves())
+
+    # Releasing the stylus restores the pointer tool; a subsequent mouse drag selects again.
+    reader.drag_across(2, BELOW_NOTES_LINE)
+    assert reader.selection().strip()
+    time.sleep(SETTLE)
+    assert reader.highlights() == before + 1
+    assert len(reader.saves()) == after_near
+    assert app.execute_script("return window.__errors") == []
+
+    # A pen can still use ordinary reader controls, even though GTK suppresses its duplicate
+    # native mouse events: the bridge emits a click on a non-dragged button press/release.
+    cx, cy, cw, ch = reader.items("""(() => {
+        const b = S.querySelector("[data-epdf-i='page-controls'] button[aria-label='Next Page']").getBoundingClientRect();
+        return [b.x, b.y, b.width, b.height];
+    })()""")
+    center = (cx + cw / 2, cy + ch / 2)
+    reader.shell_pen_event("pointerdown", *center)
+    reader.shell_pen_event("pointerup", *center)
+    reader.shows("page > 2")
+
+    # Native pen clicks must still select a Library table row, whose click handler is on
+    # an ancestor rather than an explicit button.
+    show_library(app)
+    cell = app.find_element(By.CSS_SELECTOR, f"tr[data-item-id='{other}'] td[data-column='title']")
+    rect = cell.rect
+    center = (rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2)
+    reader.shell_pen_event("pointerdown", *center)
+    reader.shell_pen_event("pointerup", *center)
+    WebDriverWait(app, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, f"tr[data-item-id='{other}'].bg-accent-soft"))

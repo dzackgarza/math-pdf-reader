@@ -81,6 +81,13 @@ const VIEWER_DISABLED = ["document", "redaction"];
 // would turn back.
 const NIGHT_PAGES = 'div[style*="transform-origin"][style*="background-color: rgb(255, 255, 255)"]';
 
+// The box EmbedPDF draws a page in, the element a pointer must land on to be drawing (the desktop
+// suite's page boxes name the same element). A press on the toolbar or a sidebar is not one.
+const PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]';
+
+// The reader's text-markup highlighter, the tool a stylus always draws with.
+const HIGHLIGHT_TOOL = "highlight";
+
 // The entity tag an answer carries (server/src/library.rs `entity_tag`).
 function entityTag(response: Response): string {
   const tag = response.headers.get("ETag");
@@ -344,7 +351,10 @@ function LoadedReader({
     return root;
   }, []);
   const [nightMode, setNightMode] = useState(loaded.preferences.readerNightMode);
-  const [status, setStatus] = useState<{ text: string; failed: boolean } | null>(null);
+  const [status, setStatus] = useState<{
+    text: string;
+    failed: boolean;
+  } | null>(null);
   // True while the stored PDF changed since it was loaded and the reader holds an unsaved copy.
   const [conflict, setConflict] = useState(false);
 
@@ -523,7 +533,10 @@ function LoadedReader({
     }
     ui.mergeSchema({
       toolbars: {
-        "main-toolbar": { ...toolbar, items: withReaderButtons(toolbar.items, inTab) },
+        "main-toolbar": {
+          ...toolbar,
+          items: withReaderButtons(toolbar.items, inTab),
+        },
       },
     });
     scopeShortcuts();
@@ -622,7 +635,10 @@ function LoadedReader({
       }
       state.pendingSave = setTimeout(startSave, SAVE_PAUSE_MS);
     });
-    onControl?.({ settle, view: () => ({ page: state.page, zoom: zoom.getState().zoomLevel }) });
+    onControl?.({
+      settle,
+      view: () => ({ page: state.page, zoom: zoom.getState().zoomLevel }),
+    });
   };
 
   // A reader shown again starts reading its page; one hidden ends its stretch and reports.
@@ -682,6 +698,66 @@ function LoadedReader({
     return () => root.removeEventListener("keydown", pressed);
   }, [state, viewerRoot]);
 
+  // A stylus always highlights, whatever tool is in hand. Web browsers supply pen PointerEvents;
+  // the desktop's GTK GestureStylus bridge supplies the same events when WebKitGTK misreports
+  // the stylus as a mouse. The viewer host catches the pen press before EmbedPDF's page handlers
+  // and arms the existing highlight tool; release restores the previously active tool after the
+  // page has handled the stroke. Mouse and touch events never change the active tool.
+  useEffect(() => {
+    const host = viewerRef.current?.container;
+    if (host === null || host === undefined) {
+      throw new Error("the reader's viewer has no container");
+    }
+    // True between a pen's press and its release, and the tool it found then.
+    let penDown = false;
+    let restoring: string | null = null;
+    // A press drew on a page, not on the toolbar or a sidebar, only when its path holds a page box.
+    const onPage = (event: PointerEvent) =>
+      event.composedPath().some((node) => node instanceof Element && node.matches(PAGE_BOX));
+    const pressed = (event: PointerEvent) => {
+      if (event.pointerType !== "pen" || penDown || !onPage(event)) {
+        return;
+      }
+      const annotations = state.annotations;
+      if (annotations === null) {
+        throw new Error("a pen pressed a page before the viewer was ready");
+      }
+      penDown = true;
+      restoring = annotations.getActiveTool()?.id ?? null;
+      annotations.setActiveTool(HIGHLIGHT_TOOL);
+    };
+    const restore = () => {
+      if (!penDown) {
+        return;
+      }
+      penDown = false;
+      const annotations = state.annotations;
+      const previous = restoring;
+      restoring = null;
+      // The stroke leaves the highlighter in hand. A pen press on a toolbar button left that
+      // button's tool in hand instead, and the release must not undo the button.
+      if (annotations !== null && annotations.getActiveTool()?.id === HIGHLIGHT_TOOL) {
+        annotations.setActiveTool(previous);
+      }
+    };
+    const released = (event: PointerEvent) => {
+      if (event.pointerType === "pen") {
+        restore();
+      }
+    };
+    host.addEventListener("pointerdown", pressed, { capture: true });
+    // A stroke can finish outside the page or even outside the reader's host.
+    window.addEventListener("pointerup", released);
+    window.addEventListener("pointercancel", released);
+    window.addEventListener("blur", restore);
+    return () => {
+      host.removeEventListener("pointerdown", pressed, { capture: true });
+      window.removeEventListener("pointerup", released);
+      window.removeEventListener("pointercancel", released);
+      window.removeEventListener("blur", restore);
+    };
+  }, [state]);
+
   useEffect(() => {
     const root = viewerRoot();
     const sheet = document.createElement("style");
@@ -729,9 +805,14 @@ function LoadedReader({
       fontFallback: fallbackFonts(new URL("/", window.location.href)),
       icons: READER_ICONS,
       tabBar: "never",
-      theme: { preference: ThemeSchema.parse(document.documentElement.dataset.theme) },
+      theme: {
+        preference: ThemeSchema.parse(document.documentElement.dataset.theme),
+      },
       fonts: {
-        ui: { family: "Inter, 'Segoe UI', system-ui, sans-serif", stylesheetUrl: null },
+        ui: {
+          family: "Inter, 'Segoe UI', system-ui, sans-serif",
+          stylesheetUrl: null,
+        },
         signature: null,
       },
       disabledCategories: VIEWER_DISABLED,
