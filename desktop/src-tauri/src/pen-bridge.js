@@ -7,6 +7,11 @@
   if (location.origin !== bucketOrigin) {
     return;
   }
+  window.addEventListener("bucket-stylus-view-mode", (event) => {
+    window.__TAURI__.event
+      .emit("bucket-stylus-view-mode", event.detail)
+      .catch((error) => console.error("GTK stylus cursor mode:", error));
+  });
   const hit = (x, y) => {
     let target = document.elementFromPoint(x, y);
     while (target?.shadowRoot) {
@@ -26,6 +31,16 @@
       }
       const target = hit(x, y);
       const contact = kind === "pointerdown" || (kind === "pointermove" && pressed);
+      // GTK identifies the physical eraser. In View it deletes highlights; in editing modes
+      // the inverted end is an ordinary pen stroke for whichever EmbedPDF tool is selected.
+      const root = target.getRootNode();
+      const viewer = root instanceof ShadowRoot ? root.host : target.closest("embedpdf-container");
+      // In editing modes, native GTK events must pass into WebKit, not become synthetic
+      // events (EmbedPDF's native pointer-capture tools require a registered browser pointer).
+      if (viewer?.dataset.bucketStylusMode === "edit") {
+        return;
+      }
+      const eraseHighlights = eraser && viewer?.dataset.bucketStylusMode === "view";
       // Pointer Events specifies button 5 / buttons 32 for a pen eraser. Forward the
       // native GdkDeviceToolType rather than inventing a second input protocol.
       const pointer = new PointerEvent(type, {
@@ -35,8 +50,8 @@
         bubbles: true,
         composed: true,
         cancelable: true,
-        button: kind === "pointerdown" || kind === "pointerup" ? (eraser ? 5 : 0) : -1,
-        buttons: contact ? (eraser ? 32 : 1) : 0,
+        button: kind === "pointerdown" || kind === "pointerup" ? (eraseHighlights ? 5 : 0) : -1,
+        buttons: contact ? (eraseHighlights ? 32 : 1) : 0,
         clientX: x,
         clientY: y,
       });

@@ -25,6 +25,7 @@ import {
   type Command,
   CommandsPlugin,
   type CustomIconConfig,
+  DocumentManagerPlugin,
   ExportPlugin,
   InteractionManagerPlugin,
   PDFViewer,
@@ -105,6 +106,7 @@ function plugin<
     | AnnotationPlugin
     | CommandsPlugin
     | UIPlugin
+    | DocumentManagerPlugin
     | InteractionManagerPlugin
     | SearchPlugin
     | ZoomPlugin,
@@ -382,6 +384,8 @@ function LoadedReader({
     walking: false,
     exporter: null as ReturnType<ExportPlugin["provides"]> | null,
     annotations: null as ReturnType<AnnotationPlugin["provides"]> | null,
+    ui: null as ReturnType<UIPlugin["provides"]> | null,
+    documents: null as ReturnType<DocumentManagerPlugin["provides"]> | null,
     scroll: null as ReturnType<ScrollPlugin["provides"]> | null,
     search: null as ReturnType<SearchPlugin["provides"]> | null,
     commands: null as ReturnType<CommandsPlugin["provides"]> | null,
@@ -528,6 +532,31 @@ function LoadedReader({
       state.commands.registerCommand(command);
     }
     const ui = plugin<UIPlugin>(registry, UIPlugin.id);
+    state.ui = ui;
+    state.documents = plugin<DocumentManagerPlugin>(registry, DocumentManagerPlugin.id);
+    // EmbedPDF's mode:view closes the top/secondary toolbar. mode:annotate opens its
+    // annotation-toolbar; the other editing modes open their own secondary toolbars.
+    // Track precisely this existing UI state, including transitions through its compact menu.
+    const updateStylusMode = (documentId: string) => {
+      const view = ui.forDocument(documentId).getActiveToolbar("top", "secondary") === null;
+      const host = viewerRef.current?.container;
+      if (host !== null && host !== undefined) {
+        host.dataset.bucketStylusMode = view ? "view" : "edit";
+        host.dispatchEvent(new Event("bucket-stylus-mode-changed"));
+        if (shownRef.current) {
+          window.dispatchEvent(new CustomEvent("bucket-stylus-view-mode", { detail: view }));
+        }
+      }
+    };
+    ui.onToolbarChanged(({ documentId, placement, slot }) => {
+      if (placement === "top" && slot === "secondary") {
+        updateStylusMode(documentId);
+      }
+    });
+    const activeDocument = state.documents.getActiveDocumentId();
+    if (activeDocument !== null) {
+      updateStylusMode(activeDocument);
+    }
     const toolbar = ui.getSchema().toolbars["main-toolbar"];
     if (toolbar === undefined) {
       throw new Error("EmbedPDF has no main-toolbar");
@@ -551,6 +580,10 @@ function LoadedReader({
     scroll.onLayoutReady(({ isInitial, totalPages }) => {
       if (!isInitial) {
         return;
+      }
+      const activeDocument = state.documents?.getActiveDocumentId();
+      if (activeDocument !== null && activeDocument !== undefined) {
+        updateStylusMode(activeDocument);
       }
       const reading = loaded.item.reading;
       const page = openAtPage ?? (reading.status === "viewed" ? reading.page : 1);
@@ -699,10 +732,20 @@ function LoadedReader({
     return () => root.removeEventListener("keydown", pressed);
   }, [state, viewerRoot]);
 
-  // The pen tip always highlights; the pen's eraser removes just the highlight annotations it
-  // crosses. GTK GestureStylus supplies normal pen PointerEvents to this reader when WebKitGTK
-  // cannot distinguish pen input. Pointer Events uses button 5 / buttons 32 for the eraser.
-  // Every edit goes through EmbedPDF's annotation plugin and hence its PDF save/undo lifecycle.
+  // Only in EmbedPDF's View mode does the pen automatically highlight and its eraser delete
+  // crossed highlights. In Annotate and all other editing modes the selected upstream tool
+  // handles both ends of the stylus without any override.
+  useEffect(() => {
+    if (!shown || state.ui === null || state.documents === null) {
+      return;
+    }
+    const documentId = state.documents.getActiveDocumentId();
+    if (documentId !== null) {
+      const view = state.ui.forDocument(documentId).getActiveToolbar("top", "secondary") === null;
+      window.dispatchEvent(new CustomEvent("bucket-stylus-view-mode", { detail: view }));
+    }
+  }, [shown, state]);
+
   useEffect(() => {
     const host = viewerRef.current?.container;
     if (host === null || host === undefined) {
@@ -713,6 +756,14 @@ function LoadedReader({
     let restoring: string | null = null;
     let erasing: number | null = null;
     let eraserLast: { x: number; y: number } | null = null;
+    const inView = () => {
+      const documentId = state.documents?.getActiveDocumentId();
+      return (
+        documentId !== null &&
+        documentId !== undefined &&
+        state.ui?.forDocument(documentId).getActiveToolbar("top", "secondary") === null
+      );
+    };
 
     // Liang–Barsky segment/rectangle clipping, with the eraser nib's 3 CSS-pixel radius.
     // Intersect the complete distance between pointer samples, not just the endpoints: fast
@@ -732,13 +783,17 @@ function LoadedReader({
         [from.y, to.y - from.y, top - 3, bottom + 3],
       ]) {
         if (delta === 0) {
-          if (start < lo || start > hi) {return false;}
+          if (start < lo || start > hi) {
+            return false;
+          }
         } else {
           const a = (lo - start) / delta;
           const b = (hi - start) / delta;
           enter = Math.max(enter, Math.min(a, b));
           leave = Math.min(leave, Math.max(a, b));
-          if (enter > leave) {return false;}
+          if (enter > leave) {
+            return false;
+          }
         }
       }
       return true;
@@ -756,13 +811,17 @@ function LoadedReader({
       // page dimensions and the scroll strategy agree with the annotations it paints.
       const boxes = [...root.querySelectorAll<HTMLElement>(PAGE_BOX)];
       const indexes = scroll.getMetrics().renderedPageIndexes;
-      if (boxes.length !== indexes.length) {return;} // the viewer is between page layouts
+      if (boxes.length !== indexes.length) {
+        return;
+      } // the viewer is between page layouts
       const pages = scroll.getLayout().virtualItems.flatMap((item) => item.pageLayouts);
       const deleted: { pageIndex: number; id: string }[] = [];
       for (const [i, box] of boxes.entries()) {
         const pageIndex = indexes[i];
         const page = pages.find((candidate) => candidate.pageIndex === pageIndex);
-        if (page === undefined) {continue;}
+        if (page === undefined) {
+          continue;
+        }
         const entire = scroll.getRectPositionForPage(pageIndex, {
           origin: { x: 0, y: 0 },
           size: { width: page.width, height: page.height },
@@ -774,8 +833,9 @@ function LoadedReader({
           entire.size.height === 0 ||
           visible.width === 0 ||
           visible.height === 0
-        )
-          {continue;}
+        ) {
+          continue;
+        }
         for (const tracked of annotations.getAnnotations({ pageIndex })) {
           const highlight = tracked.object;
           if (
@@ -787,7 +847,9 @@ function LoadedReader({
           if (
             highlight.segmentRects.some((segment) => {
               const rect = scroll.getRectPositionForPage(pageIndex, segment);
-              if (rect === null) {return false;}
+              if (rect === null) {
+                return false;
+              }
               const left =
                 visible.left +
                 ((rect.origin.x - entire.origin.x) / entire.size.width) * visible.width;
@@ -803,7 +865,9 @@ function LoadedReader({
           }
         }
       }
-      if (deleted.length > 0) {annotations.deleteAnnotations(deleted);}
+      if (deleted.length > 0) {
+        annotations.deleteAnnotations(deleted);
+      }
     };
 
     const suppress = (event: PointerEvent) => {
@@ -811,14 +875,18 @@ function LoadedReader({
       event.stopPropagation();
     };
     const eraserMoved = (event: PointerEvent) => {
-      if (event.pointerType !== "pen" || event.pointerId !== erasing || eraserLast === null) {return;}
+      if (event.pointerType !== "pen" || event.pointerId !== erasing || eraserLast === null) {
+        return;
+      }
       const point = { x: event.clientX, y: event.clientY };
       eraseBetween(eraserLast, point);
       eraserLast = point;
       suppress(event);
     };
     const eraserEnded = (event: PointerEvent) => {
-      if (event.pointerType !== "pen" || event.pointerId !== erasing) {return;}
+      if (event.pointerType !== "pen" || event.pointerId !== erasing) {
+        return;
+      }
       if (event.type === "pointerup" && eraserLast !== null) {
         eraseBetween(eraserLast, { x: event.clientX, y: event.clientY });
       }
@@ -830,7 +898,13 @@ function LoadedReader({
     const onPage = (event: PointerEvent) =>
       event.composedPath().some((node) => node instanceof Element && node.matches(PAGE_BOX));
     const pressed = (event: PointerEvent) => {
-      if (event.pointerType !== "pen" || penDown || erasing !== null || !onPage(event)) {
+      if (
+        event.pointerType !== "pen" ||
+        !inView() ||
+        penDown ||
+        erasing !== null ||
+        !onPage(event)
+      ) {
         return;
       }
       const annotations = state.annotations;
@@ -873,6 +947,7 @@ function LoadedReader({
       }
     };
     host.addEventListener("pointerdown", pressed, { capture: true });
+    host.addEventListener("bucket-stylus-mode-changed", lostFocus);
     window.addEventListener("pointermove", eraserMoved, { capture: true });
     window.addEventListener("pointerup", eraserEnded, { capture: true });
     window.addEventListener("pointercancel", eraserEnded, { capture: true });
@@ -882,6 +957,7 @@ function LoadedReader({
     window.addEventListener("blur", lostFocus);
     return () => {
       host.removeEventListener("pointerdown", pressed, { capture: true });
+      host.removeEventListener("bucket-stylus-mode-changed", lostFocus);
       window.removeEventListener("pointermove", eraserMoved, { capture: true });
       window.removeEventListener("pointerup", eraserEnded, { capture: true });
       window.removeEventListener("pointercancel", eraserEnded, { capture: true });

@@ -578,15 +578,15 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
 
 
 def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> None:
-    """A stylus is read differentially: a pen press on a page takes up the text highlighter for the
-    stroke, whatever tool was in hand, and the pen's release puts that tool back. A mouse is not a
-    pen and changes no tool. The window receives a stylus's input as pointer events whose
-    pointerType is `pen`; this test delivers those events to a page, as the window would."""
+    """View temporarily forces pen highlighting. Annotate leaves the selected annotation tool
+    unchanged and delegates the pen stroke to EmbedPDF. Switching back to View restores the
+    always-highlight behavior without changing the selected editing tool."""
     notes = capture("outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
     while reader.page_number() < 2:
         reader.next_page()
+    reader.wait("V.dataset.bucketStylusMode === 'view'")
 
     # A pen press, and the pen's release: the highlighter is in hand only while the pen is down,
     # and the tool the pen found, the default one (none), is back afterwards.
@@ -610,9 +610,10 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     reader.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{reader.key}/pdf')})).length > {saved}")
     reader.wait("P('annotation').getActiveTool() === null")
 
-    # With the highlighter in hand from the Annotate toolbar, a pen press leaves it in hand on
-    # release: the tool put back is the one the pen found.
+    # Annotate is the actual secondary toolbar, not merely the presence of an active tool.
     reader.click("[data-epdf-i='annotate-mode'] button")
+    reader.wait("V.dataset.bucketStylusMode === 'edit'")
+    reader.wait("P('ui').forDocument(P('document-manager').getActiveDocumentId()).getActiveToolbar('top', 'secondary') === 'annotation-toolbar'")
     reader.click("[data-epdf-i='add-highlight'] button")
     reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
     point = reader.pen_press(2, NOTES_LINE)
@@ -621,16 +622,33 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     ActionChains(app).send_keys(Keys.ESCAPE).perform()
     reader.wait("P('annotation').getActiveTool() === null")
 
-    # Even with the ink tool selected, a pen stroke must make *text markup*, never ink, and
-    # restore the ink tool afterwards. This exercises a non-default competing annotation tool.
+    # In Annotate, GTK passes the stylus's native stream through WebKit. Its trusted pointer
+    # events support EmbedPDF's ink pointer capture; the synthetic View-mode events do not.
     reader.run("P('annotation').setActiveTool('ink')")
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
-    before_ink = reader.highlights()
-    reader.pen_drag_across(2, BELOW_NOTES_LINE)
-    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length > {before_ink}")
+    before_ink = reader.number("P('annotation').getAnnotations().filter((a) => a.object.type === 15).length")
+    before_highlights = reader.highlights()
+    reader.drag_across(2, BELOW_NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === 15).length > {before_ink}")
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
-    assert reader.run("return P('annotation').getAnnotations().filter((a) => a.object.type === 15).length") == 0
-    ActionChains(app).send_keys(Keys.ESCAPE).perform()
+    assert reader.highlights() == before_highlights
+
+    # No synthetic stylus events are delivered when Annotate owns the page.
+    x, y, w, h = reader.page_box(2)
+    point = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
+    reader.shell_pen_event("pointerdown", *point)
+    reader.shell_pen_event("pointerup", *point)
+    assert reader.number("P('annotation').getAnnotations().filter((a) => a.object.type === 15).length") == before_ink + 1
+    assert reader.highlights() == before_highlights
+
+    # View closes the secondary toolbar and returns to the default interaction mode.
+    reader.click("[data-epdf-i='view-mode'] button")
+    reader.wait("V.dataset.bucketStylusMode === 'view'")
+    reader.wait("P('ui').forDocument(P('document-manager').getActiveDocumentId()).getActiveToolbar('top', 'secondary') === null")
+    reader.next_page()
+    reader.pen_drag_across(3, NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length > {before_highlights}")
+    assert reader.number("P('annotation').getAnnotations().filter((a) => a.object.type === 15).length") == before_ink + 1
     reader.wait("P('annotation').getActiveTool() === null")
 
     assert reader.highlights() == before + 2
@@ -767,3 +785,25 @@ def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, d
     reader.shell_pen_drag_across(2, NOTES_LINE)
     reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 2")
     assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
+
+    # In Annotate, the physical eraser passes through WebKit as the same trusted pointer
+    # stream as a normal pen: the selected ink tool owns it. The bridge no longer injects
+    # synthetic events there (pointer capture requires a native pointer).
+    reader.click("[data-epdf-i='annotate-mode'] button")
+    reader.wait("V.dataset.bucketStylusMode === 'edit'")
+    reader.run("P('annotation').setActiveTool('ink')")
+    reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
+    before_ink = reader.number("P('annotation').getAnnotations().filter((a) => a.object.type === 15).length")
+    before_highlights = reader.highlights()
+    reader.drag_across(2, (0.15, 0.55))
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === 15).length > {before_ink}")
+    assert reader.highlights() == before_highlights
+    reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
+
+    # Even a late View-mode bridge event must not draw or erase when Annotate is visible.
+    x, y, w, h = reader.page_box(2)
+    start = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
+    reader.shell_pen_event("pointerdown", *start, tool="eraser")
+    reader.shell_pen_event("pointermove", start[0] + w * 0.15, start[1], tool="eraser")
+    reader.shell_pen_event("pointerup", start[0] + w * 0.15, start[1], tool="eraser")
+    assert reader.highlights() == before_highlights
