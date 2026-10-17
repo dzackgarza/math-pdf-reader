@@ -19,27 +19,28 @@
   let pressed = null;
   window.__TAURI__.event
     .listen("stylus-pointer", ({ payload }) => {
-      const { kind, x, y } = payload;
+      const { kind, x, y, eraser = false } = payload;
       const type = kind === "pointerhover" ? "pointermove" : kind;
       if (!["pointerdown", "pointermove", "pointerup", "pointercancel"].includes(type)) {
         throw new Error(`Unexpected GTK stylus event: ${kind}`);
       }
       const target = hit(x, y);
-      const buttons = kind === "pointerdown" || (kind === "pointermove" && pressed) ? 1 : 0;
-      target.dispatchEvent(
-        new PointerEvent(type, {
-          pointerId: 5,
-          pointerType: "pen",
-          isPrimary: true,
-          bubbles: true,
-          composed: true,
-          cancelable: true,
-          button: 0,
-          buttons,
-          clientX: x,
-          clientY: y,
-        }),
-      );
+      const contact = kind === "pointerdown" || (kind === "pointermove" && pressed);
+      // Pointer Events specifies button 5 / buttons 32 for a pen eraser. Forward the
+      // native GdkDeviceToolType rather than inventing a second input protocol.
+      const pointer = new PointerEvent(type, {
+        pointerId: 5,
+        pointerType: "pen",
+        isPrimary: true,
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        button: kind === "pointerdown" || kind === "pointerup" ? (eraser ? 5 : 0) : -1,
+        buttons: contact ? (eraser ? 32 : 1) : 0,
+        clientX: x,
+        clientY: y,
+      });
+      target.dispatchEvent(pointer);
 
       // Dispatching an untrusted PointerEvent does not generate the browser's usual click.
       // Activate the closest native control for a tap; outside controls, activate the HTML
@@ -49,7 +50,7 @@
           target instanceof Element
             ? target.closest("button, a[href], input, label, summary, [role=button], [role=tab]")
             : null;
-        pressed = { control, target, x, y, moved: false };
+        pressed = { control, target, x, y, moved: false, handled: pointer.defaultPrevented };
       } else if (kind === "pointermove" && pressed) {
         if (Math.hypot(x - pressed.x, y - pressed.y) > 6) pressed.moved = true;
       } else if (kind === "pointerup" || kind === "pointercancel") {
@@ -57,6 +58,7 @@
           kind === "pointerup" &&
           pressed &&
           !pressed.moved &&
+          !pressed.handled &&
           (pressed.control?.contains(target) ||
             (pressed.target instanceof Element && pressed.target.contains(target)))
         ) {

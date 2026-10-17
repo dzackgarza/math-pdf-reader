@@ -20,6 +20,7 @@ import time
 from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Literal
 
 import pikepdf
 import pymupdf
@@ -323,20 +324,21 @@ class Reader:
         """Lift the stylus at POINT, pressed by `pen_press`."""
         self.pen_event("pointerup", *point)
 
-    def shell_pen_event(self, kind: str, x: float, y: float) -> None:
+    def shell_pen_event(self, kind: str, x: float, y: float, *, tool: Literal["pen", "eraser"] = "pen") -> None:
         """Send the native bridge's GTK GestureStylus payload through the actual Tauri event
         bus. This tests the injected pen-bridge script, its shadow-DOM hit testing, and the
-        reader, rather than spoofing either its pointerType or a proximity flag in the reader."""
+        reader, rather than spoofing its pointerType. GDK distinguishes the eraser device tool."""
         result = self.driver.execute_async_script(
             """
-            const [kind, x, y, done] = arguments;
-            window.__TAURI__.event.emit('stylus-pointer', {kind, x, y}).then(
+            const [kind, x, y, eraser, done] = arguments;
+            window.__TAURI__.event.emit('stylus-pointer', {kind, x, y, eraser}).then(
                 () => done(null), (error) => done(String(error))
             );
             """,
             kind,
             x,
             y,
+            tool == "eraser",
         )
         assert result is None, result
 
@@ -698,3 +700,70 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(app: webdriver.WebKitG
     reader.shell_pen_event("pointerdown", *center)
     reader.shell_pen_event("pointerup", *center)
     WebDriverWait(app, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, f"tr[data-item-id='{other}'].bg-accent-soft"))
+
+
+def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, data_home: Path) -> None:
+    """Native eraser reports button 5/buttons 32. A fast stroke deletes a crossed highlight,
+    preserving a nearby highlight, the pen's tool, and the stored PDF's remaining highlights."""
+    notes = capture("outlined-notes.pdf")
+    watch(app)
+    reader = open_from_library(app, notes)
+    while reader.page_number() < 2:
+        reader.next_page()
+
+    reader.shell_pen_drag_across(2, NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 1")
+    reader.shell_pen_drag_across(2, BELOW_NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 2")
+    reader.wait("P('annotation').getActiveTool() === null")
+    reader.wait(f"window.__saves.some(([url]) => url.endsWith({json.dumps(f'/api/items/{reader.key}/pdf')}))")
+    time.sleep(SETTLE)
+    with stored_pdf(data_home, notes) as pdf:
+        assert highlights_in(pdf) == 2
+    before = len(reader.saves())
+
+    # Neither a changed zoom nor another active annotation tool can turn the eraser into
+    # ink or make its hit test use stale page coordinates.
+    reader.run("P('zoom').requestZoom(1.25)")
+    reader.wait("Math.abs(P('zoom').getState().currentZoomLevel - 1.25) < 0.01")
+    reader.run("P('annotation').setActiveTool('ink')")
+    reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
+    x, y, w, h = reader.page_box(2)
+    # A stroke well outside either highlighted paragraph must leave both untouched.
+    blank = (x + w * 0.05, y + h * 0.05)
+    reader.shell_pen_event("pointerhover", *blank, tool="eraser")
+    reader.shell_pen_event("pointerdown", *blank, tool="eraser")
+    reader.shell_pen_event("pointermove", x + w * 0.8, blank[1], tool="eraser")
+    reader.shell_pen_event("pointerup", x + w * 0.8, blank[1], tool="eraser")
+    assert reader.highlights() == 2
+
+    # Use the highlight's own text segment geometry. Only the end points of this fast stroke
+    # are *outside* the highlight; the segment between them must still erase it.
+    rects = reader.items(f"""(() => {{
+        const a = P('annotation').getAnnotations().filter((t) => t.object.type === {HIGHLIGHT})
+            .map((t) => t.object.segmentRects[0]);
+        return a.map((r) => [r.origin.x, r.origin.y, r.size.width, r.size.height])
+            .sort((a, b) => a[1] - b[1]);
+    }})()""")
+    first = rects[0]
+    assert isinstance(first, list)
+    rx, ry, rw, rh = first
+    start = (x + w * (rx / 612 - 0.06), y + h * ((ry + rh / 2) / 792))
+    end = (x + w * ((rx + rw) / 612 + 0.06), start[1])
+    reader.shell_pen_event("pointerdown", *start, tool="eraser")
+    reader.shell_pen_event("pointermove", *end, tool="eraser")
+    reader.shell_pen_event("pointerup", *end, tool="eraser")
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 1")
+    assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
+    assert reader.run("return P('annotation').getAnnotations().filter((a) => a.object.type === 15).length") == 0
+    reader.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{reader.key}/pdf')})).length > {before}")
+    time.sleep(SETTLE)
+    assert reader.highlights() == 1
+    assert app.execute_script("return window.__errors") == []
+    with stored_pdf(data_home, notes) as pdf:
+        assert highlights_in(pdf) == 1
+
+    # Turning the stylus back over draws a fresh highlight, not an eraser stroke.
+    reader.shell_pen_drag_across(2, NOTES_LINE)
+    reader.wait(f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 2")
+    assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"

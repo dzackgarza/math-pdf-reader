@@ -18,6 +18,7 @@
 // to B keeps the positions up to the current one, then A, then B; a step back or forward is not
 // itself a jump.
 
+import { PdfAnnotationSubtype } from "@embedpdf/models";
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
 import {
   AnnotationPlugin,
@@ -698,11 +699,10 @@ function LoadedReader({
     return () => root.removeEventListener("keydown", pressed);
   }, [state, viewerRoot]);
 
-  // A stylus always highlights, whatever tool is in hand. Web browsers supply pen PointerEvents;
-  // the desktop's GTK GestureStylus bridge supplies the same events when WebKitGTK misreports
-  // the stylus as a mouse. The viewer host catches the pen press before EmbedPDF's page handlers
-  // and arms the existing highlight tool; release restores the previously active tool after the
-  // page has handled the stroke. Mouse and touch events never change the active tool.
+  // The pen tip always highlights; the pen's eraser removes just the highlight annotations it
+  // crosses. GTK GestureStylus supplies normal pen PointerEvents to this reader when WebKitGTK
+  // cannot distinguish pen input. Pointer Events uses button 5 / buttons 32 for the eraser.
+  // Every edit goes through EmbedPDF's annotation plugin and hence its PDF save/undo lifecycle.
   useEffect(() => {
     const host = viewerRef.current?.container;
     if (host === null || host === undefined) {
@@ -711,16 +711,138 @@ function LoadedReader({
     // True between a pen's press and its release, and the tool it found then.
     let penDown = false;
     let restoring: string | null = null;
+    let erasing: number | null = null;
+    let eraserLast: { x: number; y: number } | null = null;
+
+    // Liang–Barsky segment/rectangle clipping, with the eraser nib's 3 CSS-pixel radius.
+    // Intersect the complete distance between pointer samples, not just the endpoints: fast
+    // stylus movement must still erase a highlight crossed between successive GTK events.
+    const crosses = (
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+      left: number,
+      top: number,
+      right: number,
+      bottom: number,
+    ) => {
+      let enter = 0;
+      let leave = 1;
+      for (const [start, delta, lo, hi] of [
+        [from.x, to.x - from.x, left - 3, right + 3],
+        [from.y, to.y - from.y, top - 3, bottom + 3],
+      ]) {
+        if (delta === 0) {
+          if (start < lo || start > hi) {return false;}
+        } else {
+          const a = (lo - start) / delta;
+          const b = (hi - start) / delta;
+          enter = Math.max(enter, Math.min(a, b));
+          leave = Math.min(leave, Math.max(a, b));
+          if (enter > leave) {return false;}
+        }
+      }
+      return true;
+    };
+
+    const eraseBetween = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const annotations = state.annotations;
+      const scroll = state.scroll;
+      const root = host.shadowRoot;
+      if (annotations === null || scroll === null || root === null) {
+        throw new Error("eraser reached a reader without its annotation and page geometry");
+      }
+      // The reader's rendered page boxes are in the same order as the scroll plugin's
+      // renderedPageIndexes. Use EmbedPDF's own page-rect transforms so rotation, zoom,
+      // page dimensions and the scroll strategy agree with the annotations it paints.
+      const boxes = [...root.querySelectorAll<HTMLElement>(PAGE_BOX)];
+      const indexes = scroll.getMetrics().renderedPageIndexes;
+      if (boxes.length !== indexes.length) {return;} // the viewer is between page layouts
+      const pages = scroll.getLayout().virtualItems.flatMap((item) => item.pageLayouts);
+      const deleted: { pageIndex: number; id: string }[] = [];
+      for (const [i, box] of boxes.entries()) {
+        const pageIndex = indexes[i];
+        const page = pages.find((candidate) => candidate.pageIndex === pageIndex);
+        if (page === undefined) {continue;}
+        const entire = scroll.getRectPositionForPage(pageIndex, {
+          origin: { x: 0, y: 0 },
+          size: { width: page.width, height: page.height },
+        });
+        const visible = box.getBoundingClientRect();
+        if (
+          entire === null ||
+          entire.size.width === 0 ||
+          entire.size.height === 0 ||
+          visible.width === 0 ||
+          visible.height === 0
+        )
+          {continue;}
+        for (const tracked of annotations.getAnnotations({ pageIndex })) {
+          const highlight = tracked.object;
+          if (
+            tracked.commitState === "deleted" ||
+            highlight.type !== PdfAnnotationSubtype.HIGHLIGHT
+          ) {
+            continue;
+          }
+          if (
+            highlight.segmentRects.some((segment) => {
+              const rect = scroll.getRectPositionForPage(pageIndex, segment);
+              if (rect === null) {return false;}
+              const left =
+                visible.left +
+                ((rect.origin.x - entire.origin.x) / entire.size.width) * visible.width;
+              const top =
+                visible.top +
+                ((rect.origin.y - entire.origin.y) / entire.size.height) * visible.height;
+              const right = left + (rect.size.width / entire.size.width) * visible.width;
+              const bottom = top + (rect.size.height / entire.size.height) * visible.height;
+              return crosses(from, to, left, top, right, bottom);
+            })
+          ) {
+            deleted.push({ pageIndex, id: highlight.id });
+          }
+        }
+      }
+      if (deleted.length > 0) {annotations.deleteAnnotations(deleted);}
+    };
+
+    const suppress = (event: PointerEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const eraserMoved = (event: PointerEvent) => {
+      if (event.pointerType !== "pen" || event.pointerId !== erasing || eraserLast === null) {return;}
+      const point = { x: event.clientX, y: event.clientY };
+      eraseBetween(eraserLast, point);
+      eraserLast = point;
+      suppress(event);
+    };
+    const eraserEnded = (event: PointerEvent) => {
+      if (event.pointerType !== "pen" || event.pointerId !== erasing) {return;}
+      if (event.type === "pointerup" && eraserLast !== null) {
+        eraseBetween(eraserLast, { x: event.clientX, y: event.clientY });
+      }
+      erasing = null;
+      eraserLast = null;
+      suppress(event);
+    };
     // A press drew on a page, not on the toolbar or a sidebar, only when its path holds a page box.
     const onPage = (event: PointerEvent) =>
       event.composedPath().some((node) => node instanceof Element && node.matches(PAGE_BOX));
     const pressed = (event: PointerEvent) => {
-      if (event.pointerType !== "pen" || penDown || !onPage(event)) {
+      if (event.pointerType !== "pen" || penDown || erasing !== null || !onPage(event)) {
         return;
       }
       const annotations = state.annotations;
       if (annotations === null) {
         throw new Error("a pen pressed a page before the viewer was ready");
+      }
+      if (event.button === 5 || (event.buttons & 32) !== 0) {
+        erasing = event.pointerId;
+        eraserLast = { x: event.clientX, y: event.clientY };
+        eraseBetween(eraserLast, eraserLast);
+        suppress(event); // do not select text, draw, or activate annotations with the eraser
+        return;
       }
       penDown = true;
       restoring = annotations.getActiveTool()?.id ?? null;
@@ -740,21 +862,32 @@ function LoadedReader({
         annotations.setActiveTool(previous);
       }
     };
+    const lostFocus = () => {
+      erasing = null;
+      eraserLast = null;
+      restore();
+    };
     const released = (event: PointerEvent) => {
       if (event.pointerType === "pen") {
         restore();
       }
     };
     host.addEventListener("pointerdown", pressed, { capture: true });
+    window.addEventListener("pointermove", eraserMoved, { capture: true });
+    window.addEventListener("pointerup", eraserEnded, { capture: true });
+    window.addEventListener("pointercancel", eraserEnded, { capture: true });
     // A stroke can finish outside the page or even outside the reader's host.
     window.addEventListener("pointerup", released);
     window.addEventListener("pointercancel", released);
-    window.addEventListener("blur", restore);
+    window.addEventListener("blur", lostFocus);
     return () => {
       host.removeEventListener("pointerdown", pressed, { capture: true });
+      window.removeEventListener("pointermove", eraserMoved, { capture: true });
+      window.removeEventListener("pointerup", eraserEnded, { capture: true });
+      window.removeEventListener("pointercancel", eraserEnded, { capture: true });
       window.removeEventListener("pointerup", released);
       window.removeEventListener("pointercancel", released);
-      window.removeEventListener("blur", restore);
+      window.removeEventListener("blur", lostFocus);
     };
   }, [state]);
 

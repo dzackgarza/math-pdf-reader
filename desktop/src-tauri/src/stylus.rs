@@ -22,12 +22,12 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
         // Recognize the pen before WebKit handles the original event as a mouse event.
         stylus.set_propagation_phase(gtk::PropagationPhase::Capture);
 
-        let last = Rc::new(Cell::new((0.0, 0.0)));
-        let forward = Rc::new(move |kind: &str, x: f64, y: f64| {
+        let last = Rc::new(Cell::new((0.0, 0.0, false)));
+        let forward = Rc::new(move |kind: &str, x: f64, y: f64, eraser: bool| {
             if let Err(error) = app.emit_to(
                 "main",
                 "stylus-pointer",
-                serde_json::json!({ "kind": kind, "x": x, "y": y }),
+                serde_json::json!({ "kind": kind, "x": x, "y": y, "eraser": eraser }),
             ) {
                 eprintln!("stylus: {kind} could not reach the reader: {error}");
             }
@@ -35,29 +35,43 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
 
         let emit = forward.clone();
         let point = last.clone();
-        stylus.connect_down(move |_, x, y| {
-            point.set((x, y));
-            emit("pointerdown", x, y);
+        stylus.connect_down(move |gesture, x, y| {
+            let eraser = gesture
+                .device_tool()
+                .is_some_and(|tool| tool.tool_type() == gdk::DeviceToolType::Eraser);
+            point.set((x, y, eraser));
+            emit("pointerdown", x, y, eraser);
         });
         let emit = forward.clone();
         let point = last.clone();
-        stylus.connect_motion(move |_, x, y| {
-            point.set((x, y));
-            emit("pointermove", x, y);
+        stylus.connect_motion(move |gesture, x, y| {
+            let eraser = gesture
+                .device_tool()
+                .is_some_and(|tool| tool.tool_type() == gdk::DeviceToolType::Eraser);
+            point.set((x, y, eraser));
+            emit("pointermove", x, y, eraser);
         });
         let emit = forward.clone();
-        stylus.connect_proximity(move |_, x, y| emit("pointerhover", x, y));
+        stylus.connect_proximity(move |gesture, x, y| {
+            let eraser = gesture
+                .device_tool()
+                .is_some_and(|tool| tool.tool_type() == gdk::DeviceToolType::Eraser);
+            emit("pointerhover", x, y, eraser);
+        });
         let emit = forward.clone();
         let point = last.clone();
-        stylus.connect_up(move |_, x, y| {
-            point.set((x, y));
-            emit("pointerup", x, y);
+        stylus.connect_up(move |gesture, x, y| {
+            let eraser = gesture
+                .device_tool()
+                .is_some_and(|tool| tool.tool_type() == gdk::DeviceToolType::Eraser);
+            point.set((x, y, eraser));
+            emit("pointerup", x, y, eraser);
         });
         // GTK can cancel a gesture on a grab or focus change. Close the unfinished stroke.
         let emit = forward.clone();
         stylus.connect_cancel(move |_, _| {
-            let (x, y) = last.get();
-            emit("pointercancel", x, y);
+            let (x, y, eraser) = last.get();
+            emit("pointercancel", x, y, eraser);
         });
 
         // GTK's own GestureStylus recognizes events with a GdkDeviceTool. Do not deliver the
