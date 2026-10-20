@@ -22,6 +22,7 @@ import { expandRect, PdfAnnotationSubtype, rectFromPoints } from "@embedpdf/mode
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
 import {
   AnnotationPlugin,
+  LockModeType,
   type Command,
   CommandsPlugin,
   type CustomIconConfig,
@@ -810,7 +811,9 @@ function LoadedReader({
         return;
       }
       const annotations = state.annotations;
-      const selected = annotations?.getSelectedAnnotations() ?? [];
+      const selected = (annotations?.getSelectedAnnotations() ?? []).filter(
+        ({ object }) => object.type !== PdfAnnotationSubtype.LINK,
+      );
       if (selected.length === 0) {
         return;
       }
@@ -1160,6 +1163,10 @@ function LoadedReader({
         signature: null,
       },
       disabledCategories: VIEWER_DISABLED,
+      annotations: {
+        tools: [{ id: "link", categories: ["annotation", "markup", "link"] }],
+        locked: { type: LockModeType.Include, categories: ["form", "link"] },
+      },
       // EmbedPDF's viewer makes the hand tool the default on a touch device ('mobile'), which it
       // detects by `ontouchstart`, and WebKitGTK has it on every machine: a drag selects text.
       pan: { defaultMode: "never" },
