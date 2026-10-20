@@ -18,7 +18,11 @@
 // to B keeps the positions up to the current one, then A, then B; a step back or forward is not
 // itself a jump.
 
-import { expandRect, PdfAnnotationSubtype, rectFromPoints } from "@embedpdf/models";
+import {
+  expandRect,
+  PdfAnnotationSubtype,
+  rectFromPoints,
+} from "@embedpdf/models";
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
 import {
   AnnotationPlugin,
@@ -39,8 +43,22 @@ import {
   type ZoomLevel,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
-import { ArrowLeft, ArrowRight, type IconNode, Library, Link, Moon } from "lucide";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  type IconNode,
+  Library,
+  Link,
+  Moon,
+} from "lucide";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   type BucketItem,
   LIBRARY_VIEW_KEY,
@@ -81,7 +99,8 @@ const VIEWER_DISABLED = ["document", "redaction"];
 // snippet's renderPage), holding a low-resolution image, a layer of sharp tiles and the
 // annotation layers; the box is the one element inverted, since an inverted element inside it
 // would turn back.
-const NIGHT_PAGES = 'div[style*="transform-origin"][style*="background-color: rgb(255, 255, 255)"]';
+const NIGHT_PAGES =
+  'div[style*="transform-origin"][style*="background-color: rgb(255, 255, 255)"]';
 
 // The box EmbedPDF draws a page in, the element a pointer must land on to be drawing (the desktop
 // suite's page boxes name the same element). A press on the toolbar or a sidebar is not one.
@@ -94,7 +113,9 @@ const HIGHLIGHT_TOOL = "highlight";
 function entityTag(response: Response): string {
   const tag = response.headers.get("ETag");
   if (tag === null || !ENTITY_TAG.test(tag)) {
-    throw new Error(`${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`);
+    throw new Error(
+      `${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`,
+    );
   }
   return tag;
 }
@@ -145,7 +166,9 @@ function findCommand(root: () => ShadowRoot): Command {
     shortcuts: ["Ctrl+F", "Meta+F"],
     categories: ["panel", "panel-search"],
     action: ({ registry, documentId }) => {
-      const ui = plugin<UIPlugin>(registry, UIPlugin.id).forDocument(documentId);
+      const ui = plugin<UIPlugin>(registry, UIPlugin.id).forDocument(
+        documentId,
+      );
       if (!ui.isSidebarOpen("right", "main", SEARCH_PANEL)) {
         ui.setActiveSidebar("right", "main", SEARCH_PANEL);
       }
@@ -193,15 +216,23 @@ function commandButton(commandId: string): ToolbarItem {
   return { type: "command-button", id: commandId, commandId, variant: "icon" };
 }
 
-function withReaderButtons(items: ToolbarItem[], inTab: boolean): ToolbarItem[] {
+function withReaderButtons(
+  items: ToolbarItem[],
+  inTab: boolean,
+): ToolbarItem[] {
   const leading = [
     ...(inTab ? [] : [commandButton("bucket:library")]),
     commandButton("bucket:back"),
     commandButton("bucket:forward"),
   ];
-  const trailing = [commandButton("bucket:night-mode"), commandButton("bucket:copy-link")];
-  const groups = new Set(items.flatMap((item) => (item.type === "group" ? [item.id] : [])));
-  for (const id of ["left-group", "right-group"]) {
+  const trailing = [
+    commandButton("bucket:night-mode"),
+    commandButton("bucket:copy-link"),
+  ];
+  const groups = new Set(
+    items.flatMap((item) => (item.type === "group" ? [item.id] : [])),
+  );
+  for (const id of ["left-group", "center-group", "right-group"]) {
     if (!groups.has(id)) {
       throw new Error(`EmbedPDF's main toolbar has no ${id}`);
     }
@@ -215,6 +246,25 @@ function withReaderButtons(items: ToolbarItem[], inTab: boolean): ToolbarItem[] 
     }
     if (item.id === "right-group") {
       return { ...item, items: [...item.items, ...trailing] };
+    }
+    if (item.id === "center-group") {
+      return {
+        ...item,
+        items: [
+          {
+            type: "custom",
+            id: "bucket-page-controls",
+            componentId: "page-controls",
+            categories: ["page"],
+          },
+          {
+            type: "divider",
+            id: "bucket-page-divider",
+            orientation: "vertical",
+          },
+          ...item.items,
+        ],
+      };
     }
     return item;
   });
@@ -302,7 +352,8 @@ export function Reader(props: ReaderProps) {
     setLoaded({ status: "loading" });
     load(itemKey).then(
       (value) => current && setLoaded({ status: "ready", value }),
-      (error: Error) => current && setLoaded({ status: "failed", message: error.message }),
+      (error: Error) =>
+        current && setLoaded({ status: "failed", message: error.message }),
     );
     return () => {
       current = false;
@@ -331,7 +382,9 @@ export function Reader(props: ReaderProps) {
 }
 
 function ReaderShell({ children }: { children: ReactNode }) {
-  return <div className="flex h-full flex-col bg-surface text-ink">{children}</div>;
+  return (
+    <div className="flex h-full flex-col bg-surface text-ink">{children}</div>
+  );
 }
 
 function LoadedReader({
@@ -353,7 +406,9 @@ function LoadedReader({
     }
     return root;
   }, []);
-  const [nightMode, setNightMode] = useState(loaded.preferences.readerNightMode);
+  const [nightMode, setNightMode] = useState(
+    loaded.preferences.readerNightMode,
+  );
   const [status, setStatus] = useState<{
     text: string;
     failed: boolean;
@@ -363,7 +418,8 @@ function LoadedReader({
 
   const shownRef = useRef(shown);
   shownRef.current = shown;
-  const isShown = () => shownRef.current && document.visibilityState === "visible";
+  const isShown = () =>
+    shownRef.current && document.visibilityState === "visible";
 
   // Everything the viewer's callbacks share, which outlives renders.
   const state = useRef({
@@ -394,7 +450,10 @@ function LoadedReader({
   }).current;
   state.conflict = conflict;
 
-  const showFailure = useCallback((text: string) => setStatus({ text, failed: true }), []);
+  const showFailure = useCallback(
+    (text: string) => setStatus({ text, failed: true }),
+    [],
+  );
   const session = useMemo(
     () =>
       new ReadingSession(
@@ -423,7 +482,8 @@ function LoadedReader({
     const response = await put(bytes, state.storedTag);
     if (response.status === 412) {
       state.storedTag = entityTag(response);
-      state.failure = "Not saved: the PDF changed elsewhere after it was opened.";
+      state.failure =
+        "Not saved: the PDF changed elsewhere after it was opened.";
       showFailure(state.failure);
       setConflict(true);
       return;
@@ -514,13 +574,17 @@ function LoadedReader({
       commands.setDisabledCategories(VIEWER_DISABLED);
       return;
     }
-    const categories = [...commands.getAllShortcuts().values()].flatMap((id) => {
-      const found = commands.resolve(id).categories;
-      if (found === undefined || found.length === 0) {
-        throw new Error(`EmbedPDF's shortcut command ${id} has no category to disable`);
-      }
-      return found;
-    });
+    const categories = [...commands.getAllShortcuts().values()].flatMap(
+      (id) => {
+        const found = commands.resolve(id).categories;
+        if (found === undefined || found.length === 0) {
+          throw new Error(
+            `EmbedPDF's shortcut command ${id} has no category to disable`,
+          );
+        }
+        return found;
+      },
+    );
     commands.setDisabledCategories([...VIEWER_DISABLED, ...categories]);
   }, [state]);
 
@@ -533,12 +597,17 @@ function LoadedReader({
     }
     const ui = plugin<UIPlugin>(registry, UIPlugin.id);
     state.ui = ui;
-    state.documents = plugin<DocumentManagerPlugin>(registry, DocumentManagerPlugin.id);
+    state.documents = plugin<DocumentManagerPlugin>(
+      registry,
+      DocumentManagerPlugin.id,
+    );
     // EmbedPDF's mode:view closes the top/secondary toolbar. mode:annotate opens its
     // annotation-toolbar; the other editing modes open their own secondary toolbars.
     // Track precisely this existing UI state, including transitions through its compact menu.
     const updateStylusMode = (documentId: string) => {
-      const activeToolbar = ui.forDocument(documentId).getActiveToolbar("top", "secondary");
+      const activeToolbar = ui
+        .forDocument(documentId)
+        .getActiveToolbar("top", "secondary");
       const view = activeToolbar === null;
       const annotate = activeToolbar === "annotation-toolbar";
       const host = viewerRef.current?.container;
@@ -565,8 +634,12 @@ function LoadedReader({
       updateStylusMode(activeDocument);
     }
     const toolbar = ui.getSchema().toolbars["main-toolbar"];
+    const pageControls = ui.getSchema().overlays?.["page-controls"];
     if (toolbar === undefined) {
       throw new Error("EmbedPDF has no main-toolbar");
+    }
+    if (pageControls === undefined) {
+      throw new Error("EmbedPDF has no page-controls overlay");
     }
     ui.mergeSchema({
       toolbars: {
@@ -575,6 +648,7 @@ function LoadedReader({
           items: withReaderButtons(toolbar.items, inTab),
         },
       },
+      overlays: { "page-controls": { ...pageControls, defaultEnabled: false } },
     });
     scopeShortcuts();
     state.search = plugin<SearchPlugin>(registry, SearchPlugin.id);
@@ -593,7 +667,8 @@ function LoadedReader({
         updateStylusMode(activeDocument);
       }
       const reading = loaded.item.reading;
-      const page = openAtPage ?? (reading.status === "viewed" ? reading.page : 1);
+      const page =
+        openAtPage ?? (reading.status === "viewed" ? reading.page : 1);
       state.recordedPage = page;
       if (openAtZoom !== null) {
         zoom.requestZoom(openAtZoom);
@@ -664,7 +739,9 @@ function LoadedReader({
               throw await requestError(response);
             }
           })
-          .catch((error: Error) => showFailure(`Page not recorded: ${error.message}`));
+          .catch((error: Error) =>
+            showFailure(`Page not recorded: ${error.message}`),
+          );
       }, RECORD_PAUSE_MS);
     });
     annotations.onAnnotationEvent((event) => {
@@ -721,11 +798,16 @@ function LoadedReader({
       if (!(event instanceof KeyboardEvent) || event.key !== "Enter") {
         return;
       }
-      if (!(event.target instanceof HTMLInputElement) || !event.target.matches(SEARCH_FIELD)) {
+      if (
+        !(event.target instanceof HTMLInputElement) ||
+        !event.target.matches(SEARCH_FIELD)
+      ) {
         return;
       }
       if (state.search === null) {
-        throw new Error("Enter reached the search field before the viewer was ready");
+        throw new Error(
+          "Enter reached the search field before the viewer was ready",
+        );
       }
       event.preventDefault();
       if (event.shiftKey) {
@@ -774,8 +856,9 @@ function LoadedReader({
       if (
         documentId === null ||
         documentId === undefined ||
-        state.ui?.forDocument(documentId).getActiveToolbar("top", "secondary") !==
-          "annotation-toolbar"
+        state.ui
+          ?.forDocument(documentId)
+          .getActiveToolbar("top", "secondary") !== "annotation-toolbar"
       ) {
         return;
       }
@@ -787,11 +870,15 @@ function LoadedReader({
       event.preventDefault();
       event.stopPropagation();
       annotations?.deleteAnnotations(
-        selected.map(({ object }) => ({ pageIndex: object.pageIndex, id: object.id })),
+        selected.map(({ object }) => ({
+          pageIndex: object.pageIndex,
+          id: object.id,
+        })),
       );
     };
     document.addEventListener("keydown", pressed, { capture: true });
-    return () => document.removeEventListener("keydown", pressed, { capture: true });
+    return () =>
+      document.removeEventListener("keydown", pressed, { capture: true });
   }, [shown, state]);
 
   // View forces pen highlighting; Annotate keeps pen tools native but its eraser deletes
@@ -802,11 +889,17 @@ function LoadedReader({
     }
     const documentId = state.documents.getActiveDocumentId();
     if (documentId !== null) {
-      const toolbar = state.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
+      const toolbar = state.ui
+        .forDocument(documentId)
+        .getActiveToolbar("top", "secondary");
       window.dispatchEvent(
         new CustomEvent("bucket-stylus-mode", {
           detail:
-            toolbar === null ? "view" : toolbar === "annotation-toolbar" ? "annotate" : "edit",
+            toolbar === null
+              ? "view"
+              : toolbar === "annotation-toolbar"
+                ? "annotate"
+                : "edit",
         }),
       );
     }
@@ -824,7 +917,9 @@ function LoadedReader({
     let eraserLast: { x: number; y: number } | null = null;
     const activeToolbar = () => {
       const documentId = state.documents?.getActiveDocumentId();
-      return documentId === null || documentId === undefined || state.ui === null
+      return documentId === null ||
+        documentId === undefined ||
+        state.ui === null
         ? undefined
         : state.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
     };
@@ -873,7 +968,9 @@ function LoadedReader({
       const scroll = state.scroll;
       const root = host.shadowRoot;
       if (annotations === null || scroll === null || root === null) {
-        throw new Error("eraser reached a reader without its annotation and page geometry");
+        throw new Error(
+          "eraser reached a reader without its annotation and page geometry",
+        );
       }
       // The reader's rendered page boxes are in the same order as the scroll plugin's
       // renderedPageIndexes. Use EmbedPDF's own page-rect transforms so rotation, zoom,
@@ -883,11 +980,15 @@ function LoadedReader({
       if (boxes.length !== indexes.length) {
         return;
       } // the viewer is between page layouts
-      const pages = scroll.getLayout().virtualItems.flatMap((item) => item.pageLayouts);
+      const pages = scroll
+        .getLayout()
+        .virtualItems.flatMap((item) => item.pageLayouts);
       const deleted: { pageIndex: number; id: string }[] = [];
       for (const [i, box] of boxes.entries()) {
         const pageIndex = indexes[i];
-        const page = pages.find((candidate) => candidate.pageIndex === pageIndex);
+        const page = pages.find(
+          (candidate) => candidate.pageIndex === pageIndex,
+        );
         if (page === undefined) {
           continue;
         }
@@ -927,7 +1028,10 @@ function LoadedReader({
               ? annotation.inkList.flatMap(({ points }) =>
                   points.length < 2
                     ? points.map((point) =>
-                        expandRect(rectFromPoints([point]), annotation.strokeWidth / 2),
+                        expandRect(
+                          rectFromPoints([point]),
+                          annotation.strokeWidth / 2,
+                        ),
                       )
                     : points
                         .slice(1)
@@ -938,7 +1042,8 @@ function LoadedReader({
                           ),
                         ),
                 )
-              : "segmentRects" in annotation && Array.isArray(annotation.segmentRects)
+              : "segmentRects" in annotation &&
+                  Array.isArray(annotation.segmentRects)
                 ? annotation.segmentRects
                 : [annotation.rect];
           if (
@@ -949,12 +1054,16 @@ function LoadedReader({
               }
               const left =
                 visible.left +
-                ((rect.origin.x - entire.origin.x) / entire.size.width) * visible.width;
+                ((rect.origin.x - entire.origin.x) / entire.size.width) *
+                  visible.width;
               const top =
                 visible.top +
-                ((rect.origin.y - entire.origin.y) / entire.size.height) * visible.height;
-              const right = left + (rect.size.width / entire.size.width) * visible.width;
-              const bottom = top + (rect.size.height / entire.size.height) * visible.height;
+                ((rect.origin.y - entire.origin.y) / entire.size.height) *
+                  visible.height;
+              const right =
+                left + (rect.size.width / entire.size.width) * visible.width;
+              const bottom =
+                top + (rect.size.height / entire.size.height) * visible.height;
               return crosses(from, to, left, top, right, bottom);
             })
           ) {
@@ -972,7 +1081,11 @@ function LoadedReader({
       event.stopPropagation();
     };
     const eraserMoved = (event: PointerEvent) => {
-      if (event.pointerType !== "pen" || event.pointerId !== erasing || eraserLast === null) {
+      if (
+        event.pointerType !== "pen" ||
+        event.pointerId !== erasing ||
+        eraserLast === null
+      ) {
         return;
       }
       const point = { x: event.clientX, y: event.clientY };
@@ -985,7 +1098,11 @@ function LoadedReader({
         return;
       }
       if (event.type === "pointerup" && eraserLast !== null) {
-        eraseBetween(eraserLast, { x: event.clientX, y: event.clientY }, inAnnotate());
+        eraseBetween(
+          eraserLast,
+          { x: event.clientX, y: event.clientY },
+          inAnnotate(),
+        );
       }
       erasing = null;
       eraserLast = null;
@@ -993,7 +1110,9 @@ function LoadedReader({
     };
     // A press drew on a page, not on the toolbar or a sidebar, only when its path holds a page box.
     const onPage = (event: PointerEvent) =>
-      event.composedPath().some((node) => node instanceof Element && node.matches(PAGE_BOX));
+      event
+        .composedPath()
+        .some((node) => node instanceof Element && node.matches(PAGE_BOX));
     const pressed = (event: PointerEvent) => {
       if (
         event.pointerType !== "pen" ||
@@ -1032,7 +1151,10 @@ function LoadedReader({
       restoring = null;
       // The stroke leaves the highlighter in hand. A pen press on a toolbar button left that
       // button's tool in hand instead, and the release must not undo the button.
-      if (annotations !== null && annotations.getActiveTool()?.id === HIGHLIGHT_TOOL) {
+      if (
+        annotations !== null &&
+        annotations.getActiveTool()?.id === HIGHLIGHT_TOOL
+      ) {
         annotations.setActiveTool(previous);
       }
     };
@@ -1060,7 +1182,9 @@ function LoadedReader({
       host.removeEventListener("bucket-stylus-mode-changed", lostFocus);
       window.removeEventListener("pointermove", eraserMoved, { capture: true });
       window.removeEventListener("pointerup", eraserEnded, { capture: true });
-      window.removeEventListener("pointercancel", eraserEnded, { capture: true });
+      window.removeEventListener("pointercancel", eraserEnded, {
+        capture: true,
+      });
       window.removeEventListener("pointerup", released);
       window.removeEventListener("pointercancel", released);
       window.removeEventListener("blur", lostFocus);
@@ -1070,7 +1194,9 @@ function LoadedReader({
   useEffect(() => {
     const root = viewerRoot();
     const sheet = document.createElement("style");
-    sheet.textContent = nightMode ? `${NIGHT_PAGES} { filter: invert(1) hue-rotate(180deg); }` : "";
+    sheet.textContent = nightMode
+      ? `${NIGHT_PAGES} { filter: invert(1) hue-rotate(180deg); }`
+      : "";
     root.append(sheet);
     return () => sheet.remove();
   }, [nightMode, viewerRoot]);
@@ -1090,7 +1216,9 @@ function LoadedReader({
   useEffect(() => {
     const root = document.documentElement;
     const follow = new MutationObserver(() =>
-      viewerRef.current?.container?.setTheme(ThemeSchema.parse(root.dataset.theme)),
+      viewerRef.current?.container?.setTheme(
+        ThemeSchema.parse(root.dataset.theme),
+      ),
     );
     follow.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
     return () => follow.disconnect();
@@ -1129,16 +1257,23 @@ function LoadedReader({
       // detects by `ontouchstart`, and WebKitGTK has it on every machine: a drag selects text.
       pan: { defaultMode: "never" },
       documentManager: {
-        initialDocuments: [{ buffer: loaded.bytes.slice(0), name: `${itemKey}.pdf` }],
+        initialDocuments: [
+          { buffer: loaded.bytes.slice(0), name: `${itemKey}.pdf` },
+        ],
       },
     }),
     [loaded, itemKey],
   );
 
   const toggleNightMode = async () => {
-    const library = await request(LibraryPayloadSchema, "PATCH", "/api/preferences", {
-      readerNightMode: !state.nightMode,
-    }).catch((error: Error) => {
+    const library = await request(
+      LibraryPayloadSchema,
+      "PATCH",
+      "/api/preferences",
+      {
+        readerNightMode: !state.nightMode,
+      },
+    ).catch((error: Error) => {
       showFailure(`Night mode: ${error.message}`);
       return null;
     });
@@ -1153,9 +1288,14 @@ function LoadedReader({
   // stored PDF.
   const keepMine = async () => {
     if (state.exporter === null) {
-      throw new Error("a save conflict opened before the reader's viewer was up");
+      throw new Error(
+        "a save conflict opened before the reader's viewer was up",
+      );
     }
-    const response = await put(await state.exporter.saveAsCopy().toPromise(), state.storedTag);
+    const response = await put(
+      await state.exporter.saveAsCopy().toPromise(),
+      state.storedTag,
+    );
     if (!response.ok) {
       showFailure(`Not saved: ${(await requestError(response)).message}`);
       return;
@@ -1214,7 +1354,10 @@ function LoadedReader({
           () => {
             setStatus({ text: COPIED, failed: false });
             setTimeout(
-              () => setStatus((current) => (current?.text === COPIED ? null : current)),
+              () =>
+                setStatus((current) =>
+                  current?.text === COPIED ? null : current,
+                ),
               COPIED_SHOWN_MS,
             );
           },
@@ -1239,12 +1382,15 @@ function LoadedReader({
           className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-1.5 text-[0.8125rem] text-danger"
         >
           <span>
-            This PDF was saved elsewhere after this reader opened it. The reader shows your copy.
+            This PDF was saved elsewhere after this reader opened it. The reader
+            shows your copy.
           </span>
           <button
             type="button"
             onClick={() => {
-              keepMine().catch((error: Error) => showFailure(`Not saved: ${error.message}`));
+              keepMine().catch((error: Error) =>
+                showFailure(`Not saved: ${error.message}`),
+              );
             }}
             className="h-7 rounded-md border border-line px-2.5 text-ink hover:bg-surface"
           >

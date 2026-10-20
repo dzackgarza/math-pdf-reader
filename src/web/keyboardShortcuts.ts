@@ -5,7 +5,7 @@ const KEYBOARD_MODIFIERS = ["ctrl", "shift", "alt", "meta"] as const;
 
 type KeyboardModifier = (typeof KEYBOARD_MODIFIERS)[number];
 
-type KeyboardShortcut = { key: string; modifiers: KeyboardModifier[] };
+export type KeyboardShortcut = { key: string; modifiers: KeyboardModifier[] };
 
 export const KEYBOARD_SHORTCUTS = {
   focusSearch: { key: "f", modifiers: ["ctrl"] },
@@ -16,9 +16,97 @@ export const KEYBOARD_SHORTCUTS = {
   previousTab: { key: "tab", modifiers: ["ctrl", "shift"] },
 } satisfies Record<string, KeyboardShortcut>;
 
-type KeyboardEventLike = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey">;
+export type ShortcutAction = keyof typeof KEYBOARD_SHORTCUTS;
+export const SHORTCUT_ACTIONS: { action: ShortcutAction; label: string }[] = [
+  { action: "focusSearch", label: "Find in library" },
+  { action: "openItemPalette", label: "Find PDF" },
+  { action: "openCommandPalette", label: "Commands" },
+  { action: "closeTab", label: "Close PDF tab" },
+  { action: "nextTab", label: "Next tab" },
+  { action: "previousTab", label: "Previous tab" },
+];
 
-function modifierPressed(event: KeyboardEventLike, modifier: KeyboardModifier): boolean {
+const STORAGE_KEY = "pdf-bucket-keybindings";
+
+export function keybindings(): Record<ShortcutAction, KeyboardShortcut> {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Record<
+    string,
+    KeyboardShortcut
+  >;
+  return Object.fromEntries(
+    SHORTCUT_ACTIONS.map(({ action }) => [
+      action,
+      saved[action] ?? KEYBOARD_SHORTCUTS[action],
+    ]),
+  ) as Record<ShortcutAction, KeyboardShortcut>;
+}
+
+export function saveKeybinding(
+  action: ShortcutAction,
+  shortcut: KeyboardShortcut,
+): void {
+  const bindings = keybindings();
+  if (
+    Object.entries(bindings).some(
+      ([other, bound]) => other !== action && sameShortcut(bound, shortcut),
+    )
+  ) {
+    throw new Error("This keybinding is already in use");
+  }
+  bindings[action] = shortcut;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bindings));
+}
+
+export function resetKeybindings(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+export function shortcutFromEvent(
+  event: KeyboardEvent,
+): KeyboardShortcut | null {
+  const key = event.key.toLowerCase();
+  if (["control", "shift", "alt", "meta"].includes(key)) return null;
+  if (!event.ctrlKey && !event.metaKey && !event.altKey) return null;
+  return {
+    key,
+    modifiers: KEYBOARD_MODIFIERS.filter((modifier) =>
+      modifierPressed(event, modifier),
+    ),
+  };
+}
+
+export function shortcutLabel(shortcut: KeyboardShortcut): string {
+  return [
+    ...shortcut.modifiers.map(
+      (modifier) => modifier[0].toUpperCase() + modifier.slice(1),
+    ),
+    shortcut.key === "tab" ? "Tab" : shortcut.key.toUpperCase(),
+  ].join("+");
+}
+
+function sameShortcut(
+  first: KeyboardShortcut,
+  second: KeyboardShortcut,
+): boolean {
+  return (
+    first.key === second.key &&
+    KEYBOARD_MODIFIERS.every(
+      (modifier) =>
+        first.modifiers.includes(modifier) ===
+        second.modifiers.includes(modifier),
+    )
+  );
+}
+
+type KeyboardEventLike = Pick<
+  KeyboardEvent,
+  "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey"
+>;
+
+function modifierPressed(
+  event: KeyboardEventLike,
+  modifier: KeyboardModifier,
+): boolean {
   switch (modifier) {
     case "ctrl":
       return event.ctrlKey;
@@ -31,11 +119,16 @@ function modifierPressed(event: KeyboardEventLike, modifier: KeyboardModifier): 
   }
 }
 
-export function matchesShortcut(event: KeyboardEventLike, shortcut: KeyboardShortcut): boolean {
+export function matchesShortcut(
+  event: KeyboardEventLike,
+  shortcut: KeyboardShortcut,
+): boolean {
   return (
     event.key.toLowerCase() === shortcut.key &&
     KEYBOARD_MODIFIERS.every(
-      (modifier) => modifierPressed(event, modifier) === shortcut.modifiers.includes(modifier),
+      (modifier) =>
+        modifierPressed(event, modifier) ===
+        shortcut.modifiers.includes(modifier),
     )
   );
 }

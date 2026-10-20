@@ -3,9 +3,10 @@
 // itself (a button, link, select or tab) has focus, and while a dialog or menu is open. The
 // listener is registered once; useEffectEvent hands it the current selection and actions.
 import { type RefObject, useEffect, useEffectEvent } from "react";
-import { KEYBOARD_SHORTCUTS, matchesShortcut } from "./keyboardShortcuts";
+import { keybindings, matchesShortcut } from "./keyboardShortcuts";
 
-const CONTROLS = 'button, a[href], select, summary, [role="button"], [role="link"], [role="tab"]';
+const CONTROLS =
+  'button, a[href], select, summary, [role="button"], [role="link"], [role="tab"]';
 
 export type LibraryShortcuts = {
   enabled: boolean;
@@ -17,10 +18,12 @@ export type LibraryShortcuts = {
 
 export function useLibraryShortcuts(shortcuts: LibraryShortcuts): void {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (document.querySelector('[data-keybinding-recorder="true"]') !== null)
+      return;
     if (!shortcuts.enabled) {
       return;
     }
-    if (matchesShortcut(event, KEYBOARD_SHORTCUTS.focusSearch)) {
+    if (matchesShortcut(event, keybindings().focusSearch)) {
       event.preventDefault();
       shortcuts.searchField.current?.focus();
       shortcuts.searchField.current?.select();
@@ -31,11 +34,14 @@ export function useLibraryShortcuts(shortcuts: LibraryShortcuts): void {
       target instanceof HTMLInputElement ||
       target instanceof HTMLTextAreaElement ||
       (target instanceof HTMLElement && target.isContentEditable);
-    const onControl = target instanceof Element && target.closest(CONTROLS) !== null;
+    const onControl =
+      target instanceof Element && target.closest(CONTROLS) !== null;
     if (
       typing ||
       onControl ||
-      document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null
+      document.querySelector(
+        '[role="dialog"], [role="alertdialog"], [role="menu"]',
+      ) !== null
     ) {
       return;
     }
