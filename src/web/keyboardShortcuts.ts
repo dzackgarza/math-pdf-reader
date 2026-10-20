@@ -57,18 +57,27 @@ export function resetKeybindings(): void {
 
 export function shortcutFromEvent(event: KeyboardEvent): KeyboardShortcut | null {
   const key = event.key.toLowerCase();
-  if (["control", "shift", "alt", "meta"].includes(key)) {return null;}
-  if (!event.ctrlKey && !event.metaKey && !event.altKey) {return null;}
-  return {
-    key,
-    modifiers: KEYBOARD_MODIFIERS.filter((modifier) => modifierPressed(event, modifier)),
-  };
+  const valid =
+    !["control", "shift", "alt", "meta"].includes(key) &&
+    (event.ctrlKey || event.metaKey || event.altKey);
+  return valid
+    ? { key, modifiers: KEYBOARD_MODIFIERS.filter((modifier) => modifierPressed(event, modifier)) }
+    : null;
 }
 
 export function shortcutLabel(shortcut: KeyboardShortcut): string {
+  const keyLabel =
+    {
+      tab: "Tab",
+      arrowleft: "Left Arrow",
+      arrowright: "Right Arrow",
+      arrowup: "Up Arrow",
+      arrowdown: "Down Arrow",
+      " ": "Space",
+    }[shortcut.key] ?? shortcut.key.toUpperCase();
   return [
     ...shortcut.modifiers.map((modifier) => modifier[0].toUpperCase() + modifier.slice(1)),
-    shortcut.key === "tab" ? "Tab" : shortcut.key.toUpperCase(),
+    keyLabel,
   ].join("+");
 }
 

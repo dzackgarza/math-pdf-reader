@@ -586,6 +586,7 @@ function LoadedReader({
     const activeDocument = state.documents.getActiveDocumentId();
     if (activeDocument !== null) {
       updateStylusMode(activeDocument);
+      ui.disableOverlay("page-controls", activeDocument);
     }
     const toolbar = ui.getSchema().toolbars["main-toolbar"];
     const pageControls = ui.getSchema().overlays?.["page-controls"];
@@ -619,6 +620,7 @@ function LoadedReader({
       const activeDocument = state.documents?.getActiveDocumentId();
       if (activeDocument !== null && activeDocument !== undefined) {
         updateStylusMode(activeDocument);
+        ui.disableOverlay("page-controls", activeDocument);
       }
       const reading = loaded.item.reading;
       const page = openAtPage ?? (reading.status === "viewed" ? reading.page : 1);

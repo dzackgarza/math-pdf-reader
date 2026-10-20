@@ -17,7 +17,10 @@ export type LibraryShortcuts = {
 
 export function useLibraryShortcuts(shortcuts: LibraryShortcuts): void {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {return;}
+    if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {
+      event.preventDefault();
+      return;
+    }
     if (!shortcuts.enabled) {
       return;
     }

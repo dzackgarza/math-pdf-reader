@@ -25,7 +25,10 @@ const CommandPaletteHost = forwardRef<CommandPaletteHostHandle, CommandPaletteHo
     const { libraryShown } = useReaderTabs();
     useEffect(() => {
       const onKeyDown = (event: KeyboardEvent) => {
-        if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {return;}
+        if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {
+          event.preventDefault();
+          return;
+        }
         if (!libraryShown) {
           return;
         }

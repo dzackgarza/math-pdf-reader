@@ -254,7 +254,10 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   shownRef.current = state.shown;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {return;}
+      if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {
+        event.preventDefault();
+        return;
+      }
       const shortcuts = keybindings();
       if (matchesShortcut(event, shortcuts.closeTab)) {
         event.preventDefault();
@@ -366,7 +369,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     aria-label={`Close ${tab.title}`}
-                    title="Close (Ctrl+W)"
+                    title="Close tab"
                     onClick={() => close(tab.key)}
                     className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted hover:bg-ink/[0.08] hover:text-ink"
                   >

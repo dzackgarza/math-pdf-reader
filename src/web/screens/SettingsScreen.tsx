@@ -130,22 +130,24 @@ function Keybindings() {
             }}
             onBlur={() => setRecording(null)}
             onKeyDown={(event) => {
-              if (recording !== action) {return;}
-              event.preventDefault();
-              event.stopPropagation();
-              if (event.key === "Escape") {
-                setRecording(null);
-                return;
-              }
-              const shortcut = shortcutFromEvent(event.nativeEvent);
-              if (shortcut === null) {return;}
-              try {
-                saveKeybinding(action, shortcut);
-                setBindings(keybindings());
-                setRecording(null);
-                setError("");
-              } catch (failure) {
-                setError(failure instanceof Error ? failure.message : String(failure));
+              if (recording === action) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.key === "Escape") {
+                  setRecording(null);
+                  return;
+                }
+                const shortcut = shortcutFromEvent(event.nativeEvent);
+                if (shortcut !== null) {
+                  try {
+                    saveKeybinding(action, shortcut);
+                    setBindings(keybindings());
+                    setRecording(null);
+                    setError("");
+                  } catch (failure) {
+                    setError(failure instanceof Error ? failure.message : String(failure));
+                  }
+                }
               }
             }}
           >
