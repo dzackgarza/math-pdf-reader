@@ -22,13 +22,13 @@ import { expandRect, PdfAnnotationSubtype, rectFromPoints } from "@embedpdf/mode
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
 import {
   AnnotationPlugin,
-  LockModeType,
   type Command,
   CommandsPlugin,
   type CustomIconConfig,
   DocumentManagerPlugin,
   ExportPlugin,
   InteractionManagerPlugin,
+  LockModeType,
   PDFViewer,
   type PDFViewerConfig,
   type PDFViewerRef,
