@@ -34,17 +34,11 @@ export function keybindings(): Record<ShortcutAction, KeyboardShortcut> {
     KeyboardShortcut
   >;
   return Object.fromEntries(
-    SHORTCUT_ACTIONS.map(({ action }) => [
-      action,
-      saved[action] ?? KEYBOARD_SHORTCUTS[action],
-    ]),
+    SHORTCUT_ACTIONS.map(({ action }) => [action, saved[action] ?? KEYBOARD_SHORTCUTS[action]]),
   ) as Record<ShortcutAction, KeyboardShortcut>;
 }
 
-export function saveKeybinding(
-  action: ShortcutAction,
-  shortcut: KeyboardShortcut,
-): void {
+export function saveKeybinding(action: ShortcutAction, shortcut: KeyboardShortcut): void {
   const bindings = keybindings();
   if (
     Object.entries(bindings).some(
@@ -61,52 +55,35 @@ export function resetKeybindings(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-export function shortcutFromEvent(
-  event: KeyboardEvent,
-): KeyboardShortcut | null {
+export function shortcutFromEvent(event: KeyboardEvent): KeyboardShortcut | null {
   const key = event.key.toLowerCase();
-  if (["control", "shift", "alt", "meta"].includes(key)) return null;
-  if (!event.ctrlKey && !event.metaKey && !event.altKey) return null;
+  if (["control", "shift", "alt", "meta"].includes(key)) {return null;}
+  if (!event.ctrlKey && !event.metaKey && !event.altKey) {return null;}
   return {
     key,
-    modifiers: KEYBOARD_MODIFIERS.filter((modifier) =>
-      modifierPressed(event, modifier),
-    ),
+    modifiers: KEYBOARD_MODIFIERS.filter((modifier) => modifierPressed(event, modifier)),
   };
 }
 
 export function shortcutLabel(shortcut: KeyboardShortcut): string {
   return [
-    ...shortcut.modifiers.map(
-      (modifier) => modifier[0].toUpperCase() + modifier.slice(1),
-    ),
+    ...shortcut.modifiers.map((modifier) => modifier[0].toUpperCase() + modifier.slice(1)),
     shortcut.key === "tab" ? "Tab" : shortcut.key.toUpperCase(),
   ].join("+");
 }
 
-function sameShortcut(
-  first: KeyboardShortcut,
-  second: KeyboardShortcut,
-): boolean {
+function sameShortcut(first: KeyboardShortcut, second: KeyboardShortcut): boolean {
   return (
     first.key === second.key &&
     KEYBOARD_MODIFIERS.every(
-      (modifier) =>
-        first.modifiers.includes(modifier) ===
-        second.modifiers.includes(modifier),
+      (modifier) => first.modifiers.includes(modifier) === second.modifiers.includes(modifier),
     )
   );
 }
 
-type KeyboardEventLike = Pick<
-  KeyboardEvent,
-  "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey"
->;
+type KeyboardEventLike = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "key" | "metaKey" | "shiftKey">;
 
-function modifierPressed(
-  event: KeyboardEventLike,
-  modifier: KeyboardModifier,
-): boolean {
+function modifierPressed(event: KeyboardEventLike, modifier: KeyboardModifier): boolean {
   switch (modifier) {
     case "ctrl":
       return event.ctrlKey;
@@ -119,16 +96,11 @@ function modifierPressed(
   }
 }
 
-export function matchesShortcut(
-  event: KeyboardEventLike,
-  shortcut: KeyboardShortcut,
-): boolean {
+export function matchesShortcut(event: KeyboardEventLike, shortcut: KeyboardShortcut): boolean {
   return (
     event.key.toLowerCase() === shortcut.key &&
     KEYBOARD_MODIFIERS.every(
-      (modifier) =>
-        modifierPressed(event, modifier) ===
-        shortcut.modifiers.includes(modifier),
+      (modifier) => modifierPressed(event, modifier) === shortcut.modifiers.includes(modifier),
     )
   );
 }

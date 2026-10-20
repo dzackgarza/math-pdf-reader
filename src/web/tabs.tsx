@@ -9,14 +9,7 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, Moon, X } from "lucide-react";
-import {
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
 import { onBucketEvent } from "./bucketEvents";
 import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
@@ -64,14 +57,10 @@ function readerKey(url: string): string {
 // Shows KEY's tab, waking it when it sleeps.
 function showing(state: TabsState, key: string): TabsState {
   return {
-    open: state.open.map((tab) =>
-      tab.key === key ? { ...tab, asleep: false } : tab,
-    ),
+    open: state.open.map((tab) => (tab.key === key ? { ...tab, asleep: false } : tab)),
     shown: key,
     recent:
-      key === LIBRARY_TAB
-        ? state.recent
-        : [key, ...state.recent.filter((other) => other !== key)],
+      key === LIBRARY_TAB ? state.recent : [key, ...state.recent.filter((other) => other !== key)],
   };
 }
 
@@ -95,18 +84,14 @@ function closing(state: TabsState, key: string): TabsState {
 function sleeping(state: TabsState, key: string, view: View | null): TabsState {
   const asleep = {
     ...state,
-    open: state.open.map((tab) =>
-      tab.key === key ? { ...tab, view, asleep: true } : tab,
-    ),
+    open: state.open.map((tab) => (tab.key === key ? { ...tab, view, asleep: true } : tab)),
   };
   return state.shown === key ? showing(asleep, neighbour(state, key)) : asleep;
 }
 
 // The awake PDF tabs past the AWAKE_READERS shown last. The tab shown is never among them.
 function drowsy(state: TabsState): string[] {
-  const awake = new Set(
-    state.open.filter((tab) => !tab.asleep).map((tab) => tab.key),
-  );
+  const awake = new Set(state.open.filter((tab) => !tab.asleep).map((tab) => tab.key));
   return state.recent.filter((key) => awake.has(key)).slice(AWAKE_READERS);
 }
 
@@ -138,9 +123,7 @@ function TabMenu({
 }) {
   return (
     itemMenu.current?.(itemKey, entries) ?? (
-      <ContextMenu.Content className={MENU_PANEL}>
-        {entries}
-      </ContextMenu.Content>
+      <ContextMenu.Content className={MENU_PANEL}>{entries}</ContextMenu.Content>
     )
   );
 }
@@ -155,9 +138,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     if (state.shown === LIBRARY_TAB) {
       // View-mode pen highlighting applies only to a visible PDF. Return tablet clicks
       // to WebKit when the Library is shown, even though sleeping readers remain mounted.
-      window.dispatchEvent(
-        new CustomEvent("bucket-stylus-mode", { detail: "inactive" }),
-      );
+      window.dispatchEvent(new CustomEvent("bucket-stylus-mode", { detail: "inactive" }));
     }
   }, [state.shown]);
   const stateRef = useRef(state);
@@ -181,10 +162,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
           ? previous
           : {
               ...previous,
-              open: [
-                ...previous.open,
-                { key, title, view: null, asleep: false },
-              ],
+              open: [...previous.open, { key, title, view: null, asleep: false }],
             },
         key,
       ),
@@ -205,8 +183,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     (key: string) => {
       closeReader(key).catch((error: Error) => {
         setState((previous) => showing(previous, key));
-        const title =
-          stateRef.current.open.find((tab) => tab.key === key)?.title ?? key;
+        const title = stateRef.current.open.find((tab) => tab.key === key)?.title ?? key;
         setCloseRequest({
           title: "Close without saving?",
           description: `${title}: ${error.message}`,
@@ -243,20 +220,14 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       if (tab === undefined) {
         return previous;
       }
-      return sleeping(
-        previous,
-        key,
-        reader === undefined ? tab.view : reader.view(),
-      );
+      return sleeping(previous, key, reader === undefined ? tab.view : reader.view());
     });
   }, []);
 
   // A reader that cannot settle stays awake and is shown: it names the failure.
   const sleep = useCallback(
     (key: string) => {
-      sleepReader(key, false).catch(() =>
-        setState((previous) => showing(previous, key)),
-      );
+      sleepReader(key, false).catch(() => setState((previous) => showing(previous, key)));
     },
     [sleepReader],
   );
@@ -272,9 +243,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   // Quitting waits for every open reader to settle; one that cannot rejects the quit's wait.
   useEffect(() => {
     const quitting = (event: WindowEventMap["pdf-bucket-quit"]) => {
-      const settled = [...readers.current.values()].map((reader) =>
-        reader.settle(),
-      );
+      const settled = [...readers.current.values()].map((reader) => reader.settle());
       event.detail.waitUntil(Promise.all(settled).then(() => undefined));
     };
     window.addEventListener("pdf-bucket-quit", quitting);
@@ -285,8 +254,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   shownRef.current = state.shown;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (document.querySelector('[data-keybinding-recorder="true"]') !== null)
-        return;
+      if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {return;}
       const shortcuts = keybindings();
       if (matchesShortcut(event, shortcuts.closeTab)) {
         event.preventDefault();
@@ -304,24 +272,19 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () =>
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
   }, [close]);
 
   useEffect(() => {
     return onBucketEvent("open-reader", (event) => {
-      const { reader_url, title } = OpenReaderSchema.parse(
-        JSON.parse(event.data),
-      );
+      const { reader_url, title } = OpenReaderSchema.parse(JSON.parse(event.data));
       openReader(readerKey(reader_url), title);
     });
   }, [openReader]);
 
   useEffect(() => {
     return onBucketEvent("metadata", (event) => {
-      const { key, outcome } = MetadataEventSchema.parse(
-        JSON.parse(event.data),
-      );
+      const { key, outcome } = MetadataEventSchema.parse(JSON.parse(event.data));
       if (outcome.status !== "resolved") {
         return;
       }
@@ -337,11 +300,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   // A PDF tab's own menu entries, which its item's menu follows.
   const tabEntries = (tab: ReaderTab) => (
     <>
-      <ContextMenu.Item
-        disabled={tab.asleep}
-        onSelect={() => sleep(tab.key)}
-        className={MENU_ITEM}
-      >
+      <ContextMenu.Item disabled={tab.asleep} onSelect={() => sleep(tab.key)} className={MENU_ITEM}>
         Sleep Tab
       </ContextMenu.Item>
       <ContextMenu.Item onSelect={() => close(tab.key)} className={MENU_ITEM}>
@@ -361,9 +320,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     >
       <Tabs.Root
         value={state.shown}
-        onValueChange={(shown) =>
-          setState((previous) => showing(previous, shown))
-        }
+        onValueChange={(shown) => setState((previous) => showing(previous, shown))}
         activationMode="manual"
         className="flex h-full flex-col"
       >
@@ -386,9 +343,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                   data-state={state.shown === tab.key ? "active" : "inactive"}
                   data-asleep={tab.asleep}
                   className={`group -mb-px flex w-56 min-w-24 shrink items-center rounded-t-md border border-b-0 ${
-                    state.shown === tab.key
-                      ? "border-line bg-panel"
-                      : "border-transparent"
+                    state.shown === tab.key ? "border-line bg-panel" : "border-transparent"
                   }`}
                 >
                   <Tabs.Trigger
@@ -420,11 +375,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                 </div>
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
-                <TabMenu
-                  itemMenu={itemMenu}
-                  itemKey={tab.key}
-                  entries={tabEntries(tab)}
-                />
+                <TabMenu itemMenu={itemMenu} itemKey={tab.key} entries={tabEntries(tab)} />
               </ContextMenu.Portal>
             </ContextMenu.Root>
           ))}
@@ -462,10 +413,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
         </div>
       </Tabs.Root>
       {closeRequest !== null && (
-        <ConfirmDialog
-          request={closeRequest}
-          onClose={() => setCloseRequest(null)}
-        />
+        <ConfirmDialog request={closeRequest} onClose={() => setCloseRequest(null)} />
       )}
     </ReaderTabsContext.Provider>
   );

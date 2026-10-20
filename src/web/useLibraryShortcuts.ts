@@ -5,8 +5,7 @@
 import { type RefObject, useEffect, useEffectEvent } from "react";
 import { keybindings, matchesShortcut } from "./keyboardShortcuts";
 
-const CONTROLS =
-  'button, a[href], select, summary, [role="button"], [role="link"], [role="tab"]';
+const CONTROLS = 'button, a[href], select, summary, [role="button"], [role="link"], [role="tab"]';
 
 export type LibraryShortcuts = {
   enabled: boolean;
@@ -18,8 +17,7 @@ export type LibraryShortcuts = {
 
 export function useLibraryShortcuts(shortcuts: LibraryShortcuts): void {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (document.querySelector('[data-keybinding-recorder="true"]') !== null)
-      return;
+    if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {return;}
     if (!shortcuts.enabled) {
       return;
     }
@@ -34,14 +32,11 @@ export function useLibraryShortcuts(shortcuts: LibraryShortcuts): void {
       target instanceof HTMLInputElement ||
       target instanceof HTMLTextAreaElement ||
       (target instanceof HTMLElement && target.isContentEditable);
-    const onControl =
-      target instanceof Element && target.closest(CONTROLS) !== null;
+    const onControl = target instanceof Element && target.closest(CONTROLS) !== null;
     if (
       typing ||
       onControl ||
-      document.querySelector(
-        '[role="dialog"], [role="alertdialog"], [role="menu"]',
-      ) !== null
+      document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]') !== null
     ) {
       return;
     }

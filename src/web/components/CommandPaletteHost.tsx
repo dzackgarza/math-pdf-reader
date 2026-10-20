@@ -1,10 +1,4 @@
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useState,
-} from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import type { BucketItem } from "../../contract/library";
 import type { Command } from "../commands";
 import { keybindings, matchesShortcut } from "../keyboardShortcuts";
@@ -21,51 +15,48 @@ type CommandPaletteHostProps = {
 
 // Owns whether the palette is open and in which mode, and the global shortcuts that open it,
 // which are off while a PDF's tab is shown.
-const CommandPaletteHost = forwardRef<
-  CommandPaletteHostHandle,
-  CommandPaletteHostProps
->(function CommandPaletteHost({ commands, items, onSelectItem }, ref) {
-  const [openMode, setOpenMode] = useState<PaletteMode | null>(null);
-  const close = useCallback(() => setOpenMode(null), []);
+const CommandPaletteHost = forwardRef<CommandPaletteHostHandle, CommandPaletteHostProps>(
+  function CommandPaletteHost({ commands, items, onSelectItem }, ref) {
+    const [openMode, setOpenMode] = useState<PaletteMode | null>(null);
+    const close = useCallback(() => setOpenMode(null), []);
 
-  useImperativeHandle(ref, () => ({ open: setOpenMode }), []);
+    useImperativeHandle(ref, () => ({ open: setOpenMode }), []);
 
-  const { libraryShown } = useReaderTabs();
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (document.querySelector('[data-keybinding-recorder="true"]') !== null)
-        return;
-      if (!libraryShown) {
-        return;
-      }
-      const shortcuts = keybindings();
-      if (matchesShortcut(event, shortcuts.openCommandPalette)) {
-        event.preventDefault();
-        setOpenMode("commands");
-      }
-      if (matchesShortcut(event, shortcuts.openItemPalette)) {
-        event.preventDefault();
-        setOpenMode((mode) => (mode === null ? "items" : null));
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, { capture: true });
-    return () =>
-      window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [libraryShown]);
+    const { libraryShown } = useReaderTabs();
+    useEffect(() => {
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (document.querySelector('[data-keybinding-recorder="true"]') !== null) {return;}
+        if (!libraryShown) {
+          return;
+        }
+        const shortcuts = keybindings();
+        if (matchesShortcut(event, shortcuts.openCommandPalette)) {
+          event.preventDefault();
+          setOpenMode("commands");
+        }
+        if (matchesShortcut(event, shortcuts.openItemPalette)) {
+          event.preventDefault();
+          setOpenMode((mode) => (mode === null ? "items" : null));
+        }
+      };
+      window.addEventListener("keydown", onKeyDown, { capture: true });
+      return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+    }, [libraryShown]);
 
-  if (openMode === null) {
-    return null;
-  }
-  return (
-    <CommandPalette
-      key={openMode}
-      initialMode={openMode}
-      items={items}
-      commands={commands}
-      onSelectItem={onSelectItem}
-      onClose={close}
-    />
-  );
-});
+    if (openMode === null) {
+      return null;
+    }
+    return (
+      <CommandPalette
+        key={openMode}
+        initialMode={openMode}
+        items={items}
+        commands={commands}
+        onSelectItem={onSelectItem}
+        onClose={close}
+      />
+    );
+  },
+);
 
 export default CommandPaletteHost;

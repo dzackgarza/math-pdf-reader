@@ -7,21 +7,17 @@ import {
   type Theme,
   ThemeSchema,
 } from "../../contract/library";
-import {
-  type ActionFailure,
-  type ActionRejection,
-  actionFailure,
-} from "../actionFailure";
+import { type ActionFailure, type ActionRejection, actionFailure } from "../actionFailure";
 import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
 import {
   keybindings,
   resetKeybindings,
-  saveKeybinding,
   SHORTCUT_ACTIONS,
+  type ShortcutAction,
+  saveKeybinding,
   shortcutFromEvent,
   shortcutLabel,
-  type ShortcutAction,
 } from "../keyboardShortcuts";
 import type { BucketStatus, StatusRead } from "../useBucketStatus";
 
@@ -50,10 +46,7 @@ function LibraryFolder({
   const reveal = showInFolder();
   return (
     <>
-      <span
-        className="min-w-0 truncate font-mono text-xs"
-        title={settings.root}
-      >
+      <span className="min-w-0 truncate font-mono text-xs" title={settings.root}>
         {settings.root}
       </span>
       {reveal !== null && (
@@ -64,8 +57,7 @@ function LibraryFolder({
           onClick={() => {
             reveal(settings.root).then(
               () => undefined,
-              (rejection: ActionRejection) =>
-                onFailure(actionFailure(rejection)),
+              (rejection: ActionRejection) => onFailure(actionFailure(rejection)),
             );
           }}
           className="rounded p-1 text-muted hover:bg-surface hover:text-ink"
@@ -88,12 +80,7 @@ function Reported({
 }) {
   switch (read.kind) {
     case "checking":
-      return (
-        <LoaderCircle
-          aria-label="Checking"
-          className="h-4 w-4 animate-spin text-muted"
-        />
-      );
+      return <LoaderCircle aria-label="Checking" className="h-4 w-4 animate-spin text-muted" />;
     case "failed":
       return (
         <span role="alert" className="text-danger">
@@ -126,9 +113,7 @@ function Keybindings() {
           Reset defaults
         </button>
       </div>
-      <p className="mb-3 text-muted">
-        Select a command, then press its new key combination.
-      </p>
+      <p className="mb-3 text-muted">Select a command, then press its new key combination.</p>
       {SHORTCUT_ACTIONS.map(({ action, label }) => (
         <div
           key={action}
@@ -145,7 +130,7 @@ function Keybindings() {
             }}
             onBlur={() => setRecording(null)}
             onKeyDown={(event) => {
-              if (recording !== action) return;
+              if (recording !== action) {return;}
               event.preventDefault();
               event.stopPropagation();
               if (event.key === "Escape") {
@@ -153,22 +138,18 @@ function Keybindings() {
                 return;
               }
               const shortcut = shortcutFromEvent(event.nativeEvent);
-              if (shortcut === null) return;
+              if (shortcut === null) {return;}
               try {
                 saveKeybinding(action, shortcut);
                 setBindings(keybindings());
                 setRecording(null);
                 setError("");
               } catch (failure) {
-                setError(
-                  failure instanceof Error ? failure.message : String(failure),
-                );
+                setError(failure instanceof Error ? failure.message : String(failure));
               }
             }}
           >
-            {recording === action
-              ? "Press keys…"
-              : shortcutLabel(bindings[action])}
+            {recording === action ? "Press keys…" : shortcutLabel(bindings[action])}
           </button>
         </div>
       ))}
@@ -199,9 +180,7 @@ export default function SettingsScreen({
         <Row label="Library folder">
           <Reported
             read={read}
-            value={(status) => (
-              <LibraryFolder settings={status.settings} onFailure={onFailure} />
-            )}
+            value={(status) => <LibraryFolder settings={status.settings} onFailure={onFailure} />}
           />
         </Row>
         <Row label="Reader">
@@ -218,17 +197,13 @@ export default function SettingsScreen({
             on={preferences.readerNightMode}
             onChange={(readerNightMode) => onPreferences({ readerNightMode })}
           />
-          <span>
-            Show the PDF's pages in dark colours when the theme is dark
-          </span>
+          <span>Show the PDF's pages in dark colours when the theme is dark</span>
         </Row>
         <Row label="Theme">
           <select
             aria-label="Theme"
             value={preferences.theme}
-            onChange={(event) =>
-              onPreferences({ theme: ThemeSchema.parse(event.target.value) })
-            }
+            onChange={(event) => onPreferences({ theme: ThemeSchema.parse(event.target.value) })}
             className="rounded-md border border-line bg-panel px-2 py-1 text-ink"
           >
             {THEMES.map((theme) => (
