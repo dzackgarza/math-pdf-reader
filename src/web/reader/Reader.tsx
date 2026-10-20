@@ -582,6 +582,13 @@ function LoadedReader({
     ui.onToolbarChanged(({ documentId, placement, slot }) => {
       if (placement === "top" && slot === "secondary") {
         updateStylusMode(documentId);
+        // EmbedPDF's mode command resets the annotation lock after changing the toolbar.
+        queueMicrotask(() => {
+          state.annotations?.setLocked(
+            { type: LockModeType.Include, categories: ["form", "link"] },
+            documentId,
+          );
+        });
       }
     });
     const activeDocument = state.documents.getActiveDocumentId();
