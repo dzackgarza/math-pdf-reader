@@ -373,9 +373,9 @@ class Reader:
             )
         self.pen_event("pointerup", start_x + 0.3 * w, start_y + 0.03 * h)
 
-    def highlighted_pixels(self, page: int) -> tuple[int, int]:
-        """The window's pixels inside the line boxes of PAGE's highlights, counted as text (dark)
-        and as highlight (yellow)."""
+    def highlighted_pixels(self, page: int, night: bool = False) -> tuple[int, int]:
+        """The window's pixels inside the line boxes of PAGE's highlights, counted as text and as
+        highlight: `pixel_counts`, or `night_pixel_counts` when NIGHT."""
         x, y, _, _ = self.page_box(page)
         boxes = self.items(f"""(() => {{
           const scale = P('zoom').getState().currentZoomLevel, ratio = window.devicePixelRatio;
@@ -384,7 +384,8 @@ class Reader:
             .flatMap((object) => object.segmentRects)
             .map((r) => [({x} + r.origin.x * scale) * ratio, ({y} + r.origin.y * scale) * ratio, r.size.width * scale * ratio, r.size.height * scale * ratio]) }})()""")
         assert boxes
-        return pixel_counts(pymupdf.Pixmap(self.driver.get_screenshot_as_png()), boxes)
+        counts = night_pixel_counts if night else pixel_counts
+        return counts(pymupdf.Pixmap(self.driver.get_screenshot_as_png()), boxes)
 
 
 def pixel_counts(pixmap: pymupdf.Pixmap, boxes: list[Script]) -> tuple[int, int]:
@@ -400,6 +401,22 @@ def pixel_counts(pixmap: pymupdf.Pixmap, boxes: list[Script]) -> tuple[int, int]
                 dark += max(red, green, blue) < 140
                 yellow += red > 180 and green > 180 and blue < 140
     return dark, yellow
+
+
+def night_pixel_counts(pixmap: pymupdf.Pixmap, boxes: list[Script]) -> tuple[int, int]:
+    """The pixels of PIXMAP inside BOXES that are light, as glyphs are in night mode (a light tan
+    over a highlight), and that are a dark warm colour, as the reader's night filter (invert,
+    then a half-turn of hue) draws a yellow highlight."""
+    light = darkened = 0
+    for box in boxes:
+        assert isinstance(box, list)
+        left, top, width, height = (int(value) for value in box)
+        for py in range(top + 1, top + height - 1):
+            for px in range(left + 1, left + width - 1):
+                red, green, blue = pixmap.pixel(px, py)[:3]
+                light += max(red, green, blue) > 150
+                darkened += 50 < red < 170 and blue < 60 and red > green > blue
+    return light, darkened
 
 
 def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
@@ -504,6 +521,12 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     reader.assert_saved()
     dark, yellow = reader.highlighted_pixels(page)
     assert dark > 0 and yellow > 0, (dark, yellow)
+    # In night mode the text still shows through the highlight, light on its darkened colour.
+    reader.click_command("night-mode")
+    reader.wait("[...S.querySelectorAll('style')].some((sheet) => sheet.textContent.includes('invert(1)'))")
+    light, darkened = reader.highlighted_pixels(page, night=True)
+    assert light > 0 and darkened > 0, (light, darkened)
+    reader.click_command("night-mode")
 
     # Jump to a section from the outline, go back, then type a page number. The sidebar holds
     # the page thumbnails, then the outline, whose entries are the notes' section titles.
