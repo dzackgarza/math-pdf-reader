@@ -101,7 +101,7 @@ function launch(engine: Engine, extension: string, downloads: string): Promise<B
     headless: true,
     defaultViewport: viewport,
     // The capture page is a moz-extension (privileged) document; BiDi scripts it only then.
-    args: ["-remote-allow-system-access"],
+    env: { ...process.env, MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" },
     extraPrefsFirefox: {
       "extensions.webextensions.uuids": JSON.stringify({
         "pdf-bucket@dzackgarza.com": FIREFOX_EXTENSION_UUID,
