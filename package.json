@@ -65,5 +65,8 @@
     "vite-plugin-static-copy": "^4.1.1",
     "web-ext": "^10.5.0",
     "wxt": "^0.21.3"
+  },
+  "overrides": {
+    "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#3cb2c8ceb78035c0aef1f7c2b7cb54e5fe4a7906"
   }
 }

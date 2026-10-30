@@ -194,7 +194,7 @@ class Reader:
         script = f"""const done = arguments[arguments.length - 1], V = {self.viewer}, S = V?.shadowRoot;
           const page = {{
             viewer: V !== null, tab: document.querySelector('[data-tab-key={json.dumps(self.key)}]')?.dataset.state,
-            boxes: S ? S.querySelectorAll('{PAGE_BOX}').length : null,
+            boxes: S ? [...S.querySelectorAll('{PAGE_BOX}')].map((e) => {{ const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }}) : null,
             images: S ? [...S.querySelectorAll('{PAGE_BOX} img')].map((image) => ({{complete: image.complete, width: image.naturalWidth, src: image.src.slice(0, 40)}})) : null,
             errors: window.__errors, body: document.body.innerText.slice(0, 1000),
           }};
@@ -271,8 +271,11 @@ class Reader:
         self.click(f"[data-epdf-i='bucket:{command}'] button")
 
     def drag_across(self, page: int, line: tuple[float, float]) -> None:
-        """Press on LINE of PAGE and drag down and to the right across it into the next."""
-        x, y, w, h = self.page_box(page)
+        """Press on LINE of PAGE and drag down and to the right across it into the next, once the
+        page stops moving: a toolbar that opens moves the pages down."""
+        boxes = [self.page_box(page)]
+        WebDriverWait(self.driver, 30, poll_frequency=0.2).until(lambda _: boxes.append(self.page_box(page)) or boxes[-1] == boxes[-2])
+        x, y, w, h = boxes[-1]
         start_x, start_y = x + w * line[0], y + h * line[1]
         actions = ActionChains(self.driver)
         pointer = actions.w3c_actions.pointer_action
