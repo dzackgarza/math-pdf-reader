@@ -35,7 +35,12 @@ import type {
 } from "@embedpdf/react-pdf-viewer";
 import { PdfAnnotationSubtype } from "@embedpdf/models";
 import { $ } from "bun";
-import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
+import puppeteer, {
+  type Browser,
+  type Dialog,
+  type HTTPRequest,
+  type Page,
+} from "puppeteer-core";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
@@ -1399,6 +1404,65 @@ describe("library window", () => {
 
     await page.goto(`${bucket.origin}/read/problems`);
     expect(await notesOnFirstPage("problems")).toContain(note);
+  });
+
+  test("leaving the reader page while a note is still being saved asks first, and once it is saved leaves at once", async () => {
+    await page.goto(`${bucket.origin}/read/notes`);
+    await readerLoaded("notes");
+    // The note's save is held until the test lets it through.
+    const held: HTTPRequest[] = [];
+    let holding = true;
+    let saving = () => {};
+    const started = new Promise<void>((resolve) => {
+      saving = resolve;
+    });
+    const hold = (request: HTTPRequest) => {
+      if (holding && request.method() === "PUT" && request.url().endsWith("/api/items/notes/pdf")) {
+        held.push(request);
+        saving();
+        return;
+      }
+      void request.continue();
+    };
+    const dialogs: string[] = [];
+    const answer = (dialog: Dialog) => {
+      dialogs.push(dialog.type());
+      void dialog.dismiss();
+    };
+    page.on("dialog", answer);
+    await page.setRequestInterception(true);
+    page.on("request", hold);
+    try {
+      await writeNote("notes", `A note on leaving ${Date.now()}`);
+      await started;
+      const asked = new Promise<void>((resolve) => page.once("dialog", () => resolve()));
+      await page.evaluate(() => {
+        location.href = "/";
+      });
+      await asked;
+      expect(dialogs).toEqual(["beforeunload"]);
+      expect(new URL(page.url()).pathname).toBe("/read/notes");
+
+      const saved = page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/items/notes/pdf") && response.request().method() === "PUT",
+      );
+      holding = false;
+      for (const request of held.splice(0)) {
+        await request.continue();
+      }
+      expect((await saved).status()).toBe(200);
+      await page.waitForNetworkIdle();
+      await page.evaluate(() => {
+        location.href = "/";
+      });
+      await page.waitForSelector("nav a");
+      expect(dialogs).toEqual(["beforeunload"]);
+    } finally {
+      page.off("request", hold);
+      page.off("dialog", answer);
+      await page.setRequestInterception(false);
+    }
   });
 
   test("a right-click on selected text keeps the selection, and the highlight in its menu highlights it", async () => {
