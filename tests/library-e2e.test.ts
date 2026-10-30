@@ -29,9 +29,11 @@ import type {
   DocumentManagerPlugin,
   EmbedPdfContainer,
   ScrollPlugin,
+  SelectionPlugin,
   ViewportPlugin,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
+import { PdfAnnotationSubtype } from "@embedpdf/models";
 import { $ } from "bun";
 import puppeteer, { type Browser, type HTTPRequest, type Page } from "puppeteer-core";
 import { z } from "zod";
@@ -376,13 +378,17 @@ describe("library window", () => {
           .map((element) => element.getBoundingClientRect())
           .sort((one, other) => one.y - other.y);
         const first = tops[0];
-        return first !== undefined && first.y >= 0 && { x: first.x, y: first.y };
+        return (
+          first !== undefined && first.y >= 0 && { x: first.x, y: first.y, width: first.width }
+        );
       },
       {},
       viewerOf(key),
       PAGE_BOX,
     );
-    return z.object({ x: z.number(), y: z.number() }).parse(await corner.jsonValue());
+    return z
+      .object({ x: z.number(), y: z.number(), width: z.number() })
+      .parse(await corner.jsonValue());
   };
   // Writes NOTE on page 1 of KEY's PDF with EmbedPDF's free-text tool, from its Annotate toolbar.
   // DOWN is the note's distance, in CSS pixels, from the page's top.
@@ -1313,6 +1319,63 @@ describe("library window", () => {
 
     await page.goto(`${bucket.origin}/read/problems`);
     expect(await notesOnFirstPage("problems")).toContain(note);
+  });
+
+  test("a right-click on selected text keeps the selection, and the highlight in its menu highlights it", async () => {
+    await page.goto(`${bucket.origin}/read/problems`);
+    await readerLoaded("problems");
+    // The problem set's first exercise line is at 237–246 pt from the top of its 595 pt page,
+    // from 146 pt across.
+    const corner = await firstPageCorner("problems");
+    const at = (x: number, y: number) => ({
+      x: corner.x + (x * corner.width) / 595,
+      y: corner.y + (y * corner.width) / 595,
+    });
+    const start = at(150, 241);
+    const end = at(320, 241);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 10 });
+    await page.mouse.up();
+    const selected = async () =>
+      page.evaluate(async (css) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const selection = (await viewer?.registry)
+          ?.getPlugin<SelectionPlugin>("selection")
+          ?.provides();
+        if (selection === undefined) {
+          throw new Error(`${css} has no selection plugin`);
+        }
+        return selection.getFormattedSelection().length;
+      }, viewerOf("problems"));
+    expect(await selected()).toBeGreaterThan(0);
+
+    const inside = at(230, 241);
+    await page.mouse.click(inside.x, inside.y, { button: "right" });
+    expect(await selected()).toBeGreaterThan(0);
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/problems/pdf") && response.request().method() === "PUT",
+    );
+    await page.click(inViewer("problems", '[data-epdf-i="add-highlight"] button'));
+    expect((await saved).status()).toBe(200);
+    const highlights = await page.evaluate(
+      async (css, highlight) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const annotations = (await viewer?.registry)
+          ?.getPlugin<AnnotationPlugin>("annotation")
+          ?.provides();
+        if (annotations === undefined) {
+          throw new Error(`${css} has no annotation plugin`);
+        }
+        return (await annotations.getPageAnnotations({ pageIndex: 0 }).toPromise()).filter(
+          (annotation) => annotation.type === highlight,
+        ).length;
+      },
+      viewerOf("problems"),
+      PdfAnnotationSubtype.HIGHLIGHT,
+    );
+    expect(highlights).toBe(1);
   });
 
   test("a note saved after a metadata write to the open PDF keeps that metadata, and the next save is taken too", async () => {
