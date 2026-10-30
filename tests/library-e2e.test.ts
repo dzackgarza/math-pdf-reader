@@ -833,6 +833,64 @@ describe("library window", () => {
     await page.setViewport(viewport);
   });
 
+  test("back returns to the place inside the page an outline entry or a search match left, and rapid back and forward end where they were sent", async () => {
+    await page.goto(`${bucket.origin}/read/outlined`);
+    await readerLoaded("outlined");
+    await goToPage("outlined", 2);
+    const within2 = await scrollBy("outlined", 120);
+    const back = readerButton("outlined", "back");
+    const forward = readerButton("outlined", "forward");
+
+    // The sidebar holds the page thumbnails, then the outline of the notes' section titles.
+    await page.click(inViewer("outlined", '[data-epdf-i="sidebar-button"] button'));
+    await page.waitForSelector(inViewer("outlined", '[role="tab"]'));
+    const [, outlineTab] = await page.$$(inViewer("outlined", '[role="tab"]'));
+    await outlineTab?.click();
+    const entry = await page.waitForFunction(
+      (css) => {
+        const span = [...(document.querySelector(css)?.shadowRoot?.querySelectorAll("span") ?? [])].find(
+          (element) => element.textContent === "Dual lattices",
+        );
+        const box = span?.getBoundingClientRect();
+        return box !== undefined && { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      },
+      {},
+      viewerOf("outlined"),
+    );
+    const center = z.object({ x: z.number(), y: z.number() }).parse(await entry.jsonValue());
+    await page.mouse.click(center.x, center.y);
+    await showsPage("outlined", 3);
+    await scrollSettled("outlined");
+    await page.click(back);
+    await showsPage("outlined", 2);
+    await scrollSettled("outlined");
+    expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
+
+    // A search match on page 6 is a jump too.
+    await page.keyboard.down("Control");
+    await page.keyboard.press("f");
+    await page.keyboard.up("Control");
+    await page.keyboard.type("unimodular");
+    await showsPage("outlined", 6);
+    await scrollSettled("outlined");
+    await page.click(back);
+    await showsPage("outlined", 2);
+    await scrollSettled("outlined");
+    expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
+
+    // Back, forward and back again, with no wait between them, end at page 2's place: the search
+    // jump replaced the outline jump in the history after it.
+    await page.click(forward);
+    await showsPage("outlined", 6);
+    await scrollSettled("outlined");
+    await page.click(back);
+    await page.click(forward);
+    await page.click(back);
+    await showsPage("outlined", 2);
+    await scrollSettled("outlined");
+    expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
+  });
+
   test("the reader draws a font the PDF does not embed with a fallback font the bucket serves", async () => {
     const form = new FormData();
     form.set("pdf", new File([fixture("japanese-text.pdf")], "japanese.pdf"));
