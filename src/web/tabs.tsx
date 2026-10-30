@@ -14,7 +14,8 @@ import { onBucketEvent } from "./bucketEvents";
 import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
 import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
 import { keybindings, matchesShortcut } from "./keyboardShortcuts";
-import { Reader, type ReaderControl, type ReaderProjection, type TabEntry } from "./reader/Reader";
+import { Reader } from "./reader/Reader";
+import type { ReaderControl, ReaderProjection, TabEntry } from "./reader/readerHost";
 import { type ItemMenu, ReaderTabsContext } from "./readerTabs";
 
 declare global {

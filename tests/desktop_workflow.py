@@ -209,7 +209,8 @@ class Reader:
               window: [window.innerWidth, window.innerHeight], page: scroll.getCurrentPage(), scrolling: scroll.getPageChangeState(),
               viewport: id === null ? null : [viewport.forDocument(id).getMetrics(), viewport.getGates(id), viewport.forDocument(id).isSmoothScrolling(), viewport.isViewportMounted(id)],
               mode: interaction.getActiveMode(), tool: R.getPlugin('annotation').provides().getActiveTool()?.id ?? null,
-              core: JSON.stringify(R.getStore().getState().core).slice(0, 2000)}});
+              selection: id === null ? null : (({{geometry, rects, slices, ...rest}}) => ({{...rest, geometry: Object.keys(geometry)}}))(R.getPlugin('selection').getDocumentState(id)),
+              annotations: R.getPlugin('annotation').provides().getAnnotations().map((tracked) => [tracked.object.type, tracked.object.pageIndex, tracked.commitState])}});
           }}, (error) => done({{...page, registry: String(error)}}));"""
         result: Script = self.driver.execute_async_script(script)
         return result
@@ -270,12 +271,18 @@ class Reader:
         """Click the button of the reader's COMMAND in EmbedPDF's toolbar."""
         self.click(f"[data-epdf-i='bucket:{command}'] button")
 
-    def drag_across(self, page: int, line: tuple[float, float]) -> None:
-        """Press on LINE of PAGE and drag down and to the right across it into the next, once the
-        page stops moving: a toolbar that opens moves the pages down."""
+    def stroke_box(self, page: int) -> tuple[float, float, float, float]:
+        """PAGE's box once a stroke on it takes: the page has stopped moving (a toolbar that opens
+        moves the pages down), and EmbedPDF has loaded its text geometry, which it loads after the
+        page shows and without which a stroke selects and highlights nothing."""
+        self.wait(f"V.__registry.getPlugin('selection').getDocumentState({json.dumps(self.key)}).geometry[{page - 1}] !== undefined")
         boxes = [self.page_box(page)]
         WebDriverWait(self.driver, 30, poll_frequency=0.2).until(lambda _: boxes.append(self.page_box(page)) or boxes[-1] == boxes[-2])
-        x, y, w, h = boxes[-1]
+        return boxes[-1]
+
+    def drag_across(self, page: int, line: tuple[float, float]) -> None:
+        """Press on LINE of PAGE and drag down and to the right across it into the next."""
+        x, y, w, h = self.stroke_box(page)
         start_x, start_y = x + w * line[0], y + h * line[1]
         actions = ActionChains(self.driver)
         pointer = actions.w3c_actions.pointer_action
@@ -324,6 +331,7 @@ class Reader:
         before = self.highlights()
         self.click("[data-epdf-i='annotate-mode'] button")
         self.click("[data-epdf-i='add-highlight'] button")
+        self.wait("P('annotation').getActiveTool()?.id === 'highlight'")
         # The Annotate toolbar opens below the main one and moves the pages down, so the page is
         # found once it is open.
         self.drag_across(page, line)
@@ -380,7 +388,7 @@ class Reader:
 
     def shell_pen_drag_across(self, page: int, line: tuple[float, float]) -> None:
         """Send a complete stylus stroke as GTK GestureStylus sends it to the Tauri bridge."""
-        x, y, w, h = self.page_box(page)
+        x, y, w, h = self.stroke_box(page)
         start_x, start_y = x + w * line[0], y + h * line[1]
         self.shell_pen_event("pointerhover", start_x, start_y)
         self.shell_pen_event("pointerdown", start_x, start_y)
@@ -395,7 +403,7 @@ class Reader:
     def pen_drag_across(self, page: int, line: tuple[float, float]) -> None:
         """Draw a stroke with a stylus: press on LINE of PAGE, drag down and to the right across it
         into the next line, and release, as `drag_across` does with the mouse."""
-        x, y, w, h = self.page_box(page)
+        x, y, w, h = self.stroke_box(page)
         start_x, start_y = x + w * line[0], y + h * line[1]
         self.pen_event("pointerdown", start_x, start_y)
         for step in range(1, 11):
