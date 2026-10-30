@@ -204,8 +204,10 @@ class Reader:
             clearTimeout(late);
             const documents = R.getPlugin('document-manager').provides();
             const scroll = R.getPlugin('scroll').provides(), interaction = R.getPlugin('interaction-manager').provides();
+            const viewport = R.getPlugin('viewport').provides(), id = documents.getActiveDocumentId();
             done({{...page, active: documents.getActiveDocumentId(), order: documents.getDocumentOrder(),
               window: [window.innerWidth, window.innerHeight], page: scroll.getCurrentPage(), scrolling: scroll.getPageChangeState(),
+              viewport: id === null ? null : [viewport.forDocument(id).getMetrics(), viewport.getGates(id), viewport.forDocument(id).isSmoothScrolling(), viewport.isViewportMounted(id)],
               mode: interaction.getActiveMode(), tool: R.getPlugin('annotation').provides().getActiveTool()?.id ?? null,
               core: JSON.stringify(R.getStore().getState().core).slice(0, 2000)}});
           }}, (error) => done({{...page, registry: String(error)}}));"""
