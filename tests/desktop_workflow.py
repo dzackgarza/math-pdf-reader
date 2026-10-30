@@ -199,8 +199,11 @@ class Reader:
             errors: window.__errors, body: document.body.innerText.slice(0, 1000),
           }};
           if (V === null) {{ done(page); return; }}
+          page.visibility = document.visibilityState;
+          const frame = Promise.race([new Promise((resolve) => requestAnimationFrame(() => resolve('fired'))),
+            new Promise((resolve) => setTimeout(() => resolve('none in 1 s'), 1000))]);
           const late = setTimeout(() => done({{...page, registry: 'not ready after 5 s'}}), 5000);
-          V.registry.then((R) => {{
+          frame.then((fired) => {{ page.frame = fired; return V.registry; }}).then((R) => {{
             clearTimeout(late);
             const documents = R.getPlugin('document-manager').provides();
             const scroll = R.getPlugin('scroll').provides(), interaction = R.getPlugin('interaction-manager').provides();
