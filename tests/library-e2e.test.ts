@@ -285,6 +285,24 @@ describe("library window", () => {
       viewerOf(key),
       top,
     );
+  // EmbedPDF's Ctrl+= (Zoom In), pressed with no click first, zooms KEY's PDF: the reader shown
+  // answers its keys at once.
+  const keysReach = async (key: string) => {
+    const before = await zoomOf(key);
+    await page.keyboard.down("Control");
+    await page.keyboard.press("Equal");
+    await page.keyboard.up("Control");
+    await page.waitForFunction(
+      async (css, unzoomed) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const zoom = (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides();
+        return zoom !== undefined && zoom.getState().zoomLevel !== unzoomed;
+      },
+      {},
+      viewerOf(key),
+      before,
+    );
+  };
   // What the desktop app's tray Quit hears back from the library (follow-open-events.js).
   const quitOutcome = () =>
     page.evaluate(
@@ -882,6 +900,7 @@ describe("library window", () => {
     await page.click(row("problems"));
     await page.keyboard.press("Enter");
     await shownReader("problems");
+    await keysReach("problems");
     expect(await openTabKeys()).toEqual(["problems"]);
     expect(await page.$eval(tab("problems"), (element) => element.textContent)).toBe(
       titleOf("problems"),
@@ -990,6 +1009,7 @@ describe("library window", () => {
     const woken = await scrollOf(first);
     expect(woken.top).toBeCloseTo(within3.top, 0);
     expect(woken.left).toBeCloseTo(within3.left, 0);
+    await keysReach(first);
     await asleep(second);
     expect(await readerKeys()).not.toContain(second);
 
@@ -1094,6 +1114,8 @@ describe("library window", () => {
     });
     expect(response.status).toBe(200);
     await shownReader("problems");
+    await readerLoaded("problems");
+    await keysReach("problems");
   });
 
   test("the status bar shows Zotero's state; a capture's reader opened before Retrieve metadata answers takes the title it resolves, in its tab and on its own page, and a source nothing identifies shows why", async () => {
