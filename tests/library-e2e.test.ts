@@ -395,23 +395,34 @@ describe("library window", () => {
       }
       scroll.scrollToPage({ pageNumber: 1, behavior: "instant" });
     }, viewerOf(key));
-    const corner = await page.waitForFunction(
-      (css, box) => {
-        const tops = [...(document.querySelector(css)?.shadowRoot?.querySelectorAll(box) ?? [])]
-          .map((element) => element.getBoundingClientRect())
-          .sort((one, other) => one.y - other.y);
-        const first = tops[0];
-        return (
-          first !== undefined && first.y >= 0 && { x: first.x, y: first.y, width: first.width }
-        );
-      },
-      {},
-      viewerOf(key),
-      PAGE_BOX,
-    );
-    return z
-      .object({ x: z.number(), y: z.number(), width: z.number() })
-      .parse(await corner.jsonValue());
+    const corner = async () =>
+      z.object({ x: z.number(), y: z.number(), width: z.number() }).parse(
+        await (
+          await page.waitForFunction(
+            (css, box) => {
+              const tops = [...(document.querySelector(css)?.shadowRoot?.querySelectorAll(box) ?? [])]
+                .map((element) => element.getBoundingClientRect())
+                .sort((one, other) => one.y - other.y);
+              const first = tops[0];
+              return (
+                first !== undefined && first.y >= 0 && { x: first.x, y: first.y, width: first.width }
+              );
+            },
+            {},
+            viewerOf(key),
+            PAGE_BOX,
+          )
+        ).jsonValue(),
+      );
+    // A zoom still settling moves and resizes the page, so the corner is taken once it stays put.
+    for (let before = await corner(); ; ) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const after = await corner();
+      if (after.x === before.x && after.y === before.y && after.width === before.width) {
+        return after;
+      }
+      before = after;
+    }
   };
   // Writes NOTE on page 1 of KEY's PDF with EmbedPDF's free-text tool, from its Annotate toolbar.
   // DOWN is the note's distance, in CSS pixels, from the page's top.
@@ -841,16 +852,28 @@ describe("library window", () => {
   test("back returns to the place inside the page an outline entry or a search match left, and rapid back and forward end where they were sent", async () => {
     await page.goto(`${bucket.origin}/read/outlined`);
     await readerLoaded("outlined");
-    await goToPage("outlined", 2);
-    const within2 = await scrollBy("outlined", 120);
     const back = readerButton("outlined", "back");
     const forward = readerButton("outlined", "forward");
 
-    // The sidebar holds the page thumbnails, then the outline of the notes' section titles.
+    // The sidebar holds the page thumbnails, then the outline of the notes' section titles. It is
+    // opened first: opening it can change the pages' scale, and with it every scroll position.
     await page.click(inViewer("outlined", '[data-epdf-i="sidebar-button"] button'));
     await page.waitForSelector(inViewer("outlined", '[role="tab"]'));
     const [, outlineTab] = await page.$$(inViewer("outlined", '[role="tab"]'));
     await outlineTab?.click();
+    const scaleOf = () =>
+      page.evaluate(async (css) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        return (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides().getState().currentZoomLevel;
+      }, viewerOf("outlined"));
+    for (let before = await scaleOf(); ; ) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const after = await scaleOf();
+      if (after === before) break;
+      before = after;
+    }
+    await goToPage("outlined", 2);
+    const within2 = await scrollBy("outlined", 120);
     const entry = await page.waitForFunction(
       (css) => {
         const span = [...(document.querySelector(css)?.shadowRoot?.querySelectorAll("span") ?? [])].find(
@@ -1440,8 +1463,8 @@ describe("library window", () => {
   });
 
   test("leaving the reader page while a note is still being saved asks first, and once it is saved leaves at once", async () => {
-    await page.goto(`${bucket.origin}/read/notes`);
-    await readerLoaded("notes");
+    await page.goto(`${bucket.origin}/read/lattices`);
+    await readerLoaded("lattices");
     // The note's save is held until the test lets it through.
     const held: HTTPRequest[] = [];
     let holding = true;
@@ -1449,8 +1472,20 @@ describe("library window", () => {
     const started = new Promise<void>((resolve) => {
       saving = resolve;
     });
+    // The saves of the PDF still in flight: the note's first save, and the save of its text after.
+    let inFlight = 0;
+    const isSave = (request: HTTPRequest) =>
+      request.method() === "PUT" && request.url().endsWith("/api/items/lattices/pdf");
+    const ended = (request: HTTPRequest) => {
+      if (isSave(request)) {
+        inFlight -= 1;
+      }
+    };
     const hold = (request: HTTPRequest) => {
-      if (holding && request.method() === "PUT" && request.url().endsWith("/api/items/notes/pdf")) {
+      if (isSave(request)) {
+        inFlight += 1;
+      }
+      if (holding && isSave(request)) {
         held.push(request);
         saving();
         return;
@@ -1465,8 +1500,10 @@ describe("library window", () => {
     page.on("dialog", answer);
     await page.setRequestInterception(true);
     page.on("request", hold);
+    page.on("requestfinished", ended);
+    page.on("requestfailed", ended);
     try {
-      await writeNote("notes", `A note on leaving ${Date.now()}`);
+      await writeNote("lattices", `A note on leaving ${Date.now()}`, 480);
       await started;
       const asked = new Promise<void>((resolve) => page.once("dialog", () => resolve()));
       await page.evaluate(() => {
@@ -1474,18 +1511,20 @@ describe("library window", () => {
       });
       await asked;
       expect(dialogs).toEqual(["beforeunload"]);
-      expect(new URL(page.url()).pathname).toBe("/read/notes");
+      expect(new URL(page.url()).pathname).toBe("/read/lattices");
 
       const saved = page.waitForResponse(
         (response) =>
-          response.url().endsWith("/api/items/notes/pdf") && response.request().method() === "PUT",
+          response.url().endsWith("/api/items/lattices/pdf") && response.request().method() === "PUT",
       );
       holding = false;
       for (const request of held.splice(0)) {
         await request.continue();
       }
       expect((await saved).status()).toBe(200);
-      await page.waitForNetworkIdle();
+      for (let quiet = 0; quiet < 4; quiet = inFlight === 0 ? quiet + 1 : 0) {
+        await new Promise((resolve) => setTimeout(resolve, 125));
+      }
       await page.evaluate(() => {
         location.href = "/";
       });
@@ -1493,6 +1532,8 @@ describe("library window", () => {
       expect(dialogs).toEqual(["beforeunload"]);
     } finally {
       page.off("request", hold);
+      page.off("requestfinished", ended);
+      page.off("requestfailed", ended);
       page.off("dialog", answer);
       await page.setRequestInterception(false);
     }
