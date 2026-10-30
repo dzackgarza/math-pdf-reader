@@ -55,10 +55,7 @@ builds both capture extensions, has addons.mozilla.org sign a changed Firefox bu
 them where Chromium loads the unpacked build and where the bucket serves Firefox its updates. An
 extension whose version differs from the provisioned one refuses captures until it is replaced.
 
-A push provisions: the pre-push hook runs `just test-push`, and its last step is `just provision`,
-after the QC gates pass.
-
-Provision, or push, at these points:
+Run `just provision` at these points (a push does not provision: the pre-push hook only checks syntax, and CI runs the QC gates):
 
 - after a significant change to the server, the library UI, the reader, the store or a plugin;
 - when a milestone or a child plan is complete;
