@@ -1,0 +1,16 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb}
+% hyperref turns the reference on page 1 into a link to page 3.
+\usepackage[hidelinks]{hyperref}
+\pagestyle{empty}
+\begin{document}
+\section{Lattices}
+A lattice is a free $\mathbb{Z}$-module of finite rank with a symmetric bilinear form.
+Its dual is defined in Section~\ref{dual}.
+\newpage
+\section{Gram matrices}
+For a basis $e_1, \dots, e_n$ the Gram matrix is $G = (b(e_i, e_j))_{i,j}$.
+\newpage
+\section{Dual lattices}\label{dual}
+The dual lattice is $L^\vee = \{ x \in L \otimes \mathbb{Q} : b(x, L) \subseteq \mathbb{Z} \}$.
+\end{document}

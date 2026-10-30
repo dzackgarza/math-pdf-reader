@@ -896,6 +896,39 @@ describe("library window", () => {
     expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
   });
 
+  test("a link in the PDF to another page is a jump that back returns from, to the place it left", async () => {
+    // The test captures and deletes its own PDF, so later tests see the fixtures as they were.
+    const form = new FormData();
+    form.set("pdf", new File([fixture("linked-notes.pdf")], "linked-notes.pdf"));
+    form.set("pdf_url", published("/~author/linked-notes.pdf"));
+    form.set("title_hint", "Notes with a link");
+    const captured = await fetch(`${bucket.origin}/capture-bytes`, { method: "POST", body: form });
+    expect(captured.status).toBe(200);
+    const key = CaptureResponseSchema.parse(await captured.json()).key;
+
+    await page.goto(`${bucket.origin}/read/${key}`);
+    await readerLoaded(key);
+    // The reference to Section 3 on page 1 links to page 3; its box is at 246–253 pt across and
+    // 161–170 pt down the 612 pt page. The page is found at its top, then scrolled a little.
+    const corner = await firstPageCorner(key);
+    const top = (await scrollOf(key)).top;
+    const left = await scrollBy(key, 40);
+    const scale = corner.width / 612;
+    await page.mouse.click(
+      corner.x + 249 * scale,
+      corner.y - (left.top - top) + 165 * scale,
+    );
+    await showsPage(key, 3);
+    await scrollSettled(key);
+    await page.click(readerButton(key, "back"));
+    await showsPage(key, 1);
+    await scrollSettled(key);
+    expect((await scrollOf(key)).top).toBeCloseTo(left.top, 0);
+
+    const deleted = await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+    expect(deleted.ok).toBe(true);
+  });
+
   test("the reader draws a font the PDF does not embed with a fallback font the bucket serves", async () => {
     const form = new FormData();
     form.set("pdf", new File([fixture("japanese-text.pdf")], "japanese.pdf"));
