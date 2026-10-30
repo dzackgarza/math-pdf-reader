@@ -33,5 +33,5 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 
 - **WebDriver's element text is empty for the reader's title in WebKitGTK.** `WebElement.text` answers `''` for the header's `h1`; read its `textContent` attribute.
 
-- **A synthetic pointer event reaches EmbedPDF's page handlers only when dispatched at the element under the point.** EmbedPDF binds page pointer handling to an interaction provider `div` *inside* the drawn page box (page-sized, `position:relative`), not to the box itself; an event dispatched on the box bubbles past the provider, so a synthetic pen stroke selected nothing and the highlight count stayed at zero.
+- **A synthetic pointer event reaches EmbedPDF's page handlers only when dispatched at the element under the point.** EmbedPDF binds page pointer handling to an interaction provider `div` _inside_ the drawn page box (page-sized, `position:relative`), not to the box itself; an event dispatched on the box bubbles past the provider, so a synthetic pen stroke selected nothing and the highlight count stayed at zero.
   Dispatch at the element the platform would hit-test: `S.elementFromPoint(x, y)` (`Reader.pen_event`).

@@ -101,6 +101,14 @@ const HIGHLIGHT_TOOL = "highlight";
 const LINE_STEP = 40;
 const PAGE_SHARE = 0.9;
 
+// The page a PDF opens at without a saved position: the one asked for, else the last viewed.
+function startPage(openAt: { page: number } | null, item: BucketItem): number {
+  if (openAt !== null) {
+    return openAt.page;
+  }
+  return item.reading.status === "viewed" ? item.reading.page : 1;
+}
+
 function plugin<
   T extends
     | ExportPlugin
@@ -167,7 +175,11 @@ const SCROLL_COMMANDS = [
   scrollCommand("down", ["ArrowDown"], ({ top }) => top + LINE_STEP),
   scrollCommand("up", ["ArrowUp"], ({ top }) => top - LINE_STEP),
   scrollCommand("page-down", ["PageDown", "Space"], ({ top, height }) => top + height * PAGE_SHARE),
-  scrollCommand("page-up", ["PageUp", "Shift+Space"], ({ top, height }) => top - height * PAGE_SHARE),
+  scrollCommand(
+    "page-up",
+    ["PageUp", "Shift+Space"],
+    ({ top, height }) => top - height * PAGE_SHARE,
+  ),
   scrollCommand("start", ["Home"], () => 0),
   scrollCommand("end", ["End"], ({ end }) => end),
 ];
@@ -442,8 +454,15 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
     [host],
   );
 
+  // The PDF the viewer shows; the viewer shows none before it is ready.
+  const activeDocumentId = useCallback(
+    (): string | null => (host.caps === null ? null : host.caps.documents.getActiveDocumentId()),
+    [host],
+  );
+
   const projection = useCallback((): ReaderProjection => {
-    const order = host.caps?.documents.getDocumentOrder() ?? [];
+    // Before the viewer is ready it holds no PDF; the reader's own entries are all there is.
+    const order = host.caps === null ? [] : host.caps.documents.getDocumentOrder();
     const awake = [
       ...order.filter((key) => host.held.has(key)),
       ...[...host.held.keys()].filter((key) => !order.includes(key)),
@@ -526,6 +545,38 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
     [caps, host],
   );
 
+  // EmbedPDF's zoom plugin gates a PDF's viewport until its first zoom, which waits for the
+  // viewport to have a size; a zoom asked for before then is dropped.
+  const restoreOnceSized = useCallback(
+    (key: string, position: Position) => {
+      const { viewport } = caps();
+      if (!viewport.isGated(key)) {
+        restore(key, position);
+        return;
+      }
+      const stop = viewport.onGateChange((event) => {
+        if (event.documentId === key && !event.isGated) {
+          stop();
+          restore(key, position);
+        }
+      });
+    },
+    [caps, restore],
+  );
+
+  // Scrolls KEY's PDF to the top of PAGE, a move of the reader's own that records no jump.
+  const scrollToStart = useCallback(
+    (key: string, page: number) => {
+      host.moving = true;
+      try {
+        caps().scroll.forDocument(key).scrollToPage({ pageNumber: page, behavior: "instant" });
+      } finally {
+        host.moving = false;
+      }
+    },
+    [caps, host],
+  );
+
   // EmbedPDF answers its keyboard shortcuts on the whole document (plugin-commands' keyboard
   // utility), for the active PDF, so while the Library is shown the reader disables every
   // category that holds a shortcut command, and the keys reach the library; with no active PDF no
@@ -533,11 +584,11 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
   // change of EmbedPDF's store, on which EmbedPDF resolves its commands again, so the toolbar's
   // reader buttons also show the reader's own state (Back, Forward, Night mode) once this runs.
   const scopeShortcuts = useCallback(() => {
-    const commands = host.caps?.commands;
-    const documentId = host.caps?.documents.getActiveDocumentId() ?? null;
-    if (commands === undefined || documentId === null) {
+    const documentId = activeDocumentId();
+    if (host.caps === null || documentId === null) {
       return;
     }
+    const commands = host.caps.commands;
     if (shownRef.current) {
       commands.setDisabledCategories(VIEWER_DISABLED);
       return;
@@ -550,14 +601,16 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       return found;
     });
     commands.setDisabledCategories([...VIEWER_DISABLED, ...categories]);
-  }, [host]);
+  }, [host, activeDocumentId]);
 
+  // The tab that takes KEY's place: the one after it, or the one before the last.
   const neighbour = useCallback(
     (key: string): string | null => {
       const tabs = projection().tabs;
       const index = tabs.findIndex((tab) => tab.key === key);
       const others = tabs.filter((tab) => tab.key !== key);
-      return (others[index] ?? others[index - 1])?.key ?? null;
+      const next = others[Math.min(index, others.length - 1)];
+      return next === undefined ? null : next.key;
     },
     [projection],
   );
@@ -595,7 +648,11 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
           : page !== undefined
             ? { page }
             : null;
-      const loading: Held = { status: "loading", openAt, index: bookmark?.index ?? null };
+      const loading: Held = {
+        status: "loading",
+        openAt,
+        index: bookmark === undefined ? null : bookmark.index,
+      };
       host.held.set(key, loading);
       host.focus = key;
       changed();
@@ -686,6 +743,30 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
     [host, activate, caps, changed, projection],
   );
 
+  // EmbedPDF closes KEY's PDF, and shows NEXT first when NEXT is open.
+  const closeShown = useCallback(
+    (key: string, next: string | null) => {
+      const { documents } = caps();
+      const shownNext = next === null ? undefined : host.held.get(next);
+      if (next !== null && shownNext?.status === "open") {
+        documents.setActiveDocument(next);
+      }
+      documents.closeDocument(key);
+    },
+    [host, caps],
+  );
+
+  // KEY, about to be shown, wakes when it sleeps.
+  const wakeSleeping = useCallback(
+    (key: string) => {
+      const sleeping = host.bookmarks.get(key);
+      if (sleeping !== undefined) {
+        open(key, sleeping.title);
+      }
+    },
+    [host, open],
+  );
+
   // KEY leaves the manager and the tab row, or, with BOOKMARK, sleeps in the tab row.
   const remove = useCallback(
     (key: string, bookmark: Bookmark | null) => {
@@ -703,21 +784,14 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       host.focus = next;
       if (held?.status === "open") {
         held.storage.dispose();
-        const { documents } = caps();
-        const shownNext = next === null ? undefined : host.held.get(next);
-        if (next !== null && shownNext?.status === "open") {
-          documents.setActiveDocument(next);
-        }
-        documents.closeDocument(key);
+        closeShown(key, next);
       }
       changed();
-      // The tab shown next wakes when it sleeps.
-      const sleeping = next === null ? undefined : host.bookmarks.get(next);
-      if (next !== null && sleeping !== undefined) {
-        open(next, sleeping.title);
+      if (next !== null) {
+        wakeSleeping(next);
       }
     },
-    [host, caps, neighbour, changed, open],
+    [host, neighbour, changed, closeShown, wakeSleeping],
   );
 
   const sleepReader = useCallback(
@@ -828,6 +902,12 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
     [storageOf, positionOf, restore, scopeShortcuts],
   );
 
+  // Whether KEY's history holds a place STEP away; a PDF still loading has no history yet.
+  const canWalk = (key: string, step: -1 | 1) => {
+    const storage = storageOf(key);
+    return storage !== null && storage.history.canStep(step);
+  };
+
   const toggleNightMode = async (key: string) => {
     const library = await request(LibraryPayloadSchema, "PATCH", "/api/preferences", {
       readerNightMode: !host.nightMode,
@@ -867,7 +947,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       icon: "bucket-back",
       shortcuts: ["Alt+ArrowLeft"],
       categories: ["navigation", "navigation-history"],
-      disabled: ({ documentId }) => !(storageOf(documentId)?.history.canStep(-1) ?? false),
+      disabled: ({ documentId }) => !canWalk(documentId, -1),
       action: ({ documentId }) => walk(documentId, -1),
     },
     {
@@ -876,7 +956,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       icon: "bucket-forward",
       shortcuts: ["Alt+ArrowRight"],
       categories: ["navigation", "navigation-history"],
-      disabled: ({ documentId }) => !(storageOf(documentId)?.history.canStep(1) ?? false),
+      disabled: ({ documentId }) => !canWalk(documentId, 1),
       action: ({ documentId }) => walk(documentId, 1),
     },
     {
@@ -904,7 +984,8 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
               }
             }, COPIED_SHOWN_MS);
           },
-          (error: Error) => held.storage.show({ text: `Copy link: ${error.message}`, failed: true }),
+          (error: Error) =>
+            held.storage.show({ text: `Copy link: ${error.message}`, failed: true }),
         );
       },
     },
@@ -931,7 +1012,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       viewport: plugin<ViewportPlugin>(registry, ViewportPlugin.id),
     };
     host.caps = found;
-    const { documents, scroll, ui, annotations, commands, viewport } = found;
+    const { documents, scroll, ui, annotations, commands } = found;
     commands.registerCommand(DEFAULT_TOOL);
     commands.registerCommand(findCommand(viewerRoot));
     for (const command of SCROLL_COMMANDS) {
@@ -1014,32 +1095,14 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       }
       if (openAt !== null && "position" in openAt) {
         storage.recordedPage = openAt.position.pageNumber;
-        // EmbedPDF's zoom plugin gates a PDF's viewport until its first zoom, which waits for the
-        // viewport to have a size; a zoom asked for before then is dropped.
-        const { position } = openAt;
-        if (viewport.isGated(documentId)) {
-          const stop = viewport.onGateChange((event) => {
-            if (event.documentId === documentId && !event.isGated) {
-              stop();
-              restore(documentId, position);
-            }
-          });
-        } else {
-          restore(documentId, position);
-        }
+        restoreOnceSized(documentId, openAt.position);
       } else {
-        const reading = item.reading;
-        const page = openAt?.page ?? (reading.status === "viewed" ? reading.page : 1);
+        const page = startPage(openAt, item);
         storage.recordedPage = page;
         // EmbedPDF's page controls read the page count when they mount and then only at a page
         // change, and they can mount before the layout; this scroll, to page 1 too, is that change.
         if (page <= totalPages) {
-          host.moving = true;
-          try {
-            scroll.forDocument(documentId).scrollToPage({ pageNumber: page, behavior: "instant" });
-          } finally {
-            host.moving = false;
-          }
+          scrollToStart(documentId, page);
         }
       }
       storage.page = storage.recordedPage;
@@ -1089,12 +1152,15 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
           currentDocumentId,
           ...host.recent.filter((key) => key !== currentDocumentId),
         ];
-        const storage = storageOf(currentDocumentId);
-        storage?.session.start(storage.page, isShown(currentDocumentId));
         if (host.laidOut.has(currentDocumentId)) {
           updateStylusMode(currentDocumentId);
         }
-        callbacks.current.onPage?.(currentDocumentId, storage?.page ?? 1);
+        // A PDF still loading reports its page once it is laid out.
+        const storage = storageOf(currentDocumentId);
+        if (storage !== null) {
+          storage.session.start(storage.page, isShown(currentDocumentId));
+          callbacks.current.onPage?.(currentDocumentId, storage.page);
+        }
       }
       changed();
       scopeShortcuts();
@@ -1109,9 +1175,9 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
 
   // The PDF shown: its storage while it is open.
   const activeStorage = useCallback((): DocumentStorage | null => {
-    const key = host.caps?.documents.getActiveDocumentId() ?? null;
+    const key = activeDocumentId();
     return key === null ? null : storageOf(key);
-  }, [host, storageOf]);
+  }, [storageOf, activeDocumentId]);
 
   // The reader shown again starts reading its PDF's page; hidden, that stretch ends and reports.
   useEffect(() => {
@@ -1310,9 +1376,8 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
     let restoring: string | null = null;
     let erasing: number | null = null;
     let eraserLast: { x: number; y: number } | null = null;
-    const activeDocument = () => host.caps?.documents.getActiveDocumentId() ?? null;
     const activeToolbar = () => {
-      const documentId = activeDocument();
+      const documentId = activeDocumentId();
       return documentId === null || host.caps === null || !host.laidOut.has(documentId)
         ? undefined
         : host.caps.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
@@ -1358,7 +1423,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       to: { x: number; y: number },
       annotate: boolean,
     ) => {
-      const documentId = activeDocument();
+      const documentId = activeDocumentId();
       const root = container.shadowRoot;
       if (host.caps === null || documentId === null || root === null) {
         throw new Error("eraser reached a reader without its annotation and page geometry");
@@ -1494,7 +1559,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       ) {
         return;
       }
-      const documentId = activeDocument();
+      const documentId = activeDocumentId();
       if (host.caps === null || documentId === null) {
         throw new Error("a pen pressed a page before the viewer was ready");
       }
@@ -1510,7 +1575,8 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       }
       const annotations = host.caps.annotations.forDocument(documentId);
       penDown = true;
-      restoring = annotations.getActiveTool()?.id ?? null;
+      const tool = annotations.getActiveTool();
+      restoring = tool === null ? null : tool.id;
       annotations.setActiveTool(HIGHLIGHT_TOOL);
     };
     const restoreTool = () => {
@@ -1518,7 +1584,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
         return;
       }
       penDown = false;
-      const documentId = activeDocument();
+      const documentId = activeDocumentId();
       const previous = restoring;
       restoring = null;
       if (host.caps === null || documentId === null) {
@@ -1562,7 +1628,7 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
       window.removeEventListener("pointercancel", released);
       window.removeEventListener("blur", lostFocus);
     };
-  }, [host]);
+  }, [host, activeDocumentId]);
 
   useEffect(() => {
     const root = viewerRoot();

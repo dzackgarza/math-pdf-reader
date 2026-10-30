@@ -130,8 +130,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     (key: string) => {
       closeReader(key).catch((error: Error) => {
         show(key);
-        const title =
-          stateRef.current.projection.tabs.find((tab) => tab.key === key)?.title ?? key;
+        const title = stateRef.current.projection.tabs.find((tab) => tab.key === key)?.title ?? key;
         setCloseRequest({
           title: "Close without saving?",
           description: `${title}: ${error.message}`,
@@ -156,7 +155,9 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   // Quitting waits for every open PDF to settle; one that cannot rejects the quit's wait.
   useEffect(() => {
     const quitting = (event: WindowEventMap["pdf-bucket-quit"]) => {
-      event.detail.waitUntil(control.current === null ? Promise.resolve() : control.current.settleAll());
+      event.detail.waitUntil(
+        control.current === null ? Promise.resolve() : control.current.settleAll(),
+      );
     };
     window.addEventListener("pdf-bucket-quit", quitting);
     return () => window.removeEventListener("pdf-bucket-quit", quitting);

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
 /* daisyUI supplies only the Timeline screen's timeline. Its themes would redefine the app's
    color tokens (--color-accent among them), so none is loaded; the variables the timeline
    reads (daisyui/components/timeline.css) come from the app's palette below. */
@@ -24,7 +25,6 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 }
-@import "@fontsource-variable/inter";
 
 @theme {
   --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;

@@ -17,7 +17,7 @@ import json
 import os
 import subprocess
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Literal
@@ -373,9 +373,9 @@ class Reader:
             )
         self.pen_event("pointerup", start_x + 0.3 * w, start_y + 0.03 * h)
 
-    def highlighted_pixels(self, page: int, night: bool = False) -> tuple[int, int]:
-        """The window's pixels inside the line boxes of PAGE's highlights, counted as text and as
-        highlight: `pixel_counts`, or `night_pixel_counts` when NIGHT."""
+    def highlighted_pixels(self, page: int, counts: Callable[[pymupdf.Pixmap, list[Script]], tuple[int, int]]) -> tuple[int, int]:
+        """The window's pixels inside the line boxes of PAGE's highlights, as COUNTS counts them:
+        `pixel_counts` in day mode, `night_pixel_counts` in night mode."""
         x, y, _, _ = self.page_box(page)
         boxes = self.items(f"""(() => {{
           const scale = P('zoom').getState().currentZoomLevel, ratio = window.devicePixelRatio;
@@ -384,7 +384,6 @@ class Reader:
             .flatMap((object) => object.segmentRects)
             .map((r) => [({x} + r.origin.x * scale) * ratio, ({y} + r.origin.y * scale) * ratio, r.size.width * scale * ratio, r.size.height * scale * ratio]) }})()""")
         assert boxes
-        counts = night_pixel_counts if night else pixel_counts
         return counts(pymupdf.Pixmap(self.driver.get_screenshot_as_png()), boxes)
 
 
@@ -519,12 +518,12 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     # Highlight it. The text shows through the highlight.
     reader.highlight(page, NOTES_LINE)
     reader.assert_saved()
-    dark, yellow = reader.highlighted_pixels(page)
+    dark, yellow = reader.highlighted_pixels(page, pixel_counts)
     assert dark > 0 and yellow > 0, (dark, yellow)
     # In night mode the text still shows through the highlight, light on its darkened colour.
     reader.click_command("night-mode")
     reader.wait("[...S.querySelectorAll('style')].some((sheet) => sheet.textContent.includes('invert(1)'))")
-    light, darkened = reader.highlighted_pixels(page, night=True)
+    light, darkened = reader.highlighted_pixels(page, night_pixel_counts)
     assert light > 0 and darkened > 0, (light, darkened)
     reader.click_command("night-mode")
 

@@ -180,8 +180,11 @@ export class DocumentStorage {
       }
       await this.saves;
     }
-    if (this.conflict || this.failure !== null) {
-      throw new Error(this.failure ?? "a save conflict is open");
+    if (this.failure !== null) {
+      throw new Error(this.failure);
+    }
+    if (this.conflict) {
+      throw new Error("a save conflict is open");
     }
   }
 
