@@ -1,22 +1,18 @@
-// The reader: one stored PDF in EmbedPDF (PDFium compiled to WebAssembly), whose one toolbar also
-// holds the reader's buttons: Library (only when the reader is not in a library tab), back and
-// forward, night mode and a button that copies the captured PDF link. The save state shows over
-// the PDF's corner. The library's tabs (tabs.tsx) and the `/read/<key>` page (main.tsx) both show
-// it; the tab or the page names the PDF.
+// The reader: one EmbedPDF viewer (PDFium compiled to WebAssembly) per window, whose document
+// manager holds every PDF open in it. Each PDF's document id is its item key. The manager owns
+// opening, activating and closing a PDF, and EmbedPDF keeps each open PDF's scroll position,
+// zoom, tools and annotation state; the bucket keeps each one's storage (documentStorage.ts),
+// the PDFs put to sleep, and whether the reader is shown at all. The library's tabs (tabs.tsx)
+// show what the manager holds; the `/read/<key>` page (main.tsx) opens one PDF in its own
+// viewer.
 //
-// Saving (RFC 9110 conditional requests): the reader keeps the entity tag `/pdf/<key>.pdf`
-// answered with, the stored bytes' SHA-256. A short pause after EmbedPDF commits an annotation
-// change into the document, ExportPlugin.saveAsCopy writes the PDF with every annotation, and the
-// reader PUTs it with `If-Match` naming the bytes it was made from. The server keeps it while
-// the stored file still holds those bytes and the new ones carry the item's provenance, and
-// answers the new entity tag. Saves run one after another. When the stored PDF changed since it
-// was loaded (412), the reader keeps showing the user's copy and offers to save it over the
-// stored PDF or to discard it and load the stored PDF.
+// The viewer's one toolbar also holds the reader's buttons: Library (only on the `/read/<key>`
+// page), back and forward, night mode and a button that copies the captured PDF link. The save
+// state of the PDF shown shows over its corner.
 //
-// Back and forward walk the positions the reader jumped between in this PDF (links, outline,
-// thumbnails, search results), as PDF.js's PDFHistory does (web/pdf_history.js): a jump from A
-// to B keeps the positions up to the current one, then A, then B; a step back or forward is not
-// itself a jump.
+// Sleep: EmbedPDF's document manager has no suspend, so a PDF put to sleep settles its saves, is
+// closed, and leaves a bookmark (its title, exact position and place among the tabs); waking it
+// opens the stored PDF again at that position and place.
 
 import { expandRect, PdfAnnotationSubtype, rectFromPoints } from "@embedpdf/models";
 import pdfiumWasm from "@embedpdf/pdfium/pdfium.wasm?url";
@@ -37,44 +33,53 @@ import {
   SearchPlugin,
   type ToolbarItem,
   UIPlugin,
-  type ZoomLevel,
+  ViewportPlugin,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
 import { ArrowLeft, ArrowRight, type IconNode, Library, Link, Moon } from "lucide";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type BucketItem,
   LIBRARY_VIEW_KEY,
   LibraryPayloadSchema,
-  MIN_PAGE_SECONDS,
   type Preferences,
-  READER_IDLE_MINUTES,
   ThemeSchema,
 } from "../../contract/library";
 import { request, requestError } from "../useLibraryApi";
+import { DocumentStorage, entityTag, type Position } from "./documentStorage";
 import { fallbackFonts } from "./fallbackFonts";
-import { ReadingSession } from "./readingSession";
 
-// Where a reader is in its PDF: the page it shows and the zoom it was given (a number or a fit).
-export type View = { page: number; zoom: ZoomLevel };
+// A PDF tab as the tab row draws it.
+export type TabEntry = { key: string; title: string; asleep: boolean };
 
-// What a reader offers whoever shows it: settle sends the reading session and waits for every
-// annotation to be saved, rejecting while a save has failed or a save conflict is open; view is
-// where it is in its PDF.
-export type ReaderControl = { settle: () => Promise<void>; view: () => View };
+// What the reader holds: its PDFs in tab order, and the one it shows (null: none).
+export type ReaderProjection = { tabs: TabEntry[]; active: string | null };
 
-// How long after an annotation change the reader saves, so a burst of changes is one save.
-const SAVE_PAUSE_MS = 700;
-// How long after a page change the reader records it as the item's last viewed page.
-const RECORD_PAUSE_MS = 1000;
+// What the reader offers whoever shows it. Activate shows a PDF the reader holds, waking it when
+// it sleeps. Close and sleep settle the PDF first (send its reading session, save every
+// annotation) and reject, leaving it open, when it cannot settle; discard closes it without
+// saving. settleAll settles every open PDF.
+export type ReaderControl = {
+  open: (key: string, title: string, page?: number) => void;
+  activate: (key: string) => void;
+  close: (key: string) => Promise<void>;
+  discard: (key: string) => void;
+  sleep: (key: string) => Promise<void>;
+  retitle: (key: string, title: string) => void;
+  settleAll: () => Promise<void>;
+};
 
-const ENTITY_TAG = /^"[0-9a-f]{64}"$/;
+// How many PDFs stay open in the manager. Past it, the PDFs shown longest ago sleep, which frees
+// their PDFium documents, and showing one opens it again where it was. Firefox's tab unloader
+// picks the tabs it unloads the same way, by the time each was last shown
+// (browser/components/tabbrowser/TabUnloader.sys.mjs).
+const AWAKE_READERS = 5;
 
 // What the reader's status says after Copy PDF link, and for how long.
 const COPIED = "PDF link copied";
 const COPIED_SHOWN_MS = 1500;
 
-// The bucket opens, closes, prints and redacts nothing from inside a reader.
+// The bucket opens, closes, prints and redacts nothing through the viewer's own controls.
 const VIEWER_DISABLED = ["document", "redaction"];
 
 // Night mode draws each page inverted, with hues turned back, so text is light on dark and
@@ -91,14 +96,10 @@ const PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]';
 // The reader's text-markup highlighter, the tool a stylus always draws with.
 const HIGHLIGHT_TOOL = "highlight";
 
-// The entity tag an answer carries (server/src/library.rs `entity_tag`).
-function entityTag(response: Response): string {
-  const tag = response.headers.get("ETag");
-  if (tag === null || !ENTITY_TAG.test(tag)) {
-    throw new Error(`${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`);
-  }
-  return tag;
-}
+// How far an arrow key scrolls, in CSS pixels, and what share of the viewport a page key does
+// (Firefox: toolkit.scrollbox line height, and a page less a tenth).
+const LINE_STEP = 40;
+const PAGE_SHARE = 0.9;
 
 function plugin<
   T extends
@@ -110,6 +111,7 @@ function plugin<
     | DocumentManagerPlugin
     | InteractionManagerPlugin
     | SearchPlugin
+    | ViewportPlugin
     | ZoomPlugin,
 >(registry: PluginRegistry, id: string): ReturnType<T["provides"]> {
   const found = registry.getPlugin<T>(id);
@@ -131,6 +133,44 @@ const DEFAULT_TOOL: Command = {
       .forDocument(documentId)
       .activateDefaultMode(),
 };
+
+// The keys a browser scrolls a page with scroll the PDF shown whatever has the focus, as
+// EmbedPDF's own shortcuts answer on the whole document: its viewport holds no focus, so before
+// a click the browser's own scrolling has no element to move.
+function scrollCommand(
+  id: string,
+  shortcuts: string[],
+  to: (metrics: { top: number; height: number; end: number }) => number,
+): Command {
+  return {
+    id: `bucket:scroll-${id}`,
+    label: `Scroll ${id}`,
+    shortcuts,
+    categories: ["navigation", "navigation-scroll"],
+    action: ({ registry, documentId }) => {
+      const viewport = plugin<ViewportPlugin>(registry, ViewportPlugin.id).forDocument(documentId);
+      const metrics = viewport.getMetrics();
+      viewport.scrollTo({
+        x: metrics.scrollLeft,
+        y: to({
+          top: metrics.scrollTop,
+          height: metrics.clientHeight,
+          end: metrics.scrollHeight - metrics.clientHeight,
+        }),
+        behavior: "instant",
+      });
+    },
+  };
+}
+
+const SCROLL_COMMANDS = [
+  scrollCommand("down", ["ArrowDown"], ({ top }) => top + LINE_STEP),
+  scrollCommand("up", ["ArrowUp"], ({ top }) => top - LINE_STEP),
+  scrollCommand("page-down", ["PageDown", "Space"], ({ top, height }) => top + height * PAGE_SHARE),
+  scrollCommand("page-up", ["PageUp", "Shift+Space"], ({ top, height }) => top - height * PAGE_SHARE),
+  scrollCommand("start", ["Home"], () => 0),
+  scrollCommand("end", ["End"], ({ end }) => end),
+];
 
 // EmbedPDF's search panel (its sidebar `search-panel`) and the field in it.
 const SEARCH_PANEL = "search-panel";
@@ -188,8 +228,8 @@ const READER_ICONS = {
 };
 
 // The reader's buttons in EmbedPDF's main toolbar, one command each: Library, Back and Forward
-// open its left group, Night mode and Copy PDF link close its right group. The reader in a tab
-// has no Library button: the tab strip holds the way back.
+// open its left group, Night mode and Copy PDF link close its right group. The reader in the
+// library's tabs has no Library button: the tab row holds the way back.
 function commandButton(commandId: string): ToolbarItem {
   return { type: "command-button", id: commandId, commandId, variant: "icon" };
 }
@@ -266,105 +306,79 @@ async function load(key: string): Promise<Loaded> {
   };
 }
 
-// The positions the reader jumped between, and the one it shows.
-class Positions {
-  private pages: number[] = [];
-  private index = -1;
+// Where a PDF opens: an exact position (a bookmark), a page, or the page last viewed.
+type OpenAt = { position: Position } | { page: number } | null;
 
-  jumped(from: number, to: number): void {
-    this.pages = this.pages.slice(0, this.index + 1);
-    if (this.pages.at(-1) !== from) {
-      this.pages.push(from);
-    }
-    this.pages.push(to);
-    this.index = this.pages.length - 1;
-  }
+// A PDF put to sleep: its title, where it was, and its place in the tab row.
+type Bookmark = { title: string; position: Position; index: number };
 
-  // The page a step of STEP (-1 back, 1 forward) shows, or null at either end.
-  step(step: -1 | 1): number | null {
-    const page = this.pages[this.index + step];
-    if (page === undefined) {
-      return null;
-    }
-    this.index += step;
-    return page;
-  }
+// One PDF the reader holds that the manager may not hold yet: loading, failed or open.
+type Held =
+  | { status: "loading"; openAt: OpenAt; index: number | null }
+  | { status: "failed"; message: string }
+  | {
+      status: "open";
+      storage: DocumentStorage;
+      item: BucketItem;
+      preferences: Preferences;
+      openAt: OpenAt;
+    };
 
-  canStep(step: -1 | 1): boolean {
-    return this.pages[this.index + step] !== undefined;
+type Capabilities = {
+  documents: ReturnType<DocumentManagerPlugin["provides"]>;
+  scroll: ReturnType<ScrollPlugin["provides"]>;
+  zoom: ReturnType<ZoomPlugin["provides"]>;
+  annotations: ReturnType<AnnotationPlugin["provides"]>;
+  exporter: ReturnType<ExportPlugin["provides"]>;
+  ui: ReturnType<UIPlugin["provides"]>;
+  commands: ReturnType<CommandsPlugin["provides"]>;
+  search: ReturnType<SearchPlugin["provides"]>;
+  interaction: ReturnType<InteractionManagerPlugin["provides"]>;
+  viewport: ReturnType<ViewportPlugin["provides"]>;
+};
+
+// EmbedPDF's left sidebar (`sidebar-panel`) holds the thumbnails and outline tabs, and opens on
+// its first tab whatever its `defaultTab` says, so for the outline preference the outline goes
+// first.
+function outlineFirst(ui: Capabilities["ui"]): void {
+  const sidebar = ui.getSchema().sidebars["sidebar-panel"];
+  if (sidebar === undefined || sidebar.content.type !== "tabs") {
+    throw new Error("EmbedPDF's sidebar-panel has no tabs");
   }
+  const tabs = sidebar.content.tabs;
+  if (!tabs.some((tab) => tab.id === "outline")) {
+    throw new Error("EmbedPDF's sidebar-panel has no outline tab");
+  }
+  if (tabs[0]?.id === "outline") {
+    return;
+  }
+  ui.mergeSchema({
+    sidebars: {
+      "sidebar-panel": {
+        ...sidebar,
+        content: {
+          ...sidebar.content,
+          tabs: [
+            ...tabs.filter((tab) => tab.id === "outline"),
+            ...tabs.filter((tab) => tab.id !== "outline"),
+          ],
+        },
+      },
+    },
+  });
 }
 
 type ReaderProps = {
-  itemKey: string;
-  // The page to open at; null opens at the page last viewed, or the first.
-  openAtPage: number | null;
-  // The zoom to open at; null keeps the viewer's own.
-  openAtZoom: ZoomLevel | null;
+  // Whether the reader is the workspace shown (the library's tabs hide it behind the Library).
   shown: boolean;
   inTab: boolean;
-  onControl?: (control: ReaderControl) => void;
-  // Each page the reader shows.
-  onPage?: (page: number) => void;
+  onControl: (control: ReaderControl) => void;
+  onProjection?: (projection: ReaderProjection) => void;
+  // Each page the PDF shown shows.
+  onPage?: (key: string, page: number) => void;
 };
 
-export function Reader(props: ReaderProps) {
-  const { itemKey } = props;
-  const [loaded, setLoaded] = useState<
-    | { status: "loading" }
-    | { status: "failed"; message: string }
-    | { status: "ready"; value: Loaded }
-  >({ status: "loading" });
-  // Each load of the stored PDF (the first, and one after a conflict's copy is discarded).
-  const [generation, setGeneration] = useState(0);
-  useEffect(() => {
-    let current = true;
-    setLoaded({ status: "loading" });
-    load(itemKey).then(
-      (value) => current && setLoaded({ status: "ready", value }),
-      (error: Error) => current && setLoaded({ status: "failed", message: error.message }),
-    );
-    return () => {
-      current = false;
-    };
-  }, [itemKey, generation]);
-  if (loaded.status === "loading") {
-    return <ReaderShell>{null}</ReaderShell>;
-  }
-  if (loaded.status === "failed") {
-    return (
-      <ReaderShell>
-        <p role="alert" className="m-4 text-sm text-danger">
-          The PDF could not be opened: {loaded.message}
-        </p>
-      </ReaderShell>
-    );
-  }
-  return (
-    <LoadedReader
-      key={generation}
-      {...props}
-      loaded={loaded.value}
-      reload={() => setGeneration((previous) => previous + 1)}
-    />
-  );
-}
-
-function ReaderShell({ children }: { children: ReactNode }) {
-  return <div className="flex h-full flex-col bg-surface text-ink">{children}</div>;
-}
-
-function LoadedReader({
-  itemKey,
-  openAtPage,
-  openAtZoom,
-  shown,
-  inTab,
-  onControl,
-  onPage,
-  loaded,
-  reload,
-}: ReaderProps & { loaded: Loaded; reload: () => void }) {
+export function Reader({ shown, inTab, onControl, onProjection, onPage }: ReaderProps) {
   const viewerRef = useRef<PDFViewerRef>(null);
   const viewerRoot = useCallback(() => {
     const root = viewerRef.current?.container?.shadowRoot;
@@ -373,161 +387,155 @@ function LoadedReader({
     }
     return root;
   }, []);
-  const [nightMode, setNightMode] = useState(loaded.preferences.readerNightMode);
-  const [status, setStatus] = useState<{
-    text: string;
-    failed: boolean;
-  } | null>(null);
-  // True while the stored PDF changed since it was loaded and the reader holds an unsaved copy.
-  const [conflict, setConflict] = useState(false);
+  const [nightMode, setNightMode] = useState(false);
+  // Each change of what the reader draws over the viewer (the PDF shown, its status, a conflict).
+  const [, setDrawn] = useState(0);
 
   const shownRef = useRef(shown);
   shownRef.current = shown;
-  const isShown = () => shownRef.current && document.visibilityState === "visible";
+  const callbacks = useRef({ onProjection, onPage });
+  callbacks.current = { onProjection, onPage };
 
   // Everything the viewer's callbacks share, which outlives renders.
-  const state = useRef({
-    page: 1,
-    storedTag: loaded.tag,
-    failure: null as string | null,
-    conflict: false,
-    pendingSave: null as ReturnType<typeof setTimeout> | null,
-    pendingRecord: null as ReturnType<typeof setTimeout> | null,
-    // The page the item's last viewed page names: the one the reader opened at, then each page
-    // recorded. Only a change of page is recorded, so a PDF opened and left at page 1 stays unread.
-    recordedPage: 1,
-    saves: Promise.resolve(),
-    // Saves started and not yet finished.
-    saving: 0,
-    positions: new Positions(),
-    // True while the reader itself moves (opening at a page, back, forward), which is no jump.
-    walking: false,
-    exporter: null as ReturnType<ExportPlugin["provides"]> | null,
-    annotations: null as ReturnType<AnnotationPlugin["provides"]> | null,
-    ui: null as ReturnType<UIPlugin["provides"]> | null,
-    documents: null as ReturnType<DocumentManagerPlugin["provides"]> | null,
-    scroll: null as ReturnType<ScrollPlugin["provides"]> | null,
-    search: null as ReturnType<SearchPlugin["provides"]> | null,
-    commands: null as ReturnType<CommandsPlugin["provides"]> | null,
-    // What the toolbar's Night mode button shows pressed.
-    nightMode: loaded.preferences.readerNightMode,
+  const host = useRef({
+    caps: null as Capabilities | null,
+    held: new Map<string, Held>(),
+    titles: new Map<string, string>(),
+    bookmarks: new Map<string, Bookmark>(),
+    // The keys of the open PDFs, the one shown last first.
+    recent: [] as string[],
+    // The PDF asked for last: the manager's active one once it is open.
+    focus: null as string | null,
+    // True while the reader itself moves a PDF (opening at a position, back, forward), which is
+    // no jump. EmbedPDF announces a page change synchronously inside scrollToPage.
+    moving: false,
+    // What the toolbar's Night mode button shows pressed: the preference, once a PDF loaded it.
+    nightMode: false,
+    whenReady: [] as (() => void)[],
+    // The PDFs EmbedPDF has laid out. EmbedPDF activates a PDF it opens before it creates that
+    // PDF's UI state, which its first layout follows.
+    laidOut: new Set<string>(),
+    // The position each open PDF had when it stopped being the active one.
+    parked: new Map<string, Position>(),
   }).current;
-  state.conflict = conflict;
 
-  const showFailure = useCallback((text: string) => setStatus({ text, failed: true }), []);
-  const session = useMemo(
-    () =>
-      new ReadingSession(
-        itemKey,
-        READER_IDLE_MINUTES * 60_000,
-        MIN_PAGE_SECONDS * 1000,
-        showFailure,
-      ),
-    [itemKey, showFailure],
+  const caps = useCallback((): Capabilities => {
+    if (host.caps === null) {
+      throw new Error("the reader's viewer is not ready");
+    }
+    return host.caps;
+  }, [host]);
+
+  const isShown = useCallback(
+    (key: string) =>
+      shownRef.current &&
+      document.visibilityState === "visible" &&
+      host.caps?.documents.getActiveDocumentId() === key,
+    [host],
   );
-  useEffect(() => () => void session.close(), [session]);
 
-  const put = (bytes: ArrayBuffer, tag: string) =>
-    fetch(`/api/items/${encodeURIComponent(itemKey)}/pdf`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/pdf", "If-Match": tag },
-      body: bytes,
-    });
+  const storageOf = useCallback(
+    (key: string): DocumentStorage | null => {
+      const held = host.held.get(key);
+      return held?.status === "open" ? held.storage : null;
+    },
+    [host],
+  );
 
-  const save = async () => {
-    if (state.conflict || state.exporter === null) {
-      return;
-    }
-    setStatus({ text: "Saving…", failed: false });
-    const bytes = await state.exporter.saveAsCopy().toPromise();
-    const response = await put(bytes, state.storedTag);
-    if (response.status === 412) {
-      state.storedTag = entityTag(response);
-      state.failure = "Not saved: the PDF changed elsewhere after it was opened.";
-      showFailure(state.failure);
-      setConflict(true);
-      return;
-    }
-    if (!response.ok) {
-      throw new Error(`Not saved: ${(await requestError(response)).message}`);
-    }
-    state.storedTag = entityTag(response);
-    state.failure = null;
-    setStatus(null);
-  };
-
-  const startSave = () => {
-    state.pendingSave = null;
-    state.saving += 1;
-    state.saves = state.saves
-      .then(save)
-      .catch((error: Error) => {
-        state.failure = error.message;
-        showFailure(error.message);
-      })
-      .finally(() => {
-        state.saving -= 1;
+  const projection = useCallback((): ReaderProjection => {
+    const order = host.caps?.documents.getDocumentOrder() ?? [];
+    const awake = [
+      ...order.filter((key) => host.held.has(key)),
+      ...[...host.held.keys()].filter((key) => !order.includes(key)),
+    ];
+    const tabs: TabEntry[] = awake.map((key) => ({
+      key,
+      title: host.titles.get(key) ?? key,
+      asleep: false,
+    }));
+    const asleep = [...host.bookmarks.entries()].sort(([, a], [, b]) => a.index - b.index);
+    for (const [key, bookmark] of asleep) {
+      tabs.splice(Math.min(bookmark.index, tabs.length), 0, {
+        key,
+        title: bookmark.title,
+        asleep: true,
       });
-  };
-
-  // EmbedPDF writes an annotation edit into its document asynchronously, and raises the edit's
-  // committed event (which schedules the save) before it clears hasPendingChanges. Once that flag
-  // is clear, every edit made so far has scheduled its save.
-  const annotationsCommitted = async () => {
-    const annotations = state.annotations;
-    if (annotations === null) {
-      throw new Error("the reader settled before the viewer was ready");
     }
-    await annotations.commit().toPromise();
-    await new Promise<void>((resolve) => {
-      if (!annotations.getState().hasPendingChanges) {
-        resolve();
-        return;
+    return { tabs, active: host.focus };
+  }, [host]);
+
+  const changed = useCallback(() => {
+    setDrawn((previous) => previous + 1);
+    callbacks.current.onProjection?.(projection());
+  }, [projection]);
+
+  // Where KEY is now. The viewport's top-left corner lies in the first page it shows; the page
+  // coordinates of that corner are the visible part's offset in the page, less the gap above or
+  // beside the page, in page units. EmbedPDF's scrollToPage adds the viewport's gap to the place
+  // these coordinates name (plugin-scroll's getScrollPositionForPage), so they hold it less.
+  const positionOf = useCallback(
+    (key: string): Position => {
+      const { scroll, zoom, viewport } = caps();
+      const first = scroll.forDocument(key).getMetrics().pageVisibilityMetrics[0];
+      const level = zoom.forDocument(key).getState().zoomLevel;
+      if (first === undefined) {
+        return { pageNumber: 1, x: 0, y: 0, zoom: level };
       }
-      const stop = annotations.onStateChange((change) => {
-        if (!change.state.hasPendingChanges) {
-          stop();
-          resolve();
-        }
-      });
-    });
-  };
+      const gap = viewport.getViewportGap();
+      return {
+        pageNumber: first.pageNumber,
+        x: first.original.pageX - (first.viewportX + gap) / first.scaled.scale,
+        y: first.original.pageY - (first.viewportY + gap) / first.scaled.scale,
+        zoom: level,
+      };
+    },
+    [caps],
+  );
 
-  const settle = async () => {
-    await session.send(false);
-    await annotationsCommitted();
-    // The click or key that settles can itself commit an annotation (a deselected note), so a
-    // save scheduled while one runs is started too, until none is left.
-    while (state.pendingSave !== null || state.saving > 0) {
-      if (state.pendingSave !== null) {
-        clearTimeout(state.pendingSave);
-        startSave();
+  // Where KEY is, shown or not. EmbedPDF shows no page of a PDF that is not the active one, so the
+  // reader keeps the position of the active PDF at each scroll, read while EmbedPDF still shows it.
+  const placeOf = useCallback(
+    (key: string): Position => {
+      const parked = host.parked.get(key);
+      return caps().documents.getActiveDocumentId() === key || parked === undefined
+        ? positionOf(key)
+        : parked;
+    },
+    [host, caps, positionOf],
+  );
+
+  // Moves KEY to POSITION; the move records no jump.
+  const restore = useCallback(
+    (key: string, position: Position) => {
+      const { scroll, zoom } = caps();
+      const scope = zoom.forDocument(key);
+      if (scope.getState().zoomLevel !== position.zoom) {
+        scope.requestZoom(position.zoom);
       }
-      await state.saves;
-    }
-    if (state.conflict || state.failure !== null) {
-      throw new Error(state.failure ?? "a save conflict is open");
-    }
-  };
-
-  const walk = (step: -1 | 1) => {
-    const page = state.positions.step(step);
-    if (page === null || state.scroll === null) {
-      return;
-    }
-    state.walking = true;
-    state.scroll.scrollToPage({ pageNumber: page, behavior: "instant" });
-    scopeShortcuts();
-  };
+      host.moving = true;
+      try {
+        scroll.forDocument(key).scrollToPage({
+          pageNumber: position.pageNumber,
+          pageCoordinates: { x: position.x, y: position.y },
+          behavior: "instant",
+        });
+      } finally {
+        host.moving = false;
+      }
+    },
+    [caps, host],
+  );
 
   // EmbedPDF answers its keyboard shortcuts on the whole document (plugin-commands' keyboard
-  // utility), so a hidden reader disables every category that holds a shortcut command, and the
-  // keys reach the library or the reader shown. Setting the disabled categories is a change of
-  // EmbedPDF's store, on which EmbedPDF resolves its commands again, so the toolbar's reader
-  // buttons also show the reader's own state (Back, Forward, Night mode) once this runs.
+  // utility), for the active PDF, so while the Library is shown the reader disables every
+  // category that holds a shortcut command, and the keys reach the library; with no active PDF no
+  // shortcut runs, and each activation scopes them again. Setting the disabled categories is a
+  // change of EmbedPDF's store, on which EmbedPDF resolves its commands again, so the toolbar's
+  // reader buttons also show the reader's own state (Back, Forward, Night mode) once this runs.
   const scopeShortcuts = useCallback(() => {
-    const commands = state.commands;
-    if (commands === null) {
+    const commands = host.caps?.commands;
+    const documentId = host.caps?.documents.getActiveDocumentId() ?? null;
+    if (commands === undefined || documentId === null) {
       return;
     }
     if (shownRef.current) {
@@ -535,29 +543,407 @@ function LoadedReader({
       return;
     }
     const categories = [...commands.getAllShortcuts().values()].flatMap((id) => {
-      const found = commands.resolve(id).categories;
+      const found = commands.resolve(id, documentId).categories;
       if (found === undefined || found.length === 0) {
         throw new Error(`EmbedPDF's shortcut command ${id} has no category to disable`);
       }
       return found;
     });
     commands.setDisabledCategories([...VIEWER_DISABLED, ...categories]);
-  }, [state]);
+  }, [host]);
+
+  const neighbour = useCallback(
+    (key: string): string | null => {
+      const tabs = projection().tabs;
+      const index = tabs.findIndex((tab) => tab.key === key);
+      const others = tabs.filter((tab) => tab.key !== key);
+      return (others[index] ?? others[index - 1])?.key ?? null;
+    },
+    [projection],
+  );
+
+  // Shows KEY, which the reader holds.
+  const activate = useCallback(
+    (key: string) => {
+      const held = host.held.get(key);
+      if (held === undefined) {
+        throw new Error(`the reader holds no PDF ${key}`);
+      }
+      host.focus = key;
+      if (held.status === "open") {
+        caps().documents.setActiveDocument(key);
+      }
+      changed();
+    },
+    [host, caps, changed],
+  );
+
+  // Opens KEY, or shows it when the reader holds it. PAGE opens it at that page; a PDF that
+  // sleeps opens where it was.
+  const open = useCallback(
+    (key: string, title: string, page?: number) => {
+      host.titles.set(key, title);
+      if (host.held.has(key)) {
+        activate(key);
+        return;
+      }
+      const bookmark = host.bookmarks.get(key);
+      host.bookmarks.delete(key);
+      const openAt: OpenAt =
+        bookmark !== undefined
+          ? { position: bookmark.position }
+          : page !== undefined
+            ? { page }
+            : null;
+      const loading: Held = { status: "loading", openAt, index: bookmark?.index ?? null };
+      host.held.set(key, loading);
+      host.focus = key;
+      changed();
+      const ready = new Promise<void>((resolve) =>
+        host.caps === null ? host.whenReady.push(resolve) : resolve(),
+      );
+      ready
+        .then(() => load(key))
+        .then(async (loaded) => {
+          if (host.held.get(key) !== loading) {
+            return;
+          }
+          const { documents, exporter, annotations } = caps();
+          const storage = new DocumentStorage(
+            key,
+            loaded.tag,
+            () => exporter.forDocument(key).saveAsCopy().toPromise(),
+            async () => {
+              const scope = annotations.forDocument(key);
+              await scope.commit().toPromise();
+              // EmbedPDF writes an annotation edit into its document asynchronously, and raises
+              // the edit's committed event (which schedules the save) before it clears
+              // hasPendingChanges. Once that flag is clear, every edit made so far has scheduled
+              // its save.
+              await new Promise<void>((resolve) => {
+                if (!scope.getState().hasPendingChanges) {
+                  resolve();
+                  return;
+                }
+                const stop = scope.onStateChange((state) => {
+                  if (!state.hasPendingChanges) {
+                    stop();
+                    resolve();
+                  }
+                });
+              });
+            },
+            changed,
+          );
+          host.held.set(key, {
+            status: "open",
+            storage,
+            item: loaded.item,
+            preferences: loaded.preferences,
+            openAt: loading.openAt,
+          });
+          if (host.nightMode !== loaded.preferences.readerNightMode) {
+            host.nightMode = loaded.preferences.readerNightMode;
+            setNightMode(host.nightMode);
+          }
+          const response = await documents
+            .openDocumentBuffer({
+              buffer: loaded.bytes,
+              name: `${key}.pdf`,
+              documentId: key,
+              autoActivate: host.focus === key,
+            })
+            .toPromise();
+          if (response.documentId !== key) {
+            throw new Error(`EmbedPDF opened ${key} as document ${response.documentId}`);
+          }
+          if (loading.index !== null) {
+            const before = new Set(
+              projection()
+                .tabs.slice(0, loading.index)
+                .map((tab) => tab.key),
+            );
+            documents.moveDocument(
+              key,
+              documents.getDocumentOrder().filter((other) => before.has(other)).length,
+            );
+          }
+          await response.task.toPromise();
+          changed();
+        })
+        .catch((error: Error) => {
+          const held = host.held.get(key);
+          if (held === undefined) {
+            return;
+          }
+          if (held.status === "open") {
+            held.storage.dispose();
+          }
+          host.held.set(key, { status: "failed", message: error.message });
+          changed();
+        });
+    },
+    [host, activate, caps, changed, projection],
+  );
+
+  // KEY leaves the manager and the tab row, or, with BOOKMARK, sleeps in the tab row.
+  const remove = useCallback(
+    (key: string, bookmark: Bookmark | null) => {
+      const held = host.held.get(key);
+      const next = host.focus === key ? neighbour(key) : host.focus;
+      host.held.delete(key);
+      host.laidOut.delete(key);
+      host.parked.delete(key);
+      host.recent = host.recent.filter((other) => other !== key);
+      if (bookmark === null) {
+        host.titles.delete(key);
+      } else {
+        host.bookmarks.set(key, bookmark);
+      }
+      host.focus = next;
+      if (held?.status === "open") {
+        held.storage.dispose();
+        const { documents } = caps();
+        const shownNext = next === null ? undefined : host.held.get(next);
+        if (next !== null && shownNext?.status === "open") {
+          documents.setActiveDocument(next);
+        }
+        documents.closeDocument(key);
+      }
+      changed();
+      // The tab shown next wakes when it sleeps.
+      const sleeping = next === null ? undefined : host.bookmarks.get(next);
+      if (next !== null && sleeping !== undefined) {
+        open(next, sleeping.title);
+      }
+    },
+    [host, caps, neighbour, changed, open],
+  );
+
+  const sleepReader = useCallback(
+    async (key: string, automatic: boolean) => {
+      const storage = storageOf(key);
+      if (storage === null) {
+        return;
+      }
+      await storage.settle();
+      if (automatic && !host.recent.slice(AWAKE_READERS).includes(key)) {
+        return;
+      }
+      if (storageOf(key) !== storage) {
+        return;
+      }
+      const index = projection().tabs.findIndex((tab) => tab.key === key);
+      remove(key, {
+        title: host.titles.get(key) ?? key,
+        position: placeOf(key),
+        index,
+      });
+    },
+    [host, storageOf, projection, placeOf, remove],
+  );
+
+  // The PDFs past the AWAKE_READERS shown last sleep. One that cannot settle stays awake and
+  // says why when shown; the next activation tries it again.
+  const sleepDrowsy = useCallback(() => {
+    for (const key of host.recent.slice(AWAKE_READERS)) {
+      sleepReader(key, true).catch(() => undefined);
+    }
+  }, [host, sleepReader]);
+
+  const close = useCallback(
+    async (key: string) => {
+      if (host.bookmarks.delete(key)) {
+        host.titles.delete(key);
+        changed();
+        return;
+      }
+      await storageOf(key)?.settle();
+      if (host.held.has(key)) {
+        remove(key, null);
+      }
+    },
+    [host, storageOf, remove, changed],
+  );
+
+  // The stored PDF replaces the user's copy of KEY, which opens again where it was.
+  const reload = useCallback(
+    (key: string) => {
+      const title = host.titles.get(key) ?? key;
+      const index = projection().tabs.findIndex((tab) => tab.key === key);
+      const position = placeOf(key);
+      // KEY is shown again at once, so no other tab takes its place meanwhile.
+      host.focus = null;
+      remove(key, { title, position, index });
+      open(key, title);
+    },
+    [host, projection, remove, placeOf, open],
+  );
+
+  useEffect(() => {
+    onControl({
+      open,
+      activate: (key) => {
+        const bookmark = host.bookmarks.get(key);
+        if (bookmark === undefined) {
+          activate(key);
+        } else {
+          open(key, bookmark.title);
+        }
+      },
+      close,
+      discard: (key) => {
+        host.bookmarks.delete(key);
+        remove(key, null);
+      },
+      sleep: (key) => sleepReader(key, false),
+      retitle: (key, title) => {
+        if (host.titles.has(key)) {
+          host.titles.set(key, title);
+        }
+        const bookmark = host.bookmarks.get(key);
+        if (bookmark !== undefined) {
+          host.bookmarks.set(key, { ...bookmark, title });
+        }
+        changed();
+      },
+      settleAll: async () => {
+        const storages = [...host.held.values()].flatMap((held) =>
+          held.status === "open" ? [held.storage] : [],
+        );
+        await Promise.all(storages.map((storage) => storage.settle()));
+      },
+    });
+  }, [onControl, open, activate, close, remove, sleepReader, changed, host]);
+
+  const walk = useCallback(
+    (key: string, step: -1 | 1) => {
+      const position = storageOf(key)?.history.step(step, positionOf(key));
+      if (position === null || position === undefined) {
+        return;
+      }
+      restore(key, position);
+      scopeShortcuts();
+    },
+    [storageOf, positionOf, restore, scopeShortcuts],
+  );
+
+  const toggleNightMode = async (key: string) => {
+    const library = await request(LibraryPayloadSchema, "PATCH", "/api/preferences", {
+      readerNightMode: !host.nightMode,
+    }).catch((error: Error) => {
+      storageOf(key)?.show({ text: `Night mode: ${error.message}`, failed: true });
+      return null;
+    });
+    if (library !== null) {
+      setNightMode(library.preferences.readerNightMode);
+      host.nightMode = library.preferences.readerNightMode;
+      scopeShortcuts();
+    }
+  };
+
+  const libraryView = sessionStorage.getItem(LIBRARY_VIEW_KEY);
+  const libraryHref = libraryView === null ? "/" : `/${libraryView}`;
+
+  // The reader's buttons in EmbedPDF's toolbar (withReaderButtons) and their keys. Each acts on
+  // the document its command runs for.
+  const readerCommands: Command[] = [
+    {
+      id: "bucket:library",
+      label: "Library",
+      icon: "bucket-library",
+      // Leaving waits until the reading session is reported and every annotation saved.
+      action: ({ documentId }) => {
+        const storage = storageOf(documentId);
+        (storage === null ? Promise.resolve() : storage.settle()).then(
+          () => window.location.assign(libraryHref),
+          (error: Error) => storage?.show({ text: error.message, failed: true }),
+        );
+      },
+    },
+    {
+      id: "bucket:back",
+      label: "Back (Alt+←)",
+      icon: "bucket-back",
+      shortcuts: ["Alt+ArrowLeft"],
+      categories: ["navigation", "navigation-history"],
+      disabled: ({ documentId }) => !(storageOf(documentId)?.history.canStep(-1) ?? false),
+      action: ({ documentId }) => walk(documentId, -1),
+    },
+    {
+      id: "bucket:forward",
+      label: "Forward (Alt+→)",
+      icon: "bucket-forward",
+      shortcuts: ["Alt+ArrowRight"],
+      categories: ["navigation", "navigation-history"],
+      disabled: ({ documentId }) => !(storageOf(documentId)?.history.canStep(1) ?? false),
+      action: ({ documentId }) => walk(documentId, 1),
+    },
+    {
+      id: "bucket:night-mode",
+      label: "Night mode",
+      icon: "bucket-night-mode",
+      active: () => host.nightMode,
+      action: ({ documentId }) => void toggleNightMode(documentId),
+    },
+    {
+      id: "bucket:copy-link",
+      label: "Copy PDF link",
+      icon: "bucket-copy-link",
+      action: ({ documentId }) => {
+        const held = host.held.get(documentId);
+        if (held?.status !== "open") {
+          throw new Error(`Copy PDF link ran for ${documentId}, which is not open`);
+        }
+        navigator.clipboard.writeText(held.item.provenance.pdf_url).then(
+          () => {
+            held.storage.show({ text: COPIED, failed: false });
+            setTimeout(() => {
+              if (held.storage.status?.text === COPIED) {
+                held.storage.show(null);
+              }
+            }, COPIED_SHOWN_MS);
+          },
+          (error: Error) => held.storage.show({ text: `Copy link: ${error.message}`, failed: true }),
+        );
+      },
+    },
+  ];
+  // EmbedPDF keeps the commands registered at onReady; each runs the current render's action.
+  const commandsRef = useRef(readerCommands);
+  commandsRef.current = readerCommands;
 
   const onReady = (registry: PluginRegistry) => {
     const pageControlStyle = document.createElement("style");
     pageControlStyle.textContent =
       '.transition-opacity:has(input[inputmode="numeric"]) { opacity: 1 !important; }';
     viewerRoot().append(pageControlStyle);
-    state.commands = plugin<CommandsPlugin>(registry, CommandsPlugin.id);
-    state.commands.registerCommand(DEFAULT_TOOL);
-    state.commands.registerCommand(findCommand(viewerRoot));
-    for (const command of readerCommands) {
-      state.commands.registerCommand(command);
+    const found: Capabilities = {
+      documents: plugin<DocumentManagerPlugin>(registry, DocumentManagerPlugin.id),
+      scroll: plugin<ScrollPlugin>(registry, ScrollPlugin.id),
+      zoom: plugin<ZoomPlugin>(registry, ZoomPlugin.id),
+      annotations: plugin<AnnotationPlugin>(registry, AnnotationPlugin.id),
+      exporter: plugin<ExportPlugin>(registry, ExportPlugin.id),
+      ui: plugin<UIPlugin>(registry, UIPlugin.id),
+      commands: plugin<CommandsPlugin>(registry, CommandsPlugin.id),
+      search: plugin<SearchPlugin>(registry, SearchPlugin.id),
+      interaction: plugin<InteractionManagerPlugin>(registry, InteractionManagerPlugin.id),
+      viewport: plugin<ViewportPlugin>(registry, ViewportPlugin.id),
+    };
+    host.caps = found;
+    const { documents, scroll, ui, annotations, commands, viewport } = found;
+    commands.registerCommand(DEFAULT_TOOL);
+    commands.registerCommand(findCommand(viewerRoot));
+    for (const command of SCROLL_COMMANDS) {
+      commands.registerCommand(command);
     }
-    const ui = plugin<UIPlugin>(registry, UIPlugin.id);
-    state.ui = ui;
-    state.documents = plugin<DocumentManagerPlugin>(registry, DocumentManagerPlugin.id);
+    for (const command of commandsRef.current) {
+      commands.registerCommand({
+        ...command,
+        action: (context) =>
+          commandsRef.current.find((other) => other.id === command.id)?.action(context),
+      });
+    }
     // EmbedPDF's mode:view closes the top/secondary toolbar. mode:annotate opens its
     // annotation-toolbar; the other editing modes open their own secondary toolbars.
     // Track precisely this existing UI state, including transitions through its compact menu.
@@ -565,11 +951,11 @@ function LoadedReader({
       const activeToolbar = ui.forDocument(documentId).getActiveToolbar("top", "secondary");
       const view = activeToolbar === null;
       const annotate = activeToolbar === "annotation-toolbar";
-      const host = viewerRef.current?.container;
-      if (host !== null && host !== undefined) {
-        host.dataset.bucketStylusMode = view ? "view" : "edit";
-        host.dataset.bucketStylusAnnotation = String(annotate);
-        host.dispatchEvent(new Event("bucket-stylus-mode-changed"));
+      const container = viewerRef.current?.container;
+      if (container !== null && container !== undefined) {
+        container.dataset.bucketStylusMode = view ? "view" : "edit";
+        container.dataset.bucketStylusAnnotation = String(annotate);
+        container.dispatchEvent(new Event("bucket-stylus-mode-changed"));
         if (shownRef.current) {
           window.dispatchEvent(
             new CustomEvent("bucket-stylus-mode", {
@@ -584,18 +970,13 @@ function LoadedReader({
         updateStylusMode(documentId);
         // EmbedPDF's mode command resets the annotation lock after changing the toolbar.
         queueMicrotask(() => {
-          state.annotations?.setLocked(
+          annotations.setLocked(
             { type: LockModeType.Include, categories: ["form", "link"] },
             documentId,
           );
         });
       }
     });
-    const activeDocument = state.documents.getActiveDocumentId();
-    if (activeDocument !== null) {
-      updateStylusMode(activeDocument);
-      ui.disableOverlay("page-controls", activeDocument);
-    }
     const toolbar = ui.getSchema().toolbars["main-toolbar"];
     const pageControls = ui.getSchema().overlays?.["page-controls"];
     if (toolbar === undefined) {
@@ -614,143 +995,166 @@ function LoadedReader({
       overlays: { "page-controls": { ...pageControls, defaultEnabled: false } },
     });
     scopeShortcuts();
-    state.search = plugin<SearchPlugin>(registry, SearchPlugin.id);
-    const scroll = plugin<ScrollPlugin>(registry, ScrollPlugin.id);
-    const zoom = plugin<ZoomPlugin>(registry, ZoomPlugin.id);
-    const annotations = plugin<AnnotationPlugin>(registry, AnnotationPlugin.id);
-    state.exporter = plugin<ExportPlugin>(registry, ExportPlugin.id);
-    state.annotations = annotations;
-    state.scroll = scroll;
-    scroll.onLayoutReady(({ isInitial, totalPages }) => {
+
+    scroll.onLayoutReady(({ documentId, isInitial, totalPages }) => {
       if (!isInitial) {
         return;
       }
-      const activeDocument = state.documents?.getActiveDocumentId();
-      if (activeDocument !== null && activeDocument !== undefined) {
-        updateStylusMode(activeDocument);
-        ui.disableOverlay("page-controls", activeDocument);
+      const held = host.held.get(documentId);
+      if (held?.status !== "open") {
+        throw new Error(`EmbedPDF laid out ${documentId}, which the reader is not opening`);
       }
-      const reading = loaded.item.reading;
-      const page = openAtPage ?? (reading.status === "viewed" ? reading.page : 1);
-      state.recordedPage = page;
-      if (openAtZoom !== null) {
-        zoom.requestZoom(openAtZoom);
+      host.laidOut.add(documentId);
+      updateStylusMode(documentId);
+      ui.disableOverlay("page-controls", documentId);
+      const { storage, openAt, item, preferences } = held;
+      if (preferences.outlineOnOpen) {
+        outlineFirst(ui);
+        ui.forDocument(documentId).setActiveSidebar("left", "main", "sidebar-panel");
       }
-      if (page > 1 && page <= totalPages) {
-        state.walking = true;
-        scroll.scrollToPage({ pageNumber: page, behavior: "instant" });
-      }
-      if (loaded.preferences.outlineOnOpen) {
-        // EmbedPDF's left sidebar (`sidebar-panel`) holds the thumbnails and outline tabs, and
-        // opens on its first tab whatever its `defaultTab` says, so the outline goes first.
-        const sidebar = ui.getSchema().sidebars["sidebar-panel"];
-        if (sidebar === undefined || sidebar.content.type !== "tabs") {
-          throw new Error("EmbedPDF's sidebar-panel has no tabs");
+      if (openAt !== null && "position" in openAt) {
+        storage.recordedPage = openAt.position.pageNumber;
+        // EmbedPDF's zoom plugin gates a PDF's viewport until its first zoom, which waits for the
+        // viewport to have a size; a zoom asked for before then is dropped.
+        const { position } = openAt;
+        if (viewport.isGated(documentId)) {
+          const stop = viewport.onGateChange((event) => {
+            if (event.documentId === documentId && !event.isGated) {
+              stop();
+              restore(documentId, position);
+            }
+          });
+        } else {
+          restore(documentId, position);
         }
-        const tabs = sidebar.content.tabs;
-        if (!tabs.some((tab) => tab.id === "outline")) {
-          throw new Error("EmbedPDF's sidebar-panel has no outline tab");
+      } else {
+        const reading = item.reading;
+        const page = openAt?.page ?? (reading.status === "viewed" ? reading.page : 1);
+        storage.recordedPage = page;
+        if (page > 1 && page <= totalPages) {
+          host.moving = true;
+          try {
+            scroll.forDocument(documentId).scrollToPage({ pageNumber: page, behavior: "instant" });
+          } finally {
+            host.moving = false;
+          }
         }
-        ui.mergeSchema({
-          sidebars: {
-            "sidebar-panel": {
-              ...sidebar,
-              content: {
-                ...sidebar.content,
-                tabs: [
-                  ...tabs.filter((tab) => tab.id === "outline"),
-                  ...tabs.filter((tab) => tab.id !== "outline"),
-                ],
-              },
-            },
-          },
-        });
-        ui.setActiveSidebar("left", "main", "sidebar-panel");
       }
-      session.start(page, isShown());
+      storage.page = storage.recordedPage;
+      storage.session.start(storage.recordedPage, isShown(documentId));
     });
-    scroll.onPageChangeState(({ state: change }) => {
-      if (!change.isChanging) {
-        state.walking = false;
-        return;
-      }
-      if (!state.walking && change.fromPage !== change.targetPage) {
-        state.positions.jumped(change.fromPage, change.targetPage);
+    scroll.onPageChangeState(({ documentId, state: change }) => {
+      // A page change starts before the viewport moves, so the position is still the one the
+      // jump leaves. A smooth one may never report its end.
+      if (change.isChanging && !host.moving && change.fromPage !== change.targetPage) {
+        storageOf(documentId)?.history.jumped(positionOf(documentId));
         scopeShortcuts();
       }
     });
-    scroll.onPageChange(({ pageNumber, totalPages }) => {
-      state.page = pageNumber;
-      onPage?.(pageNumber);
-      session.pageChanged(pageNumber, isShown());
-      if (state.pendingRecord !== null) {
-        clearTimeout(state.pendingRecord);
-        state.pendingRecord = null;
+    scroll.onScroll(({ documentId }) => {
+      if (documents.getActiveDocumentId() === documentId && host.laidOut.has(documentId)) {
+        host.parked.set(documentId, positionOf(documentId));
       }
-      if (pageNumber === state.recordedPage) {
-        return;
+    });
+    scroll.onPageChange(({ documentId, pageNumber, totalPages }) => {
+      storageOf(documentId)?.pageChanged(pageNumber, totalPages, isShown(documentId));
+      if (documents.getActiveDocumentId() === documentId) {
+        callbacks.current.onPage?.(documentId, pageNumber);
       }
-      state.pendingRecord = setTimeout(() => {
-        state.recordedPage = pageNumber;
-        fetch(`/api/items/${encodeURIComponent(itemKey)}/reading`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ page: pageNumber, pages: totalPages }),
-        })
-          .then(async (response) => {
-            if (!response.ok) {
-              throw await requestError(response);
-            }
-          })
-          .catch((error: Error) => showFailure(`Page not recorded: ${error.message}`));
-      }, RECORD_PAUSE_MS);
     });
     annotations.onAnnotationEvent((event) => {
       if (event.type === "loaded" || !event.committed) {
         return;
       }
-      if (state.pendingSave !== null) {
-        clearTimeout(state.pendingSave);
+      const storage = storageOf(event.documentId);
+      if (storage === null) {
+        throw new Error(`EmbedPDF committed an edit to ${event.documentId}, which is not open`);
       }
-      state.pendingSave = setTimeout(startSave, SAVE_PAUSE_MS);
+      storage.edited();
     });
-    onControl?.({
-      settle,
-      view: () => ({ page: state.page, zoom: zoom.getState().zoomLevel }),
+    documents.onActiveDocumentChanged(({ previousDocumentId, currentDocumentId }) => {
+      if (previousDocumentId !== null) {
+        storageOf(previousDocumentId)?.session.hidden();
+      }
+      if (currentDocumentId !== null) {
+        // EmbedPDF activates another open PDF when it closes the active one; a PDF the reader is
+        // still loading to show keeps the focus, and is activated once loaded.
+        const focus = host.focus === null ? undefined : host.held.get(host.focus);
+        if (focus?.status !== "loading") {
+          host.focus = currentDocumentId;
+        }
+        host.recent = [
+          currentDocumentId,
+          ...host.recent.filter((key) => key !== currentDocumentId),
+        ];
+        const storage = storageOf(currentDocumentId);
+        storage?.session.start(storage.page, isShown(currentDocumentId));
+        if (host.laidOut.has(currentDocumentId)) {
+          updateStylusMode(currentDocumentId);
+        }
+        callbacks.current.onPage?.(currentDocumentId, storage?.page ?? 1);
+      }
+      changed();
+      scopeShortcuts();
+      sleepDrowsy();
     });
+    documents.onDocumentOrderChanged(changed);
+    documents.onDocumentClosed(changed);
+    for (const resolve of host.whenReady.splice(0)) {
+      resolve();
+    }
   };
 
-  // A reader shown again starts reading its page; one hidden ends its stretch and reports.
+  // The PDF shown: its storage while it is open.
+  const activeStorage = useCallback((): DocumentStorage | null => {
+    const key = host.caps?.documents.getActiveDocumentId() ?? null;
+    return key === null ? null : storageOf(key);
+  }, [host, storageOf]);
+
+  // The reader shown again starts reading its PDF's page; hidden, that stretch ends and reports.
   useEffect(() => {
-    if (shown) {
-      session.start(state.page, document.visibilityState === "visible");
-    } else {
-      session.hidden();
+    const storage = activeStorage();
+    if (storage !== null) {
+      if (shown) {
+        storage.session.start(storage.page, isShown(storage.key));
+      } else {
+        storage.session.hidden();
+      }
     }
     scopeShortcuts();
-  }, [shown, session, state, scopeShortcuts]);
+  }, [shown, activeStorage, isShown, scopeShortcuts]);
 
-  // Alt+← and Alt+→ walk back and forward, and any key is reading input, while the reader is
-  // shown: EmbedPDF's viewer holds no focus of its own, so the keys arrive at the document, as
-  // EmbedPDF's own shortcuts do.
+  useEffect(() => {
+    const changedVisibility = () => {
+      const storage = activeStorage();
+      if (storage === null) {
+        return;
+      }
+      if (isShown(storage.key)) {
+        storage.session.start(storage.page, true);
+      } else {
+        storage.session.hidden();
+      }
+    };
+    document.addEventListener("visibilitychange", changedVisibility);
+    return () => document.removeEventListener("visibilitychange", changedVisibility);
+  }, [activeStorage, isShown]);
+
+  // Any key is reading input while the reader is shown: EmbedPDF's viewer holds no focus of its
+  // own, so the keys arrive at the document, as EmbedPDF's own shortcuts do.
+  const readingInput = useCallback(() => {
+    const storage = activeStorage();
+    if (storage !== null) {
+      storage.session.input(storage.page, isShown(storage.key));
+    }
+  }, [activeStorage, isShown]);
   useEffect(() => {
     if (!shown) {
       return;
     }
-    const pressed = (event: KeyboardEvent) => {
-      session.input(state.page, isShown());
-      if (event.altKey && event.key === "ArrowLeft") {
-        event.preventDefault();
-        walk(-1);
-      }
-      if (event.altKey && event.key === "ArrowRight") {
-        event.preventDefault();
-        walk(1);
-      }
-    };
-    document.addEventListener("keydown", pressed);
-    return () => document.removeEventListener("keydown", pressed);
-  });
+    document.addEventListener("keydown", readingInput);
+    return () => document.removeEventListener("keydown", readingInput);
+  }, [shown, readingInput]);
 
   // Enter in the search field goes to the next match and Shift+Enter to the one before, as in a
   // browser's find bar; EmbedPDF's field answers no key.
@@ -762,20 +1166,59 @@ function LoadedReader({
       if (!(event.target instanceof HTMLInputElement) || !event.target.matches(SEARCH_FIELD)) {
         return;
       }
-      if (state.search === null) {
-        throw new Error("Enter reached the search field before the viewer was ready");
-      }
       event.preventDefault();
       if (event.shiftKey) {
-        state.search.previousResult();
+        caps().search.previousResult();
       } else {
-        state.search.nextResult();
+        caps().search.nextResult();
       }
     };
     const root = viewerRoot();
     root.addEventListener("keydown", pressed);
     return () => root.removeEventListener("keydown", pressed);
-  }, [state, viewerRoot]);
+  }, [caps, viewerRoot]);
+
+  // A press of a button other than the primary one (the context menu's) leaves the text
+  // selection as it is: EmbedPDF's selection clears on every press, and its pointer events carry
+  // no button, so the reader pauses EmbedPDF's interaction manager until the button is released,
+  // and the selection menu (with its highlight) stays on the selected text.
+  useEffect(() => {
+    const container = viewerRef.current?.container;
+    if (container === null || container === undefined) {
+      throw new Error("the reader's viewer has no container");
+    }
+    let paused = false;
+    const pressed = (event: PointerEvent) => {
+      if (event.button === 0 || event.pointerType === "pen" || host.caps === null) {
+        return;
+      }
+      paused = true;
+      host.caps.interaction.pause();
+    };
+    const released = () => {
+      if (paused) {
+        paused = false;
+        host.caps?.interaction.resume();
+      }
+    };
+    const menu = (event: MouseEvent) => {
+      if (event.composedPath().some((node) => node instanceof Element && node.matches(PAGE_BOX))) {
+        event.preventDefault();
+      }
+    };
+    container.addEventListener("pointerdown", pressed, { capture: true });
+    container.addEventListener("contextmenu", menu);
+    window.addEventListener("pointerup", released, { capture: true });
+    window.addEventListener("pointercancel", released, { capture: true });
+    window.addEventListener("blur", released);
+    return () => {
+      container.removeEventListener("pointerdown", pressed, { capture: true });
+      container.removeEventListener("contextmenu", menu);
+      window.removeEventListener("pointerup", released, { capture: true });
+      window.removeEventListener("pointercancel", released, { capture: true });
+      window.removeEventListener("blur", released);
+    };
+  }, [host]);
 
   // EmbedPDF's Annotation plugin owns selection and deletion but binds no Delete/Backspace
   // shortcut in the viewer. Keep those keys scoped to the visible Annotate toolbar; inputs,
@@ -805,28 +1248,28 @@ function LoadedReader({
             ) ||
               (node instanceof HTMLElement && node.isContentEditable)),
         );
-      if (typing) {
+      if (typing || host.caps === null) {
         return;
       }
-      const documentId = state.documents?.getActiveDocumentId();
+      const { documents, ui, annotations } = host.caps;
+      const documentId = documents.getActiveDocumentId();
       if (
         documentId === null ||
-        documentId === undefined ||
-        state.ui?.forDocument(documentId).getActiveToolbar("top", "secondary") !==
-          "annotation-toolbar"
+        !host.laidOut.has(documentId) ||
+        ui.forDocument(documentId).getActiveToolbar("top", "secondary") !== "annotation-toolbar"
       ) {
         return;
       }
-      const annotations = state.annotations;
-      const selected = (annotations?.getSelectedAnnotations() ?? []).filter(
-        ({ object }) => object.type !== PdfAnnotationSubtype.LINK,
-      );
+      const scope = annotations.forDocument(documentId);
+      const selected = scope
+        .getSelectedAnnotations()
+        .filter(({ object }) => object.type !== PdfAnnotationSubtype.LINK);
       if (selected.length === 0) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
-      annotations?.deleteAnnotations(
+      scope.deleteAnnotations(
         selected.map(({ object }) => ({
           pageIndex: object.pageIndex,
           id: object.id,
@@ -835,17 +1278,17 @@ function LoadedReader({
     };
     document.addEventListener("keydown", pressed, { capture: true });
     return () => document.removeEventListener("keydown", pressed, { capture: true });
-  }, [shown, state]);
+  }, [shown, host]);
 
   // View forces pen highlighting; Annotate keeps pen tools native but its eraser deletes
   // annotations. Other editing modes retain their existing native input.
   useEffect(() => {
-    if (!shown || state.ui === null || state.documents === null) {
+    if (!shown || host.caps === null) {
       return;
     }
-    const documentId = state.documents.getActiveDocumentId();
-    if (documentId !== null) {
-      const toolbar = state.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
+    const documentId = host.caps.documents.getActiveDocumentId();
+    if (documentId !== null && host.laidOut.has(documentId)) {
+      const toolbar = host.caps.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
       window.dispatchEvent(
         new CustomEvent("bucket-stylus-mode", {
           detail:
@@ -853,11 +1296,11 @@ function LoadedReader({
         }),
       );
     }
-  }, [shown, state]);
+  }, [shown, host]);
 
   useEffect(() => {
-    const host = viewerRef.current?.container;
-    if (host === null || host === undefined) {
+    const container = viewerRef.current?.container;
+    if (container === null || container === undefined) {
       throw new Error("the reader's viewer has no container");
     }
     // True between a pen's press and its release, and the tool it found then.
@@ -865,11 +1308,12 @@ function LoadedReader({
     let restoring: string | null = null;
     let erasing: number | null = null;
     let eraserLast: { x: number; y: number } | null = null;
+    const activeDocument = () => host.caps?.documents.getActiveDocumentId() ?? null;
     const activeToolbar = () => {
-      const documentId = state.documents?.getActiveDocumentId();
-      return documentId === null || documentId === undefined || state.ui === null
+      const documentId = activeDocument();
+      return documentId === null || host.caps === null || !host.laidOut.has(documentId)
         ? undefined
-        : state.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
+        : host.caps.ui.forDocument(documentId).getActiveToolbar("top", "secondary");
     };
     const inView = () => activeToolbar() === null;
     const inAnnotate = () => activeToolbar() === "annotation-toolbar";
@@ -912,12 +1356,13 @@ function LoadedReader({
       to: { x: number; y: number },
       annotate: boolean,
     ) => {
-      const annotations = state.annotations;
-      const scroll = state.scroll;
-      const root = host.shadowRoot;
-      if (annotations === null || scroll === null || root === null) {
+      const documentId = activeDocument();
+      const root = container.shadowRoot;
+      if (host.caps === null || documentId === null || root === null) {
         throw new Error("eraser reached a reader without its annotation and page geometry");
       }
+      const annotations = host.caps.annotations.forDocument(documentId);
+      const scroll = host.caps.scroll.forDocument(documentId);
       // The reader's rendered page boxes are in the same order as the scroll plugin's
       // renderedPageIndexes. Use EmbedPDF's own page-rect transforms so rotation, zoom,
       // page dimensions and the scroll strategy agree with the annotations it paints.
@@ -1047,8 +1492,8 @@ function LoadedReader({
       ) {
         return;
       }
-      const annotations = state.annotations;
-      if (annotations === null) {
+      const documentId = activeDocument();
+      if (host.caps === null || documentId === null) {
         throw new Error("a pen pressed a page before the viewer was ready");
       }
       if (event.button === 5 || (event.buttons & 32) !== 0) {
@@ -1061,46 +1506,51 @@ function LoadedReader({
       if (!inView()) {
         return;
       }
+      const annotations = host.caps.annotations.forDocument(documentId);
       penDown = true;
       restoring = annotations.getActiveTool()?.id ?? null;
       annotations.setActiveTool(HIGHLIGHT_TOOL);
     };
-    const restore = () => {
+    const restoreTool = () => {
       if (!penDown) {
         return;
       }
       penDown = false;
-      const annotations = state.annotations;
+      const documentId = activeDocument();
       const previous = restoring;
       restoring = null;
+      if (host.caps === null || documentId === null) {
+        return;
+      }
+      const annotations = host.caps.annotations.forDocument(documentId);
       // The stroke leaves the highlighter in hand. A pen press on a toolbar button left that
       // button's tool in hand instead, and the release must not undo the button.
-      if (annotations !== null && annotations.getActiveTool()?.id === HIGHLIGHT_TOOL) {
+      if (annotations.getActiveTool()?.id === HIGHLIGHT_TOOL) {
         annotations.setActiveTool(previous);
       }
     };
     const lostFocus = () => {
       erasing = null;
       eraserLast = null;
-      restore();
+      restoreTool();
     };
     const released = (event: PointerEvent) => {
       if (event.pointerType === "pen") {
-        restore();
+        restoreTool();
       }
     };
-    host.addEventListener("pointerdown", pressed, { capture: true });
-    host.addEventListener("bucket-stylus-mode-changed", lostFocus);
+    container.addEventListener("pointerdown", pressed, { capture: true });
+    container.addEventListener("bucket-stylus-mode-changed", lostFocus);
     window.addEventListener("pointermove", eraserMoved, { capture: true });
     window.addEventListener("pointerup", eraserEnded, { capture: true });
     window.addEventListener("pointercancel", eraserEnded, { capture: true });
-    // A stroke can finish outside the page or even outside the reader's host.
+    // A stroke can finish outside the page or even outside the reader's container.
     window.addEventListener("pointerup", released);
     window.addEventListener("pointercancel", released);
     window.addEventListener("blur", lostFocus);
     return () => {
-      host.removeEventListener("pointerdown", pressed, { capture: true });
-      host.removeEventListener("bucket-stylus-mode-changed", lostFocus);
+      container.removeEventListener("pointerdown", pressed, { capture: true });
+      container.removeEventListener("bucket-stylus-mode-changed", lostFocus);
       window.removeEventListener("pointermove", eraserMoved, { capture: true });
       window.removeEventListener("pointerup", eraserEnded, { capture: true });
       window.removeEventListener("pointercancel", eraserEnded, {
@@ -1110,7 +1560,7 @@ function LoadedReader({
       window.removeEventListener("pointercancel", released);
       window.removeEventListener("blur", lostFocus);
     };
-  }, [state]);
+  }, [host]);
 
   useEffect(() => {
     const root = viewerRoot();
@@ -1119,17 +1569,6 @@ function LoadedReader({
     root.append(sheet);
     return () => sheet.remove();
   }, [nightMode, viewerRoot]);
-  useEffect(() => {
-    const changed = () => {
-      if (isShown()) {
-        session.start(state.page, true);
-      } else {
-        session.hidden();
-      }
-    };
-    document.addEventListener("visibilitychange", changed);
-    return () => document.removeEventListener("visibilitychange", changed);
-  });
 
   // The viewer follows the theme preference the page's root carries (index.css).
   useEffect(() => {
@@ -1144,13 +1583,16 @@ function LoadedReader({
   // Leaving the page while an annotation is not yet saved asks first.
   useEffect(() => {
     const leaving = (event: BeforeUnloadEvent) => {
-      if (state.pendingSave !== null || state.saving > 0) {
+      const unsaved = [...host.held.values()].some(
+        (held) => held.status === "open" && held.storage.unsaved(),
+      );
+      if (unsaved) {
         event.preventDefault();
       }
     };
     window.addEventListener("beforeunload", leaving);
     return () => window.removeEventListener("beforeunload", leaving);
-  }, [state]);
+  }, [host]);
 
   const config = useMemo<PDFViewerConfig>(
     () => ({
@@ -1177,112 +1619,25 @@ function LoadedReader({
       // EmbedPDF's viewer makes the hand tool the default on a touch device ('mobile'), which it
       // detects by `ontouchstart`, and WebKitGTK has it on every machine: a drag selects text.
       pan: { defaultMode: "never" },
-      documentManager: {
-        initialDocuments: [{ buffer: loaded.bytes.slice(0), name: `${itemKey}.pdf` }],
-      },
+      documentManager: { initialDocuments: [] },
     }),
-    [loaded, itemKey],
+    [],
   );
 
-  const toggleNightMode = async () => {
-    const library = await request(LibraryPayloadSchema, "PATCH", "/api/preferences", {
-      readerNightMode: !state.nightMode,
-    }).catch((error: Error) => {
-      showFailure(`Night mode: ${error.message}`);
-      return null;
-    });
-    if (library !== null) {
-      setNightMode(library.preferences.readerNightMode);
-      state.nightMode = library.preferences.readerNightMode;
-      scopeShortcuts();
-    }
-  };
-
-  // The copy the reader shows, with every change made since the refused save, replaces the
-  // stored PDF.
-  const keepMine = async () => {
-    if (state.exporter === null) {
-      throw new Error("a save conflict opened before the reader's viewer was up");
-    }
-    const response = await put(await state.exporter.saveAsCopy().toPromise(), state.storedTag);
-    if (!response.ok) {
-      showFailure(`Not saved: ${(await requestError(response)).message}`);
-      return;
-    }
-    state.storedTag = entityTag(response);
-    state.failure = null;
-    setStatus(null);
-    setConflict(false);
-  };
-
-  const libraryView = sessionStorage.getItem(LIBRARY_VIEW_KEY);
-  const libraryHref = libraryView === null ? "/" : `/${libraryView}`;
-
-  // The reader's buttons in EmbedPDF's toolbar (withReaderButtons). EmbedPDF calls their state
-  // when it resolves its commands, and the reader's state they read is in `state`.
-  const readerCommands: Command[] = [
-    {
-      id: "bucket:library",
-      label: "Library",
-      icon: "bucket-library",
-      // Leaving waits until the reading session is reported and every annotation saved.
-      action: () => {
-        settle().then(
-          () => window.location.assign(libraryHref),
-          (error: Error) => showFailure(error.message),
-        );
-      },
-    },
-    {
-      id: "bucket:back",
-      label: "Back (Alt+←)",
-      icon: "bucket-back",
-      disabled: () => !state.positions.canStep(-1),
-      action: () => walk(-1),
-    },
-    {
-      id: "bucket:forward",
-      label: "Forward (Alt+→)",
-      icon: "bucket-forward",
-      disabled: () => !state.positions.canStep(1),
-      action: () => walk(1),
-    },
-    {
-      id: "bucket:night-mode",
-      label: "Night mode",
-      icon: "bucket-night-mode",
-      active: () => state.nightMode,
-      action: () => void toggleNightMode(),
-    },
-    {
-      id: "bucket:copy-link",
-      label: "Copy PDF link",
-      icon: "bucket-copy-link",
-      action: () => {
-        navigator.clipboard.writeText(loaded.item.provenance.pdf_url).then(
-          () => {
-            setStatus({ text: COPIED, failed: false });
-            setTimeout(
-              () => setStatus((current) => (current?.text === COPIED ? null : current)),
-              COPIED_SHOWN_MS,
-            );
-          },
-          (error: Error) => showFailure(`Copy link: ${error.message}`),
-        );
-      },
-    },
-  ];
+  const focus = host.focus;
+  const focused = focus === null ? undefined : host.held.get(focus);
+  const storage = focused?.status === "open" ? focused.storage : null;
 
   return (
     <div
       className="relative flex h-full flex-col bg-surface text-ink"
-      data-reader-key={itemKey}
+      data-reader-key={focus ?? undefined}
       data-night-mode={nightMode}
-      onPointerDown={() => session.input(state.page, isShown())}
-      onPointerMove={() => session.input(state.page, isShown())}
-      onWheel={() => session.input(state.page, isShown())}
+      onPointerDown={readingInput}
+      onPointerMove={readingInput}
+      onWheel={readingInput}
     >
-      {conflict && (
+      {storage?.conflict === true && focus !== null && (
         <div
           role="alert"
           className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-1.5 text-[0.8125rem] text-danger"
@@ -1293,7 +1648,11 @@ function LoadedReader({
           <button
             type="button"
             onClick={() => {
-              keepMine().catch((error: Error) => showFailure(`Not saved: ${error.message}`));
+              storage
+                .keepMine()
+                .catch((error: Error) =>
+                  storage.show({ text: `Not saved: ${error.message}`, failed: true }),
+                );
             }}
             className="h-7 rounded-md border border-line px-2.5 text-ink hover:bg-surface"
           >
@@ -1301,26 +1660,38 @@ function LoadedReader({
           </button>
           <button
             type="button"
-            onClick={reload}
+            onClick={() => reload(focus)}
             className="h-7 rounded-md border border-line px-2.5 text-ink hover:bg-surface"
           >
             Discard my copy
           </button>
         </div>
       )}
-      <PDFViewer
-        ref={viewerRef}
-        config={config}
-        onReady={onReady}
-        className="reader-viewer min-h-0 flex-1"
-      />
+      <div className="relative min-h-0 flex-1">
+        <PDFViewer
+          ref={viewerRef}
+          config={config}
+          onReady={onReady}
+          className="reader-viewer absolute inset-0"
+        />
+        {/* A PDF still loading, or one that could not be opened, covers the viewer. */}
+        {focused !== undefined && focused.status !== "open" && (
+          <div className="absolute inset-0 bg-surface">
+            {focused.status === "failed" && (
+              <p role="alert" className="m-4 text-sm text-danger">
+                The PDF could not be opened: {focused.message}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
       {/* The save state and the reader's failures, over the PDF's bottom left corner. */}
       <span
         role="status"
-        data-failed={status?.failed}
+        data-failed={storage?.status?.failed}
         className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-panel/95 px-2.5 py-1 text-xs text-muted shadow empty:hidden data-[failed=true]:text-danger"
       >
-        {status?.text}
+        {storage?.status?.text}
       </span>
     </div>
   );

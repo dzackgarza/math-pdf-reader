@@ -26,8 +26,10 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
   AnnotationPlugin,
+  DocumentManagerPlugin,
   EmbedPdfContainer,
   ScrollPlugin,
+  ViewportPlugin,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
 import { $ } from "bun";
@@ -193,8 +195,8 @@ describe("library window", () => {
     }
     throw new Error(`the dialog has no button labelled ${label}`);
   };
-  // The reader of KEY, in a tab or on its own page, and the EmbedPDF viewer in it, whose UI is in
-  // the viewer's shadow root (puppeteer's `>>>` reaches into it).
+  // The reader while it shows KEY, in a tab or on its own page, and the EmbedPDF viewer in it,
+  // whose UI is in the viewer's shadow root (puppeteer's `>>>` reaches into it).
   const readerOf = (key: string) => `[data-reader-key="${key}"]`;
   const viewerOf = (key: string) => `${readerOf(key)} embedpdf-container`;
   const inViewer = (key: string, css: string) => `${viewerOf(key)} >>> ${css}`;
@@ -210,13 +212,77 @@ describe("library window", () => {
     page.$$eval("[data-tab-key]", (tabs) =>
       tabs.map((element) => element.getAttribute("data-tab-key")),
     );
-  // The keys of the readers loaded in the window.
+  // The keys of the PDFs open in the window's viewer, as its document manager holds them.
   const readerKeys = async () =>
     (
-      await page.$$eval("[data-reader-key]", (readers) =>
-        readers.map((reader) => reader.getAttribute("data-reader-key")),
-      )
+      await page.evaluate(async () => {
+        const viewer = document.querySelector<EmbedPdfContainer>("embedpdf-container");
+        const documents = (await viewer?.registry)
+          ?.getPlugin<DocumentManagerPlugin>("document-manager")
+          ?.provides();
+        if (documents === undefined) {
+          throw new Error("the window's viewer has no document manager");
+        }
+        return documents.getDocumentOrder();
+      })
     ).sort();
+  // How far KEY's PDF is scrolled, in CSS pixels, as EmbedPDF's viewport holds it.
+  const scrollOf = (key: string) =>
+    page.evaluate(async (css) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const viewport = (await viewer?.registry)?.getPlugin<ViewportPlugin>("viewport")?.provides();
+      if (viewport === undefined) {
+        throw new Error(`${css} has no viewport plugin`);
+      }
+      const metrics = viewport.getMetrics();
+      return { top: metrics.scrollTop, left: metrics.scrollLeft };
+    }, viewerOf(key));
+  // Where KEY's PDF is once a smooth scroll of it has stopped.
+  const scrollSettled = async (key: string) => {
+    for (;;) {
+      const before = await scrollOf(key);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const after = await scrollOf(key);
+      if (after.top === before.top && after.left === before.left) {
+        return after;
+      }
+    }
+  };
+  // Once a smooth scroll of KEY's PDF has stopped, scrolls it DOWN pixels further at once, through
+  // EmbedPDF's viewport, and answers where it then is.
+  const scrollBy = async (key: string, down: number) => {
+    const from = await scrollSettled(key);
+    await page.evaluate(
+      async (css, to) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const viewport = (await viewer?.registry)
+          ?.getPlugin<ViewportPlugin>("viewport")
+          ?.provides();
+        if (viewport === undefined) {
+          throw new Error(`${css} has no viewport plugin`);
+        }
+        viewport.scrollTo({ ...to, behavior: "instant" });
+      },
+      viewerOf(key),
+      { x: from.left, y: from.top + down },
+    );
+    await scrolledFrom(key, from.top);
+    return scrollSettled(key);
+  };
+  // Waits until KEY's PDF is scrolled away from TOP.
+  const scrolledFrom = (key: string, top: number) =>
+    page.waitForFunction(
+      async (css, from) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const viewport = (await viewer?.registry)
+          ?.getPlugin<ViewportPlugin>("viewport")
+          ?.provides();
+        return viewport !== undefined && viewport.getMetrics().scrollTop !== from;
+      },
+      {},
+      viewerOf(key),
+      top,
+    );
   // What the desktop app's tray Quit hears back from the library (follow-open-events.js).
   const quitOutcome = () =>
     page.evaluate(
@@ -236,26 +302,48 @@ describe("library window", () => {
           );
         }),
     );
-  // Waits until KEY's reader has drawn a page of its PDF, as an image in a page box.
+  // Waits until the viewer shows KEY's PDF, laid out, with a page drawn as an image in a page
+  // box. The viewer is shared, so the images alone may still be another PDF's.
   const readerLoaded = (key: string) =>
     page.waitForFunction(
-      (css, box) =>
-        [...(document.querySelector(css)?.shadowRoot?.querySelectorAll(`${box} img`) ?? [])].some(
-          (image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
-        ),
+      async (css, box, wanted) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const registry = await viewer?.registry;
+        const documents = registry
+          ?.getPlugin<DocumentManagerPlugin>("document-manager")
+          ?.provides();
+        const scroll = registry?.getPlugin<ScrollPlugin>("scroll")?.provides();
+        if (documents === undefined || scroll === undefined) {
+          return false;
+        }
+        return (
+          documents.getActiveDocumentId() === wanted &&
+          scroll.forDocument(wanted).getMetrics().pageVisibilityMetrics.length > 0 &&
+          [...(viewer?.shadowRoot?.querySelectorAll(`${box} img`) ?? [])].some(
+            (image) =>
+              image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+          )
+        );
+      },
       {},
       viewerOf(key),
       PAGE_BOX,
+      key,
     );
-  // The page KEY's reader shows, as its page box below the PDF reads.
-  const pageInput = (key: string) => inViewer(key, '[data-epdf-i="page-controls"] input');
+  // The page KEY's reader shows, as its page box below the PDF reads. The box holds a typed page
+  // before EmbedPDF moves there, so EmbedPDF must also have the page in view.
+  const pageInput = (key: string) => inViewer(key, 'input[inputmode="numeric"]');
   const showsPage = (key: string, pageNumber: number) =>
     page.waitForFunction(
-      (css, wanted) => {
-        const input = document
-          .querySelector(css)
-          ?.shadowRoot?.querySelector('[data-epdf-i="page-controls"] input');
-        return input instanceof HTMLInputElement && input.value === wanted;
+      async (css, wanted) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const input = viewer?.shadowRoot?.querySelector('input[inputmode="numeric"]');
+        const scroll = (await viewer?.registry)?.getPlugin<ScrollPlugin>("scroll")?.provides();
+        return (
+          input instanceof HTMLInputElement &&
+          input.value === wanted &&
+          scroll?.getMetrics().visiblePages.includes(Number(wanted)) === true
+        );
       },
       {},
       viewerOf(key),
@@ -267,6 +355,7 @@ describe("library window", () => {
     await page.keyboard.type(String(pageNumber));
     await page.keyboard.press("Enter");
     await showsPage(key, pageNumber);
+    await scrollSettled(key);
   };
   // The top left corner of page 1 of KEY's PDF, once the reader shows it. The scroll goes
   // through EmbedPDF itself: its page box is absent from a PDF of one page. EmbedPDF draws only
@@ -640,18 +729,38 @@ describe("library window", () => {
     await page.waitForSelector(row("reading"));
     await page.goto(`${bucket.origin}/read/reading#page=1`);
     await readerLoaded("reading");
+    // The keys a browser scrolls a page with scroll the PDF before anything in it is clicked.
+    const unscrolled = (await scrollOf("reading")).top;
+    await page.keyboard.press("PageDown");
+    await scrolledFrom("reading", unscrolled);
+    expect((await scrollOf("reading")).top).toBeGreaterThan(unscrolled + 100);
+    await page.keyboard.press("Home");
+    await page.waitForFunction(
+      async (css) => {
+        const viewer = document.querySelector<EmbedPdfContainer>(css);
+        const viewport = (await viewer?.registry)
+          ?.getPlugin<ViewportPlugin>("viewport")
+          ?.provides();
+        return viewport?.getMetrics().scrollTop === 0;
+      },
+      {},
+      viewerOf("reading"),
+    );
     // A page typed into the page box is a jump, as a link or an outline entry is; the reader's
-    // address names the page it shows.
-    for (const pageNumber of [7, 3]) {
-      await goToPage("reading", pageNumber);
-      await page.waitForFunction((n) => location.hash === `#page=${n}`, {}, pageNumber);
-    }
+    // address names the page it shows. A scroll inside page 7 moves no page, and back returns to
+    // that place in it, not to the page's top.
+    await goToPage("reading", 7);
+    await page.waitForFunction(() => location.hash === "#page=7");
+    const within7 = await scrollBy("reading", 120);
+    await goToPage("reading", 3);
+    await page.waitForFunction(() => location.hash === "#page=3");
     await shot("reader");
 
     const back = readerButton("reading", "back");
     const forward = readerButton("reading", "forward");
     await page.click(back);
     await showsPage("reading", 7);
+    expect((await scrollOf("reading")).top).toBeCloseTo(within7.top, 0);
     await page.click(back);
     await showsPage("reading", 1);
     await page.waitForSelector(`${back}${DISABLED}`);
@@ -784,7 +893,7 @@ describe("library window", () => {
     expect(await openTabKeys()).toEqual([]);
   });
 
-  test("past five PDF tabs the one shown longest ago sleeps, holding no reader, and wakes at its page and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
+  test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the viewer, and wakes at the same place and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
     // The test opens and deletes its own PDFs, so later tests see the fixtures as they were.
     const captureTab = async (source: string, ordinal: string) => {
       const form = new FormData();
@@ -809,7 +918,17 @@ describe("library window", () => {
       ),
     ]);
     const [second, third] = later;
-    const asleep = (key: string) => page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
+    // KEY's tab sleeps, and EmbedPDF, which closes a document asynchronously, has closed its PDF.
+    const asleep = async (key: string) => {
+      await page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
+      await page.waitForFunction(async (closed) => {
+        const viewer = document.querySelector<EmbedPdfContainer>("embedpdf-container");
+        const documents = (await viewer?.registry)
+          ?.getPlugin<DocumentManagerPlugin>("document-manager")
+          ?.provides();
+        return documents?.getDocumentOrder().includes(closed) === false;
+      }, {}, key);
+    };
 
     await openLibrary();
     await page.click(row(first), { count: 2 });
@@ -829,6 +948,8 @@ describe("library window", () => {
       unzoomed,
     );
     const zoomed = await zoomOf(first);
+    // A place inside page 3, which the tab keeps through its sleep.
+    const within3 = await scrollBy(first, 120);
     for (const key of later) {
       await (await byRole("tab", "Library")).click();
       await page.click(row(key));
@@ -843,6 +964,9 @@ describe("library window", () => {
     await shownReader(first);
     await showsPage(first, 3);
     expect(await zoomOf(first)).toBe(zoomed);
+    const woken = await scrollOf(first);
+    expect(woken.top).toBeCloseTo(within3.top, 0);
+    expect(woken.left).toBeCloseTo(within3.left, 0);
     await asleep(second);
     expect(await readerKeys()).not.toContain(second);
 

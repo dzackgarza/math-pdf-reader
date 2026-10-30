@@ -41,12 +41,12 @@ const hashPage = HASH_PAGE.exec(window.location.hash);
 createRoot(root).render(
   <StrictMode>
     <Reader
-      itemKey={key}
-      openAtPage={hashPage === null ? null : Number(hashPage[1])}
-      openAtZoom={null}
       shown
       inTab={false}
-      onPage={(page) => window.history.replaceState(null, "", `#page=${page}`)}
+      onControl={(control) =>
+        control.open(key, document.title, hashPage === null ? undefined : Number(hashPage[1]))
+      }
+      onPage={(_, page) => window.history.replaceState(null, "", `#page=${page}`)}
     />
   </StrictMode>,
 );
