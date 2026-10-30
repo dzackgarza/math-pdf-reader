@@ -203,7 +203,11 @@ class Reader:
           V.registry.then((R) => {{
             clearTimeout(late);
             const documents = R.getPlugin('document-manager').provides();
-            done({{...page, active: documents.getActiveDocumentId(), order: documents.getDocumentOrder(), core: JSON.stringify(R.getStore().getState().core).slice(0, 2000)}});
+            const scroll = R.getPlugin('scroll').provides(), interaction = R.getPlugin('interaction-manager').provides();
+            done({{...page, active: documents.getActiveDocumentId(), order: documents.getDocumentOrder(),
+              window: [window.innerWidth, window.innerHeight], page: scroll.getCurrentPage(), scrolling: scroll.getPageChangeState(),
+              mode: interaction.getActiveMode(), tool: R.getPlugin('annotation').provides().getActiveTool()?.id ?? null,
+              core: JSON.stringify(R.getStore().getState().core).slice(0, 2000)}});
           }}, (error) => done({{...page, registry: String(error)}}));"""
         result: Script = self.driver.execute_async_script(script)
         return result
@@ -219,14 +223,15 @@ class Reader:
         return value
 
     def wait(self, condition: str, timeout: float = 30) -> None:
-        WebDriverWait(self.driver, timeout).until(lambda _: self.run(f"return Boolean({condition})"))
+        """Wait until CONDITION holds; past TIMEOUT, fail with the reader's state."""
+        try:
+            WebDriverWait(self.driver, timeout).until(lambda _: self.run(f"return Boolean({condition})"))
+        except TimeoutException:
+            pytest.fail(f"{self.key}: {condition} did not hold in {timeout} s; {self.state()}")
 
     def loaded(self) -> None:
         """Wait until the viewer has drawn a page of the PDF, and keep its plugin registry."""
-        try:
-            self.wait(f"[...(S?.querySelectorAll('{PAGE_BOX} img') ?? [])].some((image) => image.complete && image.naturalWidth > 0)")
-        except TimeoutException:
-            pytest.fail(f"The reader drew no page of {self.key}: {self.state()}")
+        self.wait(f"[...(S?.querySelectorAll('{PAGE_BOX} img') ?? [])].some((image) => image.complete && image.naturalWidth > 0)")
         self.driver.execute_async_script(f"const done = arguments[arguments.length - 1], V = {self.viewer}; V.registry.then((R) => {{ V.__registry = R; done(); }});")
 
     def page_number(self) -> int:
@@ -317,11 +322,7 @@ class Reader:
         # The Annotate toolbar opens below the main one and moves the pages down, so the page is
         # found once it is open.
         self.drag_across(page, line)
-        try:
-            self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
-        except TimeoutException:
-            tool = self.run("return [P('interaction-manager').getActiveMode(), P('annotation').getActiveTool()?.id ?? null, P('scroll').getCurrentPage()]")
-            pytest.fail(f"Dragging across page {page} of {self.key} drew no highlight; mode, tool and page: {tool}; {self.state()}")
+        self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
         self.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).length > {saved}")
         time.sleep(SETTLE)
         # Escape puts the highlighter down: the default tool, which selects text, is in hand.
