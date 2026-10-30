@@ -196,7 +196,7 @@ class Reader:
             viewer: V !== null, tab: document.querySelector('[data-tab-key={json.dumps(self.key)}]')?.dataset.state,
             boxes: S ? [...S.querySelectorAll('{PAGE_BOX}')].map((e) => {{ const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }}) : null,
             images: S ? [...S.querySelectorAll('{PAGE_BOX} img')].map((image) => ({{complete: image.complete, width: image.naturalWidth, src: image.src.slice(0, 40)}})) : null,
-            errors: window.__errors, body: document.body.innerText.slice(0, 1000),
+            errors: window.__errors, pens: window.__pens?.slice(0, 6), body: document.body.innerText.slice(0, 1000),
           }};
           if (V === null) {{ done(page); return; }}
           page.visibility = document.visibilityState;
@@ -372,7 +372,7 @@ class Reader:
 
     def pen_press(self, page: int, line: tuple[float, float]) -> tuple[float, float]:
         """Press LINE of PAGE with a stylus; return the window point pressed, for `pen_release`."""
-        x, y, w, h = self.page_box(page)
+        x, y, w, h = self.stroke_box(page)
         point = (x + w * line[0], y + h * line[1])
         self.pen_event("pointerdown", *point)
         return point
@@ -403,6 +403,11 @@ class Reader:
         """Send a complete stylus stroke as GTK GestureStylus sends it to the Tauri bridge."""
         x, y, w, h = self.stroke_box(page)
         start_x, start_y = x + w * line[0], y + h * line[1]
+        self.run(
+            "if (window.__pens === undefined) for (const kind of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'])"
+            " window.addEventListener(kind, (e) => window.__pens.push([e.type, e.pointerType, e.composedPath()[0]?.tagName, e.defaultPrevented]), true);"
+            " window.__pens = [];"
+        )
         self.shell_pen_event("pointerhover", start_x, start_y)
         self.shell_pen_event("pointerdown", start_x, start_y)
         for step in range(1, 11):
@@ -608,7 +613,7 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
 
     # Back in the notes, the page and the highlight are where they were.
     show_tab(app, notes)
-    assert reader.page_number() == 7
+    reader.shows("page === 7")
     assert reader.highlights() == 1
 
     # Correct the notes' metadata in the library's inspector.
