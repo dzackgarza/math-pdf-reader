@@ -18,3 +18,18 @@ You have to click on a PDF before keyboard shortcuts are recognized
 The highlighting interface is incoherent. You can't select + right-click to highlight, clicking the highlighter tool opens options instead of selecting the tool
 
 Actually, more: clicking the highlighter tool DOES select the tool, but it leaves the tool option popup open..
+
+**The architectural problem is that the app embeds a complete reader, then builds another reader controller around it.** The “wiring only” boundary does not hold for navigation and document lifecycle.
+
+The concrete departures are:
+
+- **Independent viewer instances behind custom tabs.** [tabs.tsx](/home/dzack/gitclones/math-pdf-reader/src/web/tabs.tsx:386) mounts a reader per awake tab and hides inactive readers with CSS. EmbedPDF already provides document management and active-document switching. Its own tab bar is disabled here. [Upstream API](https://www.embedpdf.com/docs/react/viewer/plugins/plugin-document-manager)
+- **Custom unloading and reconstruction.** The app destroys sleeping readers, saves `{page, zoom}`, then reconstructs their position. That representation loses the position within a page. This makes view continuity the app’s responsibility.
+- **Custom navigation history.** [Reader.tsx](/home/dzack/gitclones/math-pdf-reader/src/web/reader/Reader.tsx:270) maintains its own `Positions` stack. A mutable `walking` flag distinguishes its navigation from other navigation, using asynchronous viewer events.
+- **Manual input coordination.** Because those separate viewers register document-wide shortcuts, [scopeShortcuts](/home/dzack/gitclones/math-pdf-reader/src/web/reader/Reader.tsx:529) manually disables command categories in hidden readers.
+
+These decisions introduce app-owned state that must remain synchronized with the viewer’s state: which document is active, which position is authoritative, whether navigation is underway, and which reader receives input. **Those synchronization obligations are the additional failure class introduced by this architecture.** Importing EmbedPDF does not remove them.
+
+The architectural direction is to let its document manager own document activation and lifecycle, with the bucket supplying storage and library actions. Any required reader behavior missing upstream needs an explicit extension decision—not another implicit controller around it.
+
+That establishes the architectural departure. It does not establish which departure caused this particular jump, or imply that upstream readers cannot have scrolling bugs.
