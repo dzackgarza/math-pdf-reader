@@ -306,6 +306,13 @@ class Reader:
     def next_page(self) -> None:
         """Go to the next page with the page controls in the toolbar."""
         page = self.page_number()
+        # The pages settle at their zoom after they first show. On WebKitGTK 2.52 a smooth scroll
+        # that starts while the scroll height changes does not move, and EmbedPDF's page change
+        # then never ends.
+        heights = [self.number(f"P('viewport').forDocument({json.dumps(self.key)}).getMetrics().scrollHeight")]
+        WebDriverWait(self.driver, 30, poll_frequency=0.3).until(
+            lambda _: heights.append(self.number(f"P('viewport').forDocument({json.dumps(self.key)}).getMetrics().scrollHeight")) or heights[-1] == heights[-2]
+        )
         self.click("[data-epdf-i='bucket-page-controls'] button[aria-label='Next Page']")
         self.shows(f"page > {page}")
 
