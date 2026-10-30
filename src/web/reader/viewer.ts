@@ -430,6 +430,24 @@ function activated(context: ViewerContext, current: string) {
   }
 }
 
+// EmbedPDF's zoom plugin gates a PDF's viewport until it first zooms, and it zooms only when the
+// PDF loads and when the viewport is resized. A viewport that gets its size before the PDF's
+// pages are laid out, and keeps it, stays gated and shows no page; the zoom asked for here, once
+// the viewport has a size and the pages a layout, releases the gate.
+function releaseZoomGate(caps: Capabilities, documentId: string) {
+  const { viewport, zoom, scroll } = caps;
+  if (!viewport.hasGate("zoom", documentId)) {
+    return;
+  }
+  const metrics = viewport.forDocument(documentId).getMetrics();
+  const spreads = scroll.forDocument(documentId).getSpreadPagesWithRotatedSize();
+  if (metrics.clientWidth === 0 || metrics.clientHeight === 0 || spreads.length === 0) {
+    return;
+  }
+  const scope = zoom.forDocument(documentId);
+  scope.requestZoom(scope.getState().zoomLevel);
+}
+
 // The viewer is ready: the reader takes its capabilities, adds its commands and buttons, and
 // follows its events.
 export function connectViewer(registry: PluginRegistry, context: ViewerContext) {
@@ -440,7 +458,7 @@ export function connectViewer(registry: PluginRegistry, context: ViewerContext) 
   context.viewerRoot().append(pageControlStyle);
   const found = capabilities(registry);
   host.caps = found;
-  const { documents, scroll, ui, annotations, commands } = found;
+  const { documents, scroll, ui, annotations, commands, viewport } = found;
   registerCommands(commands, context.viewerRoot, context.commandsRef);
   ui.onToolbarChanged(({ documentId, placement, slot }) => {
     if (placement === "top" && slot === "secondary") {
@@ -502,6 +520,7 @@ export function connectViewer(registry: PluginRegistry, context: ViewerContext) 
     scopeShortcuts();
     context.sleepDrowsy();
   });
+  viewport.onViewportChange(({ documentId }) => releaseZoomGate(found, documentId));
   documents.onDocumentOrderChanged(changed);
   documents.onDocumentClosed(changed);
   for (const resolve of host.whenReady.splice(0)) {
