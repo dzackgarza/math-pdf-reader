@@ -168,7 +168,8 @@ def watch(driver: webdriver.WebKitGTK) -> None:
         if (args[1]?.method === 'PUT' && String(args[0]).endsWith('/pdf')) window.__saves.push([String(args[0]), response.status]);
         return response;
       };
-      window.addEventListener('error', (e) => window.__errors.push(String(e.message)));
+      // A ResizeObserver loop is reported as an error event that carries no thrown value.
+      window.addEventListener('error', (e) => { if (e.error !== null) window.__errors.push(String(e.message)); });
       window.addEventListener('unhandledrejection', (e) => window.__errors.push(String(e.reason)));
     """)
 
@@ -221,8 +222,10 @@ class Reader:
         return x, y, w, h
 
     def click(self, selector: str) -> None:
-        """Click the first SELECTOR element in the viewer's shadow root."""
-        self.click_element(f"S.querySelector({json.dumps(selector)})")
+        """Click the first SELECTOR element in the viewer's shadow root, once EmbedPDF draws it."""
+        element = f"S?.querySelector({json.dumps(selector)})"
+        self.wait(element)
+        self.click_element(element)
 
     def click_element(self, element: str) -> None:
         """Click the middle of the element the script expression ELEMENT names."""
@@ -255,9 +258,9 @@ class Reader:
         self.wait(f"(() => {{ const page = P('scroll').getCurrentPage(); return ({condition}) && !P('scroll').getPageChangeState().isChanging }})()")
 
     def next_page(self) -> None:
-        """Go to the next page with the page controls below the PDF."""
+        """Go to the next page with the page controls in the toolbar."""
         page = self.page_number()
-        self.click("[data-epdf-i='page-controls'] button[aria-label='Next Page']")
+        self.click("[data-epdf-i='bucket-page-controls'] button[aria-label='Next Page']")
         self.shows(f"page > {page}")
 
     def selection(self) -> str:
@@ -511,7 +514,7 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     reader.shows(f"page !== {page}")
     reader.click_command("back")
     reader.shows(f"page === {page}")
-    reader.click("[data-epdf-i='page-controls'] input")
+    reader.click("[data-epdf-i='bucket-page-controls'] input")
     ActionChains(app).key_down(Keys.CONTROL).send_keys("a").key_up(Keys.CONTROL).send_keys("7", Keys.ENTER).perform()
     reader.shows("page === 7")
     # Read it: a page counts as read after MIN_PAGE_SECONDS (src/contract/library.ts).
@@ -614,8 +617,12 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     reader.click("[data-epdf-i='annotate-mode'] button")
     reader.wait("V.dataset.bucketStylusMode === 'edit'")
     reader.wait("P('ui').forDocument(P('document-manager').getActiveDocumentId()).getActiveToolbar('top', 'secondary') === 'annotation-toolbar'")
+    # The highlighter's button takes up the tool and opens no options over the page.
+    controls = "[...S.querySelectorAll('[data-epdf-i]')].filter((e) => e.getClientRects().length > 0).map((e) => e.getAttribute('data-epdf-i')).sort()"
+    shown = reader.items(controls)
     reader.click("[data-epdf-i='add-highlight'] button")
     reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
+    assert reader.items(controls) == shown
     point = reader.pen_press(2, NOTES_LINE)
     reader.pen_release(point)
     assert reader.run("return P('annotation').getActiveTool()?.id ?? null") == "highlight"
@@ -701,7 +708,7 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(app: webdriver.WebKitG
     # A pen can still use ordinary reader controls, even though GTK suppresses its duplicate
     # native mouse events: the bridge emits a click on a non-dragged button press/release.
     cx, cy, cw, ch = reader.items("""(() => {
-        const b = S.querySelector("[data-epdf-i='page-controls'] button[aria-label='Next Page']").getBoundingClientRect();
+        const b = S.querySelector("[data-epdf-i='bucket-page-controls'] button[aria-label='Next Page']").getBoundingClientRect();
         return [b.x, b.y, b.width, b.height];
     })()""")
     center = (cx + cw / 2, cy + ch / 2)
@@ -825,7 +832,7 @@ def test_annotate_delete_and_backspace_remove_selected_annotations(app: webdrive
     reader.wait(f"P('annotation').getSelectedAnnotations().some((a) => a.object.id === {json.dumps(ids[0])})")
 
     # A text-editing field must consume Backspace rather than deleting an annotation.
-    reader.click("[data-epdf-i='page-controls'] input")
+    reader.click("[data-epdf-i='bucket-page-controls'] input")
     reader.run(f"P('annotation').selectAnnotation(1, {json.dumps(ids[0])})")
     reader.wait("P('annotation').getSelectedAnnotations().length === 1")
     ActionChains(app).send_keys(Keys.BACKSPACE).perform()

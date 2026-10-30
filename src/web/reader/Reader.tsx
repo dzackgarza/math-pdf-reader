@@ -1031,7 +1031,9 @@ export function Reader({ shown, inTab, onControl, onProjection, onPage }: Reader
         const reading = item.reading;
         const page = openAt?.page ?? (reading.status === "viewed" ? reading.page : 1);
         storage.recordedPage = page;
-        if (page > 1 && page <= totalPages) {
+        // EmbedPDF's page controls read the page count when they mount and then only at a page
+        // change, and they can mount before the layout; this scroll, to page 1 too, is that change.
+        if (page <= totalPages) {
           host.moving = true;
           try {
             scroll.forDocument(documentId).scrollToPage({ pageNumber: page, behavior: "instant" });

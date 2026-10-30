@@ -385,13 +385,30 @@ describe("library window", () => {
     return z.object({ x: z.number(), y: z.number() }).parse(await corner.jsonValue());
   };
   // Writes NOTE on page 1 of KEY's PDF with EmbedPDF's free-text tool, from its Annotate toolbar.
-  const writeNote = async (key: string, note: string) => {
+  // DOWN is the note's distance, in CSS pixels, from the page's top.
+  const writeNote = async (key: string, note: string, down = 160) => {
     // The Annotate toolbar opens below the main one and moves the pages down, so the page's
     // corner is found once it is open.
     await page.click(inViewer(key, '[data-epdf-i="annotate-mode"] button'));
-    await page.click(inViewer(key, '[data-epdf-i="add-text"] button'));
+    // After a note the free-text tool stays in hand, and its button would put it down. EmbedPDF
+    // ends a note's editing only when the note loses the focus, so a note still edited ends with
+    // a click on the page before the next note is placed.
+    const inHand = await page.evaluate(async (css) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const annotations = (await viewer?.registry)
+        ?.getPlugin<AnnotationPlugin>("annotation")
+        ?.provides();
+      return annotations?.getActiveTool()?.id ?? null;
+    }, viewerOf(key));
+    if (inHand !== "freeText") {
+      await page.click(inViewer(key, '[data-epdf-i="add-text"] button'));
+    }
     const corner = await firstPageCorner(key);
-    await page.mouse.click(corner.x + 120, corner.y + 160);
+    if ((await page.$(inViewer(key, '[contenteditable="true"]'))) !== null) {
+      await page.mouse.click(corner.x + 120, corner.y + down);
+      await page.waitForSelector(inViewer(key, '[contenteditable="true"]'), { hidden: true });
+    }
+    await page.mouse.click(corner.x + 120, corner.y + down);
     await page.waitForSelector(inViewer(key, '[contenteditable="true"]'));
     await page.keyboard.type(note);
     await page.keyboard.press("Escape");
@@ -1296,6 +1313,48 @@ describe("library window", () => {
 
     await page.goto(`${bucket.origin}/read/problems`);
     expect(await notesOnFirstPage("problems")).toContain(note);
+  });
+
+  test("a note saved after a metadata write to the open PDF keeps that metadata, and the next save is taken too", async () => {
+    const saved = () =>
+      page.waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/items/lattices/pdf") &&
+          response.request().method() === "PUT",
+      );
+    await page.goto(`${bucket.origin}/read/lattices`);
+    await readerLoaded("lattices");
+    const title = `Retitled while open ${Date.now()}`;
+    const edited = await fetch(`${bucket.origin}/api/items/lattices/metadata`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, authors: ["Ada Researcher"], year: 2024, abstract: null }),
+    });
+    expect(edited.status).toBe(200);
+
+    // The reader's copy predates the metadata write; the server writes the metadata into it.
+    const first = `Saved over new metadata ${Date.now()}`;
+    const firstSave = saved();
+    await writeNote("lattices", first);
+    expect((await firstSave).status()).toBe(200);
+    // The answered tag names the reader's bytes, which the next save is made from.
+    const second = `Saved after the rebase ${Date.now()}`;
+    const secondSave = saved();
+    await writeNote("lattices", second, 320);
+    expect((await secondSave).status()).toBe(200);
+    await page.click(readerButton("lattices", "library"));
+    await page.waitForSelector("nav a");
+
+    await page.goto(`${bucket.origin}/read/lattices`);
+    expect(await notesOnFirstPage("lattices")).toEqual(expect.arrayContaining([first, second]));
+    const payload = LibraryPayloadSchema.parse(
+      await (await fetch(`${bucket.origin}/api/library`)).json(),
+    );
+    expect(payload.items.find((item) => item.id === "lattices")).toMatchObject({
+      title,
+      authors: ["Ada Researcher"],
+      year: 2024,
+    });
   });
 
   test("the reader records the last viewed page, the library shows it out of the page count, and the reader reopens there", async () => {
