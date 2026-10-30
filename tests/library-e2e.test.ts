@@ -2,14 +2,7 @@
 // served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  expect,
-  setDefaultTimeout,
-  test,
-} from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -1159,7 +1152,17 @@ test("closing a PDF's tab right after a note is written saves the note into the 
   const note = `Closed at once ${Date.now()}`;
   await writeNote("outlined", note);
   await page.click(`${tab("outlined")} button[aria-label^="Close"]`);
-  await page.waitForSelector(row("outlined"), { visible: true });
+  await page
+    .waitForSelector(row("outlined"), { visible: true, timeout: 15_000 })
+    .catch(async () => {
+      const shown = await page.evaluate(() => ({
+        tabs: [...document.querySelectorAll("[data-tab-key]")].map((element) => element.outerHTML),
+        dialogs: [...document.querySelectorAll('[role="alertdialog"], [role="alert"]')].map(
+          (element) => element.textContent,
+        ),
+      }));
+      throw new Error(`closing the tab did not show the library: ${JSON.stringify(shown)}`);
+    });
   expect(await openTabKeys()).toEqual([]);
 
   await page.goto(`${bucket.origin}/read/outlined`);

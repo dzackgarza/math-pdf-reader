@@ -317,7 +317,11 @@ class Reader:
         # The Annotate toolbar opens below the main one and moves the pages down, so the page is
         # found once it is open.
         self.drag_across(page, line)
-        self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
+        try:
+            self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
+        except TimeoutException:
+            tool = self.run("return [P('interaction-manager').getActiveMode(), P('annotation').getActiveTool()?.id ?? null, P('scroll').getCurrentPage()]")
+            pytest.fail(f"Dragging across page {page} of {self.key} drew no highlight; mode, tool and page: {tool}; {self.state()}")
         self.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).length > {saved}")
         time.sleep(SETTLE)
         # Escape puts the highlighter down: the default tool, which selects text, is in hand.
