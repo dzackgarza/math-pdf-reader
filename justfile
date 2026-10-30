@@ -119,13 +119,15 @@ desktop-rust-checks:
 # Provision the CI runner: Tauri's Linux build inputs, user namespaces for Chromium's sandbox and
 # the desktop workflow's private network, which Ubuntu 24.04's AppArmor blocks
 # (actions/runner-images#10443), Weston and WebKitWebDriver for the desktop workflow, and direnv
-# with the checkout's `.envrc` allowed (the app reads the plugins' environment through it). The
-# qc jobs run this recipe as their setup_recipe.
+# with the checkout's `.envrc` allowed (the app reads the plugins' environment through it), and a
+# session bus for later steps: without one, Chromium's start retries the bus for seconds and can
+# miss Puppeteer's 30 s launch limit. The qc jobs run this recipe as their setup_recipe.
 ci-setup:
     sudo apt-get update
     sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev weston webkit2gtk-driver direnv
     sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
     direnv allow .
+    echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
 
 # Run a shipped extraction plugin with its real provider on a fixture PDF stored in a fresh root; print the outcome.
 extraction-evidence plugin fixture="tests/fixtures/ten-page-notes.pdf":

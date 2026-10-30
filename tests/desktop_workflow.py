@@ -188,6 +188,26 @@ class Reader:
         result: Script = self.driver.execute_script(f"const V = {self.viewer}, S = V?.shadowRoot, P = (id) => V.__registry.getPlugin(id).provides();\n{script}")
         return result
 
+    def state(self) -> Script:
+        """What the window holds of this reader: its viewer, EmbedPDF's documents, the page boxes
+        and their images, and the page errors."""
+        script = f"""const done = arguments[arguments.length - 1], V = {self.viewer}, S = V?.shadowRoot;
+          const page = {{
+            viewer: V !== null, tab: document.querySelector('[data-tab-key={json.dumps(self.key)}]')?.dataset.state,
+            boxes: S ? S.querySelectorAll('{PAGE_BOX}').length : null,
+            images: S ? [...S.querySelectorAll('{PAGE_BOX} img')].map((image) => ({{complete: image.complete, width: image.naturalWidth, src: image.src.slice(0, 40)}})) : null,
+            errors: window.__errors, body: document.body.innerText.slice(0, 1000),
+          }};
+          if (V === null) {{ done(page); return; }}
+          const late = setTimeout(() => done({{...page, registry: 'not ready after 5 s'}}), 5000);
+          V.registry.then((R) => {{
+            clearTimeout(late);
+            const documents = R.getPlugin('document-manager').provides();
+            done({{...page, active: documents.getActiveDocumentId(), order: documents.getDocumentOrder(), core: JSON.stringify(R.getStore().getState().core).slice(0, 2000)}});
+          }}, (error) => done({{...page, registry: String(error)}}));"""
+        result: Script = self.driver.execute_async_script(script)
+        return result
+
     def number(self, expression: str) -> float:
         value = self.run(f"return {expression}")
         assert isinstance(value, int | float), value
@@ -203,7 +223,10 @@ class Reader:
 
     def loaded(self) -> None:
         """Wait until the viewer has drawn a page of the PDF, and keep its plugin registry."""
-        self.wait(f"[...(S?.querySelectorAll('{PAGE_BOX} img') ?? [])].some((image) => image.complete && image.naturalWidth > 0)")
+        try:
+            self.wait(f"[...(S?.querySelectorAll('{PAGE_BOX} img') ?? [])].some((image) => image.complete && image.naturalWidth > 0)")
+        except TimeoutException:
+            pytest.fail(f"The reader drew no page of {self.key}: {self.state()}")
         self.driver.execute_async_script(f"const done = arguments[arguments.length - 1], V = {self.viewer}; V.registry.then((R) => {{ V.__registry = R; done(); }});")
 
     def page_number(self) -> int:
