@@ -120,8 +120,9 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         yield driver
 
 
-def capture(fixture: str) -> str:
-    """Capture a fixture PDF as the browser extension does; return its key."""
+def capture(driver: webdriver.WebKitGTK, fixture: str) -> str:
+    """Capture a fixture PDF as the browser extension does; return its key after the
+    capture's reader event has opened and drawn its PDF."""
     output = subprocess.run(
         [
             "curl",
@@ -142,6 +143,10 @@ def capture(fixture: str) -> str:
     ).stdout
     key = json.loads(output)["key"]
     assert isinstance(key, str), output
+    WebDriverWait(driver, 30).until(
+        lambda d: d.find_elements(By.CSS_SELECTOR, f"[data-tab-key='{key}'][data-state='active']")
+    )
+    Reader(driver, key).loaded()
     return key
 
 
@@ -254,8 +259,10 @@ class Reader:
         return int(self.number("P('scroll').getCurrentPage()"))
 
     def page_box(self, page: int) -> tuple[float, float, float, float]:
-        """The box of PAGE in the window. EmbedPDF draws only the pages near the one shown, and
-        its page boxes name no page: the boxes drawn are the rendered pages in order."""
+        """The box of PAGE in the window once EmbedPDF reports that page visible. EmbedPDF draws
+        only the pages near the one shown, and its page boxes name no page: the boxes drawn are the
+        rendered pages in order."""
+        self.wait(f"P('scroll').getMetrics().visiblePages.includes({page})")
         x, y, w, h = self.items(f"""(() => {{
           const boxes = [...S.querySelectorAll('{PAGE_BOX}')].map((e) => e.getBoundingClientRect()).sort((one, other) => one.y - other.y);
           const pages = [...P('scroll').getMetrics().renderedPageIndexes].sort((one, other) => one - other);
@@ -306,9 +313,13 @@ class Reader:
         actions.perform()
 
     def shows(self, condition: str) -> None:
-        """Wait until the page shown, `page`, meets CONDITION and the scroll to it has ended: the
-        page shown changes while a scroll moves the pages."""
-        self.wait(f"(() => {{ const page = P('scroll').getCurrentPage(); return ({condition}) && !P('scroll').getPageChangeState().isChanging }})()")
+        """Wait until the page shown, `page`, meets CONDITION, is visible, and the scroll to it
+        has ended: the current page changes before a scroll moves the pages."""
+        self.wait(
+            f"(() => {{ const scroll = P('scroll'), page = scroll.getCurrentPage(); "
+            f"return ({condition}) && scroll.getMetrics().visiblePages.includes(page) "
+            "&& !scroll.getPageChangeState().isChanging })()"
+        )
 
     def next_page(self) -> None:
         """Go to the next page with the page controls in the toolbar."""
@@ -534,7 +545,9 @@ def show_tab(driver: webdriver.WebKitGTK, key: str) -> None:
 
 def close_tab(driver: webdriver.WebKitGTK, key: str) -> None:
     driver.find_element(By.CSS_SELECTOR, f"[data-tab-key='{key}'] button[aria-label^='Close']").click()
-    WebDriverWait(driver, 30).until(lambda d: not d.find_elements(By.CSS_SELECTOR, f"[data-reader-key='{key}']"))
+    WebDriverWait(driver, 30).until(
+        lambda d: not d.find_elements(By.CSS_SELECTOR, f"[data-tab-key='{key}']")
+    )
 
 
 def replace_text(field: WebElement, text: str) -> None:
@@ -566,8 +579,8 @@ def highlights_in(pdf: pikepdf.Pdf) -> int:
 
 
 def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
-    notes = capture("outlined-notes.pdf")
-    problems = capture("ten-page-notes.pdf")
+    notes = capture(app, "outlined-notes.pdf")
+    problems = capture(app, "ten-page-notes.pdf")
     for key in (notes, problems):
         if app.find_elements(By.CSS_SELECTOR, f"[data-tab-key='{key}']"):
             close_tab(app, key)
@@ -678,7 +691,7 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     """View temporarily forces pen highlighting. Annotate leaves the selected annotation tool
     unchanged and delegates the pen stroke to EmbedPDF. Switching back to View restores the
     always-highlight behavior without changing the selected editing tool."""
-    notes = capture("outlined-notes.pdf")
+    notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
     while reader.page_number() < 2:
@@ -759,8 +772,8 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
 def test_gtk_stylus_bridge_preserves_mouse_and_highlights(app: webdriver.WebKitGTK, data_home: Path) -> None:
     """GTK's pen-only gesture event goes through Tauri's IPC and the page's actual bridge,
     not through a fake proximity flag. Mouse drag still selects while the pen is hovering."""
-    other = capture("ten-page-notes.pdf")
-    notes = capture("outlined-notes.pdf")
+    other = capture(app, "ten-page-notes.pdf")
+    notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
     while reader.page_number() < 2:
@@ -829,7 +842,7 @@ def test_stylus_opens_annotate_and_native_tools_keep_working(app: webdriver.WebK
     WebKitGTK currently maps tablet input to that mouse-compatible path. This does
     not emulate a physical GDK tablet device; its delivery is left to GTK/GDK.
     """
-    notes = capture("outlined-notes.pdf")
+    notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
     while reader.page_number() < 2:
@@ -897,7 +910,7 @@ def test_annotate_delete_and_backspace_remove_selected_annotations(app: webdrive
     """Delete and Backspace remove selected annotations through the reader's keyboard.
     Editable fields retain these keys, and deleting the selection persists to the PDF.
     """
-    notes = capture("outlined-notes.pdf")
+    notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
     while reader.page_number() < 2:
@@ -951,7 +964,7 @@ def test_annotate_delete_and_backspace_remove_selected_annotations(app: webdrive
 def test_stylus_eraser_removes_highlights_it_crosses(app: webdriver.WebKitGTK, data_home: Path) -> None:
     """Native eraser reports button 5/buttons 32. A fast stroke deletes a crossed highlight,
     preserving a nearby highlight, the pen's tool, and the stored PDF's remaining highlights."""
-    notes = capture("outlined-notes.pdf")
+    notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
     while reader.page_number() < 2:
