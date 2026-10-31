@@ -80,13 +80,13 @@ async function openLoaded(
     () => exporter.forDocument(key).saveAsCopy().toPromise(),
     async () => {
       const scope = annotations.forDocument(key);
-      console.error("reader annotation commit", {
+      console.info("reader annotation commit", {
         key,
         stage: "start",
         pending: scope.getState().hasPendingChanges,
       });
       await scope.commit().toPromise();
-      console.error("reader annotation commit", {
+      console.info("reader annotation commit", {
         key,
         stage: "task-resolved",
         pending: scope.getState().hasPendingChanges,
@@ -100,7 +100,7 @@ async function openLoaded(
           return;
         }
         const stop = scope.onStateChange((state) => {
-          console.error("reader annotation state", {
+          console.info("reader annotation state", {
             key,
             pending: state.hasPendingChanges,
           });
@@ -110,7 +110,7 @@ async function openLoaded(
           }
         });
       });
-      console.error("reader annotation commit", { key, stage: "complete" });
+      console.info("reader annotation commit", { key, stage: "complete" });
     },
     changed,
   );
@@ -125,7 +125,7 @@ async function openLoaded(
     host.nightMode = loaded.preferences.readerNightMode;
     context.setNightMode(host.nightMode);
   }
-  console.error("reader document open", { key, stage: "opening" });
+  console.info("reader document open", { key, stage: "opening" });
   const response = await documents
     .openDocumentBuffer({
       buffer: loaded.bytes,
@@ -148,9 +148,9 @@ async function openLoaded(
       documents.getDocumentOrder().filter((other) => before.has(other)).length,
     );
   }
-  console.error("reader document open", { key, stage: "waiting-for-task" });
+  console.info("reader document open", { key, stage: "waiting-for-task" });
   await response.task.toPromise();
-  console.error("reader document open", { key, stage: "complete" });
+  console.info("reader document open", { key, stage: "complete" });
   changed();
 }
 
@@ -213,12 +213,12 @@ export function useDocuments(context: Context) {
       const ready = new Promise<void>((resolve) =>
         host.caps === null ? host.whenReady.push(resolve) : resolve(),
       );
-      console.error("reader document requested", { key });
+      console.info("reader document requested", { key });
       ready
         .then(() => load(key))
         .then((loaded) => openLoaded(context, key, loading, loaded))
         .catch((error: Error) => {
-          console.error("reader document open failed", {
+          console.info("reader document open failed", {
             key,
             message: error.message,
           });
@@ -320,21 +320,21 @@ export function useDocuments(context: Context) {
 
   const close = useCallback(
     async (key: string) => {
-      console.error("reader document close", { key, stage: "settling" });
+      console.info("reader document close", { key, stage: "settling" });
       if (host.bookmarks.delete(key)) {
         host.titles.delete(key);
         changed();
         return;
       }
       await storageOf(key)?.settle();
-      console.error("reader document close", {
+      console.info("reader document close", {
         key,
         stage: "settled",
         held: host.held.has(key),
       });
       if (host.held.has(key)) {
         remove(key, null);
-        console.error("reader document close", { key, stage: "removed" });
+        console.info("reader document close", { key, stage: "removed" });
       }
     },
     [host, storageOf, remove, changed],

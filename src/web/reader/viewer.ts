@@ -441,7 +441,7 @@ function releaseZoomGate(caps: Capabilities, documentId: string) {
   }
   const metrics = viewport.forDocument(documentId).getMetrics();
   const spreads = scroll.forDocument(documentId).getSpreadPagesWithRotatedSize();
-  console.error("reader zoom gate", {
+  console.info("reader zoom gate", {
     documentId,
     clientWidth: metrics.clientWidth,
     clientHeight: metrics.clientHeight,
@@ -453,7 +453,7 @@ function releaseZoomGate(caps: Capabilities, documentId: string) {
   viewport.releaseGate("zoom", documentId);
   const scope = zoom.forDocument(documentId);
   scope.requestZoom(scope.getState().zoomLevel);
-  console.error("reader zoom gate released", {
+  console.info("reader zoom gate released", {
     documentId,
     zoom: scope.getState().zoomLevel,
   });
@@ -493,7 +493,7 @@ export function connectViewer(registry: PluginRegistry, context: ViewerContext) 
     releaseZoomGate(found, documentId);
   });
   scroll.onPageChangeState(({ documentId, state: change }) => {
-    console.error("reader page change state", {
+    console.info("reader page change state", {
       documentId,
       changing: change.isChanging,
       fromPage: change.fromPage,
@@ -512,7 +512,7 @@ export function connectViewer(registry: PluginRegistry, context: ViewerContext) 
     }
   });
   scroll.onPageChange(({ documentId, pageNumber, totalPages }) => {
-    console.error("reader page changed", {
+    console.info("reader page changed", {
       documentId,
       pageNumber,
       totalPages,

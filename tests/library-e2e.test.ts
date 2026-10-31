@@ -310,7 +310,7 @@ const quitOutcome = () =>
 // Waits until the viewer shows KEY's PDF, laid out, with a page drawn as an image in a page
 // box. The viewer is shared, so the images alone may still be another PDF's.
 const readerLoaded = async (key: string) => {
-  console.error("reader test load", { key, stage: "document" });
+  console.info("reader test load", { key, stage: "document" });
   await page.waitForFunction(
     async (css, wanted) => {
       const registry = await document.querySelector<EmbedPdfContainer>(css)?.registry;
@@ -328,7 +328,7 @@ const readerLoaded = async (key: string) => {
     viewerOf(key),
     key,
   );
-  console.error("reader test load", { key, stage: "image" });
+  console.info("reader test load", { key, stage: "image" });
   await page.waitForFunction(
     (css, box) => {
       const root = document.querySelector(css)?.shadowRoot;
@@ -344,7 +344,7 @@ const readerLoaded = async (key: string) => {
     viewerOf(key),
     PAGE_BOX,
   );
-  console.error("reader test load", { key, stage: "complete" });
+  console.info("reader test load", { key, stage: "complete" });
 };
 // The page KEY's reader shows, as its page box below the PDF reads. The box holds a typed page
 // before EmbedPDF moves there, so EmbedPDF must also have the page in view.
@@ -367,21 +367,21 @@ const showsPage = (key: string, pageNumber: number) =>
   );
 // Goes to a page of KEY's PDF as a reader does: typed into the page box.
 const goToPage = async (key: string, pageNumber: number) => {
-  console.error("reader test page entry", {
+  console.info("reader test page entry", {
     key,
     pageNumber,
     stage: "focus",
   });
   await page.click(pageInput(key), { count: 3 });
   await page.keyboard.type(String(pageNumber));
-  console.error("reader test page entry", {
+  console.info("reader test page entry", {
     key,
     pageNumber,
     stage: "submit",
     value: await page.$eval(pageInput(key), (input) => (input as HTMLInputElement).value),
   });
   await page.keyboard.press("Enter");
-  console.error("reader test page entry", {
+  console.info("reader test page entry", {
     key,
     pageNumber,
     stage: "submitted",
@@ -401,13 +401,13 @@ const goToPage = async (key: string, pageNumber: number) => {
     }, viewerOf(key)),
   });
   await showsPage(key, pageNumber);
-  console.error("reader test page entry", {
+  console.info("reader test page entry", {
     key,
     pageNumber,
     stage: "shown",
   });
   await scrollSettled(key);
-  console.error("reader test page entry", {
+  console.info("reader test page entry", {
     key,
     pageNumber,
     stage: "settled",
@@ -483,7 +483,7 @@ const writeNote = async (key: string, note: string, down = 160) => {
     await page.click(inViewer(key, '[data-epdf-i="add-text"] button'));
   }
   const corner = await firstPageCorner(key);
-  console.error("reader test note", {
+  console.info("reader test note", {
     key,
     stage: "corner",
     corner,
@@ -494,15 +494,15 @@ const writeNote = async (key: string, note: string, down = 160) => {
     await page.waitForSelector(inViewer(key, '[contenteditable="true"]'), {
       hidden: true,
     });
-    console.error("reader test note", { key, stage: "old-editor-closed" });
+    console.info("reader test note", { key, stage: "old-editor-closed" });
   }
   await page.mouse.click(corner.x + 120, corner.y + down);
   await page.waitForSelector(inViewer(key, '[contenteditable="true"]'));
-  console.error("reader test note", { key, stage: "editor-open" });
+  console.info("reader test note", { key, stage: "editor-open" });
   await page.keyboard.type(note);
-  console.error("reader test note", { key, stage: "text-entered" });
+  console.info("reader test note", { key, stage: "text-entered" });
   await page.keyboard.press("Escape");
-  console.error("reader test note", { key, stage: "complete" });
+  console.info("reader test note", { key, stage: "complete" });
 };
 // The contents of the annotations on page 1 of KEY's PDF, as its reader reads them from the
 // stored file.
@@ -554,7 +554,7 @@ const openBrowser = async () => {
     .defaultBrowserContext()
     .overridePermissions(bucket.origin, ["clipboard-read", "clipboard-sanitized-write"]);
   page = await browser.newPage();
-  page.on("console", (message) => console.error("browser console", message.type(), message.text()));
+  page.on("console", (message) => console.info("browser console", message.type(), message.text()));
 };
 
 beforeAll(async () => {
@@ -1219,17 +1219,17 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
 }, 60_000);
 
 test("closing a PDF's tab right after a note is written saves the note into the PDF first", async () => {
-  console.error("reader note-close test", { stage: "open-library" });
+  console.info("reader note-close test", { stage: "open-library" });
   await openLibrary();
   await page.click(row("outlined"), { count: 2 });
-  console.error("reader note-close test", { stage: "wait-reader" });
+  console.info("reader note-close test", { stage: "wait-reader" });
   await shownReader("outlined");
   const note = `Closed at once ${Date.now()}`;
-  console.error("reader note-close test", { stage: "write-note" });
+  console.info("reader note-close test", { stage: "write-note" });
   await writeNote("outlined", note);
-  console.error("reader note-close test", { stage: "close-tab" });
+  console.info("reader note-close test", { stage: "close-tab" });
   await page.click(`${tab("outlined")} button[aria-label^="Close"]`);
-  console.error("reader note-close test", { stage: "wait-library" });
+  console.info("reader note-close test", { stage: "wait-library" });
   await page
     .waitForSelector(row("outlined"), { visible: true, timeout: 15_000 })
     .catch(async () => {
@@ -1242,12 +1242,12 @@ test("closing a PDF's tab right after a note is written saves the note into the 
       throw new Error(`closing the tab did not show the library: ${JSON.stringify(shown)}`);
     });
   expect(await openTabKeys()).toEqual([]);
-  console.error("reader note-close test", { stage: "tab-closed" });
+  console.info("reader note-close test", { stage: "tab-closed" });
 
   await page.goto(`${bucket.origin}/read/outlined`);
-  console.error("reader note-close test", { stage: "standalone-opened" });
+  console.info("reader note-close test", { stage: "standalone-opened" });
   await readerLoaded("outlined");
-  console.error(
+  console.info(
     "reader note-close reopened state",
     await page.evaluate(async (css) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
@@ -1269,7 +1269,7 @@ test("closing a PDF's tab right after a note is written saves the note into the 
     }, viewerOf("outlined")),
   );
   expect(await notesOnFirstPage("outlined")).toContain(note);
-  console.error("reader note-close test", { stage: "note-found" });
+  console.info("reader note-close test", { stage: "note-found" });
 });
 
 test("a note saved over a PDF changed elsewhere shows the conflict, and closing its tab asks first until the copy is saved over it", async () => {
@@ -1443,10 +1443,15 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
 test("a PDF that asks for its outline opens with the outline closed, unless the setting opens it", async () => {
   // Whether EmbedPDF's sidebar shows an entry of the outline, whose entries are the section
   // titles of outlined-notes.pdf. EmbedPDF draws the page's own text into images, not elements.
-  const outlineShown = (css: string) =>
-    [...(document.querySelector(css)?.shadowRoot?.querySelectorAll("span") ?? [])].some(
+  const outlineShown = (css: string) => {
+    const viewer = document.querySelector(css);
+    if (viewer === null || viewer.shadowRoot === null) {
+      return false;
+    }
+    return [...viewer.shadowRoot.querySelectorAll("span")].some(
       (entry) => entry.textContent === "Gram matrices" && entry.checkVisibility(),
     );
+  };
   const openOutlined = async () => {
     await page.goto(`${bucket.origin}/read/outlined`);
     await readerLoaded("outlined");
@@ -1797,21 +1802,21 @@ test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Sh
     viewerOf("reading"),
   );
   // "unimodular" is on pages 6 and 10; the first match is shown once the search answers.
-  console.error("reader search test", { stage: "query" });
+  console.info("reader search test", { stage: "query" });
   await page.keyboard.type("unimodular");
   await showsPage("reading", 6);
-  console.error("reader search test", { stage: "first-match", page: 6 });
+  console.info("reader search test", { stage: "first-match", page: 6 });
   await page.keyboard.press("Enter");
   await showsPage("reading", 10);
-  console.error("reader search test", { stage: "next-match", page: 10 });
+  console.info("reader search test", { stage: "next-match", page: 10 });
   await page.keyboard.press("Enter");
   await showsPage("reading", 6);
-  console.error("reader search test", { stage: "wrapped-match", page: 6 });
+  console.info("reader search test", { stage: "wrapped-match", page: 6 });
   await page.keyboard.down("Shift");
   await page.keyboard.press("Enter");
   await page.keyboard.up("Shift");
   await showsPage("reading", 10);
-  console.error("reader search test", { stage: "previous-match", page: 10 });
+  console.info("reader search test", { stage: "previous-match", page: 10 });
   expect(await page.$eval(field, (input) => (input as HTMLInputElement).value)).toBe("unimodular");
 });
 
@@ -1908,10 +1913,10 @@ test("the grid view shows each PDF's first page, and a double-click opens the re
   ).toEqual(keys);
 
   await page.click('[data-card-id="reading"]');
-  await page.waitForFunction(
-    () =>
-      document.querySelector<HTMLImageElement>('aside img[alt="First page"]')?.naturalWidth ?? 0,
-  );
+  await page.waitForFunction(() => {
+    const image = document.querySelector<HTMLImageElement>('aside img[alt="First page"]');
+    return image !== null && image.naturalWidth > 0;
+  });
   await page.click('[data-card-id="reading"]', { count: 2 });
   await shownReader("reading");
 

@@ -132,7 +132,7 @@ export class DocumentStorage {
   }
 
   private async save(): Promise<void> {
-    console.error("reader PDF save", { key: this.key, stage: "start" });
+    console.info("reader PDF save", { key: this.key, stage: "start" });
     if (this.conflict) {
       return;
     }
@@ -151,7 +151,7 @@ export class DocumentStorage {
     this.storedTag = entityTag(response);
     this.failure = null;
     this.show(null);
-    console.error("reader PDF save", { key: this.key, stage: "complete" });
+    console.info("reader PDF save", { key: this.key, stage: "complete" });
   }
 
   private startSave(): void {
@@ -179,11 +179,11 @@ export class DocumentStorage {
   // Sends the reading session and waits for every annotation to be saved, rejecting while a
   // save has failed or a save conflict is open.
   async settle(): Promise<void> {
-    console.error("reader settle", { key: this.key, stage: "session" });
+    console.info("reader settle", { key: this.key, stage: "session" });
     await this.session.send(false);
-    console.error("reader settle", { key: this.key, stage: "annotations" });
+    console.info("reader settle", { key: this.key, stage: "annotations" });
     await this.committed();
-    console.error("reader settle", {
+    console.info("reader settle", {
       key: this.key,
       stage: "saves",
       pendingSave: this.pendingSave !== null,
@@ -197,14 +197,14 @@ export class DocumentStorage {
         this.startSave();
       }
       await this.saves;
-      console.error("reader settle", {
+      console.info("reader settle", {
         key: this.key,
         stage: "save-complete",
         pendingSave: this.pendingSave !== null,
         saving: this.saving,
       });
     }
-    console.error("reader settle", {
+    console.info("reader settle", {
       key: this.key,
       stage: "complete",
       failure: this.failure,
