@@ -6,7 +6,11 @@
 // opens the stored PDF again at that position and place.
 
 import { useCallback, useEffect } from "react";
-import { type BucketItem, LibraryPayloadSchema, type Preferences } from "../../contract/library";
+import {
+  type BucketItem,
+  LibraryPayloadSchema,
+  type Preferences,
+} from "../../contract/library";
 import { request, requestError } from "../useLibraryApi";
 import { DocumentStorage, entityTag, type Position } from "./documentStorage";
 import type {
@@ -80,7 +84,17 @@ async function openLoaded(
     () => exporter.forDocument(key).saveAsCopy().toPromise(),
     async () => {
       const scope = annotations.forDocument(key);
+      console.error("reader annotation commit", {
+        key,
+        stage: "start",
+        pending: scope.getState().hasPendingChanges,
+      });
       await scope.commit().toPromise();
+      console.error("reader annotation commit", {
+        key,
+        stage: "task-resolved",
+        pending: scope.getState().hasPendingChanges,
+      });
       // EmbedPDF writes an annotation edit into its document asynchronously, and raises the
       // edit's committed event (which schedules the save) before it clears hasPendingChanges.
       // Once that flag is clear, every edit made so far has scheduled its save.
@@ -90,12 +104,17 @@ async function openLoaded(
           return;
         }
         const stop = scope.onStateChange((state) => {
+          console.error("reader annotation state", {
+            key,
+            pending: state.hasPendingChanges,
+          });
           if (!state.hasPendingChanges) {
             stop();
             resolve();
           }
         });
       });
+      console.error("reader annotation commit", { key, stage: "complete" });
     },
     changed,
   );
@@ -110,6 +129,7 @@ async function openLoaded(
     host.nightMode = loaded.preferences.readerNightMode;
     context.setNightMode(host.nightMode);
   }
+  console.error("reader document open", { key, stage: "opening" });
   const response = await documents
     .openDocumentBuffer({
       buffer: loaded.bytes,
@@ -119,7 +139,9 @@ async function openLoaded(
     })
     .toPromise();
   if (response.documentId !== key) {
-    throw new Error(`EmbedPDF opened ${key} as document ${response.documentId}`);
+    throw new Error(
+      `EmbedPDF opened ${key} as document ${response.documentId}`,
+    );
   }
   if (loading.index !== null) {
     const before = new Set(
@@ -132,7 +154,9 @@ async function openLoaded(
       documents.getDocumentOrder().filter((other) => before.has(other)).length,
     );
   }
+  console.error("reader document open", { key, stage: "waiting-for-task" });
   await response.task.toPromise();
+  console.error("reader document open", { key, stage: "complete" });
   changed();
 }
 
@@ -195,10 +219,15 @@ export function useDocuments(context: Context) {
       const ready = new Promise<void>((resolve) =>
         host.caps === null ? host.whenReady.push(resolve) : resolve(),
       );
+      console.error("reader document requested", { key });
       ready
         .then(() => load(key))
         .then((loaded) => openLoaded(context, key, loading, loaded))
         .catch((error: Error) => {
+          console.error("reader document open failed", {
+            key,
+            message: error.message,
+          });
           const held = host.held.get(key);
           if (held === undefined) {
             return;
@@ -297,14 +326,21 @@ export function useDocuments(context: Context) {
 
   const close = useCallback(
     async (key: string) => {
+      console.error("reader document close", { key, stage: "settling" });
       if (host.bookmarks.delete(key)) {
         host.titles.delete(key);
         changed();
         return;
       }
       await storageOf(key)?.settle();
+      console.error("reader document close", {
+        key,
+        stage: "settled",
+        held: host.held.has(key),
+      });
       if (host.held.has(key)) {
         remove(key, null);
+        console.error("reader document close", { key, stage: "removed" });
       }
     },
     [host, storageOf, remove, changed],
@@ -420,7 +456,8 @@ export function useReadingInput(
       }
     };
     document.addEventListener("visibilitychange", changedVisibility);
-    return () => document.removeEventListener("visibilitychange", changedVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", changedVisibility);
   }, [activeStorage, isShown]);
 
   // Any key is reading input while the reader is shown: EmbedPDF's viewer holds no focus of its

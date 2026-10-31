@@ -22,7 +22,12 @@ import { ReadingSession } from "./readingSession";
 
 // Where a reader is in its PDF: the page at the viewport's top-left corner, that corner's place
 // in the page's own coordinates (PDF points from the page's top-left, unscaled), and the zoom.
-export type Position = { pageNumber: number; x: number; y: number; zoom: ZoomLevel };
+export type Position = {
+  pageNumber: number;
+  x: number;
+  y: number;
+  zoom: ZoomLevel;
+};
 
 // How long after an annotation change the reader saves, so a burst of changes is one save.
 const SAVE_PAUSE_MS = 700;
@@ -35,7 +40,9 @@ const ENTITY_TAG = /^"[0-9a-f]{64}"$/;
 export function entityTag(response: Response): string {
   const tag = response.headers.get("ETag");
   if (tag === null || !ENTITY_TAG.test(tag)) {
-    throw new Error(`${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`);
+    throw new Error(
+      `${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`,
+    );
   }
   return tag;
 }
@@ -118,12 +125,16 @@ export class DocumentStorage {
   private put(bytes: ArrayBuffer) {
     return fetch(`/api/items/${encodeURIComponent(this.key)}/pdf`, {
       method: "PUT",
-      headers: { "Content-Type": "application/pdf", "If-Match": this.storedTag },
+      headers: {
+        "Content-Type": "application/pdf",
+        "If-Match": this.storedTag,
+      },
       body: bytes,
     });
   }
 
   private async save(): Promise<void> {
+    console.error("reader PDF save", { key: this.key, stage: "start" });
     if (this.conflict) {
       return;
     }
@@ -131,7 +142,8 @@ export class DocumentStorage {
     const response = await this.put(await this.exported());
     if (response.status === 412) {
       this.storedTag = entityTag(response);
-      this.failure = "Not saved: the PDF changed elsewhere after it was opened.";
+      this.failure =
+        "Not saved: the PDF changed elsewhere after it was opened.";
       this.conflict = true;
       this.show({ text: this.failure, failed: true });
       return;
@@ -142,6 +154,7 @@ export class DocumentStorage {
     this.storedTag = entityTag(response);
     this.failure = null;
     this.show(null);
+    console.error("reader PDF save", { key: this.key, stage: "complete" });
   }
 
   private startSave(): void {
@@ -169,8 +182,16 @@ export class DocumentStorage {
   // Sends the reading session and waits for every annotation to be saved, rejecting while a
   // save has failed or a save conflict is open.
   async settle(): Promise<void> {
+    console.error("reader settle", { key: this.key, stage: "session" });
     await this.session.send(false);
+    console.error("reader settle", { key: this.key, stage: "annotations" });
     await this.committed();
+    console.error("reader settle", {
+      key: this.key,
+      stage: "saves",
+      pendingSave: this.pendingSave !== null,
+      saving: this.saving,
+    });
     // The click or key that settles can itself commit an annotation (a deselected note), so a
     // save scheduled while one runs is started too, until none is left.
     while (this.pendingSave !== null || this.saving > 0) {
@@ -179,7 +200,19 @@ export class DocumentStorage {
         this.startSave();
       }
       await this.saves;
+      console.error("reader settle", {
+        key: this.key,
+        stage: "save-complete",
+        pendingSave: this.pendingSave !== null,
+        saving: this.saving,
+      });
     }
+    console.error("reader settle", {
+      key: this.key,
+      stage: "complete",
+      failure: this.failure,
+      conflict: this.conflict,
+    });
     if (this.failure !== null) {
       throw new Error(this.failure);
     }
@@ -193,7 +226,10 @@ export class DocumentStorage {
   async keepMine(): Promise<void> {
     const response = await this.put(await this.exported());
     if (!response.ok) {
-      this.show({ text: `Not saved: ${(await requestError(response)).message}`, failed: true });
+      this.show({
+        text: `Not saved: ${(await requestError(response)).message}`,
+        failed: true,
+      });
       return;
     }
     this.storedTag = entityTag(response);
@@ -225,7 +261,10 @@ export class DocumentStorage {
           }
         })
         .catch((error: Error) =>
-          this.show({ text: `Page not recorded: ${error.message}`, failed: true }),
+          this.show({
+            text: `Page not recorded: ${error.message}`,
+            failed: true,
+          }),
         );
     }, RECORD_PAUSE_MS);
   }
