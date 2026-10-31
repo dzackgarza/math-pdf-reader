@@ -210,13 +210,20 @@ class Reader:
             const viewport = R.getPlugin('viewport').provides(), id = documents.getActiveDocumentId();
             done({{...page, active: documents.getActiveDocumentId(), order: documents.getDocumentOrder(),
               window: [window.innerWidth, window.innerHeight], page: scroll.getCurrentPage(), scrolling: scroll.getPageChangeState(),
-              viewport: id === null ? null : [viewport.forDocument(id).getMetrics(), viewport.getGates(id), viewport.forDocument(id).isSmoothScrolling(), viewport.isViewportMounted(id)],
+              viewport: id === null ? null : [
+              viewport.forDocument(id).getMetrics(), viewport.getGates(id),
+              viewport.forDocument(id).isSmoothScrolling(), viewport.isViewportMounted(id)
+            ],
               zoom: id === null ? null : R.getPlugin('zoom').getDocumentState(id),
               spreads: id === null ? null : scroll.forDocument(id).getSpreadPagesWithRotatedSize().length,
               loaded: id === null ? null : R.getStore().getState().core.documents[id]?.status,
               mode: interaction.getActiveMode(), tool: R.getPlugin('annotation').provides().getActiveTool()?.id ?? null,
-              selection: id === null ? null : (({{geometry, rects, slices, ...rest}}) => ({{...rest, geometry: Object.keys(geometry)}}))(R.getPlugin('selection').getDocumentState(id)),
-              annotations: R.getPlugin('annotation').provides().getAnnotations().map((tracked) => [tracked.object.type, tracked.object.pageIndex, tracked.commitState])}});
+              selection: id === null ? null : (({{geometry, rects, slices, ...rest}}) =>
+              ({{...rest, geometry: Object.keys(geometry)}})
+            )(R.getPlugin('selection').getDocumentState(id)),
+              annotations: R.getPlugin('annotation').provides().getAnnotations().map(
+              (tracked) => [tracked.object.type, tracked.object.pageIndex, tracked.commitState]
+            )}});
           }}, (error) => done({{...page, registry: String(error)}}));"""
         result: Script = self.driver.execute_async_script(script)
         return result
