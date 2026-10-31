@@ -251,23 +251,36 @@ class Reader:
             pytest.fail(f"{self.key}: {condition} did not hold in {timeout} s; {self.state()}")
 
     def loaded(self) -> None:
-        """Wait until the viewer has drawn a page of the PDF, and keep its plugin registry."""
-        self.wait(f"[...(S?.querySelectorAll('{PAGE_BOX} img') ?? [])].some((image) => image.complete && image.naturalWidth > 0)")
-        self.driver.execute_async_script(f"const done = arguments[arguments.length - 1], V = {self.viewer}; V.registry.then((R) => {{ V.__registry = R; done(); }});")
+        """Wait until the viewer has activated this PDF, laid it out and drawn a page, then keep
+        its plugin registry."""
+        self.driver.execute_async_script(
+            f"const done = arguments[arguments.length - 1], V = {self.viewer}; "
+            "V.registry.then((R) => { V.__registry = R; done(); });"
+        )
+        self.wait(
+            f"P('document-manager').getActiveDocumentId() === {json.dumps(self.key)} "
+            f"&& [...S.querySelectorAll('{PAGE_BOX} img')].some((image) => image.complete && image.naturalWidth > 0)"
+        )
 
     def page_number(self) -> int:
         return int(self.number("P('scroll').getCurrentPage()"))
 
     def page_box(self, page: int) -> tuple[float, float, float, float]:
-        """The box of PAGE in the window once EmbedPDF reports that page visible. EmbedPDF draws
-        only the pages near the one shown, and its page boxes name no page: the boxes drawn are the
-        rendered pages in order."""
-        self.wait(f"P('scroll').getMetrics().visiblePages.includes({page})")
-        x, y, w, h = self.items(f"""(() => {{
+        """The box of PAGE once it crosses the window's center line. EmbedPDF draws only the
+        pages near the one shown, and its page boxes name no page: the boxes drawn are the rendered
+        pages in order."""
+        box = f"""(() => {{
           const boxes = [...S.querySelectorAll('{PAGE_BOX}')].map((e) => e.getBoundingClientRect()).sort((one, other) => one.y - other.y);
-          const pages = [...P('scroll').getMetrics().renderedPageIndexes].sort((one, other) => one - other);
-          const box = boxes[pages.indexOf({page - 1})];
-          return [box.x, box.y, box.width, box.height] }})()""")
+          const pages = [...P('scroll').forDocument({json.dumps(self.key)}).getMetrics().renderedPageIndexes].sort((one, other) => one - other);
+          return boxes[pages.indexOf({page - 1})] }})()"""
+        self.wait(
+            f"(() => {{ const box = {box}; return box !== undefined "
+            "&& box.y < innerHeight / 2 && box.bottom > innerHeight / 2 "
+            "&& box.x < innerWidth && box.right > 0 })()"
+        )
+        x, y, w, h = self.items(
+            f"(() => {{ const box = {box}; return [box.x, box.y, box.width, box.height] }})()"
+        )
         assert isinstance(x, int | float) and isinstance(y, int | float)
         assert isinstance(w, int | float) and isinstance(h, int | float)
         return x, y, w, h
@@ -350,7 +363,12 @@ class Reader:
         return result
 
     def highlights(self) -> int:
-        return int(self.number(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length"))
+        return int(
+            self.number(
+                f"P('annotation').forDocument({json.dumps(self.key)}).getAnnotations()"
+                f".filter((tracked) => tracked.object.type === {HIGHLIGHT}).length"
+            )
+        )
 
     def saves(self) -> list[Script]:
         """The statuses of the saves of this reader's PDF since `watch`."""
@@ -372,7 +390,10 @@ class Reader:
         # The Annotate toolbar opens below the main one and moves the pages down, so the page is
         # found once it is open.
         self.drag_across(page, line)
-        self.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}")
+        self.wait(
+            f"P('annotation').forDocument({json.dumps(self.key)}).getAnnotations()"
+            f".filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > {before}"
+        )
         self.wait(f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).length > {saved}")
         time.sleep(SETTLE)
         # Escape puts the highlighter down: the default tool, which selects text, is in hand.
@@ -671,7 +692,10 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     # Close the notes and open them again: both highlights and the new title are there.
     close_tab(app, notes)
     reader = open_from_library(app, notes)
-    reader.wait(f"P('annotation').getAnnotations().filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > 0")
+    reader.wait(
+        f"P('annotation').forDocument({json.dumps(notes)}).getAnnotations()"
+        f".filter((tracked) => tracked.object.type === {HIGHLIGHT}).length > 0"
+    )
     assert "Lectures on Lattices" in app.find_element(By.CSS_SELECTOR, f"[data-tab-key='{notes}'] [role='tab']").get_attribute("textContent")
 
     assert app.execute_script("return window.__errors") == []
