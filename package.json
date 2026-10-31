@@ -69,6 +69,6 @@
   "overrides": {
     "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#3cb2c8ceb78035c0aef1f7c2b7cb54e5fe4a7906",
     "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#ab8beb562",
-    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#e0b057ae6"
+    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#4f6e96459"
   }
 }
