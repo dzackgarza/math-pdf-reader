@@ -408,11 +408,35 @@ const showsPage = (key: string, pageNumber: number) =>
   );
 // Goes to a page of KEY's PDF as a reader does: typed into the page box.
 const goToPage = async (key: string, pageNumber: number) => {
+  console.error("reader test page entry", {
+    key,
+    pageNumber,
+    stage: "focus",
+  });
   await page.click(pageInput(key), { count: 3 });
   await page.keyboard.type(String(pageNumber));
+  console.error("reader test page entry", {
+    key,
+    pageNumber,
+    stage: "submit",
+    value: await page.$eval(
+      pageInput(key),
+      (input) => (input as HTMLInputElement).value,
+    ),
+  });
   await page.keyboard.press("Enter");
   await showsPage(key, pageNumber);
+  console.error("reader test page entry", {
+    key,
+    pageNumber,
+    stage: "shown",
+  });
   await scrollSettled(key);
+  console.error("reader test page entry", {
+    key,
+    pageNumber,
+    stage: "settled",
+  });
 };
 // The top left corner of page 1 of KEY's PDF, once the reader shows it. The scroll goes
 // through EmbedPDF itself: its page box is absent from a PDF of one page. EmbedPDF draws only
@@ -491,16 +515,27 @@ const writeNote = async (key: string, note: string, down = 160) => {
     await page.click(inViewer(key, '[data-epdf-i="add-text"] button'));
   }
   const corner = await firstPageCorner(key);
+  console.error("reader test note", {
+    key,
+    stage: "corner",
+    corner,
+    existingEditor:
+      (await page.$(inViewer(key, '[contenteditable="true"]'))) !== null,
+  });
   if ((await page.$(inViewer(key, '[contenteditable="true"]'))) !== null) {
     await page.mouse.click(corner.x + 120, corner.y + down);
     await page.waitForSelector(inViewer(key, '[contenteditable="true"]'), {
       hidden: true,
     });
+    console.error("reader test note", { key, stage: "old-editor-closed" });
   }
   await page.mouse.click(corner.x + 120, corner.y + down);
   await page.waitForSelector(inViewer(key, '[contenteditable="true"]'));
+  console.error("reader test note", { key, stage: "editor-open" });
   await page.keyboard.type(note);
+  console.error("reader test note", { key, stage: "text-entered" });
   await page.keyboard.press("Escape");
+  console.error("reader test note", { key, stage: "complete" });
 };
 // The contents of the annotations on page 1 of KEY's PDF, as its reader reads them from the
 // stored file.

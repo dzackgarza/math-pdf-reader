@@ -551,6 +551,12 @@ export function connectViewer(
     releaseZoomGate(found, documentId);
   });
   scroll.onPageChangeState(({ documentId, state: change }) => {
+    console.error("reader page change state", {
+      documentId,
+      changing: change.isChanging,
+      fromPage: change.fromPage,
+      targetPage: change.targetPage,
+    });
     // A page change starts before the viewport moves, so the position is still the one the
     // jump leaves. A smooth one may never report its end.
     if (
@@ -571,6 +577,12 @@ export function connectViewer(
     }
   });
   scroll.onPageChange(({ documentId, pageNumber, totalPages }) => {
+    console.error("reader page changed", {
+      documentId,
+      pageNumber,
+      totalPages,
+      shown: isShown(documentId),
+    });
     storageOf(documentId)?.pageChanged(
       pageNumber,
       totalPages,
