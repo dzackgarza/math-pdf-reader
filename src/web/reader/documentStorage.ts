@@ -40,9 +40,7 @@ const ENTITY_TAG = /^"[0-9a-f]{64}"$/;
 export function entityTag(response: Response): string {
   const tag = response.headers.get("ETag");
   if (tag === null || !ENTITY_TAG.test(tag)) {
-    throw new Error(
-      `${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`,
-    );
+    throw new Error(`${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`);
   }
   return tag;
 }
@@ -142,8 +140,7 @@ export class DocumentStorage {
     const response = await this.put(await this.exported());
     if (response.status === 412) {
       this.storedTag = entityTag(response);
-      this.failure =
-        "Not saved: the PDF changed elsewhere after it was opened.";
+      this.failure = "Not saved: the PDF changed elsewhere after it was opened.";
       this.conflict = true;
       this.show({ text: this.failure, failed: true });
       return;

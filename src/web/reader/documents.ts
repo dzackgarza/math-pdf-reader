@@ -6,11 +6,7 @@
 // opens the stored PDF again at that position and place.
 
 import { useCallback, useEffect } from "react";
-import {
-  type BucketItem,
-  LibraryPayloadSchema,
-  type Preferences,
-} from "../../contract/library";
+import { type BucketItem, LibraryPayloadSchema, type Preferences } from "../../contract/library";
 import { request, requestError } from "../useLibraryApi";
 import { DocumentStorage, entityTag, type Position } from "./documentStorage";
 import type {
@@ -139,9 +135,7 @@ async function openLoaded(
     })
     .toPromise();
   if (response.documentId !== key) {
-    throw new Error(
-      `EmbedPDF opened ${key} as document ${response.documentId}`,
-    );
+    throw new Error(`EmbedPDF opened ${key} as document ${response.documentId}`);
   }
   if (loading.index !== null) {
     const before = new Set(
@@ -456,8 +450,7 @@ export function useReadingInput(
       }
     };
     document.addEventListener("visibilitychange", changedVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", changedVisibility);
+    return () => document.removeEventListener("visibilitychange", changedVisibility);
   }, [activeStorage, isShown]);
 
   // Any key is reading input while the reader is shown: EmbedPDF's viewer holds no focus of its

@@ -21,14 +21,7 @@ import {
   ViewportPlugin,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
-import {
-  ArrowLeft,
-  ArrowRight,
-  type IconNode,
-  Library,
-  Link,
-  Moon,
-} from "lucide";
+import { ArrowLeft, ArrowRight, type IconNode, Library, Link, Moon } from "lucide";
 import { type RefObject, useEffect } from "react";
 import { type BucketItem, ThemeSchema } from "../../contract/library";
 import type { DocumentStorage, Position } from "./documentStorage";
@@ -51,8 +44,7 @@ export const VIEWER_DISABLED = ["document", "redaction"];
 // snippet's renderPage), holding a low-resolution image, a layer of sharp tiles and the
 // annotation layers; the box is the one element inverted, since an inverted element inside it
 // would turn back.
-const NIGHT_PAGES =
-  'div[style*="transform-origin"][style*="background-color: rgb(255, 255, 255)"]';
+const NIGHT_PAGES = 'div[style*="transform-origin"][style*="background-color: rgb(255, 255, 255)"]';
 
 // How far an arrow key scrolls, in CSS pixels, and what share of the viewport a page key does
 // (Firefox: toolkit.scrollbox line height, and a page less a tenth).
@@ -94,10 +86,7 @@ function scrollCommand(
     shortcuts,
     categories: ["navigation", "navigation-scroll"],
     action: ({ registry, documentId }) => {
-      const viewport = plugin<ViewportPlugin>(
-        registry,
-        ViewportPlugin.id,
-      ).forDocument(documentId);
+      const viewport = plugin<ViewportPlugin>(registry, ViewportPlugin.id).forDocument(documentId);
       const metrics = viewport.getMetrics();
       viewport.scrollTo({
         x: metrics.scrollLeft,
@@ -115,11 +104,7 @@ function scrollCommand(
 const SCROLL_COMMANDS = [
   scrollCommand("down", ["ArrowDown"], ({ top }) => top + LINE_STEP),
   scrollCommand("up", ["ArrowUp"], ({ top }) => top - LINE_STEP),
-  scrollCommand(
-    "page-down",
-    ["PageDown", "Space"],
-    ({ top, height }) => top + height * PAGE_SHARE,
-  ),
+  scrollCommand("page-down", ["PageDown", "Space"], ({ top, height }) => top + height * PAGE_SHARE),
   scrollCommand(
     "page-up",
     ["PageUp", "Shift+Space"],
@@ -139,9 +124,7 @@ function findCommand(root: () => ShadowRoot): Command {
     shortcuts: ["Ctrl+F", "Meta+F"],
     categories: ["panel", "panel-search"],
     action: ({ registry, documentId }) => {
-      const ui = plugin<UIPlugin>(registry, UIPlugin.id).forDocument(
-        documentId,
-      );
+      const ui = plugin<UIPlugin>(registry, UIPlugin.id).forDocument(documentId);
       if (!ui.isSidebarOpen("right", "main", SEARCH_PANEL)) {
         ui.setActiveSidebar("right", "main", SEARCH_PANEL);
       }
@@ -189,22 +172,14 @@ function commandButton(commandId: string): ToolbarItem {
   return { type: "command-button", id: commandId, commandId, variant: "icon" };
 }
 
-function withReaderButtons(
-  items: ToolbarItem[],
-  inTab: boolean,
-): ToolbarItem[] {
+function withReaderButtons(items: ToolbarItem[], inTab: boolean): ToolbarItem[] {
   const leading = [
     ...(inTab ? [] : [commandButton("bucket:library")]),
     commandButton("bucket:back"),
     commandButton("bucket:forward"),
   ];
-  const trailing = [
-    commandButton("bucket:night-mode"),
-    commandButton("bucket:copy-link"),
-  ];
-  const groups = new Set(
-    items.flatMap((item) => (item.type === "group" ? [item.id] : [])),
-  );
+  const trailing = [commandButton("bucket:night-mode"), commandButton("bucket:copy-link")];
+  const groups = new Set(items.flatMap((item) => (item.type === "group" ? [item.id] : [])));
   for (const id of ["left-group", "center-group", "right-group"]) {
     if (!groups.has(id)) {
       throw new Error(`EmbedPDF's main toolbar has no ${id}`);
@@ -305,10 +280,7 @@ export function viewerConfig(): PDFViewerConfig {
 
 function capabilities(registry: PluginRegistry): Capabilities {
   return {
-    documents: plugin<DocumentManagerPlugin>(
-      registry,
-      DocumentManagerPlugin.id,
-    ),
+    documents: plugin<DocumentManagerPlugin>(registry, DocumentManagerPlugin.id),
     scroll: plugin<ScrollPlugin>(registry, ScrollPlugin.id),
     zoom: plugin<ZoomPlugin>(registry, ZoomPlugin.id),
     annotations: plugin<AnnotationPlugin>(registry, AnnotationPlugin.id),
@@ -316,10 +288,7 @@ function capabilities(registry: PluginRegistry): Capabilities {
     ui: plugin<UIPlugin>(registry, UIPlugin.id),
     commands: plugin<CommandsPlugin>(registry, CommandsPlugin.id),
     search: plugin<SearchPlugin>(registry, SearchPlugin.id),
-    interaction: plugin<InteractionManagerPlugin>(
-      registry,
-      InteractionManagerPlugin.id,
-    ),
+    interaction: plugin<InteractionManagerPlugin>(registry, InteractionManagerPlugin.id),
     viewport: plugin<ViewportPlugin>(registry, ViewportPlugin.id),
   };
 }
@@ -339,10 +308,7 @@ function registerCommands(
   for (const command of reader.current) {
     commands.registerCommand({
       ...command,
-      action: (context) =>
-        reader.current
-          .find((other) => other.id === command.id)
-          ?.action(context),
+      action: (context) => reader.current.find((other) => other.id === command.id)?.action(context),
     });
   }
 }
@@ -397,31 +363,21 @@ function updateStylusMode(context: ViewerContext, documentId: string) {
   if (ui === undefined || container === null || container === undefined) {
     return;
   }
-  const mode = stylusMode(
-    ui.forDocument(documentId).getActiveToolbar("top", "secondary"),
-  );
+  const mode = stylusMode(ui.forDocument(documentId).getActiveToolbar("top", "secondary"));
   container.dataset.bucketStylusMode = mode === "view" ? "view" : "edit";
   container.dataset.bucketStylusAnnotation = String(mode === "annotate");
   container.dispatchEvent(new Event("bucket-stylus-mode-changed"));
   if (context.shownRef.current) {
-    window.dispatchEvent(
-      new CustomEvent("bucket-stylus-mode", { detail: mode }),
-    );
+    window.dispatchEvent(new CustomEvent("bucket-stylus-mode", { detail: mode }));
   }
 }
 
 // A PDF laid out for the first time opens where OPENAT says and starts its reading session.
-function laidOut(
-  context: ViewerContext,
-  documentId: string,
-  totalPages: number,
-) {
+function laidOut(context: ViewerContext, documentId: string, totalPages: number) {
   const { host } = context;
   const held = host.held.get(documentId);
   if (held?.status !== "open" || host.caps === null) {
-    throw new Error(
-      `EmbedPDF laid out ${documentId}, which the reader is not opening`,
-    );
+    throw new Error(`EmbedPDF laid out ${documentId}, which the reader is not opening`);
   }
   const { ui } = host.caps;
   host.laidOut.add(documentId);
@@ -430,11 +386,7 @@ function laidOut(
   const { storage, openAt, item, preferences } = held;
   if (preferences.outlineOnOpen) {
     outlineFirst(ui);
-    ui.forDocument(documentId).setActiveSidebar(
-      "left",
-      "main",
-      "sidebar-panel",
-    );
+    ui.forDocument(documentId).setActiveSidebar("left", "main", "sidebar-panel");
   }
   if (isPosition(openAt)) {
     storage.recordedPage = openAt.position.pageNumber;
@@ -488,20 +440,14 @@ function releaseZoomGate(caps: Capabilities, documentId: string) {
     return;
   }
   const metrics = viewport.forDocument(documentId).getMetrics();
-  const spreads = scroll
-    .forDocument(documentId)
-    .getSpreadPagesWithRotatedSize();
+  const spreads = scroll.forDocument(documentId).getSpreadPagesWithRotatedSize();
   console.error("reader zoom gate", {
     documentId,
     clientWidth: metrics.clientWidth,
     clientHeight: metrics.clientHeight,
     spreads: spreads.length,
   });
-  if (
-    metrics.clientWidth === 0 ||
-    metrics.clientHeight === 0 ||
-    spreads.length === 0
-  ) {
+  if (metrics.clientWidth === 0 || metrics.clientHeight === 0 || spreads.length === 0) {
     return;
   }
   viewport.releaseGate("zoom", documentId);
@@ -515,12 +461,8 @@ function releaseZoomGate(caps: Capabilities, documentId: string) {
 
 // The viewer is ready: the reader takes its capabilities, adds its commands and buttons, and
 // follows its events.
-export function connectViewer(
-  registry: PluginRegistry,
-  context: ViewerContext,
-) {
-  const { host, storageOf, positionOf, scopeShortcuts, changed, isShown } =
-    context;
+export function connectViewer(registry: PluginRegistry, context: ViewerContext) {
+  const { host, storageOf, positionOf, scopeShortcuts, changed, isShown } = context;
   const pageControlStyle = document.createElement("style");
   pageControlStyle.textContent =
     '.transition-opacity:has(input[inputmode="numeric"]) { opacity: 1 !important; }';
@@ -559,20 +501,13 @@ export function connectViewer(
     });
     // A page change starts before the viewport moves, so the position is still the one the
     // jump leaves. A smooth one may never report its end.
-    if (
-      change.isChanging &&
-      !host.moving &&
-      change.fromPage !== change.targetPage
-    ) {
+    if (change.isChanging && !host.moving && change.fromPage !== change.targetPage) {
       storageOf(documentId)?.history.jumped(positionOf(documentId));
       scopeShortcuts();
     }
   });
   scroll.onScroll(({ documentId }) => {
-    if (
-      documents.getActiveDocumentId() === documentId &&
-      host.laidOut.has(documentId)
-    ) {
+    if (documents.getActiveDocumentId() === documentId && host.laidOut.has(documentId)) {
       host.parked.set(documentId, positionOf(documentId));
     }
   });
@@ -583,11 +518,7 @@ export function connectViewer(
       totalPages,
       shown: isShown(documentId),
     });
-    storageOf(documentId)?.pageChanged(
-      pageNumber,
-      totalPages,
-      isShown(documentId),
-    );
+    storageOf(documentId)?.pageChanged(pageNumber, totalPages, isShown(documentId));
     if (documents.getActiveDocumentId() === documentId) {
       context.onPage()?.(documentId, pageNumber);
     }
@@ -598,28 +529,22 @@ export function connectViewer(
     }
     const storage = storageOf(event.documentId);
     if (storage === null) {
-      throw new Error(
-        `EmbedPDF committed an edit to ${event.documentId}, which is not open`,
-      );
+      throw new Error(`EmbedPDF committed an edit to ${event.documentId}, which is not open`);
     }
     storage.edited();
   });
-  documents.onActiveDocumentChanged(
-    ({ previousDocumentId, currentDocumentId }) => {
-      if (previousDocumentId !== null) {
-        storageOf(previousDocumentId)?.session.hidden();
-      }
-      if (currentDocumentId !== null) {
-        activated(context, currentDocumentId);
-      }
-      changed();
-      scopeShortcuts();
-      context.sleepDrowsy();
-    },
-  );
-  viewport.onViewportChange(({ documentId }) =>
-    releaseZoomGate(found, documentId),
-  );
+  documents.onActiveDocumentChanged(({ previousDocumentId, currentDocumentId }) => {
+    if (previousDocumentId !== null) {
+      storageOf(previousDocumentId)?.session.hidden();
+    }
+    if (currentDocumentId !== null) {
+      activated(context, currentDocumentId);
+    }
+    changed();
+    scopeShortcuts();
+    context.sleepDrowsy();
+  });
+  viewport.onViewportChange(({ documentId }) => releaseZoomGate(found, documentId));
   documents.onDocumentOrderChanged(changed);
   documents.onDocumentClosed(changed);
   for (const resolve of host.whenReady.splice(0)) {
@@ -629,19 +554,13 @@ export function connectViewer(
 
 // Enter in the search field goes to the next match and Shift+Enter to the one before, as in a
 // browser's find bar; EmbedPDF's field answers no key.
-export function useSearchKeys(
-  caps: () => Capabilities,
-  viewerRoot: () => ShadowRoot,
-) {
+export function useSearchKeys(caps: () => Capabilities, viewerRoot: () => ShadowRoot) {
   useEffect(() => {
     const pressed = (event: Event) => {
       if (!(event instanceof KeyboardEvent) || event.key !== "Enter") {
         return;
       }
-      if (
-        !(event.target instanceof HTMLInputElement) ||
-        !event.target.matches(SEARCH_FIELD)
-      ) {
+      if (!(event.target instanceof HTMLInputElement) || !event.target.matches(SEARCH_FIELD)) {
         return;
       }
       event.preventDefault();
@@ -667,9 +586,7 @@ export function useViewerTheme(
   useEffect(() => {
     const root = viewerRoot();
     const sheet = document.createElement("style");
-    sheet.textContent = nightMode
-      ? `${NIGHT_PAGES} { filter: invert(1) hue-rotate(180deg); }`
-      : "";
+    sheet.textContent = nightMode ? `${NIGHT_PAGES} { filter: invert(1) hue-rotate(180deg); }` : "";
     root.append(sheet);
     return () => sheet.remove();
   }, [nightMode, viewerRoot]);
@@ -677,9 +594,7 @@ export function useViewerTheme(
   useEffect(() => {
     const root = document.documentElement;
     const follow = new MutationObserver(() =>
-      viewerRef.current?.container?.setTheme(
-        ThemeSchema.parse(root.dataset.theme),
-      ),
+      viewerRef.current?.container?.setTheme(ThemeSchema.parse(root.dataset.theme)),
     );
     follow.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
     return () => follow.disconnect();
