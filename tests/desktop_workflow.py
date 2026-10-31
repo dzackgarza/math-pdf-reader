@@ -196,7 +196,7 @@ class Reader:
             viewer: V !== null, tab: document.querySelector('[data-tab-key={json.dumps(self.key)}]')?.dataset.state,
             boxes: S ? [...S.querySelectorAll('{PAGE_BOX}')].map((e) => {{ const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }}) : null,
             images: S ? [...S.querySelectorAll('{PAGE_BOX} img')].map((image) => ({{complete: image.complete, width: image.naturalWidth, src: image.src.slice(0, 40)}})) : null,
-            errors: window.__errors, pens: window.__pens?.slice(0, 6), body: document.body.innerText.slice(0, 1000),
+            errors: window.__errors, pens: window.__pens?.slice(0, 6), moves: window.__moves?.slice(-20), body: document.body.innerText.slice(0, 1000),
           }};
           if (V === null) {{ done(page); return; }}
           page.visibility = document.visibilityState;
@@ -306,6 +306,12 @@ class Reader:
     def next_page(self) -> None:
         """Go to the next page with the page controls in the toolbar."""
         page = self.page_number()
+        self.run(
+            "if (window.__moves === undefined) { window.__moves = []; const v = P('viewport'), t0 = performance.now(), at = () => Math.round(performance.now() - t0);"
+            " v.onViewportResize(({ metrics: m }) => window.__moves.push(['resize', at(), m.scrollTop, m.clientWidth, m.scrollHeight]));"
+            " v.onScrollChange(({ scrollMetrics: m }) => window.__moves.push(['scroll', at(), m.scrollTop]));"
+            " P('zoom').onZoomChange((e) => window.__moves.push(['zoom', at(), e.newZoom])); } window.__moves = [];"
+        )
         # The pages settle at their zoom after they first show. On WebKitGTK 2.52 a smooth scroll
         # that starts while the scroll height changes does not move, and EmbedPDF's page change
         # then never ends.
