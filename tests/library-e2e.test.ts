@@ -1980,16 +1980,21 @@ test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Sh
     viewerOf("reading"),
   );
   // "unimodular" is on pages 6 and 10; the first match is shown once the search answers.
+  console.error("reader search test", { stage: "query" });
   await page.keyboard.type("unimodular");
   await showsPage("reading", 6);
+  console.error("reader search test", { stage: "first-match", page: 6 });
   await page.keyboard.press("Enter");
   await showsPage("reading", 10);
+  console.error("reader search test", { stage: "next-match", page: 10 });
   await page.keyboard.press("Enter");
   await showsPage("reading", 6);
+  console.error("reader search test", { stage: "wrapped-match", page: 6 });
   await page.keyboard.down("Shift");
   await page.keyboard.press("Enter");
   await page.keyboard.up("Shift");
   await showsPage("reading", 10);
+  console.error("reader search test", { stage: "previous-match", page: 10 });
   expect(
     await page.$eval(field, (input) => (input as HTMLInputElement).value),
   ).toBe("unimodular");
