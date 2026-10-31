@@ -425,6 +425,29 @@ const goToPage = async (key: string, pageNumber: number) => {
     ),
   });
   await page.keyboard.press("Enter");
+  console.error("reader test page entry", {
+    key,
+    pageNumber,
+    stage: "submitted",
+    state: await page.evaluate(async (css) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const scroll = (await viewer?.registry)
+        ?.getPlugin<ScrollPlugin>("scroll")
+        ?.provides();
+      const viewport = (await viewer?.registry)
+        ?.getPlugin<ViewportPlugin>("viewport")
+        ?.provides();
+      if (scroll === undefined || viewport === undefined) {
+        throw new Error(`${css} has no scroll or viewport plugin`);
+      }
+      return {
+        page: scroll.getCurrentPage(),
+        change: scroll.getPageChangeState(),
+        visible: scroll.getMetrics().visiblePages,
+        viewport: viewport.getMetrics(),
+      };
+    }, viewerOf(key)),
+  });
   await showsPage(key, pageNumber);
   console.error("reader test page entry", {
     key,
