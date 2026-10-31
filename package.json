@@ -21,7 +21,6 @@
     "@embedpdf/fonts-tc": "1.0.0",
     "@embedpdf/models": "2.15.1",
     "@embedpdf/pdfium": "2.15.1",
-    "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#8a486490d",
     "@embedpdf/react-pdf-viewer": "^2.15.1",
     "@fontsource-variable/inter": "^5.3.0",
     "@radix-ui/react-alert-dialog": "^1.1.23",
@@ -68,6 +67,8 @@
     "wxt": "^0.21.3"
   },
   "overrides": {
-    "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#3cb2c8ceb78035c0aef1f7c2b7cb54e5fe4a7906"
+    "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#3cb2c8ceb78035c0aef1f7c2b7cb54e5fe4a7906",
+    "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#ab8beb562",
+    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#e0b057ae6"
   }
 }
