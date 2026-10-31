@@ -1310,7 +1310,7 @@ test("closing a PDF's tab right after a note is written saves the note into the 
 
   await page.goto(`${bucket.origin}/read/outlined`);
   console.error("reader note-close test", { stage: "standalone-opened" });
-  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  await readerLoaded("outlined");
   console.error(
     "reader note-close reopened state",
     await page.evaluate(async (css) => {
