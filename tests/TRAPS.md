@@ -29,7 +29,7 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
   `getCurrentPage()` changes while a scroll is still moving the pages: wait for `getPageChangeState().isChanging` to be false before measuring a page.
 
 - **WebKitWebDriver's wheel actions scroll from where the first one began.** A second `scroll_from_origin` of +400 after one of +2000 leaves the viewer at 410, as if the first never happened, so a wait for a later page never ends.
-  Move through the desktop workflow with the page controls' Next Page button, waiting for each scroll to end.
+  Call `ActionChains.reset_actions()` before each wheel gesture so WebKit starts it at the current position. Supply `ScrollOrigin.from_viewport(x, y)` inside the PDF; `scroll_by_amount` uses the viewport's top-left corner, irrespective of the pointer location.
 
 - **WebDriver's element text is empty for the reader's title in WebKitGTK.** `WebElement.text` answers `''` for the header's `h1`; read its `textContent` attribute.
 
