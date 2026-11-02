@@ -829,6 +829,37 @@ test("Delete and Enter on a focused button act on that button, not on the select
   await page.waitForSelector(`${unfiled}[aria-pressed="false"]`);
 });
 
+test("wheel reading keeps its position as pages render", async () => {
+  await page.goto(`${bucket.origin}/read/reading#page=1`);
+  await readerLoaded("reading");
+  await scrollSettled("reading");
+  const idleMoves = await page.evaluate(async () => {
+    const viewer = document.querySelector<EmbedPdfContainer>("embedpdf-container");
+    const registry = await viewer?.registry;
+    const viewport = registry?.getPlugin<ViewportPlugin>("viewport");
+    const documents = registry?.getPlugin<DocumentManagerPlugin>("document-manager")?.provides();
+    const key = documents?.getActiveDocumentId();
+    if (viewport === undefined || key === null || key === undefined) {
+      throw new Error("the reader has no active viewport");
+    }
+    viewport.provides().forDocument(key).scrollTo({ x: 0, y: 400, behavior: "instant" });
+    const destinations: { x: number; y: number }[] = [];
+    const stop = viewport.onScrollRequest(key, ({ x, y }) => destinations.push({ x, y }));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    stop();
+    return destinations;
+  });
+  expect(idleMoves).toEqual([]);
+  await page.mouse.move(900, 600);
+  for (const delta of [...Array<number>(24).fill(240), ...Array<number>(24).fill(-240)]) {
+    const before = await scrollOf("reading");
+    await page.mouse.wheel({ deltaY: delta });
+    await scrolledFrom("reading", before.top);
+    const after = await scrollSettled("reading");
+    expect(after.top).toBeCloseTo(before.top + delta, 0);
+  }
+});
+
 test("reader back and forward walk the positions visited in the PDF and stay in it; on its own, the reader's Library returns to the view the library last showed", async () => {
   await page.goto(`${bucket.origin}/#/unfiled`);
   await page.waitForSelector(row("reading"));

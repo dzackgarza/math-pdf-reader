@@ -179,6 +179,19 @@ def watch(driver: webdriver.WebKitGTK) -> None:
     """)
 
 
+def test_wheel_reading_keeps_position(app: webdriver.WebKitGTK) -> None:
+    key = capture(app, "ten-page-notes.pdf")
+    reader = Reader(app, key)
+    time.sleep(1)
+    for delta in [240] * 16 + [-240] * 16:
+        before = reader.number("P('viewport').getMetrics().scrollTop")
+        ActionChains(app).move_by_offset(900, 600).scroll_by_amount(0, delta).move_by_offset(-900, -600).perform()
+        reader.wait(f"P('viewport').getMetrics().scrollTop !== {before}")
+        time.sleep(0.3)
+        after = reader.number("P('viewport').getMetrics().scrollTop")
+        assert after == pytest.approx(before + delta, abs=1), reader.state()
+
+
 class Reader:
     """The reader of one item, and the EmbedPDF viewer in it, whose UI is in its shadow root."""
 
