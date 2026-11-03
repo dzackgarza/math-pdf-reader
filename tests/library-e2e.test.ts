@@ -1432,7 +1432,7 @@ test("saving my copy can recover after another save changes an already conflicti
     await saveElsewhere("first external save");
     const refused = nextSave();
     const note = `Keep this note through repeated conflicts ${Date.now()}`;
-    await writeNote("reading", note);
+    await writeNote("reading", note, 360);
     expect((await refused).status()).toBe(412);
     const button = `${readerOf("reading")} [role="alert"] button::-p-text(Save my copy over it)`;
     await page.waitForSelector(button, { visible: true });

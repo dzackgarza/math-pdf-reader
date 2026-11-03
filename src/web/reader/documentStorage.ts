@@ -117,7 +117,7 @@ export class DocumentStorage {
   }
 
   unsaved(): boolean {
-    return this.pendingSave !== null || this.saving > 0 || this.conflict;
+    return this.pendingSave !== null || this.saving > 0 || this.conflict || this.failure !== null;
   }
 
   private put(bytes: ArrayBuffer) {
@@ -132,10 +132,14 @@ export class DocumentStorage {
   }
 
   private async save(): Promise<void> {
-    console.info("reader PDF save", { key: this.key, stage: "start" });
     if (this.conflict) {
       return;
     }
+    await this.saveCopy();
+  }
+
+  private async saveCopy(): Promise<void> {
+    console.info("reader PDF save", { key: this.key, stage: "start" });
     this.show({ text: "Saving…", failed: false });
     const response = await this.put(await this.exported());
     if (response.status === 412) {
@@ -150,6 +154,7 @@ export class DocumentStorage {
     }
     this.storedTag = entityTag(response);
     this.failure = null;
+    this.conflict = false;
     this.show(null);
     console.info("reader PDF save", { key: this.key, stage: "complete" });
   }
@@ -221,18 +226,7 @@ export class DocumentStorage {
   // The copy the reader shows, with every change made since the refused save, replaces the
   // stored PDF.
   async keepMine(): Promise<void> {
-    const response = await this.put(await this.exported());
-    if (!response.ok) {
-      this.show({
-        text: `Not saved: ${(await requestError(response)).message}`,
-        failed: true,
-      });
-      return;
-    }
-    this.storedTag = entityTag(response);
-    this.failure = null;
-    this.conflict = false;
-    this.show(null);
+    await this.saveCopy();
   }
 
   pageChanged(pageNumber: number, totalPages: number, shown: boolean): void {
