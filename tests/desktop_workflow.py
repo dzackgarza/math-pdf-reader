@@ -187,10 +187,13 @@ def watch(driver: webdriver.WebKitGTK) -> None:
 
 
 def test_wheel_reading_keeps_position(app: webdriver.WebKitGTK, tmp_path: Path) -> None:
-    key = capture(app, "ten-page-notes.pdf")
+    key = capture(app, "arxiv-2609.21174v1.pdf")
     reader = Reader(app, key)
+    reader.run("P('zoom').requestZoom('fit-page')")
     time.sleep(1)
-    for delta in [240] * 16 + [-240] * 16:
+    reader.run("P('viewport').scrollTo({x:0,y:100,behavior:'instant'})")
+    time.sleep(0.5)
+    for delta in [240] * 20 + [-240] * 20:
         before = reader.number("P('viewport').getMetrics().scrollTop")
         actions = ActionChains(app)
         actions.reset_actions()
