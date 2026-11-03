@@ -68,7 +68,7 @@
   },
   "overrides": {
     "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#3cb2c8ceb78035c0aef1f7c2b7cb54e5fe4a7906",
-    "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#c5a6bfe91cc75fb78595f2e5101fee277ee825fb",
-    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#e6a4a0d1afd1af3c1de9752cd5088b24b959c028"
+    "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#bf1d249476e7e4d908b87b44f498668c519cdbfa",
+    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#825714fdd0ffe6786ccb55955d2c7a46e54f9cf6"
   }
 }
