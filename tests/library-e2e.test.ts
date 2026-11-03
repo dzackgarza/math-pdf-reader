@@ -5,12 +5,14 @@
 import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1362,6 +1364,97 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
 
   await page.goto(`${bucket.origin}/read/reading`);
   expect(await notesOnFirstPage("reading")).toContain(note);
+});
+
+test("a failed annotation save still warns before leaving the reader page", async () => {
+  await page.goto(`${bucket.origin}/read/lattices`);
+  await readerLoaded("lattices");
+  const path = join(bucket.root, "lattices.pdf");
+  const original = sha256(readFileSync(path));
+  const mode = statSync(bucket.root).mode;
+  await page.tracing.start({ path: join(screenshots, "reader-failed-save.trace.json"), screenshots: true });
+  // A read-only store lets the real server read the PDF but prevents its atomic save.
+  chmodSync(bucket.root, 0o500);
+  try {
+    const failed = page.waitForResponse(
+      (response) => response.url().endsWith("/api/items/lattices/pdf") && response.request().method() === "PUT",
+    );
+    await writeNote("lattices", "This note must survive a failed save", 480);
+    expect((await failed).status()).toBe(500);
+    await shows(readerOf("lattices"), "Not saved:");
+    expect(sha256(readFileSync(path))).toBe(original);
+    await shot("reader-failed-save");
+
+    // Observe a real navigation: dismissing the warning must keep the unsaved reader open.
+    const outcome = new Promise<string>((resolve) => {
+      page.once("dialog", (dialog) => {
+        void dialog.dismiss().then(() => resolve(dialog.type()));
+      });
+      page.once("load", () => resolve("navigated"));
+    });
+    await page.evaluate(() => { location.href = "/"; });
+    const decision = await outcome;
+    await shot("reader-failed-save-after-leaving");
+    expect(decision).toBe("beforeunload");
+    expect(new URL(page.url()).pathname).toBe("/read/lattices");
+  } finally {
+    chmodSync(bucket.root, mode);
+    await page.tracing.stop();
+    await page.close();
+    page = await browser.newPage();
+  }
+});
+
+test("saving my copy can recover after another save changes an already conflicting PDF", async () => {
+  await page.goto(`${bucket.origin}/read/reading`);
+  await readerLoaded("reading");
+  await page.tracing.start({ path: join(screenshots, "reader-repeated-conflict.trace.json"), screenshots: true });
+  const saveElsewhere = async (comment: string) => {
+    const stored = await fetch(`${bucket.origin}/pdf/reading.pdf`);
+    const tag = stored.headers.get("ETag");
+    if (tag === null) {
+      throw new Error("the stored PDF carries no entity tag");
+    }
+    const response = await fetch(`${bucket.origin}/api/items/reading/pdf`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf", "If-Match": tag },
+      body: new Uint8Array([
+        ...new Uint8Array(await stored.arrayBuffer()),
+        ...new TextEncoder().encode(`\n% ${comment}\n`),
+      ]),
+    });
+    expect(response.status).toBe(200);
+  };
+  const nextSave = () => page.waitForResponse(
+    (response) => response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
+  );
+  try {
+    await saveElsewhere("first external save");
+    const refused = nextSave();
+    const note = `Keep this note through repeated conflicts ${Date.now()}`;
+    await writeNote("reading", note);
+    expect((await refused).status()).toBe(412);
+    const button = `${readerOf("reading")} [role="alert"] button::-p-text(Save my copy over it)`;
+    await page.waitForSelector(button, { visible: true });
+    await saveElsewhere("second external save while the conflict is shown");
+
+    const changedAgain = nextSave();
+    await page.click(button);
+    expect((await changedAgain).status()).toBe(412);
+    await shows(readerOf("reading"), "Not saved:");
+    await shot("reader-repeated-conflict");
+    const kept = nextSave();
+    await page.click(button);
+    expect((await kept).status()).toBe(200);
+    await page.waitForSelector(button, { hidden: true });
+    await page.reload();
+    expect(await notesOnFirstPage("reading")).toContain(note);
+    await shot("reader-repeated-conflict-saved");
+  } finally {
+    await page.tracing.stop();
+    await page.close();
+    page = await browser.newPage();
+  }
 });
 
 test("a capture made while the library is open opens its PDF in a tab", async () => {
