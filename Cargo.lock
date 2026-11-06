@@ -3410,7 +3410,9 @@ dependencies = [
 name = "pdf-bucket-desktop"
 version = "1.0.0"
 dependencies = [
+ "chrono",
  "gtk",
+ "nix",
  "pdf-bucket",
  "percent-encoding",
  "serde",
@@ -3422,6 +3424,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tokio",
+ "webkit2gtk",
 ]
 
 [[package]]

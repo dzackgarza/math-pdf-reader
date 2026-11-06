@@ -28,11 +28,14 @@ strip-ansi-escapes = "0.2"
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["sync", "time"] }
 pdf-bucket = { version = "1.0.0", path = "../../server" }
+chrono = "0.4.45"
 
 # GTK 3's GestureStylus recognizes pen events on the native webview widget while WebKitGTK
 # exposes only mouse PointerEvents. The bridge is Linux-only.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+nix = { version = "0.31", features = ["fs"] }
+webkit2gtk = { version = "2.0", features = ["v2_40"] }
 
 [lints]
 workspace = true

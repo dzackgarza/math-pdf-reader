@@ -1,6 +1,8 @@
 mod process_config;
 
 #[cfg(target_os = "linux")]
+mod diagnostics;
+#[cfg(target_os = "linux")]
 mod stylus;
 
 use std::fmt;
@@ -210,6 +212,9 @@ fn quit(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> tauri::Result<()> {
+    // First, so every later line, the WebKit processes' included, reaches the run's log file.
+    #[cfg(target_os = "linux")]
+    diagnostics::record()?;
     tauri::Builder::default()
         // Registered first, as the plugin requires: a second launch (the desktop entry while the
         // app runs) exits before binding the bucket's port and brings back this process's window.
@@ -221,6 +226,8 @@ pub fn run() -> tauri::Result<()> {
         // Closing the window hides it; the process, the bucket it serves and the tray icon stay,
         // and the tray's Quit item exits. Pattern: Tauri's `CloseRequested` + `prevent_close`.
         .on_window_event(|window, event| {
+            #[cfg(target_os = "linux")]
+            diagnostics::window_event(event);
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 if let Err(error) = window.hide() {
@@ -256,7 +263,13 @@ pub fn run() -> tauri::Result<()> {
                 include_str!("follow-open-events.js"),
                 serde_json::to_string(&origin)?
             );
-            // The pen bridge script (stylus.rs's page-side half) is built the same way.
+            // The diagnostics script (diagnostics.rs's page-side half) and the pen bridge script
+            // (stylus.rs's) are built the same way.
+            let page_diagnostics = format!(
+                "{{ const pageDiagnostics = {}\npageDiagnostics({}); }}",
+                include_str!("diagnostics.js"),
+                serde_json::to_string(&origin)?
+            );
             let pen_bridge = format!(
                 "{{ const penBridge = {}\npenBridge({}); }}",
                 include_str!("pen-bridge.js"),
@@ -292,6 +305,7 @@ pub fn run() -> tauri::Result<()> {
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(follower)
                 .initialization_script(pen_bridge)
+                .initialization_script(page_diagnostics)
                 .on_new_window(move |url, _features| {
                     if let Err(error) = opener.opener().open_url(url.as_str(), None::<&str>) {
                         report(&opener, &format!("{url} could not be opened"), error);
@@ -327,6 +341,14 @@ pub fn run() -> tauri::Result<()> {
                 .build()?;
             // WebKitGTK reports pen events as mouse input. GDK identifies tablet tools:
             // View pen input and the Annotate eraser use the bridge; other pens stay native.
+            #[cfg(target_os = "linux")]
+            if let Err(error) = app
+                .get_webview_window("main")
+                .ok_or(tauri::Error::WindowNotFound)
+                .and_then(|window| diagnostics::attach(&window))
+            {
+                report(app.handle(), "Window diagnostics could not be installed", error);
+            }
             #[cfg(target_os = "linux")]
             if let Err(error) = app
                 .get_webview_window("main")

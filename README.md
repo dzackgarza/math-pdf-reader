@@ -54,6 +54,24 @@ dofile("<checkout>/desktop/hyprland/pdf-bucket.lua")
 The rule sets `focus_on_activate` for the bucket window only.
 `docs/m1.md` records the events with and without it.
 
+### Logs
+
+Each run of the app writes `$XDG_STATE_HOME/pdf-bucket/logs/<start time>-<pid>.log` (`~/.local/state/pdf-bucket/logs` when `XDG_STATE_HOME` is unset). The app keeps the newest 30 runs.
+The file holds the timestamped stderr of the app and of its WebKit web and network processes. The journal gets the same lines without the timestamps.
+The `diag:` lines record:
+
+| Event | Lines |
+| --- | --- |
+| start | process id, log path, the `WEBKIT_*`, `GDK_*`, `GSK_*`, `WAYLAND_*`, `LIBGL_*` and `MESA_*` environment, WebKit's hardware acceleration policy |
+| renderer | web process terminated (with the reason), web process responsive or not, failed loads |
+| window | Tauri window events, GTK map and unmap of the window and the webview, webview size and scale, window state |
+| system | suspend and resume, from logind's `PrepareForSleep` |
+| page | `page {...}`: load, visibility and page lifecycle, uncaught errors, unhandled rejections, lost canvas contexts |
+| probe | every 5 minutes, and 0, 2 and 15 seconds after a resume: renderer and widget state, then whether the page answered and drew a frame within 5 seconds |
+
+A probe that the page answered without a frame means the web process runs but draws nothing.
+A probe the page did not answer means the page's script does not run or cannot reach the app.
+
 ## Browser extensions
 
 Each extension exists once, in `~/.local/share/pdf-bucket-app/extensions`:
