@@ -124,6 +124,22 @@ def text(pdf: Path, *, page: int | None = None) -> None:
         sys.exit(4)
 
 
+@app.command
+def locate(pdf: Path, markdown: Path, *, page: int) -> None:
+    """Print, as JSON, the lines of MARKDOWN (an extraction of PDF) that PAGE (from 1) covers; null when none match."""
+    import json
+    from dataclasses import asdict
+
+    from pdfbucket.locate import locate as lines_of
+
+    try:
+        found = lines_of(pdf, markdown, page)
+    except IndexError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(4)
+    print(json.dumps(None if found is None else asdict(found)))
+
+
 @app.command(name="guess-metadata")
 def guess_metadata_command(
     pdf: Path,

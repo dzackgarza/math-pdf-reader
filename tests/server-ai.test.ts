@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AiSessionRequestSchema } from "../src/contract/ai";
@@ -9,11 +9,14 @@ import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const longNotes = join(import.meta.dir, "fixtures/long-notes.pdf");
 
-async function storedBucket(binary: string) {
+async function storedBucket(
+  binary: string,
+  root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-")),
+) {
   const config = loadAppConfig(CONFIG_PATH);
   config.ai.binary = binary;
   const app = await serveBucket({
-    root: mkdtempSync(join(tmpdir(), "pdf-bucket-ai-")),
+    root,
     zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
     config,
@@ -64,5 +67,41 @@ test("an assistant that cannot start is reported as unavailable, with its own ou
 
   expect(response.status).toBe(502);
   expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("ai_unavailable");
+  await app.stop();
+});
+
+const view = (app: Awaited<ReturnType<typeof storedBucket>>) =>
+  app.request("/api/ai/view/long-notes").then((response) => response.text());
+const readPage = (app: Awaited<ReturnType<typeof storedBucket>>, page: number) =>
+  app.request("/api/items/long-notes/reading", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ page, pages: 200 }),
+  });
+
+test("the view names the page the reader shows, with that page's own text", async () => {
+  const app = await storedBucket("true");
+
+  expect(await view(app)).toContain("no page is recorded");
+  expect((await readPage(app, 3)).status).toBe(200);
+  const shown = await view(app);
+
+  expect(shown).toContain("The reader shows page 3 of 200");
+  expect(shown).toContain("--- page 3 of ");
+  expect(shown).not.toContain("--- page 4 of ");
+  expect(shown).not.toContain("In the extraction");
+  await app.stop();
+});
+
+test("with an extraction the view says where the page lies in it, or that it matches nowhere", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+  const app = await storedBucket("true", root);
+  writeFileSync(join(root, "long-notes.md"), "# Notes\n\nA paragraph of an extraction.\n");
+  expect((await readPage(app, 3)).status).toBe(200);
+
+  const shown = await view(app);
+
+  expect(shown).toContain("The page's words match nowhere in the extraction");
+  expect(shown).toContain("--- page 3 of ");
   await app.stop();
 });
