@@ -15,6 +15,7 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
+use crate::ai::Ai;
 use crate::export::{concurrency, IndexExporter};
 use crate::index::{IndexedItem, LibraryIndex};
 use crate::organization::{filing_of, read_document, remove_item, OrganizationStore};
@@ -34,6 +35,7 @@ pub struct AppState {
     pub zotero: Arc<ZoteroWriteApi>,
     pub events: Events,
     pub sessions: Arc<SessionStore>,
+    pub ai: Ai,
     /// Wakes the index exporter: every filing or session write, every PDF stored or removed.
     changed: Arc<Notify>,
     /// Downloads at once when checking or rebuilding sources.
@@ -65,6 +67,7 @@ impl AppState {
             index,
             organizations,
             sessions,
+            ai: Ai::new(&config),
             exporter,
             changed,
             zotero: ZoteroWriteApi::start(&config.zotero_url),

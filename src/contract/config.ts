@@ -39,6 +39,16 @@ export const AppConfigSchema = z.strictObject({
     extraction_timeout_seconds: z.number().int().positive(),
     send_extraction_chain: z.array(z.string().min(1)).min(1),
   }),
+  // The assistant pane (server/src/ai.rs): the app runs `binary serve` on the loopback PORT as a
+  // private OpenCode server and the pane shows its web UI. MODEL is the provider/model the
+  // assistant answers with; STARTUP_TIMEOUT_SECONDS is how long a fresh server may take to
+  // answer before the pane reports it unavailable.
+  ai: z.strictObject({
+    binary: NonEmptySchema,
+    port: z.number().int().positive(),
+    model: NonEmptySchema,
+    startup_timeout_seconds: z.number().int().positive(),
+  }),
   // How long one pikepdf command (`pdfbucket <command>`) may run before it is killed.
   store: z.strictObject({ command_timeout_seconds: z.number().int().positive() }),
 });

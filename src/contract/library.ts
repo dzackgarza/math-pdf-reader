@@ -509,6 +509,8 @@ export const API_ERROR_KINDS = [
   "internal",
   "cross_origin_request",
   "unsupported_media_type",
+  // The assistant pane's OpenCode server did not start or did not answer.
+  "ai_unavailable",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({

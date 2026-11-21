@@ -744,6 +744,24 @@ impl Store {
         ];
         Ok(self.inner.python.run(&args).await?)
     }
+
+    /// KEY's text, every page after a marker line, or only PAGE (from 1).
+    pub async fn text(&self, key: &str, page: Option<u32>) -> AppResult<String> {
+        let _key = self.lock(&self.existing_key(key)?).await;
+        let key = self.existing_key(key)?;
+        let mut args = vec!["text".to_string()];
+        if let Some(page) = page {
+            args.extend(["--page".to_string(), page.to_string()]);
+        }
+        args.extend([
+            "--".to_string(),
+            layout::pdf_path(self.root(), &key)
+                .to_string_lossy()
+                .into_owned(),
+        ]);
+        let stdout = self.inner.python.run(&args).await?;
+        String::from_utf8(stdout).map_err(AppError::internal)
+    }
 }
 
 /// Writes BYTES to PATH, a file outside the root (a cache), as a synced temporary file renamed

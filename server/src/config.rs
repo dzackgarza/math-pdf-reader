@@ -120,6 +120,13 @@ pub fn cache_root() -> PathBuf {
         .join("pdf-bucket")
 }
 
+/// The assistant pane's private OpenCode server keeps its data, config and state here, with the
+/// chats of the PDFs and one workspace per PDF, beside the data root: the chats are the user's
+/// work, but no PDF of the store.
+pub fn ai_root() -> PathBuf {
+    xdg_data_home().join("pdf-bucket-ai")
+}
+
 fn xdg_data_home() -> PathBuf {
     dirs::data_dir().expect("the XDG data directory is known: XDG_DATA_HOME or HOME is set")
 }
@@ -135,6 +142,8 @@ pub struct BucketConfig {
     pub root: PathBuf,
     pub web_dir: PathBuf,
     pub cache_dir: PathBuf,
+    /// The assistant pane's files (config::ai_root).
+    pub ai_root: PathBuf,
     /// Zotero's local HTTP server, which carries the write API the send action uses.
     pub zotero_url: String,
     pub extractions_manifest: PathBuf,
@@ -159,6 +168,7 @@ impl BucketConfig {
             root: data_root(),
             web_dir: web_dir(&runtime),
             cache_dir: cache_root(),
+            ai_root: ai_root(),
             zotero_url: app.zotero.url.clone(),
             extractions_manifest: extractions_manifest(&runtime),
             index_export: index_export_file(),

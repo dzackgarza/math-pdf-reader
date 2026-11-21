@@ -11,6 +11,7 @@
 //   (`Rule` + `Tag` + `Operator`), because typify names nested types from their property
 //   alone and merges two nested types that share a name.
 import { z } from "zod";
+import * as ai from "../src/contract/ai";
 import * as capture from "../src/contract/capture";
 import * as config from "../src/contract/config";
 import * as extraction from "../src/contract/extraction";
@@ -23,7 +24,7 @@ type JsonSchema = { [keyword: string]: JsonValue };
 type JsonValue = string | number | boolean | null | JsonValue[] | JsonSchema;
 
 const registry = z.registry<{ id: string }>();
-for (const module of [text, capture, config, extraction, library, files, store]) {
+for (const module of [text, ai, capture, config, extraction, library, files, store]) {
   for (const [name, value] of Object.entries(module)) {
     if (name.endsWith("Schema") && value instanceof z.ZodType && !registry.has(value)) {
       registry.add(value, { id: name.slice(0, -"Schema".length) });

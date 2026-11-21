@@ -36,7 +36,7 @@ use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::{stage, stage_file, Captured, StageFailure, Upload};
 use crate::titles::retrieve_metadata;
 use crate::{
-    extensions, extractions, guard, guesses, library, send, sessions, source_routes, thumbnails,
+    ai, extensions, extractions, guard, guesses, library, send, sessions, source_routes, thumbnails,
 };
 
 /// The origin a request was made to, from its Host header.
@@ -448,6 +448,7 @@ pub fn router(state: Shared) -> Router {
         .route("/api/events", get(events::stream))
         .route("/pdf/{file}", get(pdf))
         .route("/read/{key}", get(read))
+        .merge(ai::routes())
         .merge(library::routes())
         .merge(guesses::routes())
         .merge(send::routes())

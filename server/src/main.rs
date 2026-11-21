@@ -187,8 +187,12 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
         } => {
             let app: AppConfig = from_json(&tokio::fs::read(&config_file).await?)
                 .map_err(|violation| Failure::Config(config_file, violation))?;
+            // The assistant's files lie beside the index export, which a test keeps in its own
+            // temporary directory, so no test touches the configured assistant.
+            let ai_root = index_export.with_file_name("ai");
             let bucket = BucketConfig {
                 root,
+                ai_root,
                 web_dir: config::web_dir(&config::checkout()),
                 cache_dir: config::cache_root(),
                 zotero_url,

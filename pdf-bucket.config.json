@@ -21,6 +21,12 @@
     "extraction_timeout_seconds": 1800,
     "send_extraction_chain": ["mineru-flash", "mistral-ocr", "mineru-precise"]
   },
+  "ai": {
+    "binary": "opencode",
+    "port": 4099,
+    "model": "opencode/deepseek-v4.1-flash-free",
+    "startup_timeout_seconds": 30
+  },
   "store": {
     "command_timeout_seconds": 120
   }

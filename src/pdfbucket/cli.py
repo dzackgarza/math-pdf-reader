@@ -112,6 +112,18 @@ def thumbnail(pdf: Path, width: int) -> None:
     write_bytes(render_first_page(pdf, width))
 
 
+@app.command
+def text(pdf: Path, *, page: int | None = None) -> None:
+    """Print PDF's text, each page after a marker line; only PAGE (from 1) when it is given."""
+    from pdfbucket.text import page_text
+
+    try:
+        print(page_text(pdf, page))
+    except IndexError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
+
+
 @app.command(name="guess-metadata")
 def guess_metadata_command(
     pdf: Path,

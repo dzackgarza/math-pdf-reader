@@ -10,6 +10,7 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, Moon, X } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { MetadataEventSchema, OpenReaderSchema } from "../contract/capture";
+import { AiPane, useAiPane } from "./AiPane";
 import { onBucketEvent } from "./bucketEvents";
 import ConfirmDialog, { type ConfirmRequest } from "./components/ConfirmDialog";
 import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
@@ -59,6 +60,7 @@ function TabMenu({
 export function ReaderTabs({ children }: { children: ReactNode }) {
   const [projection, setProjection] = useState<ReaderProjection>({ tabs: [], active: null });
   const [libraryShown, setLibraryShown] = useState(true);
+  const aiPane = useAiPane();
   // The tab shown: the Library, or the reader's active PDF.
   const shown = libraryShown || projection.active === null ? LIBRARY_TAB : projection.active;
   useEffect(() => {
@@ -302,7 +304,8 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
         {/* The Library and the reader fill the same box and the one hidden is only invisible:
             EmbedPDF lays out its pages from its container's size, and a container under
             display: none has none, so a PDF opened while the Library shows would stay blank. */}
-        <div className="relative min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
           <Tabs.Content
             value={LIBRARY_TAB}
             forceMount
@@ -323,6 +326,10 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
               />
             )}
           </div>
+          </div>
+          {shown !== LIBRARY_TAB && (
+            <AiPane itemKey={shown} pane={aiPane.pane} onChange={aiPane.change} />
+          )}
         </div>
       </Tabs.Root>
       {closeRequest !== null && (
