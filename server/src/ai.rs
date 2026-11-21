@@ -143,8 +143,9 @@ impl Ai {
         )
     }
 
-    /// The server's config: the assistant, the model, and the one origin it may fetch from.
-    async fn write_config(&self, bucket_origin: &str) -> AppResult<()> {
+    /// The config layered over the user's own OpenCode config (providers, models): the assistant,
+    /// the model, and the one origin it may fetch from.
+    fn layered_config(&self, bucket_origin: &str) -> String {
         let config = json!({
             "$schema": "https://opencode.ai/config.json",
             "model": self.model,
@@ -172,13 +173,7 @@ impl Ai {
                 "explore": { "disabled": true },
             },
         });
-        let directory = self.opencode_dir().join("config/opencode");
-        tokio::fs::create_dir_all(&directory).await?;
-        write_file(
-            directory.join("opencode.json"),
-            serde_json::to_vec_pretty(&config)?,
-        )
-        .await
+        config.to_string()
     }
 
     /// The user's OpenCode logins, linked into the private data directory.
@@ -197,7 +192,7 @@ impl Ai {
         Ok(())
     }
 
-    fn spawn(&self, password: &str, log: std::fs::File) -> AppResult<Child> {
+    fn spawn(&self, password: &str, bucket_origin: &str, log: std::fs::File) -> AppResult<Child> {
         let base = self.opencode_dir();
         // setpriv (util-linux) has the kernel send the server SIGTERM when this process ends,
         // however it ends, so a quit or a crash of the app leaves no server behind.
@@ -209,10 +204,8 @@ impl Ai {
             .arg(self.port.to_string())
             .current_dir(&self.root)
             .env("XDG_DATA_HOME", base.join("data"))
-            .env("XDG_CONFIG_HOME", base.join("config"))
-            .env("XDG_STATE_HOME", base.join("state"))
-            .env("XDG_CACHE_HOME", base.join("cache"))
             .env("OPENCODE_PASSWORD", password)
+            .env("OPENCODE_CONFIG_CONTENT", self.layered_config(bucket_origin))
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
             .stderr(Stdio::from(log))
@@ -241,10 +234,10 @@ impl Ai {
             return Ok(password);
         }
         *started = None;
-        self.write_config(bucket_origin).await?;
+        
         self.link_logins().await?;
         let log = std::fs::File::create(self.root.join("opencode.log"))?;
-        let mut child = self.spawn(&password, log)?;
+        let mut child = self.spawn(&password, bucket_origin, log)?;
         let deadline = tokio::time::Instant::now() + self.startup;
         while !self.answers(&password).await {
             if let Some(status) = child.try_wait()? {

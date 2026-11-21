@@ -44,7 +44,7 @@ On Hyprland, the session target starts it: `just provision` adds a drop-in to `h
 ### Assistant pane
 
 Every PDF tab has a collapsible right sidebar (collapsed by default, resizable by its left edge, both remembered) that shows OpenCode's own web UI in a frame, one chat per stored PDF.
-The app runs `opencode serve` privately for it: loopback port `ai.port`, its own data, config and state under `$XDG_DATA_HOME/pdf-bucket-ai`, and a generated password in the file `password` there. Your OpenCode logins (`auth.json`) are linked in. The server starts on the first expanded pane and ends with the app.
+The app runs `opencode serve` privately for it: loopback port `ai.port`, its own data (sessions) under `$XDG_DATA_HOME/pdf-bucket-ai`, and a generated password in the file `password` there. It reads your own OpenCode config and model catalogue (providers, models), and your logins (`auth.json`) are linked in; the `reader` agent is layered over them. The server starts on the first expanded pane and ends with the app.
 The chat uses the `reader` agent on `ai.model`. That agent runs no command, edits no file and starts no sub-agent. It may fetch only from the bucket: the PDF's text at `GET /api/ai/text/{key}` (`?page=N` for one page).
 If `ai.binary` is not on the app's PATH, or the server does not answer within `ai.startup_timeout_seconds`, the pane shows the reason (the server's log is `opencode.log` in the same directory) and **Try again**.
 
