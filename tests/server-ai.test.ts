@@ -43,12 +43,13 @@ test("the PDF's text is served as plain text, whole or one page", async () => {
   await app.stop();
 });
 
-test("a page outside the PDF is refused", async () => {
+test("a page outside the PDF is refused as a bad request that names the page count", async () => {
   const app = await storedBucket("true");
 
   const response = await app.request("/api/ai/text/long-notes?page=9999");
 
-  expect(response.ok).toBe(false);
+  expect(response.status).toBe(400);
+  expect(ApiErrorSchema.parse(await response.json()).error.message).toContain("has ");
   await app.stop();
 });
 

@@ -25,12 +25,12 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::io::ReaderStream;
 
-use crate::config::{BucketConfig, PDF_HEADER_WINDOW};
+use crate::config::{BucketConfig, PAGE_OUT_OF_RANGE_EXIT, PDF_HEADER_WINDOW};
 use crate::contract::{ApiErrorErrorKind, Provenance, StoredItem, Timestamp, TitleSource};
 use crate::error::{AppError, AppResult};
 use crate::index::{CachedRead, FileRead, Signature};
 use crate::layout::{self, candidate_keys, is_pdf, Key};
-use crate::python::Python;
+use crate::python::{PdfFailure, Python};
 use crate::sources::{digest, sha256};
 
 /// The ClearURLs rule set, which names the tracking parameters a link carries (`utm_source` and
@@ -759,7 +759,14 @@ impl Store {
                 .to_string_lossy()
                 .into_owned(),
         ]);
-        let stdout = self.inner.python.run(&args).await?;
+        let stdout = self.inner.python.run(&args).await.map_err(|failure| match failure {
+            PdfFailure::Crashed { status, stderr }
+                if status.code() == Some(PAGE_OUT_OF_RANGE_EXIT) =>
+            {
+                AppError::invalid(stderr.trim())
+            }
+            other => other.into(),
+        })?;
         String::from_utf8(stdout).map_err(AppError::internal)
     }
 }

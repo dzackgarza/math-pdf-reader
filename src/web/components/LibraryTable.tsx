@@ -1,6 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { type Cell, flexRender, type Table } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, Eye, FileText, Inbox, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, FileText, Inbox, LoaderCircle, RotateCcw } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { BucketItem } from "../../contract/library";
@@ -13,6 +13,8 @@ import { CollectionChip, TagChip } from "./Chips";
 type LibraryTableProps = {
   table: Table<BucketItem>;
   collectionNames: Map<string, string>;
+  // Keys of the items an extraction is running on.
+  extracting: ReadonlySet<string>;
   selectedItemId: string | null;
   onSelectItem: (id: string) => void;
   onOpenItem: (id: string) => void;
@@ -66,7 +68,15 @@ function StatusBadge({ item }: { item: BucketItem }) {
 }
 
 // Whether an extraction (the Markdown beside the PDF) exists; the assistant reads it when it does.
-function ExtractionBadge({ item }: { item: BucketItem }) {
+function ExtractionBadge({ item, extracting }: { item: BucketItem; extracting: boolean }) {
+  if (extracting) {
+    return (
+      <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted">
+        <LoaderCircle aria-hidden className="h-3.5 w-3.5 animate-spin text-accent" />
+        Extracting…
+      </span>
+    );
+  }
   if (item.extraction.status === "none") {
     return <span className="text-faint">None</span>;
   }
@@ -93,7 +103,7 @@ function Mono({ children }: { children: ReactNode }) {
 // How each column draws an item.
 const CELL_RENDERERS: Record<
   ColumnKey,
-  (item: BucketItem, names: Map<string, string>) => ReactNode
+  (item: BucketItem, names: Map<string, string>, extracting: boolean) => ReactNode
 > = {
   title: (item) => (
     <span className="flex min-w-0 items-center gap-2.5">
@@ -114,7 +124,7 @@ const CELL_RENDERERS: Record<
     </span>
   ),
   status: (item) => <StatusBadge item={item} />,
-  extraction: (item) => <ExtractionBadge item={item} />,
+  extraction: (item, _names, extracting) => <ExtractionBadge item={item} extracting={extracting} />,
   source: (item) => <Muted>{sourceDomain(item.provenance.pdf_url)}</Muted>,
   dateAdded: (item) => <Muted>{shortDate(item.dateAdded)}</Muted>,
   dateModified: (item) => <Muted>{shortDate(item.dateModified)}</Muted>,
@@ -138,13 +148,19 @@ const CELL_RENDERERS: Record<
   pdfUrl: (item) => <Mono>{item.provenance.pdf_url}</Mono>,
 };
 
-function renderCell(cell: Cell<BucketItem, unknown>, names: Map<string, string>): ReactNode {
-  return CELL_RENDERERS[columnKey(cell.column.id)](cell.row.original, names);
+function renderCell(
+  cell: Cell<BucketItem, unknown>,
+  names: Map<string, string>,
+  extracting: ReadonlySet<string>,
+): ReactNode {
+  const item = cell.row.original;
+  return CELL_RENDERERS[columnKey(cell.column.id)](item, names, extracting.has(item.id));
 }
 
 export default function LibraryTable({
   table,
   collectionNames,
+  extracting,
   selectedItemId,
   onSelectItem,
   onOpenItem,
@@ -267,7 +283,7 @@ export default function LibraryTable({
                             style={widthStyle(cell.column.getSize())}
                             className="truncate px-4 py-2"
                           >
-                            {renderCell(cell, collectionNames)}
+                            {renderCell(cell, collectionNames, extracting)}
                           </td>
                         ))}
                       </tr>

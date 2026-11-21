@@ -58,6 +58,8 @@ pub const EXTRACTION_ARTIFACTS: &str = "artifacts";
 
 /// Exit status of a `pdfbucket` command that could not read its PDF (src/pdfbucket/cli.py).
 pub const STORE_REFUSED_EXIT: i32 = 3;
+/// The exit status of `pdfbucket text --page N` when the PDF has no page N.
+pub const PAGE_OUT_OF_RANGE_EXIT: i32 = 4;
 
 /// Widths a thumbnail may be asked for, in pixels.
 pub const THUMBNAIL_WIDTHS: std::ops::RangeInclusive<u32> = 16..=2000;

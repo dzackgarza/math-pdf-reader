@@ -2416,6 +2416,7 @@ test("an extraction past its time limit shows the limit and that nothing was wri
     await page.waitForSelector(row(key));
     await page.click(row(key));
     await page.click('button[aria-label="Run extraction"]');
+    await shows(`${row(key)} [role="status"]`, "Extracting");
 
     await shows(
       "aside [role='alert']",

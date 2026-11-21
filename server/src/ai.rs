@@ -157,10 +157,9 @@ impl Ai {
                     "mode": "primary",
                     "system": SYSTEM,
                     "permissions": [
-                        { "action": "shell", "resource": "*", "effect": "deny" },
-                        { "action": "edit", "resource": "*", "effect": "deny" },
-                        { "action": "subagent", "resource": "*", "effect": "deny" },
-                        { "action": "webfetch", "resource": "*", "effect": "deny" },
+                        // Everything is denied first, so the tools of the user's own MCP servers and
+                        // plugins, which this file cannot name, are denied too; later rules win.
+                        { "action": "*", "resource": "*", "effect": "deny" },
                         {
                             "action": "webfetch",
                             "resource": format!("{bucket_origin}/*"),

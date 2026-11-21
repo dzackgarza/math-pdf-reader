@@ -420,10 +420,15 @@ export default function Workspace({
       onClear={() => table.resetRowSelection()}
     />
   );
+  const extractingKeys = useMemo(
+    () => new Set([...extractionAttempts].filter(([, run]) => run.kind === "running").map(([key]) => key)),
+    [extractionAttempts],
+  );
   const tableElement = (
     <LibraryTable
       table={table}
       collectionNames={collectionNames}
+      extracting={extractingKeys}
       selectedItemId={selectedId}
       onSelectItem={setSelectedId}
       onOpenItem={openReader}

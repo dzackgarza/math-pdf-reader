@@ -121,7 +121,7 @@ def text(pdf: Path, *, page: int | None = None) -> None:
         print(page_text(pdf, page))
     except IndexError as error:
         print(str(error), file=sys.stderr)
-        sys.exit(1)
+        sys.exit(4)
 
 
 @app.command(name="guess-metadata")
