@@ -2587,3 +2587,58 @@ test("the Sort menu orders the table by the chosen column and direction", async 
   await (await byRole("menuitemradio", "Descending")).click();
   expect(await titles()).toEqual([...expected].reverse());
 });
+
+test("the list and the reader's assistant pane show whether a PDF has an extraction, and the pane runs one", async () => {
+  const manifest = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-manifest-")),
+    "extractions.json",
+  );
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "markdown",
+          name: "Markdown extractor",
+          command: ["sh", join(fixtures, "plugins/extractor.sh"), "markdown", "$pdf", "$output"],
+          accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+        },
+      ],
+    }),
+  );
+  const bucket = await serveBucket({
+    root: mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-extract-")),
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: manifest,
+    config: loadAppConfig(CONFIG_PATH),
+  });
+  try {
+    const form = new FormData();
+    form.set("pdf", new File([fixture("problem-set.pdf")], "problems.pdf"));
+    form.set("pdf_url", published("/~author/problems.pdf"));
+    form.set("title_hint", "Problem set on quadratic forms");
+    const { key } = CaptureResponseSchema.parse(
+      await (await bucket.request("/capture-bytes", { method: "POST", body: form })).json(),
+    );
+    await page.goto(`${bucket.origin}/`);
+    await page.waitForSelector(row(key));
+    expect(await page.$(`${row(key)} [data-extraction]`)).toBeNull();
+
+    await page.click(row(key), { count: 2 });
+    await shownReader(key);
+    await page.click('button[aria-label="Open the assistant"]');
+    await shows('section[aria-label="Extraction"]', "No extraction");
+    await shot("reader-no-extraction");
+    await page.click('section[aria-label="Extraction"] button[aria-label="Run extraction"]');
+    await shows('section[aria-label="Extraction"]', "Extracted: the assistant reads the extraction");
+    await shot("reader-extracted");
+
+    await page.click('button[aria-label="Collapse the assistant"]');
+    await page.waitForSelector('aside [role="status"][title="Extracted"]');
+    await page.click('[role="tab"]:first-of-type');
+    await page.waitForSelector(`${row(key)} [data-extraction]`, { visible: true });
+    await shot("library-extracted");
+  } finally {
+    await bucket.stop();
+  }
+});

@@ -17,6 +17,7 @@ export const COLUMN_KEYS = [
   "authors",
   "reading",
   "status",
+  "extraction",
   "source",
   "dateAdded",
   "tags",
@@ -37,6 +38,7 @@ const DEFAULT_COLUMNS: ColumnDefinition[] = [
   { key: "authors", label: "Authors", visible: true, width: 200 },
   { key: "reading", label: "Read", visible: true, width: 100 },
   { key: "status", label: "Status", visible: true, width: 110 },
+  { key: "extraction", label: "Text", visible: true, width: 110 },
   { key: "source", label: "Source", visible: true, width: 170 },
   { key: "dateAdded", label: "Added", visible: true, width: 130 },
   { key: "tags", label: "Tags", visible: true, width: 260 },
@@ -53,7 +55,7 @@ export const LOCKED_COLUMN_ID: ColumnKey = "title";
 
 const MIN_COLUMN_WIDTH = 60;
 
-const COLUMN_STORAGE_KEY = "pdf-bucket:columns:v2";
+const COLUMN_STORAGE_KEY = "pdf-bucket:columns:v3";
 
 export type ColumnLayout = {
   columnVisibility: VisibilityState;
@@ -142,6 +144,7 @@ const CELL_TEXT: Record<ColumnKey, (item: BucketItem) => string> = {
   reading: (item) =>
     String(item.reading.status === "viewed" ? item.reading.page / item.reading.pages : -1),
   status: (item) => availability(item),
+  extraction: (item) => item.extraction.status,
   source: (item) => sourceDomain(item.provenance.pdf_url),
   dateAdded: (item) => item.dateAdded,
   tags: (item) => item.tags.map(tagLabel).join(", "),

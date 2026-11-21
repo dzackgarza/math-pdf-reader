@@ -65,6 +65,23 @@ function StatusBadge({ item }: { item: BucketItem }) {
   );
 }
 
+// Whether an extraction (the Markdown beside the PDF) exists; the assistant reads it when it does.
+function ExtractionBadge({ item }: { item: BucketItem }) {
+  if (item.extraction.status === "none") {
+    return <span className="text-faint">None</span>;
+  }
+  return (
+    <span
+      data-extraction
+      title={`Extracted: ${item.extraction.markdown.name}, ${prettyBytes(item.extraction.markdown.sizeBytes)}`}
+      className="inline-flex items-center gap-1.5 rounded-full bg-filed-soft px-2 py-0.5 text-xs font-medium text-filed"
+    >
+      <FileText aria-hidden className="h-3 w-3" />
+      Extracted
+    </span>
+  );
+}
+
 function Muted({ children }: { children: ReactNode }) {
   return <span className="text-muted tabular-nums">{children}</span>;
 }
@@ -97,6 +114,7 @@ const CELL_RENDERERS: Record<
     </span>
   ),
   status: (item) => <StatusBadge item={item} />,
+  extraction: (item) => <ExtractionBadge item={item} />,
   source: (item) => <Muted>{sourceDomain(item.provenance.pdf_url)}</Muted>,
   dateAdded: (item) => <Muted>{shortDate(item.dateAdded)}</Muted>,
   dateModified: (item) => <Muted>{shortDate(item.dateModified)}</Muted>,

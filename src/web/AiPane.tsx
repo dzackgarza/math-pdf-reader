@@ -3,10 +3,19 @@
 // edge; both are remembered. The frame loads two addresses in turn: the first signs it in to the
 // private OpenCode server, the second is the PDF's chat. The server starts at the first request
 // of an expanded pane, so a collapsed pane costs nothing.
-import { AlertTriangle, LoaderCircle, MessageSquare, PanelRightClose, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  FileText,
+  LoaderCircle,
+  MessageSquare,
+  PanelRightClose,
+  RefreshCw,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { AiSessionRequestSchema, AiSessionSchema } from "../contract/ai";
+import ExtractionRunner from "./components/ExtractionRunner";
+import type { ReaderExtraction } from "./readerTabs";
 import { request } from "./useLibraryApi";
 
 const STORAGE_KEY = "pdf-bucket.ai-pane";
@@ -51,6 +60,8 @@ type PaneProps = {
   itemKey: string;
   pane: SavedPane;
   onChange: (next: Partial<SavedPane>) => void;
+  // The PDF's extraction and the means to run one; null while the library has not given them.
+  extraction: ReturnType<ReaderExtraction>;
 };
 
 function Chat({ itemKey }: { itemKey: string }) {
@@ -114,7 +125,30 @@ function Chat({ itemKey }: { itemKey: string }) {
   );
 }
 
-export function AiPane({ itemKey, pane, onChange }: PaneProps) {
+// Whether the assistant reads an extraction of this PDF, and the control to make one.
+function ExtractionStrip({ extraction }: { extraction: NonNullable<PaneProps["extraction"]> }) {
+  const { state, attempt } = extraction;
+  const running = attempt?.kind === "running";
+  return (
+    <section aria-label="Extraction" className="shrink-0 space-y-2 border-b border-line px-3 py-2">
+      <p className="flex items-center gap-2 text-xs text-muted">
+        {running ? (
+          <LoaderCircle aria-hidden className="h-3.5 w-3.5 animate-spin text-accent" />
+        ) : (
+          <FileText aria-hidden className="h-3.5 w-3.5" />
+        )}
+        {running
+          ? "Extracting… the assistant reads the PDF's own text until it finishes"
+          : state.status === "extracted"
+            ? "Extracted: the assistant reads the extraction"
+            : "No extraction: the assistant reads the PDF's own text"}
+      </p>
+      <ExtractionRunner {...extraction} />
+    </section>
+  );
+}
+
+export function AiPane({ itemKey, pane, onChange, extraction }: PaneProps) {
   const [dragging, setDragging] = useState(false);
   const start = useRef({ x: 0, width: 0 });
 
@@ -130,6 +164,28 @@ export function AiPane({ itemKey, pane, onChange }: PaneProps) {
         >
           <MessageSquare aria-hidden className="h-4 w-4" />
         </button>
+        {extraction !== null && (
+          <span
+            role="status"
+            title={
+              extraction.attempt?.kind === "running"
+                ? "Extracting"
+                : extraction.state.status === "extracted"
+                  ? "Extracted"
+                  : "No extraction"
+            }
+            className="mt-2 flex h-6 w-6 items-center justify-center text-muted"
+          >
+            {extraction.attempt?.kind === "running" ? (
+              <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-accent" />
+            ) : (
+              <FileText
+                aria-hidden
+                className={`h-4 w-4 ${extraction.state.status === "extracted" ? "text-filed" : "text-faint"}`}
+              />
+            )}
+          </span>
+        )}
       </aside>
     );
   }
@@ -171,6 +227,7 @@ export function AiPane({ itemKey, pane, onChange }: PaneProps) {
           <PanelRightClose aria-hidden className="h-4 w-4" />
         </button>
       </header>
+      {extraction !== null && <ExtractionStrip extraction={extraction} />}
       <div className={`min-h-0 flex-1 ${dragging ? "pointer-events-none" : ""}`}>
         <Chat key={itemKey} itemKey={itemKey} />
       </div>

@@ -1,10 +1,16 @@
 // What the window's tab row (tabs.tsx) offers the library: opening a PDF's reader in a tab,
 // whether the Library tab is the one shown, and a place for the library's item menu, which a
 // PDF's tab shows below its own entries.
+import type { ItemExtractionActions } from "./components/ExtractionRunner";
+import type { Extraction } from "../contract/library";
 import { createContext, type ReactNode, useContext } from "react";
 
 // The context menu of KEY's item with TAB_ENTRIES first; null when the library holds no KEY.
 export type ItemMenu = (key: string, tabEntries: ReactNode) => ReactNode | null;
+
+// What the reader's side pane shows and does about KEY's extraction; null when the library holds
+// no KEY.
+export type ReaderExtraction = (key: string) => (ItemExtractionActions & { state: Extraction }) | null;
 
 export type ReaderTabsApi = {
   openReader: (key: string, title: string) => void;
@@ -15,6 +21,8 @@ export type ReaderTabsApi = {
   libraryShown: boolean;
   // The library gives its item menu while it is mounted, and null when it unmounts.
   setItemMenu: (menu: ItemMenu | null) => void;
+  // The library gives its extraction view whenever its items, plugins or runs change.
+  setExtractionView: (view: ReaderExtraction | null) => void;
 };
 
 export const ReaderTabsContext = createContext<ReaderTabsApi | null>(null);

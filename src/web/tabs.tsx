@@ -17,7 +17,7 @@ import { MENU_ITEM, MENU_PANEL } from "./components/ItemContextMenu";
 import { keybindings, matchesShortcut } from "./keyboardShortcuts";
 import { Reader } from "./reader/Reader";
 import type { ReaderControl, ReaderProjection, TabEntry } from "./reader/readerHost";
-import { type ItemMenu, ReaderTabsContext } from "./readerTabs";
+import { type ItemMenu, type ReaderExtraction, ReaderTabsContext } from "./readerTabs";
 
 declare global {
   interface WindowEventMap {
@@ -61,6 +61,9 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   const [projection, setProjection] = useState<ReaderProjection>({ tabs: [], active: null });
   const [libraryShown, setLibraryShown] = useState(true);
   const aiPane = useAiPane();
+  const [extractionView, setView] = useState<ReaderExtraction | null>(null);
+  // A function is a state value here, not an updater.
+  const setExtractionView = useCallback((view: ReaderExtraction | null) => setView(() => view), []);
   // The tab shown: the Library, or the reader's active PDF.
   const shown = libraryShown || projection.active === null ? LIBRARY_TAB : projection.active;
   useEffect(() => {
@@ -237,6 +240,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
         closeReader,
         libraryShown: shown === LIBRARY_TAB,
         setItemMenu,
+        setExtractionView,
       }}
     >
       <Tabs.Root
@@ -328,7 +332,12 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
           </div>
           </div>
           {shown !== LIBRARY_TAB && (
-            <AiPane itemKey={shown} pane={aiPane.pane} onChange={aiPane.change} />
+            <AiPane
+              itemKey={shown}
+              pane={aiPane.pane}
+              onChange={aiPane.change}
+              extraction={extractionView === null ? null : extractionView(shown)}
+            />
           )}
         </div>
       </Tabs.Root>

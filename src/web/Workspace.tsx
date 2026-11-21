@@ -366,6 +366,24 @@ export default function Workspace({
   const setItemMenu = tabs.setItemMenu;
   useEffect(() => setItemMenu(rowMenu));
   useEffect(() => () => setItemMenu(null), [setItemMenu]);
+  // A PDF's tab shows its item's extraction and runs one; the view is given again when the items,
+  // the plugins or a run change.
+  const setExtractionView = tabs.setExtractionView;
+  useEffect(() => {
+    setExtractionView((key) => {
+      const item = payload.items.find((candidate) => candidate.id === key);
+      return item === undefined
+        ? null
+        : {
+            state: item.extraction,
+            plugins,
+            attempt: extractionAttempts.get(key),
+            onRun: (pluginId) =>
+              extractWith(context, key, pluginId, (running) => setExtractionAttempt(key, running)),
+          };
+    });
+  }, [setExtractionView, payload.items, plugins, extractionAttempts, setExtractionAttempt, context]);
+  useEffect(() => () => setExtractionView(null), [setExtractionView]);
 
   const commands = createAppCommands({
     navigate,
