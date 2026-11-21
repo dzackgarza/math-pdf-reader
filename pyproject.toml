@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 pdfbucket = "pdfbucket.cli:main"
+pdfbucket-arxiv-source = "pdfbucket_extractors.arxiv_source:app"
 pdfbucket-mineru-precise = "pdfbucket_extractors.mineru_precise:app"
 pdfbucket-mistral-ocr = "pdfbucket_extractors.mistral_ocr:app"
 

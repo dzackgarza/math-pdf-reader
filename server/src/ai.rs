@@ -31,6 +31,7 @@ use crate::app::origin;
 use crate::config::{BucketConfig, URI_COMPONENT};
 use crate::contract::{AiSession, AiSessionRequest, ApiErrorErrorKind};
 use crate::error::{AppError, AppResult};
+use crate::layout::{self, Key};
 use crate::sources::sha256;
 use crate::state::{parse_body, Shared};
 use crate::store::write_file;
@@ -286,8 +287,8 @@ impl Ai {
             utf8_percent_encode(key, URI_COMPONENT)
         );
         let instructions = format!(
-            "# The PDF\n\nTitle: {title}\n\nIts text is at {text}\n\nAdd `?page=N` (from 1) for one \
-             page. Each page of the text follows a `--- page N of M ---` line.\n"
+            "# The PDF\n\nTitle: {title}\n\nIts text is at {text}\n\nAdd `?page=N` (from 1) for one page of the PDF's own text. That text \
+             follows a `--- page N of M ---` line before each page; without `?page` the text may be a\n             Markdown extraction instead, which has no page lines.\n"
         );
         write_file(workspace.join("AGENTS.md"), instructions.into_bytes()).await?;
         Ok(workspace)
@@ -388,7 +389,9 @@ async fn open_session(
     }))
 }
 
-/// `GET /api/ai/text/{key}`: the PDF's text, for the assistant to read.
+/// `GET /api/ai/text/{key}`: the whole text of the PDF's stored extraction (Markdown, which
+/// has no pages) when it has one, else the PDF's own text; `?page=N` is always that page of the
+/// PDF's own text.
 async fn text(
     State(state): State<Shared>,
     Path(key): Path<String>,
@@ -401,7 +404,10 @@ async fn text(
                 .map_err(|error| AppError::invalid(format!("page is not a whole number: {error}")))
         })
         .transpose()?;
-    let text = state.store.text(&key, page).await?;
+    let text = match (page, extraction(&state, &key).await?) {
+        (None, Some(markdown)) => markdown,
+        _ => state.store.text(&key, page).await?,
+    };
     Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], text))
 }
 
@@ -409,4 +415,18 @@ pub fn routes() -> Router<Shared> {
     Router::new()
         .route("/api/ai/session", post(open_session))
         .route("/api/ai/text/{key}", get(text))
+}
+
+/// The Markdown a stored extraction of KEY placed beside the PDF, if one did.
+async fn extraction(state: &Shared, key: &str) -> AppResult<Option<String>> {
+    let indexed = state.require(key).await?;
+    let path = layout::markdown_path(
+        &state.config.root,
+        &Key::parse(&indexed.stored.key).expect("an indexed key is a key"),
+    );
+    match tokio::fs::read_to_string(path).await {
+        Ok(markdown) => Ok(Some(markdown)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
 }

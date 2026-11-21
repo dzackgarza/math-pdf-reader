@@ -13,6 +13,7 @@ const extractions = ExtractionManifestSchema.parse(
 
 test("the shipped manifest lists the shipped extraction plugins", () => {
   expect(extractions.plugins.map((plugin) => plugin.id)).toEqual([
+    "arxiv-source",
     "mineru-flash",
     "mineru-precise",
     "mistral-ocr",

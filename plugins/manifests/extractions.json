@@ -1,17 +1,50 @@
 {
   "plugins": [
     {
+      "id": "arxiv-source",
+      "name": "arXiv LaTeX source",
+      "command": [
+        "pdfbucket-arxiv-source",
+        "$pdf",
+        "$output",
+        "https://arxiv.org"
+      ],
+      "accepted_inputs": [
+        {
+          "kind": "pdf",
+          "id": "pdf",
+          "label": "PDF of an arXiv paper that has LaTeX source",
+          "limits": []
+        }
+      ]
+    },
+    {
       "id": "mineru-flash",
       "name": "MinerU Flash",
-      "command": ["bunx", "mineru-open-api@0.5.9", "flash-extract", "$pdf", "--language", "en", "-o", "$output/extraction.md"],
+      "command": [
+        "bunx",
+        "mineru-open-api@0.5.9",
+        "flash-extract",
+        "$pdf",
+        "--language",
+        "en",
+        "-o",
+        "$output/extraction.md"
+      ],
       "accepted_inputs": [
         {
           "kind": "pdf",
           "id": "pdf",
           "label": "PDF up to 20 pages and 10 MB",
           "limits": [
-            { "kind": "max_pages", "value": 20 },
-            { "kind": "max_bytes", "value": 10000000 }
+            {
+              "kind": "max_pages",
+              "value": 20
+            },
+            {
+              "kind": "max_bytes",
+              "value": 10000000
+            }
           ]
         }
       ]
@@ -19,19 +52,41 @@
     {
       "id": "mineru-precise",
       "name": "MinerU Precise",
-      "command": ["pdfbucket-mineru-precise", "$pdf", "$output", "https://mineru.net/api/v4"],
-      "accepted_inputs": [{ "kind": "pdf", "id": "pdf", "label": "PDF of any length", "limits": [] }]
+      "command": [
+        "pdfbucket-mineru-precise",
+        "$pdf",
+        "$output",
+        "https://mineru.net/api/v4"
+      ],
+      "accepted_inputs": [
+        {
+          "kind": "pdf",
+          "id": "pdf",
+          "label": "PDF of any length",
+          "limits": []
+        }
+      ]
     },
     {
       "id": "mistral-ocr",
       "name": "Mistral OCR",
-      "command": ["pdfbucket-mistral-ocr", "$pdf", "$output", "https://api.mistral.ai"],
+      "command": [
+        "pdfbucket-mistral-ocr",
+        "$pdf",
+        "$output",
+        "https://api.mistral.ai"
+      ],
       "accepted_inputs": [
         {
           "kind": "pdf",
           "id": "pdf",
           "label": "PDF up to 50 MB",
-          "limits": [{ "kind": "max_bytes", "value": 50000000 }]
+          "limits": [
+            {
+              "kind": "max_bytes",
+              "value": 50000000
+            }
+          ]
         }
       ]
     }

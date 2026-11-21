@@ -70,11 +70,12 @@ test("the shipped extraction plugins are listed with their accepted inputs", asy
   expect(response.status).toBe(200);
   const { plugins } = ExtractionPluginsResponseSchema.parse(await response.json());
   expect(plugins.map((plugin) => plugin.id)).toEqual([
+    "arxiv-source",
     "mineru-flash",
     "mineru-precise",
     "mistral-ocr",
   ]);
-  expect(plugins[0]?.accepted_inputs).toEqual([
+  expect(plugins[1]?.accepted_inputs).toEqual([
     {
       kind: "pdf",
       id: "pdf",
@@ -249,4 +250,21 @@ test("a plugin that exits 0 without writing extraction.md answers 502 plugin_con
   expect(response.status).toBe(502);
   expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("plugin_contract_broken");
   expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+});
+
+test("the assistant reads a stored extraction, whole, and the PDF's own text by page", async () => {
+  const { app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
+  const before = await (await app.request("/api/ai/text/lattices")).text();
+  expect(before).toContain("--- page 1 of ");
+
+  const run = await app.request("/api/items/lattices/extractions/markdown", { method: "POST" });
+  expect(run.status).toBe(200);
+
+  expect(await (await app.request("/api/ai/text/lattices")).text()).toBe(
+    "# Extracted by the markdown mode\n",
+  );
+  expect(await (await app.request("/api/ai/text/lattices?page=1")).text()).toContain(
+    "--- page 1 of ",
+  );
+  await app.stop();
 });
