@@ -131,3 +131,15 @@ def test_a_paper_without_usable_latex_source_fails_loudly_and_writes_nothing(
     assert done.returncode != 0
     assert message in done.stderr
     assert list(output.iterdir()) == []
+
+
+def test_a_source_in_an_eight_bit_encoding_is_read_in_that_encoding(arxiv: tuple[str, dict[str, bytes]], tmp_path: Path) -> None:
+    origin, packages = arxiv
+    source = b"\\documentclass{article}\\begin{document}Pages 1\x962 of a Windows-1252 paper.\\end{document}"
+    packages["2301.00003"] = gzip.compress(source)
+    output = tmp_path / "out"
+
+    done = extract(stored(tmp_path, "https://arxiv.org/pdf/2301.00003"), output, origin)
+
+    assert done.returncode == 0, done.stderr
+    assert "Pages 1–2 of a Windows-1252 paper." in (output / "extraction.md").read_text()

@@ -28,6 +28,7 @@ from pdfbucket.provenance import read_record
 # New-style ids (2301.01234) and old-style ids (math/0002066, math.AG/0002066), without version.
 ARXIV_ID = re.compile(r"arxiv\.org/(?:pdf|abs|e-print)/((?:[a-z-]+(?:\.[A-Za-z]{2})?/\d{7})|(?:\d{4}\.\d{4,5}))", re.IGNORECASE)
 DOCUMENT_CLASS = re.compile(r"^[^%\n]*\\documentclass", re.MULTILINE)
+INPUT_ENCODING = re.compile(r"\\usepackage\s*\[([^\]]*)\]\s*\{inputenc\}")
 INCLUDES = re.compile(r"\\(?:input|include)\s*\{([^}]*)\}")
 REQUEST_TIMEOUT_SECONDS = 120
 
@@ -67,11 +68,27 @@ def main_file(source: Path) -> Path:
     return max(unincluded, key=lambda path: len(texts[path]))
 
 
-def run(command: list[str], cwd: Path) -> str:
-    done = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+def run(command: list[str], cwd: Path) -> bytes:
+    done = subprocess.run(command, cwd=cwd, capture_output=True, check=False)
     if done.returncode != 0:
-        raise ArxivSourceError(f"{command[0]} exited {done.returncode}: {done.stderr.strip()}")
+        raise ArxivSourceError(f"{command[0]} exited {done.returncode}: {done.stderr.decode(errors='replace').strip()}")
     return done.stdout
+
+
+def decode(source: bytes) -> str:
+    """SOURCE as text: in the encoding the paper declares with `inputenc`; else UTF-8, else Windows-1252, the 8-bit encoding of the undeclared sources that predate UTF-8."""
+    declared = INPUT_ENCODING.search(source.decode("ascii", errors="ignore"))
+    if declared is None:
+        try:
+            return source.decode("utf-8")
+        except UnicodeDecodeError:
+            encoding = "cp1252"
+    else:
+        encoding = {"latin1": "latin-1", "utf8": "utf-8", "utf8x": "utf-8"}.get(declared.group(1).strip(), declared.group(1).strip())
+    try:
+        return source.decode(encoding)
+    except (UnicodeDecodeError, LookupError) as error:
+        raise ArxivSourceError(f"the source is not valid {encoding} text: {error}") from error
 
 
 def flatten(main: Path) -> str:
@@ -79,14 +96,14 @@ def flatten(main: Path) -> str:
     bibliography = main.with_suffix(".bbl")
     if bibliography.exists():
         command += ["--expand-bbl", bibliography.name]
-    return run([*command, main.name], main.parent)
+    return decode(run([*command, main.name], main.parent))
 
 
 def markdown(flattened: Path) -> str:
     return run(
         ["pandoc", "--from", "latex-raw_tex", "--to", "markdown_strict+tex_math_dollars+citations+pipe_tables-raw_html", "--wrap=none", flattened.name],
         flattened.parent,
-    )
+    ).decode("utf-8")
 
 
 @app.default
