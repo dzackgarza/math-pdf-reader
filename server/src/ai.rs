@@ -192,7 +192,7 @@ impl Ai {
         Ok(())
     }
 
-    fn spawn(&self, password: &str, bucket_origin: &str, log: std::fs::File) -> AppResult<Child> {
+    fn spawn(&self, password: &str, log: std::fs::File) -> AppResult<Child> {
         let base = self.opencode_dir();
         // setpriv (util-linux) has the kernel send the server SIGTERM when this process ends,
         // however it ends, so a quit or a crash of the app leaves no server behind.
@@ -205,7 +205,7 @@ impl Ai {
             .current_dir(&self.root)
             .env("XDG_DATA_HOME", base.join("data"))
             .env("OPENCODE_PASSWORD", password)
-            .env("OPENCODE_CONFIG_CONTENT", self.layered_config(bucket_origin))
+            .env("OPENCODE_CONFIG", self.root.join("reader.json"))
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
             .stderr(Stdio::from(log))
@@ -235,9 +235,14 @@ impl Ai {
         }
         *started = None;
         
+        write_file(
+            self.root.join("reader.json"),
+            self.layered_config(bucket_origin).into_bytes(),
+        )
+        .await?;
         self.link_logins().await?;
         let log = std::fs::File::create(self.root.join("opencode.log"))?;
-        let mut child = self.spawn(&password, bucket_origin, log)?;
+        let mut child = self.spawn(&password, log)?;
         let deadline = tokio::time::Instant::now() + self.startup;
         while !self.answers(&password).await {
             if let Some(status) = child.try_wait()? {
