@@ -60,6 +60,8 @@ builds both capture extensions, has addons.mozilla.org sign a changed Firefox bu
 them where Chromium loads the unpacked build and where the bucket serves Firefox its updates. An
 extension whose version differs from the provisioned one refuses captures until it is replaced.
 
+Every start of the app goes through `scripts/launch`, which provisions first when the build input's hash differs from the stamp of the last provision, so an old build cannot open. `just provision` is still how a change reaches the running app without a restart by the user.
+
 Run `just provision` at these points (a push does not provision: the pre-push hook only checks syntax, and CI runs the QC gates):
 
 - after a significant change to the server, the library UI, the reader, the store or a plugin;

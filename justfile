@@ -35,6 +35,11 @@ build:
 provision:
     @scripts/provision.sh
 
+# What scripts/launch runs when the source changed since the last provision: the same build and
+# install, with no start of the app, which the launch itself starts.
+provision-for-launch:
+    @scripts/provision.sh --for-launch
+
 # Write the index export ($XDG_DATA_HOME/pdf-bucket-export/index.json): every stored item's
 # provenance, filing and extraction record, and the collections, saved searches and reading
 # sessions. Refuses to drop an item whose PDF is missing and that was not deleted, sent or

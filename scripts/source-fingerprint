@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Print one hash of every file the provisioned app is built from: tracked and untracked, ignored
+# files excluded. Any edit, commit or checkout that changes build input changes the hash.
+# Documentation, tests and mockups are not build input.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+git ls-files -co --exclude-standard -z -- \
+    src server desktop plugins scripts/provision.sh scripts/launch scripts/amo_signed.py scripts/firefox-policy.sh \
+    wxt.config.ts pdf-bucket.config.json pyproject.toml uv.lock package.json bun.lock Cargo.toml Cargo.lock \
+    tsconfig.json tsconfig.base.json desktop/pdf-bucket-desktop.desktop |
+    sort -zu | xargs -0 sha256sum | sha256sum | cut -d' ' -f1

@@ -38,6 +38,7 @@ Click the tray icon for **Show PDF Bucket** and **Quit PDF Bucket**. Starting PD
 If the bucket cannot serve (its port is taken, the web bundle is missing, the `.envrc` is blocked), the window shows why.
 
 `just provision` builds the app, installs it at `~/.local/bin/pdf-bucket-desktop` with a launcher entry, an icon and a login autostart entry, and starts it.
+The launcher entry, the autostart entry and `~/.local/bin/pdf-bucket` all run `scripts/launch`, which compares a hash of the build input (`scripts/source-fingerprint`) with the one the last provision stamped in `$XDG_DATA_HOME/pdf-bucket-app/source-fingerprint`. A different hash runs `just provision-for-launch` first (the same build and install; the launch starts the app), and a failed rebuild stops the launch with a notification: no start runs an old build, whether the source changed by a commit, a pull or an uncommitted edit.
 Desktop sessions that run XDG autostart start it at login.
 On Hyprland, the session target starts it: `just provision` adds a drop-in to `hyprland-session.target` (docs/m5.md).
 

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# The installed `pdf-bucket` command, the launcher entry and the login autostart entry run this
+# script, so no launch can start a build older than the source. `just provision` stamps the hash of
+# the source it built from; a different hash means provision first, without starting the app (this
+# launch starts it). A failed provision stops the launch: the old app is never started.
+set -euo pipefail
+repo="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+data="${XDG_DATA_HOME:-$HOME/.local/share}"
+stamp="$data/pdf-bucket-app/source-fingerprint"
+app="$HOME/.local/bin/pdf-bucket-desktop"
+
+fail() {
+    printf 'pdf-bucket: %s\n' "$1" >&2
+    notify-send -u critical "PDF Bucket" "$1" 2> /dev/null || true
+    exit 1
+}
+
+mkdir -p "$data/pdf-bucket-app"
+exec 9> "$data/pdf-bucket-app/launch.lock"
+flock 9
+if [[ ! -x "$app" || ! -f "$stamp" || "$(< "$stamp")" != "$("$repo/scripts/source-fingerprint")" ]]; then
+    notify-send "PDF Bucket" "Source changed: rebuilding before launch" 2> /dev/null || true
+    just --justfile "$repo/justfile" --working-directory "$repo" provision-for-launch ||
+        fail "rebuild failed; run just provision in $repo to see why"
+fi
+flock -u 9
+exec 9>&-
+exec "$app" "$@"
