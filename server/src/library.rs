@@ -265,7 +265,12 @@ async fn replace_pdf(
     }
 }
 
-async fn reading(State(state): State<Shared>, Path(key): Path<String>, body: Bytes) -> Payload {
+async fn reading(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    body: Bytes,
+) -> Payload {
     let request: ReadingRequest = parse_body(&body)?;
     // The one check JSON Schema cannot state; ReadingRequestSchema refines the same.
     if request.page > request.pages {
@@ -278,11 +283,16 @@ async fn reading(State(state): State<Shared>, Path(key): Path<String>, body: Byt
         viewed_at: Timestamp::now(),
     };
     let captured_at = indexed.stored.provenance.captured_at;
-    state
+    let payload = state
         .change_items(&[&key], |org| {
             Ok(set_reading(org, &key, &captured_at, reading))
         })
-        .await
+        .await?;
+    // The reader's page is also the assistant's context; the page is recorded either way.
+    if let Err(failure) = crate::ai::announce_view(&state, &key, &origin(&headers)?).await {
+        eprintln!("pdf-bucket: the assistant was not told the reader's page: {failure:?}");
+    }
+    Ok(payload)
 }
 
 async fn add_item_note(

@@ -12,9 +12,11 @@ const longNotes = join(import.meta.dir, "fixtures/long-notes.pdf");
 async function storedBucket(
   binary: string,
   root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-")),
+  aiPort?: number,
 ) {
   const config = loadAppConfig(CONFIG_PATH);
   config.ai.binary = binary;
+  if (aiPort !== undefined) config.ai.port = aiPort;
   const app = await serveBucket({
     root,
     zoteroUrl: closedPortUrl(),
@@ -104,4 +106,48 @@ test("with an extraction the view says where the page lies in it, or that it mat
   expect(shown).toContain("The page's words match nowhere in the extraction");
   expect(shown).toContain("--- page 3 of ");
   await app.stop();
+});
+
+// A stand-in for the private OpenCode server: it answers what the bucket asks of it and keeps
+// the instruction entries it is given. The bucket treats a server that answers as its own.
+function fakeAssistant() {
+  const entries: Record<string, unknown> = {};
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const { pathname } = new URL(request.url);
+      const entry = pathname.match(/^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/(.+)$/);
+      if (entry && request.method === "PUT") {
+        entries[`${entry[1]}/${entry[2]}`] = ((await request.json()) as { value: unknown }).value;
+        return new Response(null, { status: 204 });
+      }
+      if (pathname === "/api/session" && request.method === "POST") {
+        return Response.json({ data: { id: "ses_fake" } });
+      }
+      if (pathname === "/api/pair") return Response.json({ code: "code" });
+      return Response.json({ data: {} });
+    },
+  });
+  return { entries, port: server.port, stop: () => server.stop(true) };
+}
+
+test("the assistant's chat is told the reader's page as soon as the reader reports it", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+  const app = await storedBucket("true", root, assistant.port);
+  expect((await app.request("/api/ai/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "long-notes" }),
+  })).status).toBe(200);
+  expect(assistant.entries["ses_fake/reader-view"]).toContain("has not recorded a page");
+
+  expect((await readPage(app, 7)).status).toBe(200);
+
+  const entry = String(assistant.entries["ses_fake/reader-view"]);
+  expect(entry).toContain("The reader shows page 7 of 200");
+  expect(entry).toContain("/api/ai/view/long-notes");
+  expect(entry).not.toContain("--- page 7 of ");
+  await app.stop();
+  assistant.stop();
 });
