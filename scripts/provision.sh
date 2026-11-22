@@ -26,12 +26,24 @@ installed="$data/pdf-bucket-app"
 # The capture extensions, built from this commit into the extensions directory the bucket serves
 # (server/src/extensions.rs). Each extension compares its version with the one `/status` names
 # and refuses captures until the provisioned build replaces it.
-bunx wxt build
-bunx wxt build -b firefox
-# The installed builds are the only ones: the checkout keeps none a browser could load.
-trap 'trash dist/chrome-mv3 dist/firefox-mv2' EXIT
+#
+# The extension's version counts the checkout's commits, and the version is baked into the bundle,
+# so every commit's build differs from the installed one. addons.mozilla.org signs each version
+# once and throttles a client that asks for many. So the extensions are built, installed and
+# signed only when their own input changed since the last provision: the installed build stays the
+# provisioned one, and `/status` names its version.
+extension_input="$(git ls-files -co --exclude-standard -z -- src/extension src/contract wxt.config.ts \
+    pdf-bucket.config.json package.json bun.lock | sort -zu | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
 extensions="$installed/extensions"
 mkdir -p "$extensions"
+extensions_changed=0
+[[ "$(cat "$installed/extension-fingerprint" 2> /dev/null)" != "$extension_input" ]] && extensions_changed=1
+if [[ $extensions_changed -eq 1 ]]; then
+    bunx wxt build
+    bunx wxt build -b firefox
+    # The installed builds are the only ones: the checkout keeps none a browser could load.
+    trap 'trash dist/chrome-mv3 dist/firefox-mv2' EXIT
+fi
 
 # Whether build $1 equals the installed build $2 but for the version the commit gives it.
 unchanged() {
@@ -43,7 +55,7 @@ unchanged() {
 # Chromium reloads the unpacked build from the extensions directory (it keeps loaded unpacked
 # extensions in each profile's Preferences or Secure Preferences). The directory is written
 # before either check, so the first provision creates what Load unpacked needs.
-if ! unchanged dist/chrome-mv3 "$extensions/chrome-mv3"; then
+if [[ $extensions_changed -eq 1 ]] && ! unchanged dist/chrome-mv3 "$extensions/chrome-mv3"; then
     rsync -a --delete dist/chrome-mv3/ "$extensions/chrome-mv3/"
 fi
 
@@ -65,7 +77,7 @@ fi
 # source (its source-code policy, since the build is minified); it signs each version once, so an
 # unchanged build keeps the package and version it was signed with. Credentials are
 # MOZILLA_JWT_ISSUER and MOZILLA_JWT_SECRET from the environment direnv loads here.
-if ! unchanged dist/firefox-mv2 "$extensions/firefox-mv2"; then
+if [[ $extensions_changed -eq 1 ]] && ! unchanged dist/firefox-mv2 "$extensions/firefox-mv2"; then
     signing=$(mktemp -d)
     # A run that uploaded this version but lost AMO's answer left it signed there.
     signed=0
@@ -82,6 +94,10 @@ if ! unchanged dist/firefox-mv2 "$extensions/firefox-mv2"; then
     mv "$signing"/*.xpi "$extensions/firefox.xpi"
     rsync -a --delete dist/firefox-mv2/ "$extensions/firefox-mv2/"
     trash "$signing"
+fi
+
+if [[ $extensions_changed -eq 1 ]]; then
+    printf '%s' "$extension_input" > "$installed/extension-fingerprint"
 fi
 
 units="$config/systemd/user"
