@@ -12,8 +12,9 @@ use tokio::sync::{watch, Notify, Semaphore};
 
 use crate::contract::{
     AppConfigRebuild, ExportedItem, ExportedItemTitle, Extraction, ExtractionRecord,
-    ExtractionRecordExtractedFilesItem, ExtractionRecordExtractedMarkdown, IndexExport,
-    IndexExportState, MissingItem, Organization, RebuildOutcome, Timestamp,
+    ExtractionRecordExtractedFilesItem, ExtractionRecordExtractedMarkdown,
+    ExtractionRecordExtractedSourceKind, IndexExport, IndexExportState, MissingItem, Organization,
+    RebuildOutcome, Timestamp,
 };
 use crate::error::{AppError, AppResult};
 use crate::index::{IndexedItem, LibraryIndex};
@@ -49,7 +50,24 @@ pub struct BucketDocuments<'a> {
 fn extraction_record(key: &str, extraction: &Extraction) -> ExtractionRecord {
     match extraction {
         Extraction::None => ExtractionRecord::None,
-        Extraction::Extracted { markdown, files } => ExtractionRecord::Extracted {
+        Extraction::Extracted {
+            markdown,
+            files,
+            source_kind,
+            authoritative,
+        } => ExtractionRecord::Extracted {
+            source_kind: match source_kind {
+                crate::contract::ExtractionExtractedSourceKind::ArxivLatex => {
+                    ExtractionRecordExtractedSourceKind::ArxivLatex
+                }
+                crate::contract::ExtractionExtractedSourceKind::Ocr => {
+                    ExtractionRecordExtractedSourceKind::Ocr
+                }
+                crate::contract::ExtractionExtractedSourceKind::DocumentStructure => {
+                    ExtractionRecordExtractedSourceKind::DocumentStructure
+                }
+            },
+            authoritative: *authoritative,
             markdown: ExtractionRecordExtractedMarkdown {
                 name: markdown.name.clone(),
                 size_bytes: markdown.size_bytes,
@@ -69,8 +87,12 @@ fn extraction_record(key: &str, extraction: &Extraction) -> ExtractionRecord {
 
 fn exported(indexed: IndexedItem, organization: &Organization) -> ExportedItem {
     let item = indexed.stored;
+    let mut filing = filing_of(organization, &item.key, &item.provenance.captured_at);
+    if let Some(lineage) = indexed.source_lineage {
+        filing.source_lineage = Some(lineage);
+    }
     ExportedItem {
-        filing: filing_of(organization, &item.key, &item.provenance.captured_at),
+        filing,
         extraction: extraction_record(&item.key, &indexed.extraction),
         key: item.key,
         provenance: item.provenance,
@@ -93,10 +115,29 @@ pub async fn export_index(
     export_file: &Path,
 ) -> AppResult<ExportOutcome> {
     // One consistent view: a removal records its key before its PDF goes, under this lock.
-    let (stored, removed, organization) = {
+    let (stored, promoted_missing, removed, organization) = {
         let _locked = documents.organizations.lock().await?;
+        documents.index.clean_pending_promotions().await?;
+        let library = documents.index.library().await?;
+        let present: BTreeSet<String> =
+            library
+                .items
+                .iter()
+                .map(|item| item.stored.key.to_string())
+                .chain(library.unreadable.iter().filter_map(|item| {
+                    crate::layout::pdf_key(&item.file).map(|key| key.to_string())
+                }))
+                .collect();
+        let missing = documents.index.missing_promotions(&present).await?;
+        if let Some(unreadable) = missing.unreadable.first() {
+            return Err(AppError::store_failed(format!(
+                "{}: {}",
+                unreadable.file, unreadable.message
+            )));
+        }
         (
-            documents.index.items().await?,
+            library.items,
+            missing.items,
             documents.organizations.removed().await?,
             documents.organizations.read().await?,
         )
@@ -113,13 +154,20 @@ pub async fn export_index(
             return Ok(ExportOutcome::Refused(missing));
         }
     }
+    let mut items: Vec<_> = stored
+        .into_iter()
+        .chain(
+            promoted_missing
+                .into_iter()
+                .filter(|item| !removed.contains(item.stored.key.as_str())),
+        )
+        .map(|indexed| exported(indexed, &organization))
+        .collect();
+    items.sort_by(|left, right| left.key.cmp(&right.key));
     let index = IndexExport {
         version: 3.try_into().expect("3 is the index export's version"),
         sessions: documents.sessions.read().await?.sessions,
-        items: stored
-            .into_iter()
-            .map(|indexed| exported(indexed, &organization))
-            .collect(),
+        items,
         collections: organization.collections,
         saved_searches: organization.saved_searches,
         activity: organization.activity,
@@ -194,6 +242,12 @@ pub fn recoverable(item: &ExportedItem) -> RecoverableItem {
     RecoverableItem {
         key: item.key.to_string(),
         provenance: item.provenance.clone(),
+        source_lineage: item
+            .filing
+            .source_lineage
+            .as_ref()
+            .filter(|lineage| lineage.preferred_key == item.key)
+            .cloned(),
         title: item.title.text.to_string(),
         title_source: item.title.source,
         authors: item
@@ -369,11 +423,18 @@ pub async fn forget_missing(
     export_file: &Path,
     key: &str,
 ) -> AppResult<Organization> {
-    let listed = read_document::<IndexExport>(export_file)
+    let index = read_document::<IndexExport>(export_file)
         .await?
-        .is_some_and(|index| index.items.iter().any(|item| *item.key == key));
-    if !listed {
-        return Err(AppError::unknown_item(key));
-    }
-    organizations.forget(key).await
+        .ok_or_else(|| AppError::unknown_item(key))?;
+    let item = index
+        .items
+        .iter()
+        .find(|item| *item.key == key)
+        .ok_or_else(|| AppError::unknown_item(key))?;
+    let lineage = item
+        .filing
+        .source_lineage
+        .as_ref()
+        .filter(|lineage| lineage.preferred_key.as_str() == key);
+    organizations.forget(key, lineage).await
 }

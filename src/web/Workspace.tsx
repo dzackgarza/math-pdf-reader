@@ -38,6 +38,8 @@ import {
   createCollection,
   type ExtractionAttempt,
   extractWith,
+  findArxivMatches,
+  promoteArxivMatch,
   filingActions,
   guessMetadata,
   importUrl,
@@ -268,6 +270,19 @@ export default function Workspace({
     });
   }, [api, context]);
 
+  useEffect(() => {
+    const reportFocusFailure = (event: Event) => {
+      const message = (event as CustomEvent<{ message?: unknown }>).detail?.message;
+      context.error(
+        typeof message === "string"
+          ? message
+          : "The reader opened, but Math PDF Reader could not focus its window. Use the tray Show action or click the window to focus it.",
+      );
+    };
+    window.addEventListener("pdf-bucket-focus-failed", reportFocusFailure);
+    return () => window.removeEventListener("pdf-bucket-focus-failed", reportFocusFailure);
+  }, [context]);
+
   const view = useMemo(() => tableView(payload, screen), [payload, screen]);
   const items = useMemo(
     () => (view === null ? [] : visibleItems(payload, view, search)),
@@ -375,6 +390,7 @@ export default function Workspace({
       return item === undefined
         ? null
         : {
+            item,
             state: item.extraction,
             plugins,
             attempt: extractionAttempts.get(key),
@@ -542,6 +558,18 @@ export default function Workspace({
               metadata={{
                 save: (metadata) => saveItemMetadata(context, selected.id, metadata),
               }}
+              arxiv={{
+                search: () => findArxivMatches(context, selected.id),
+                promote: (match) => promoteArxivMatch(context, selected.id, match),
+              }}
+              onPromoted={(result) => {
+                if (result.missing) {
+                  context.notify("The preferred arXiv PDF is missing; use Needs Re-fetch to rebuild it.");
+                  return;
+                }
+                setSelectedId(result.key);
+                context.notify("The arXiv version is now a separate library item; the original capture was preserved.");
+              }}
               noteDraft={{
                 text: noteDraftOf(selected.id),
                 onChange: (text) => setNoteDraft(selected.id, text === "" ? null : text),
@@ -557,6 +585,7 @@ export default function Workspace({
                 onSend: (way) => send(selected.id, way),
               }}
               extraction={{
+                item: selected,
                 plugins,
                 attempt: extractionAttempts.get(selected.id),
                 onRun: (pluginId) => extract(selected.id, pluginId),

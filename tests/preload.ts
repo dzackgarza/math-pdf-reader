@@ -33,7 +33,7 @@ if (synced.exitCode !== 0) {
 // The suites drive the app's server over HTTP through `pdf-bucket serve` (tests/bucket.ts);
 // cargo rebuilds it only when its sources changed.
 const built = Bun.spawnSync(
-  ["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket"],
+  ["cargo", "build", "--quiet", "--package", "pdf-bucket", "--bin", "pdf-bucket", "--features", "arxiv-fixtures"],
   {
     cwd: REPO_ROOT,
     stdout: "inherit",

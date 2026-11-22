@@ -8,6 +8,7 @@ use axum::Json;
 use lockable::LockPool;
 use tokio::sync::{Notify, Semaphore};
 
+use crate::ai::Ai;
 use crate::config::{BucketConfig, THUMBNAIL_RENDERS};
 use crate::contract::{
     from_json, BucketItem, BucketItemFile, Contract, ExportedItem, IndexExport, LibraryPayload,
@@ -15,10 +16,11 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 use crate::events::Events;
-use crate::ai::Ai;
 use crate::export::{concurrency, IndexExporter};
 use crate::index::{IndexedItem, LibraryIndex};
-use crate::organization::{filing_of, read_document, remove_item, OrganizationStore};
+use crate::organization::{
+    filing_of, read_document, remove_item, remove_preferred_lineage, FilingLock, OrganizationStore,
+};
 use crate::send::zotero_status;
 use crate::sessions::SessionStore;
 use crate::store::Store;
@@ -95,14 +97,20 @@ impl AppState {
             self.organizations.withdraw_removal(&keys).await?;
             return Err(error);
         }
-        self.organizations.update(|org| remove_item(org, key)).await
+        self.organizations
+            .update(|org| remove_preferred_lineage(remove_item(org, key), key))
+            .await
     }
 
     /// The keys a new capture may not take although no PDF holds them: the keys the filing or
     /// the last index export lists, except those removed on purpose. One consistent view: an
     /// export's prune takes a key out of the removed set, then its filing, under this lock.
     pub async fn held_keys(&self) -> AppResult<BTreeSet<String>> {
-        let _locked = self.organizations.lock().await?;
+        let locked = self.organizations.lock().await?;
+        self.held_keys_locked(&locked).await
+    }
+
+    pub async fn held_keys_locked(&self, _locked: &FilingLock<'_>) -> AppResult<BTreeSet<String>> {
         let removed = self.organizations.removed().await?;
         let filed = self.organizations.read().await?.items.into_keys();
         let exported = match read_document::<IndexExport>(self.exporter.export_file()).await? {
@@ -113,9 +121,32 @@ impl AppState {
                 .collect(),
             None => Vec::new(),
         };
+        let library = self.index.library().await?;
+        let present: BTreeSet<String> =
+            library
+                .items
+                .iter()
+                .map(|item| item.stored.key.to_string())
+                .chain(library.unreadable.iter().filter_map(|item| {
+                    crate::layout::pdf_key(&item.file).map(|key| key.to_string())
+                }))
+                .collect();
+        let promoted = self.index.missing_promotions(&present).await?;
+        if let Some(unreadable) = promoted.unreadable.first() {
+            return Err(AppError::store_failed(format!(
+                "{}: {}",
+                unreadable.file, unreadable.message
+            )));
+        }
         Ok(filed
             .map(|key| key.to_string())
             .chain(exported)
+            .chain(
+                promoted
+                    .items
+                    .into_iter()
+                    .map(|item| item.stored.key.to_string()),
+            )
             .filter(|key| !removed.contains(key))
             .collect())
     }
@@ -216,6 +247,7 @@ pub fn bucket_item(indexed: &IndexedItem, organization: &Organization) -> AppRes
         reading: filing.reading,
         source_check: filing.source_check,
         mirrors: filing.mirrors,
+        source_lineage: indexed.source_lineage.clone().or(filing.source_lineage),
         extraction: indexed.extraction.clone(),
         zotero,
         date_added: provenance.captured_at.clone(),

@@ -54,6 +54,7 @@ pub const PDF_HEADER_WINDOW: usize = 1024;
 /// What an extraction plugin writes in its output directory: the Markdown, and optionally a
 /// directory of further artifacts.
 pub const EXTRACTION_MARKDOWN: &str = "extraction.md";
+pub const EXTRACTION_METADATA: &str = "metadata.json";
 pub const EXTRACTION_ARTIFACTS: &str = "artifacts";
 
 /// Exit status of a `pdfbucket` command that could not read its PDF (src/pdfbucket/cli.py).

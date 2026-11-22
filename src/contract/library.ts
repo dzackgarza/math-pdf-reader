@@ -164,6 +164,14 @@ export const MirrorSchema = z.strictObject({
 
 export const MirrorRequestSchema = z.strictObject({ url: HttpUrlSchema });
 
+export const SourceLineageSchema = z.strictObject({
+  originalKey: NonEmptySchema,
+  originalProvenance: ProvenanceSchema,
+  preferredKey: NonEmptySchema,
+  discoveredSourceUrl: HttpUrlSchema,
+  promotedAt: z.iso.datetime({ offset: true }),
+});
+
 export const ItemNoteSchema = z.strictObject({
   id: NonEmptySchema,
   note: TrimmedSchema,
@@ -186,6 +194,8 @@ export const ExtractionSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("none") }),
   z.strictObject({
     status: z.literal("extracted"),
+    sourceKind: z.enum(["arxiv_latex", "ocr", "document_structure"]),
+    authoritative: z.boolean(),
     markdown: ArtifactSchema,
     files: z.array(ArtifactSchema),
   }),
@@ -284,6 +294,7 @@ export const BucketItemSchema = z.strictObject({
   reading: ReadingSchema,
   sourceCheck: SourceCheckSchema,
   mirrors: z.array(MirrorSchema),
+  sourceLineage: SourceLineageSchema.optional(),
   dateAdded: z.iso.datetime({ offset: true }),
   dateModified: z.iso.datetime({ offset: true }),
   provenance: ProvenanceSchema,
@@ -323,6 +334,36 @@ export const GuessMetadataResultSchema = z.strictObject({
 
 export const GuessMetadataResponseSchema = GuessMetadataResultSchema.extend({
   item: BucketItemSchema,
+});
+
+// A deterministic arXiv API candidate for an item's structured metadata. The score is in
+// [0, 1]; the server returns only candidates at or above its configured threshold.
+export const ArxivMatchSchema = z.strictObject({
+  id: NonEmptySchema,
+  version: NonEmptySchema,
+  title: NonEmptySchema,
+  authors: z.array(NonEmptySchema).min(1),
+  abstract: NonEmptySchema.nullable(),
+  year: z.int().nullable(),
+  score: z.number().min(0).max(1),
+  absUrl: z.url(),
+  pdfUrl: z.url(),
+  reasons: z.array(NonEmptySchema).min(1),
+});
+
+export const ArxivSearchResponseSchema = z.strictObject({
+  threshold: z.number().min(0).max(1),
+  matches: z.array(ArxivMatchSchema),
+});
+
+// The result of explicitly promoting one confident arXiv candidate. The original item remains
+// intact; this names the item containing the fetched arXiv version.
+export const ArxivPromotionResponseSchema = z.strictObject({
+  key: NonEmptySchema,
+  originalKey: NonEmptySchema,
+  existing: z.boolean(),
+  missing: z.boolean(),
+  sourceLineage: SourceLineageSchema,
 });
 
 // An item the index export holds whose PDF the store has lost: what Rebuild needs to fetch it
@@ -626,6 +667,9 @@ export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSche
 export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
 export type ManualMetadataRequest = z.infer<typeof ManualMetadataRequestSchema>;
 export type GuessMetadataResponse = z.infer<typeof GuessMetadataResponseSchema>;
+export type ArxivSearchResponse = z.infer<typeof ArxivSearchResponseSchema>;
+export type ArxivMatch = z.infer<typeof ArxivMatchSchema>;
+export type ArxivPromotionResponse = z.infer<typeof ArxivPromotionResponseSchema>;
 
 // The session-storage key under which the library page keeps its current view (the address's
 // hash, e.g. `#/unfiled`); the reader's Library button returns to that view.

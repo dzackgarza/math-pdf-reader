@@ -61,7 +61,7 @@ export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   }
   const status = await checkedBody(response, ServerStatusSchema);
   if (!status.ok) {
-    return { kind: "unreachable", detail: `not a PDF Bucket status report: ${status.detail}` };
+    return { kind: "unreachable", detail: `not a Math PDF Reader status report: ${status.detail}` };
   }
   const own = browser.runtime.getManifest().version;
   const provisioned = status.value.extensions[import.meta.env.FIREFOX ? "firefox" : "chrome"];
@@ -97,20 +97,20 @@ async function reloadStaleBuild(provisioned: string): Promise<void> {
 
 // Why a stale extension refuses a capture.
 export function staleDetail(state: StaleBuild): string {
-  return `PDF Bucket was provisioned with version ${state.provisioned} of this extension, which is version ${state.own}; it captures nothing until it is replaced: ${state.replacement}`;
+  return `Math PDF Reader was provisioned with version ${state.provisioned} of this extension, which is version ${state.own}; it captures nothing until it is replaced: ${state.replacement}`;
 }
 
 type Badge = { text: string; color: string; title: string };
 
 function badgeFor(state: BucketState, enabled: boolean, bucketOrigin: string): Badge {
   if (state.kind === "unreachable") {
-    return { text: "!", color: "#b3261e", title: `PDF Bucket is not reachable at ${bucketOrigin}` };
+    return { text: "!", color: "#b3261e", title: `Math PDF Reader is not reachable at ${bucketOrigin}` };
   }
   if (state.kind === "check-failed") {
     return {
       text: "!",
       color: "#b3261e",
-      title: `PDF Bucket at ${bucketOrigin} cannot tell whether it can store PDFs (${state.detail})`,
+      title: `Math PDF Reader at ${bucketOrigin} cannot tell whether it can store PDFs (${state.detail})`,
     };
   }
   if (state.kind === "not-ready") {
@@ -118,16 +118,16 @@ function badgeFor(state: BucketState, enabled: boolean, bucketOrigin: string): B
     return {
       text: "!",
       color: "#b3261e",
-      title: `PDF Bucket at ${bucketOrigin} cannot store PDFs (${state.status.root} ${cause})`,
+      title: `Math PDF Reader at ${bucketOrigin} cannot store PDFs (${state.status.root} ${cause})`,
     };
   }
   if (state.kind === "stale") {
     return { text: "OLD", color: "#b3261e", title: staleDetail(state) };
   }
   if (!enabled) {
-    return { text: "OFF", color: "#5f6368", title: "PDF Bucket: capture is off in this browser" };
+    return { text: "OFF", color: "#5f6368", title: "Math PDF Reader: capture is off in this browser" };
   }
-  return { text: "ON", color: "#1e7a3c", title: "PDF Bucket: PDF links open in the bucket" };
+  return { text: "ON", color: "#1e7a3c", title: "Math PDF Reader: PDF links open in the bucket" };
 }
 
 // Chrome (MV3) names the toolbar button `action`, Firefox (MV2) `browserAction`.

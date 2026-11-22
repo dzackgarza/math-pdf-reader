@@ -13,12 +13,13 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use walkdir::WalkDir;
 
-use crate::config::{EXTRACTION_ARTIFACTS, EXTRACTION_MARKDOWN};
+use crate::config::{EXTRACTION_ARTIFACTS, EXTRACTION_MARKDOWN, EXTRACTION_METADATA};
 use crate::contract::{
     ApiErrorErrorKind, ExtractionManifest, ExtractionManifestPluginsItem, ExtractionOutcome,
-    ExtractionOutcomeRejectedViolationsItem, ExtractionOutcomeSucceededArtifactsItem,
-    ExtractionOutcomeSucceededMarkdown, ExtractionPluginsResponse,
-    ExtractionPluginsResponsePluginsItem, NonEmpty, PdfLimit,
+    ExtractionOutcomeRejectedViolationsItem, ExtractionOutcomeRejectedViolationsItemObserved,
+    ExtractionOutcomeSucceededArtifactsItem, ExtractionOutcomeSucceededMarkdown,
+    ExtractionPluginsResponse, ExtractionPluginsResponsePluginsItem, ExtractionSource,
+    ExtractionSourceKind, NonEmpty, PdfLimit,
 };
 use crate::error::{AppError, AppResult};
 use crate::index::IndexedItem;
@@ -30,9 +31,23 @@ use crate::state::Shared;
 async fn manifest(state: &Shared) -> AppResult<ExtractionManifest> {
     let path = &state.config.extractions_manifest;
     let text = tokio::fs::read_to_string(path).await?;
-    serde_json::from_str(&text).map_err(|error| {
+    let manifest: ExtractionManifest = serde_json::from_str(&text).map_err(|error| {
         AppError::internal(format!("{} fails its schema: {error}", path.display()))
-    })
+    })?;
+    if let Some(plugin) = manifest.plugins.iter().find(|plugin| {
+        plugin.command.join(" ").split_whitespace().any(|word| {
+            matches!(
+                word.to_ascii_lowercase().as_str(),
+                "pdftotext" | "pymupdf" | "fitz"
+            )
+        })
+    }) {
+        return Err(AppError::internal(format!(
+            "plugin {} is a generic PDF text command, not a structured extraction provider",
+            *plugin.id
+        )));
+    }
+    Ok(manifest)
 }
 
 async fn plugins(State(state): State<Shared>) -> AppResult<Json<ExtractionPluginsResponse>> {
@@ -44,6 +59,8 @@ async fn plugins(State(state): State<Shared>) -> AppResult<Json<ExtractionPlugin
             .map(|plugin| ExtractionPluginsResponsePluginsItem {
                 id: plugin.id,
                 name: plugin.name,
+                source_kind: plugin.source_kind,
+                authoritative: plugin.authoritative,
                 accepted_inputs: plugin.accepted_inputs,
             })
             .collect(),
@@ -54,26 +71,77 @@ fn nonempty(text: String) -> NonEmpty {
     text.try_into().expect("the text is never empty")
 }
 
-/// Every limit of the plugin's accepted inputs the stored PDF exceeds.
+fn source_matches_url(source: &ExtractionSource, pdf_url: &str) -> bool {
+    let Ok(url) = url::Url::parse(pdf_url) else {
+        return false;
+    };
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    match source {
+        ExtractionSource::Arxiv => {
+            (host == "arxiv.org" || host.ends_with(".arxiv.org"))
+                && regex::Regex::new(
+                    r"(?i)^/(?:pdf|abs|e-print)/(?:(?:[a-z-]+(?:\.[a-z]{2})?/\d{7})|(?:\d{4}\.\d{4,5}))(?:v\d+)?/?$",
+                )
+                .expect("the arXiv URL pattern is valid")
+                .is_match(url.path())
+        }
+    }
+}
+
+/// Every limit of an accepted input that the stored PDF violates. An input with no violations
+/// accepts the PDF; a plugin with several inputs accepts it if any one input does.
 fn violations(
     plugin: &ExtractionManifestPluginsItem,
     indexed: &IndexedItem,
 ) -> Vec<ExtractionOutcomeRejectedViolationsItem> {
-    plugin
+    let failures: Vec<Vec<_>> = plugin
         .accepted_inputs
         .iter()
-        .flat_map(|input| &input.limits)
-        .filter_map(|limit| {
-            let (bound, observed) = match limit {
-                PdfLimit::MaxPages(pages) => (pages.get(), indexed.pages),
-                PdfLimit::MaxBytes(bytes) => (bytes.get(), indexed.size_bytes),
-            };
-            (observed > bound).then(|| ExtractionOutcomeRejectedViolationsItem {
-                limit: limit.clone(),
-                observed: i64::try_from(observed).expect("a page or byte count fits i64"),
-            })
+        .flat_map(|input| {
+            let failed: Vec<_> = input
+                .limits
+                .iter()
+                .filter_map(|limit| {
+                    let observed = match limit {
+                        PdfLimit::MaxPages(pages) => (indexed.pages > pages.get()).then(|| {
+                            ExtractionOutcomeRejectedViolationsItemObserved::Integer(
+                                i64::try_from(indexed.pages).expect("a page count fits i64"),
+                            )
+                        }),
+                        PdfLimit::MaxBytes(bytes) => {
+                            (indexed.size_bytes > bytes.get()).then(|| {
+                                ExtractionOutcomeRejectedViolationsItemObserved::Integer(
+                                    i64::try_from(indexed.size_bytes)
+                                        .expect("a byte count fits i64"),
+                                )
+                            })
+                        }
+                        PdfLimit::Source(source) => {
+                            (!source_matches_url(source, &indexed.stored.provenance.pdf_url)).then(
+                                || {
+                                    ExtractionOutcomeRejectedViolationsItemObserved::String(
+                                        indexed.stored.provenance.pdf_url.clone(),
+                                    )
+                                },
+                            )
+                        }
+                    };
+                    observed.map(|observed| ExtractionOutcomeRejectedViolationsItem {
+                        limit: limit.clone(),
+                        observed,
+                    })
+                })
+                .collect();
+            std::iter::once(failed)
         })
-        .collect()
+        .collect();
+    if failures.iter().any(Vec::is_empty) {
+        Vec::new()
+    } else {
+        failures.into_iter().flatten().collect()
+    }
 }
 
 /// The plugin's command with `$pdf` and `$output` replaced, as Python's `string.Template`
@@ -143,7 +211,11 @@ fn artifact(root: &Path, path: &Path) -> AppResult<(NonEmpty, crate::contract::S
 }
 
 // The placed Markdown and artifacts, with their hashes.
-fn placed(state: &Shared, key: &str, plugin_id: NonEmpty) -> AppResult<ExtractionOutcome> {
+fn placed(
+    state: &Shared,
+    key: &str,
+    plugin: &ExtractionManifestPluginsItem,
+) -> AppResult<ExtractionOutcome> {
     let root = &state.config.root;
     let parsed = Key::parse(key).expect("an indexed key is a key");
     let (path, sha256, size) = artifact(root, &layout::markdown_path(root, &parsed))?;
@@ -152,7 +224,9 @@ fn placed(state: &Shared, key: &str, plugin_id: NonEmpty) -> AppResult<Extractio
     if directory.is_dir() {
         for entry in WalkDir::new(&directory).sort_by_file_name() {
             let entry = entry.map_err(AppError::internal)?;
-            if entry.file_type().is_file() {
+            if entry.file_type().is_file()
+                && entry.file_name().to_string_lossy() != EXTRACTION_METADATA
+            {
                 let (path, sha256, size) = artifact(root, entry.path())?;
                 artifacts.push(ExtractionOutcomeSucceededArtifactsItem { path, sha256, size });
             }
@@ -160,7 +234,9 @@ fn placed(state: &Shared, key: &str, plugin_id: NonEmpty) -> AppResult<Extractio
     }
     Ok(ExtractionOutcome::Succeeded {
         key: nonempty(key.to_string()),
-        plugin_id,
+        plugin_id: plugin.id.clone(),
+        source_kind: plugin.source_kind,
+        authoritative: plugin.authoritative,
         markdown: ExtractionOutcomeSucceededMarkdown { path, sha256, size },
         artifacts,
     })
@@ -213,15 +289,41 @@ async fn run(
         });
     }
     let with_artifacts = produced(&plugin.id, &output)?;
+    if !plugin.authoritative {
+        return Err(broken(format!(
+            "plugin {} is not marked authoritative",
+            *plugin.id
+        )));
+    }
+    let artifacts = output.join(EXTRACTION_ARTIFACTS);
+    if matches!(plugin.source_kind, ExtractionSourceKind::ArxivLatex) {
+        for name in ["source.eprint", "source.tex"] {
+            let path = artifacts.join(name);
+            if !path.is_file() || std::fs::metadata(&path)?.len() == 0 {
+                return Err(broken(format!(
+                    "plugin {} did not produce required source artifact {name}",
+                    *plugin.id
+                )));
+            }
+        }
+    }
+    if !with_artifacts {
+        std::fs::create_dir(&artifacts)?;
+    }
+    std::fs::write(
+        artifacts.join(EXTRACTION_METADATA),
+        serde_json::json!({
+            "sourceKind": plugin.source_kind,
+            "authoritative": plugin.authoritative,
+        })
+        .to_string(),
+    )?;
     state
         .store
-        .place_extraction(
-            &key,
-            output.join(EXTRACTION_MARKDOWN),
-            with_artifacts.then(|| output.join(EXTRACTION_ARTIFACTS)),
-        )
+        .place_extraction(&key, output.join(EXTRACTION_MARKDOWN), Some(artifacts))
         .await?;
-    placed(state, &key, plugin.id.clone())
+    state.stored();
+    placed(state, &key, plugin)
 }
 
 /// Runs the manifest's plugin PLUGIN_ID on the stored item KEY.

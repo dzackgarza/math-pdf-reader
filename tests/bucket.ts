@@ -25,6 +25,7 @@ export type BucketOptions = {
   // The capture extension builds the server offers (the installed app's `extensions` layout);
   // a test that does not read them gets an empty scratch directory, which offers none.
   extensions?: string;
+  env?: Record<string, string>;
 };
 
 export type Bucket = {
@@ -68,7 +69,7 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "inherit",
-    env: process.env,
+    env: { ...process.env, ...options.env },
   });
   const reader = server.stdout.getReader();
   let printed = "";

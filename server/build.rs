@@ -62,7 +62,27 @@ fn main() {
     space
         .add_root_schema(schema)
         .expect("typify accepts the contract schema");
-    let file = syn::parse2::<syn::File>(space.to_stream()).expect("typify emits Rust items");
+    let mut file = syn::parse2::<syn::File>(space.to_stream()).expect("typify emits Rust items");
+    // The successful read contains a large PDF record; keep errors small without changing JSON.
+    let reads = file
+        .items
+        .iter_mut()
+        .find_map(|item| match item {
+            syn::Item::Enum(item) if item.ident == "ReadOutcomeListItem" => Some(item),
+            _ => None,
+        })
+        .expect("the contract contains read outcomes");
+    let read = reads
+        .variants
+        .iter_mut()
+        .find(|variant| variant.ident == "Read")
+        .expect("read outcomes have a Read variant");
+    let record = read
+        .fields
+        .iter_mut()
+        .find(|field| field.ident.as_ref().is_some_and(|name| name == "record"))
+        .expect("read outcomes contain a record");
+    record.ty = syn::parse_quote!(Box<PdfRecord>);
     let mut types = prettyplease::unparse(&file);
 
     // The seconds a page must be read to count in a reading session: the `minimum` of a reported

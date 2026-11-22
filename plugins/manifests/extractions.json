@@ -3,6 +3,8 @@
     {
       "id": "arxiv-source",
       "name": "arXiv LaTeX source",
+      "source_kind": "arxiv_latex",
+      "authoritative": true,
       "command": [
         "pdfbucket-arxiv-source",
         "$pdf",
@@ -14,13 +16,20 @@
           "kind": "pdf",
           "id": "pdf",
           "label": "PDF of an arXiv paper that has LaTeX source",
-          "limits": []
+          "limits": [
+            {
+              "kind": "source",
+              "value": "arxiv"
+            }
+          ]
         }
       ]
     },
     {
       "id": "mineru-flash",
       "name": "MinerU Flash",
+      "source_kind": "document_structure",
+      "authoritative": true,
       "command": [
         "bunx",
         "mineru-open-api@0.5.9",
@@ -52,6 +61,8 @@
     {
       "id": "mineru-precise",
       "name": "MinerU Precise",
+      "source_kind": "document_structure",
+      "authoritative": true,
       "command": [
         "pdfbucket-mineru-precise",
         "$pdf",
@@ -70,6 +81,8 @@
     {
       "id": "mistral-ocr",
       "name": "Mistral OCR",
+      "source_kind": "ocr",
+      "authoritative": true,
       "command": [
         "pdfbucket-mistral-ocr",
         "$pdf",

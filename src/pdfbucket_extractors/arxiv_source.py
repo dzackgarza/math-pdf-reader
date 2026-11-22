@@ -7,7 +7,8 @@ and the `.bbl` bibliography and drops comments, so a paper strewn across many fi
 document; `pandoc` reads it, applies the paper's own macros, and writes Markdown with citations
 as `[@key]` and `$...$` math. LaTeX that pandoc cannot interpret is dropped, not passed through
 as raw TeX, which keeps the Markdown readable. The flattened source stays in
-`artifacts/source.tex`. A paper without a source package (arXiv serves the PDF alone) fails.
+`artifacts/source.tex`; the original archive is retained as `artifacts/source.eprint`.
+A paper without a source package (arXiv serves the PDF alone) fails.
 """
 
 from __future__ import annotations
@@ -19,14 +20,15 @@ import subprocess
 import tarfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 
 import httpx
 from cyclopts import App
 
 from pdfbucket.provenance import read_record
 
-# New-style ids (2301.01234) and old-style ids (math/0002066, math.AG/0002066), without version.
-ARXIV_ID = re.compile(r"arxiv\.org/(?:pdf|abs|e-print)/((?:[a-z-]+(?:\.[A-Za-z]{2})?/\d{7})|(?:\d{4}\.\d{4,5}))", re.IGNORECASE)
+# New-style and old-style identifiers, including an optional version.
+ARXIV_ID = re.compile(r"/(?:pdf|abs|e-print)/((?:(?:[a-z-]+(?:\.[A-Za-z]{2})?/\d{7})|(?:\d{4}\.\d{4,5}))(?:v\d+)?)/?", re.IGNORECASE)
 DOCUMENT_CLASS = re.compile(r"^[^%\n]*\\documentclass", re.MULTILINE)
 INPUT_ENCODING = re.compile(r"\\usepackage\s*\[([^\]]*)\]\s*\{inputenc\}")
 INCLUDES = re.compile(r"\\(?:input|include)\s*\{([^}]*)\}")
@@ -40,8 +42,10 @@ class ArxivSourceError(Exception):
 
 
 def arxiv_id(pdf_url: str) -> str:
-    found = ARXIV_ID.search(pdf_url)
-    if found is None:
+    url = urlsplit(pdf_url)
+    host = url.hostname or ""
+    found = ARXIV_ID.fullmatch(url.path)
+    if url.scheme not in {"http", "https"} or not (host == "arxiv.org" or host.endswith(".arxiv.org")) or found is None:
         raise ArxivSourceError(f"{pdf_url} is not an arXiv URL, so there is no arXiv source to fetch")
     return found.group(1)
 
@@ -108,7 +112,7 @@ def markdown(flattened: Path) -> str:
 
 @app.default
 def extract(pdf: Path, output: Path, arxiv_base: str) -> None:
-    """Fetch the arXiv source of PDF from ARXIV_BASE and write OUTPUT/extraction.md and OUTPUT/artifacts/source.tex."""
+    """Fetch the arXiv source of PDF and write its archive, flattened source, and Markdown."""
     identifier = arxiv_id(read_record(pdf).provenance.pdf_url)
     response = httpx.get(f"{arxiv_base}/e-print/{identifier}", follow_redirects=True, timeout=REQUEST_TIMEOUT_SECONDS)
     response.raise_for_status()
@@ -122,5 +126,6 @@ def extract(pdf: Path, output: Path, arxiv_base: str) -> None:
         if not text.strip():
             raise ArxivSourceError("pandoc produced no text from the flattened source")
         (output / "artifacts").mkdir()
+        (output / "artifacts" / "source.eprint").write_bytes(response.content)
         (output / "artifacts" / "source.tex").write_text(flattened.read_text(encoding="utf-8"), encoding="utf-8")
     (output / "extraction.md").write_text(text, encoding="utf-8")

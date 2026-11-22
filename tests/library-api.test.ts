@@ -223,6 +223,8 @@ test("an item's extraction is derived from the Markdown and the artifact directo
   writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Codes\n");
   expect(await extraction()).toEqual({
     status: "extracted",
+    sourceKind: "document_structure",
+    authoritative: false,
     markdown: {
       name: "lattices.md",
       path: join(bucket.root, "lattices.md"),

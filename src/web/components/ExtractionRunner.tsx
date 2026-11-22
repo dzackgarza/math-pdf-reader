@@ -3,11 +3,13 @@
 import { AlertTriangle, CheckCircle2, LoaderCircle, Play } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { useState } from "react";
-import type { ExtractionPlugin, PdfLimit } from "../../contract/extraction";
+import { pluginAcceptsUrl, type ExtractionPlugin, type PdfLimit } from "../../contract/extraction";
 import type { ExtractionAttempt } from "../libraryActions";
 import type { PluginsState } from "../useExtractionPlugins";
+import type { BucketItem } from "../../contract/library";
 
 export type ItemExtractionActions = {
+  item: BucketItem;
   plugins: PluginsState;
   attempt: ExtractionAttempt | undefined;
   onRun: (pluginId: string) => void;
@@ -18,7 +20,13 @@ function pluginName(plugins: ExtractionPlugin[], id: string): string {
   return plugin === undefined ? id : plugin.name;
 }
 
-function limitText(limit: PdfLimit, observed: number): string {
+function limitText(limit: PdfLimit, observed: number | string): string {
+  if (limit.kind === "source") {
+    return `this PDF is not from ${limit.value}`;
+  }
+  if (typeof observed !== "number") {
+    return "this PDF does not satisfy the plugin's input requirements";
+  }
   return limit.kind === "max_pages"
     ? `this PDF has ${observed} pages; the plugin accepts at most ${limit.value}`
     : `this PDF is ${prettyBytes(observed)}; the plugin accepts at most ${prettyBytes(limit.value)}`;
@@ -95,27 +103,34 @@ function Outcome({
 }
 
 function RunControls({
+  item,
   plugins,
   attempt,
   onRun,
 }: {
+  item: BucketItem;
   plugins: ExtractionPlugin[];
   attempt: ExtractionAttempt | undefined;
   onRun: (pluginId: string) => void;
 }) {
-  const [chosen, setChosen] = useState(plugins.length > 0 ? plugins[0].id : "");
+  const available = plugins.filter((plugin) => pluginAcceptsUrl(plugin, item.provenance.pdf_url));
+  const [chosen, setChosen] = useState(available.length > 0 ? available[0].id : "");
   const running = attempt?.kind === "running" ? attempt : undefined;
+  const selected = available.some((plugin) => plugin.id === chosen) ? chosen : (available[0]?.id ?? "");
+  if (available.length === 0) {
+    return <p className="text-sm text-muted">No extraction plugin accepts this source.</p>;
+  }
   return (
     <div className="flex items-center gap-2">
       <select
         aria-label="Extraction plugin"
-        value={chosen}
+        value={selected}
         disabled={running !== undefined}
         onChange={(event) => setChosen(event.target.value)}
         title={plugins.find((plugin) => plugin.id === chosen)?.accepted_inputs[0]?.label}
         className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1.5 text-sm"
       >
-        {plugins.map((plugin) => (
+        {available.map((plugin) => (
           <option key={plugin.id} value={plugin.id}>
             {plugin.name}
           </option>
@@ -125,8 +140,8 @@ function RunControls({
         type="button"
         aria-label="Run extraction"
         title="Run extraction"
-        disabled={running !== undefined || chosen === ""}
-        onClick={() => onRun(chosen)}
+        disabled={running !== undefined || selected === ""}
+        onClick={() => onRun(selected)}
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line hover:bg-surface disabled:opacity-60"
       >
         {running === undefined ? (
@@ -139,7 +154,7 @@ function RunControls({
   );
 }
 
-export default function ExtractionRunner({ plugins, attempt, onRun }: ItemExtractionActions) {
+export default function ExtractionRunner({ item, plugins, attempt, onRun }: ItemExtractionActions) {
   if (plugins.status === "loading") {
     return <p className="text-sm text-muted">Loading extraction plugins…</p>;
   }
@@ -152,7 +167,12 @@ export default function ExtractionRunner({ plugins, attempt, onRun }: ItemExtrac
   }
   return (
     <div className="w-full space-y-2">
-      <RunControls plugins={plugins.plugins} attempt={attempt} onRun={onRun} />
+      <RunControls
+        item={item}
+        plugins={plugins.plugins}
+        attempt={attempt}
+        onRun={onRun}
+      />
       {attempt !== undefined && <Outcome attempt={attempt} plugins={plugins.plugins} />}
     </div>
   );

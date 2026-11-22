@@ -3,15 +3,18 @@
 //! read`) only when its file is new or has changed; the store, the library, the reader and the
 //! index export share this one cache. A `<key>.pdf` the store cannot read is reported by file
 //! name beside the items, never in their place.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
 use walkdir::WalkDir;
 
+use crate::config::EXTRACTION_METADATA;
 use crate::contract::{
-    Extraction, ExtractionExtractedFilesItem, ExtractionExtractedMarkdown, NonEmpty, PdfRecord,
-    ReadOutcomeList, ReadOutcomeListItem, StoredItem, StoredItemTitle,
+    Extraction, ExtractionExtractedFilesItem, ExtractionExtractedMarkdown,
+    ExtractionExtractedSourceKind, NonEmpty, PdfRecord, ReadOutcomeList, ReadOutcomeListItem,
+    SourceLineage, StoredItem, StoredItemTitle,
 };
 use crate::error::{AppError, AppResult};
 use crate::layout::{self, pdf_key, Key};
@@ -20,6 +23,7 @@ use crate::store::Store;
 #[derive(Clone, Debug)]
 pub struct IndexedItem {
     pub stored: StoredItem,
+    pub source_lineage: Option<SourceLineage>,
     pub path: PathBuf,
     pub size_bytes: u64,
     pub pages: u64,
@@ -39,6 +43,11 @@ pub struct Library {
     pub unreadable: Vec<UnreadableFile>,
 }
 
+pub(crate) struct MissingPromotions {
+    pub items: Vec<IndexedItem>,
+    pub unreadable: Vec<UnreadableFile>,
+}
+
 // A listed file as the index takes it.
 enum Indexed {
     Item(Box<IndexedItem>),
@@ -48,7 +57,7 @@ enum Indexed {
 /// What one file said about itself.
 #[derive(Clone)]
 pub(crate) enum FileRead {
-    Read(PdfRecord),
+    Read(Box<PdfRecord>),
     Unreadable(String),
 }
 
@@ -88,6 +97,13 @@ fn artifact(path: &Path, name: String) -> AppResult<(String, String, i64)> {
     Ok((name, path.to_string_lossy().into_owned(), size))
 }
 
+#[derive(Deserialize)]
+struct ExtractionMetadata {
+    #[serde(rename = "sourceKind")]
+    source_kind: ExtractionExtractedSourceKind,
+    authoritative: bool,
+}
+
 /// The extraction beside a stored PDF. The placement moves `<key>.extraction/` into place
 /// first and `<key>.md` last, so only the Markdown marks a complete extraction.
 fn extraction_for(root: &Path, key: &Key) -> AppResult<Extraction> {
@@ -100,7 +116,9 @@ fn extraction_for(root: &Path, key: &Key) -> AppResult<Extraction> {
     if directory.is_dir() {
         for entry in WalkDir::new(&directory).sort_by_file_name() {
             let entry = entry.map_err(AppError::internal)?;
-            if entry.file_type().is_file() {
+            if entry.file_type().is_file()
+                && entry.file_name().to_string_lossy() != EXTRACTION_METADATA
+            {
                 let relative = entry
                     .path()
                     .strip_prefix(&directory)
@@ -119,7 +137,16 @@ fn extraction_for(root: &Path, key: &Key) -> AppResult<Extraction> {
     files.sort_by(|a, b| a.path.cmp(&b.path));
     let name = format!("{key}.md");
     let (name, path, size_bytes) = artifact(&markdown, name)?;
+    let metadata = std::fs::read(directory.join(EXTRACTION_METADATA))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<ExtractionMetadata>(&bytes).ok())
+        .unwrap_or(ExtractionMetadata {
+            source_kind: ExtractionExtractedSourceKind::DocumentStructure,
+            authoritative: false,
+        });
     Ok(Extraction::Extracted {
+        source_kind: metadata.source_kind,
+        authoritative: metadata.authoritative,
         markdown: ExtractionExtractedMarkdown {
             name: nonempty(name),
             path: nonempty(path),
@@ -129,7 +156,7 @@ fn extraction_for(root: &Path, key: &Key) -> AppResult<Extraction> {
     })
 }
 
-fn stored_item(key: &Key, record: PdfRecord) -> StoredItem {
+pub(crate) fn stored_item(key: &Key, record: PdfRecord) -> StoredItem {
     StoredItem {
         key: nonempty(key.to_string()),
         provenance: record.provenance,
@@ -173,6 +200,81 @@ fn stored_file(root: &Path, name: String) -> AppResult<Option<StoredFile>> {
 }
 
 impl Store {
+    pub(crate) async fn missing_promotions(
+        &self,
+        present: &BTreeSet<String>,
+    ) -> AppResult<MissingPromotions> {
+        let mut anchors = Vec::new();
+        for entry in std::fs::read_dir(self.root())? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(name) = name.strip_prefix(".promotion-") else {
+                continue;
+            };
+            let Some((encoded, transaction)) = name.split_once('-') else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(transaction).is_err() {
+                continue;
+            }
+            let Ok(key_bytes) = hex::decode(encoded) else {
+                continue;
+            };
+            let Ok(key) = String::from_utf8(key_bytes) else {
+                continue;
+            };
+            if Key::parse(&key).is_none() || present.contains(&key) {
+                continue;
+            }
+            let directory = entry.path();
+            if !entry.file_type()?.is_dir() || directory.join("pending.pdf").try_exists()? {
+                continue;
+            }
+            let anchor = directory.join("source.pdf");
+            if !anchor.try_exists()? {
+                continue;
+            }
+            anchors.push((key, anchor));
+        }
+        let paths: Vec<_> = anchors.iter().map(|(_, path)| path.clone()).collect();
+        let reads = if paths.is_empty() {
+            Vec::new()
+        } else {
+            self.read_records(&paths).await?
+        };
+        let mut items = Vec::new();
+        let mut unreadable = Vec::new();
+        for ((key, path), read) in anchors.into_iter().zip(reads) {
+            match read {
+                FileRead::Read(record) => match record.source_lineage {
+                    Some(ref lineage)
+                        if lineage.preferred_key.as_str() == key
+                            && lineage.discovered_source_url == record.provenance.pdf_url =>
+                    {
+                        let parsed = Key::parse(&key).expect("promotion keys were validated");
+                        items.push(IndexedItem {
+                            pages: record.pages.get(),
+                            source_lineage: record.source_lineage.clone(),
+                            stored: stored_item(&parsed, *record),
+                            size_bytes: std::fs::metadata(&path)?.len(),
+                            path,
+                            extraction: extraction_for(self.root(), &parsed)?,
+                        });
+                    }
+                    _ => unreadable.push(UnreadableFile {
+                        file: path.to_string_lossy().into_owned(),
+                        message: "inconsistent promotion lineage".to_string(),
+                    }),
+                },
+                FileRead::Unreadable(message) => unreadable.push(UnreadableFile {
+                    file: path.to_string_lossy().into_owned(),
+                    message,
+                }),
+            }
+        }
+        Ok(MissingPromotions { items, unreadable })
+    }
+
     /// What each PDF at PATHS says about itself, in order, read in one `pdfbucket read`.
     pub(crate) async fn read_records(&self, paths: &[PathBuf]) -> AppResult<Vec<FileRead>> {
         let mut args = vec!["read".to_string(), "--".to_string()];
@@ -253,9 +355,21 @@ impl Store {
             }
             (None, FileRead::Read(_)) => unreachable!("a file named after no key is never read"),
         };
+        let lineage = record.source_lineage.clone();
+        if let Some(lineage) = &lineage {
+            if lineage.preferred_key.as_str() != key.as_str()
+                || lineage.discovered_source_url != record.provenance.pdf_url
+            {
+                return Ok(Indexed::Unreadable(UnreadableFile {
+                    message: "inconsistent embedded source lineage".to_string(),
+                    file: file.name,
+                }));
+            }
+        }
         Ok(Indexed::Item(Box::new(IndexedItem {
             pages: record.pages.get(),
-            stored: stored_item(&key, record),
+            stored: stored_item(&key, *record),
+            source_lineage: lineage,
             extraction: extraction_for(self.root(), &key)?,
             path: file.path,
             size_bytes: file.size_bytes,
@@ -289,6 +403,51 @@ impl Store {
                 Indexed::Unreadable(unreadable) => library.unreadable.push(unreadable),
             }
         }
+        let present: BTreeSet<String> = library
+            .items
+            .iter()
+            .map(|item| item.stored.key.to_string())
+            .chain(
+                library
+                    .unreadable
+                    .iter()
+                    .filter_map(|file| pdf_key(&file.file).map(|key| key.to_string())),
+            )
+            .collect();
+        let missing = self.missing_promotions(&present).await?;
+        library.unreadable.extend(missing.unreadable);
+        let provenance: BTreeMap<_, _> = library
+            .items
+            .iter()
+            .map(|item| (item.stored.key.as_str(), &item.stored.provenance))
+            .collect();
+        let mut originals: BTreeMap<String, SourceLineage> = BTreeMap::new();
+        for lineage in library
+            .items
+            .iter()
+            .chain(missing.items.iter())
+            .filter_map(|item| item.source_lineage.as_ref())
+        {
+            if provenance.get(lineage.original_key.as_str()) != Some(&&lineage.original_provenance)
+            {
+                continue;
+            }
+            let key = lineage.original_key.to_string();
+            match originals.get(&key) {
+                Some(previous)
+                    if previous.promoted_at.instant() >= lineage.promoted_at.instant() => {}
+                _ => {
+                    originals.insert(key, lineage.clone());
+                }
+            }
+        }
+        for item in &mut library.items {
+            if let Some(lineage) = originals.get(item.stored.key.as_str()) {
+                if lineage.original_provenance == item.stored.provenance {
+                    item.source_lineage = Some(lineage.clone());
+                }
+            }
+        }
         Ok(library)
     }
 
@@ -300,21 +459,15 @@ impl Store {
     /// The stored item for KEY, reading only its own file; None when KEY names no readable
     /// stored PDF.
     pub async fn item(&self, key: &str) -> AppResult<Option<IndexedItem>> {
-        let Some(key) = Key::parse(key) else {
+        if Key::parse(key).is_none() {
             return Ok(None);
-        };
-        let Some(file) = stored_file(self.root(), format!("{key}.pdf"))? else {
-            return Ok(None);
-        };
-        let read = self
-            .reads_of(std::slice::from_ref(&file), false)
+        }
+        Ok(self
+            .library()
             .await?
-            .pop()
-            .expect("one file read gives one outcome");
-        Ok(match self.indexed(file, read)? {
-            Indexed::Item(item) => Some(*item),
-            Indexed::Unreadable(_) => None,
-        })
+            .items
+            .into_iter()
+            .find(|item| item.stored.key.as_str() == key))
     }
 }
 
@@ -328,6 +481,17 @@ pub struct LibraryIndex {
 impl LibraryIndex {
     pub fn new(store: Store) -> Self {
         Self { store }
+    }
+
+    pub(crate) async fn missing_promotions(
+        &self,
+        present: &BTreeSet<String>,
+    ) -> AppResult<MissingPromotions> {
+        self.store.missing_promotions(present).await
+    }
+
+    pub(crate) async fn clean_pending_promotions(&self) -> AppResult<()> {
+        self.store.clean_pending_promotions().await
     }
 
     pub async fn library(&self) -> AppResult<Library> {

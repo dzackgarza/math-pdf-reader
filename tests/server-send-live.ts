@@ -3,14 +3,15 @@
 // one folder; Send PDF Only stores a PDF as a standalone attachment; and Send to Zotero and
 // Extract sends, then tries the configured plugins in order and attaches the first one's Markdown.
 //
-// MUTATING: the send writes into the Zotero library, so the test is opt-in with ZOTERO_LIVE=1.
+// MUTATING: the send writes into the Zotero library.
 // Every item a send reports as created is trashed in `afterAll`, with its attachments; an item
-// the library already held is never touched. Opted in but unreachable is a failure, not a skip.
+// the library already held is never touched. Zotero being unreachable is a failure.
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { CaptureResponseSchema } from "../src/contract/capture";
 import {
   FolderImportResponseSchema,
   LibraryPayloadSchema,
@@ -19,7 +20,6 @@ import {
 } from "../src/contract/library";
 import { EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
-const LIVE = process.env.ZOTERO_LIVE === "1";
 const ZOTERO_URL = "http://127.0.0.1:23119";
 // A send asks remote translators and metadata services, and attaches a full PDF.
 const REMOTE_TIMEOUT_MS = 180_000;
@@ -57,7 +57,6 @@ async function sendAll(bucket: Bucket): Promise<string[]> {
   const itemKeys: string[] = [];
   for (const key of keys) {
     const response = await bucket.request(`/api/items/${key}/zotero`, { method: "POST" });
-    expect(response.status).toBe(200);
     const sent = SendResponseSchema.parse(await response.json());
     if (sent.created) {
       createdItemKeys.push(sent.itemKey);
@@ -67,7 +66,7 @@ async function sendAll(bucket: Bucket): Promise<string[]> {
   return itemKeys;
 }
 
-test.skipIf(!LIVE)(
+test(
   "two papers captured from one listing page become two Zotero items",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
@@ -95,7 +94,7 @@ test.skipIf(!LIVE)(
       // The text of a listing page's PDF link.
       form.set("title_hint", "pdf");
       const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
-      expect(captured.status).toBe(200);
+      CaptureResponseSchema.parse(await captured.json());
     }
 
     expect(new Set(await sendAll(bucket)).size).toBe(2);
@@ -104,7 +103,7 @@ test.skipIf(!LIVE)(
   REMOTE_TIMEOUT_MS,
 );
 
-test.skipIf(!LIVE)(
+test(
   "two papers imported from one folder become two Zotero items",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
@@ -124,7 +123,6 @@ test.skipIf(!LIVE)(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: folder }),
     });
-    expect(imported.status).toBe(200);
     FolderImportResponseSchema.parse(await imported.json());
 
     expect(new Set(await sendAll(bucket)).size).toBe(2);
@@ -176,10 +174,10 @@ async function captureOne(bucket: Bucket, key: string, pdfUrl: string): Promise<
   form.set("pdf_url", pdfUrl);
   form.set("title_hint", "K3 surfaces");
   const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
-  expect(captured.status).toBe(200);
+  CaptureResponseSchema.parse(await captured.json());
 }
 
-test.skipIf(!LIVE)(
+test(
   "Send PDF Only stores a PDF from a one-off link as a standalone attachment, and the item leaves",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
@@ -195,7 +193,6 @@ test.skipIf(!LIVE)(
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
     const sent = SendResponseSchema.parse(await response.json());
     createdItemKeys.push(sent.itemKey);
     expect(sent).toMatchObject({ created: true, performed: ["pdf"], kept: false });
@@ -209,7 +206,7 @@ test.skipIf(!LIVE)(
   REMOTE_TIMEOUT_MS,
 );
 
-test.skipIf(!LIVE)(
+test(
   "Send to Zotero and Extract sends, tries the chain in order, and attaches the first success's Markdown",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
@@ -245,7 +242,6 @@ test.skipIf(!LIVE)(
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
     const answer = SendAndExtractResponseSchema.parse(await response.json());
     if (answer.send.created) {
       createdItemKeys.push(answer.send.itemKey);
@@ -268,7 +264,7 @@ test.skipIf(!LIVE)(
   REMOTE_TIMEOUT_MS,
 );
 
-test.skipIf(!LIVE)(
+test(
   "a send of a PDF URL Zotero identifies leaves one PDF on the new item: the bucket's copy",
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
@@ -285,14 +281,13 @@ test.skipIf(!LIVE)(
     form.set("pdf_url", "https://arxiv.org/pdf/2609.21173v1");
     form.set("title_hint", "pdf");
     const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
-    expect(captured.status).toBe(200);
+    CaptureResponseSchema.parse(await captured.json());
     const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
 
     const response = await bucket.request(`/api/items/${library.items[0]?.id}/zotero`, {
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
     const sent = SendResponseSchema.parse(await response.json());
     createdItemKeys.push(sent.itemKey);
     expect(sent.created).toBe(true);
@@ -338,9 +333,8 @@ async function sendCopy(file: string): Promise<string[]> {
   form.set("pdf_url", "https://arxiv.org/pdf/2609.21174v1");
   form.set("title_hint", "K3 surfaces");
   const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
-  expect(captured.status).toBe(200);
+  CaptureResponseSchema.parse(await captured.json());
   const response = await bucket.request("/api/items/k3-surfaces/zotero", { method: "POST" });
-  expect(response.status).toBe(200);
   const sent = SendResponseSchema.parse(await response.json());
   if (sent.created) {
     createdItemKeys.push(sent.itemKey);
@@ -349,7 +343,7 @@ async function sendCopy(file: string): Promise<string[]> {
   return zoteroPdfKeys(sent.itemKey);
 }
 
-test.skipIf(!LIVE)(
+test(
   "a send of a paper Zotero holds leaves its entry one PDF: the copy with more annotations",
   async () => {
     const plain = await sendCopy("arxiv-2609.21174v1.pdf");

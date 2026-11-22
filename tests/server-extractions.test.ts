@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { type AppConfig, CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ExtractionOutcomeSchema,
@@ -23,7 +24,7 @@ function sha256(bytes: Uint8Array): string {
 // A bucket holding the 10-page fixture under key `lattices`, served over a manifest whose
 // plugins are the fixture extractor in the given modes.
 async function bucketWithExtractors(
-  plugins: { mode: string; maxPages: number }[],
+  plugins: { mode: string; maxPages: number; source?: "arxiv" }[],
   appConfig: AppConfig = config,
 ) {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-extract-"));
@@ -32,12 +33,22 @@ async function bucketWithExtractors(
     "extractions.json",
   );
   const manifest = {
-    plugins: plugins.map(({ mode, maxPages }) => ({
+    plugins: plugins.map(({ mode, maxPages, source }) => ({
       id: mode,
       name: `Fixture extractor (${mode})`,
+      source_kind: "document_structure",
+      authoritative: true,
       command: ["sh", extractor, mode, "$pdf", "$output"],
       accepted_inputs: [
-        { kind: "pdf", id: "pdf", label: "PDF", limits: [{ kind: "max_pages", value: maxPages }] },
+        {
+          kind: "pdf",
+          id: "pdf",
+          label: "PDF",
+          limits: [
+            { kind: "max_pages", value: maxPages },
+            ...(source === undefined ? [] : [{ kind: "source", value: source }]),
+          ],
+        },
       ],
     })),
   };
@@ -104,6 +115,8 @@ test("a successful run answers with the placed artifacts and their hashes", asyn
     status: "succeeded",
     key: "lattices",
     plugin_id: "record",
+    source_kind: "document_structure",
+    authoritative: true,
     markdown: { path: "lattices.md", sha256: sha256(markdown), size: markdown.length },
     artifacts: [{ path: "lattices.extraction/source.pdf", sha256: sha256(pdf), size: pdf.length }],
   });
@@ -138,6 +151,30 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
     violations: [{ limit: { kind: "max_pages", value: 5 }, observed: 10 }],
   });
 
+  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+});
+
+test("a plugin restricted to arXiv is rejected before its command runs for another source", async () => {
+  const { root, app } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20, source: "arxiv" },
+  ]);
+
+  const response = await app.request(`/api/items/lattices/extractions/record`, {
+    method: "POST",
+  });
+
+  expect(response.status).toBe(422);
+  expect(ExtractionOutcomeSchema.parse(await response.json())).toEqual({
+    status: "rejected",
+    key: "lattices",
+    plugin_id: "record",
+    violations: [
+      {
+        limit: { kind: "source", value: "arxiv" },
+        observed: "https://www.math.example.edu/~author/lattices.pdf",
+      },
+    ],
+  });
   expect(readdirSync(root)).toEqual(["lattices.pdf"]);
 });
 
@@ -224,7 +261,7 @@ test("a later run moves the whole previous extraction to the trash; a failed run
   const later = await app.request(`/api/items/lattices/extractions/markdown`, { method: "POST" });
 
   expect(later.status).toBe(200);
-  expect(readdirSync(root).sort()).toEqual(["lattices.md", "lattices.pdf"]);
+  expect(readdirSync(root).sort()).toEqual(["lattices.extraction", "lattices.md", "lattices.pdf"]);
   expect(readFileSync(join(root, "lattices.md"), "utf8")).toBe(
     "# Extracted by the markdown mode\n",
   );
@@ -252,10 +289,13 @@ test("a plugin that exits 0 without writing extraction.md answers 502 plugin_con
   expect(readdirSync(root)).toEqual(["lattices.pdf"]);
 });
 
-test("the assistant reads a stored extraction, whole, and the PDF's own text by page", async () => {
+test("the assistant reads only a stored extraction", async () => {
   const { app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
-  const before = await (await app.request("/api/ai/text/lattices")).text();
-  expect(before).toContain("--- page 1 of ");
+  const before = await app.request("/api/ai/text/lattices");
+  expect(before.status).toBe(400);
+  expect(ApiErrorSchema.parse(await before.json()).error.message).toContain(
+    "no structured extraction",
+  );
 
   const run = await app.request("/api/items/lattices/extractions/markdown", { method: "POST" });
   expect(run.status).toBe(200);
@@ -263,8 +303,173 @@ test("the assistant reads a stored extraction, whole, and the PDF's own text by 
   expect(await (await app.request("/api/ai/text/lattices")).text()).toBe(
     "# Extracted by the markdown mode\n",
   );
-  expect(await (await app.request("/api/ai/text/lattices?page=1")).text()).toContain(
-    "--- page 1 of ",
+  const page = await app.request("/api/ai/text/lattices?page=1");
+  expect(page.status).toBe(400);
+  expect(ApiErrorSchema.parse(await page.json()).error.message).toContain(
+    "page-specific PDF text is unavailable",
   );
   await app.stop();
 });
+
+test("the server stores the arXiv provider's source archive as authoritative", async () => {
+  const source = gzipSync(
+    Buffer.from("\\documentclass{article}\\begin{document}Source fixture.\\end{document}"),
+  );
+  let published: Buffer | null = null;
+  const publisher = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      return new URL(request.url).pathname === "/e-print/2301.01234"
+        ? published === null ? new Response("not found", { status: 404 }) : new Response(new Uint8Array(published))
+        : new Response("not found", { status: 404 });
+    },
+  });
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-source-extract-"));
+  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-source-manifest-")), "extractions.json");
+  writeFileSync(manifestPath, JSON.stringify({
+    plugins: [{
+      id: "arxiv-source",
+      name: "arXiv LaTeX source",
+      source_kind: "arxiv_latex",
+      authoritative: true,
+      command: ["pdfbucket-arxiv-source", "$pdf", "$output", publisher.url.origin],
+      accepted_inputs: [{
+        kind: "pdf",
+        id: "pdf",
+        label: "arXiv PDF",
+        limits: [{ kind: "source", value: "arxiv" }],
+      }],
+    }],
+  }));
+  const app = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+  try {
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(fixture)], "source.pdf", { type: "application/pdf" }));
+    form.set("pdf_url", "https://arxiv.org/pdf/2301.01234");
+    form.set("title_hint", "Source fixture");
+    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+    for (const invalid of [null, Buffer.from("%PDF-1.4 no source"), Buffer.from("malformed archive")]) {
+      published = invalid;
+      const failed = await app.request("/api/items/source/extractions/arxiv-source", { method: "POST" });
+      expect(failed.status).toBe(502);
+      expect(readdirSync(root)).toEqual(["source.pdf"]);
+      expect((await app.request("/api/ai/text/source")).status).toBe(400);
+    }
+    published = source;
+    const response = await app.request("/api/items/source/extractions/arxiv-source", { method: "POST" });
+    expect(response.status).toBe(200);
+    const outcome = ExtractionOutcomeSchema.parse(await response.json());
+    expect(outcome).toMatchObject({ status: "succeeded", source_kind: "arxiv_latex", authoritative: true });
+    expect(readFileSync(join(root, "source.extraction/source.eprint"))).toEqual(source);
+    expect(readFileSync(join(root, "source.extraction/source.tex"), "utf8")).toContain("Source fixture.");
+    const assistantText = await app.request("/api/ai/text/source");
+    expect(assistantText.status).toBe(200);
+    expect(await assistantText.text()).toContain("\\documentclass");
+    const library = await (await app.request("/api/library")).json();
+    expect(library.items[0].extraction).toMatchObject({
+      status: "extracted",
+      sourceKind: "arxiv_latex",
+      authoritative: true,
+    });
+  } finally {
+    await app.stop();
+    publisher.stop(true);
+  }
+}, 30_000);
+
+test("an arXiv provider without source artifacts cannot create an authoritative result", async () => {
+  const { root, app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
+  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-contract-")), "extractions.json");
+  writeFileSync(manifestPath, JSON.stringify({
+    plugins: [{
+      id: "markdown",
+      name: "Missing source",
+      source_kind: "arxiv_latex",
+      authoritative: true,
+      command: ["sh", extractor, "markdown", "$pdf", "$output"],
+      accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+    }],
+  }));
+  const checked = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+  try {
+    const response = await checked.request("/api/items/lattices/extractions/markdown", { method: "POST" });
+    expect(response.status).toBe(502);
+    expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("plugin_contract_broken");
+    expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  } finally {
+    await checked.stop();
+    await app.stop();
+  }
+}, 30_000);
+
+test("the server runs the Mistral OCR provider against a local OCR service", async () => {
+  const calls: string[] = [];
+  const service = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const path = new URL(request.url).pathname;
+      calls.push(`${request.method} ${path}`);
+      if (request.headers.get("authorization") !== "Bearer fixture-key") {
+        return Response.json({ error: "bad credentials" }, { status: 401 });
+      }
+      if (request.method === "POST" && path === "/v1/files") {
+        const body = await request.arrayBuffer();
+        return Response.json({ id: "file-1", object: "file", bytes: body.byteLength, created_at: 0, filename: "fixture.pdf", purpose: "ocr", sample_type: "pretrain", source: "upload" });
+      }
+      if (request.method === "GET" && path === "/v1/files/file-1/url") {
+        return Response.json({ url: new URL("/signed/file-1", request.url).href });
+      }
+      if (request.method === "POST" && path === "/v1/ocr") {
+        return Response.json({
+          model: "mistral-ocr-latest",
+          pages: [{ index: 0, markdown: "# OCR fixture\n\nStructured mathematics.", images: [], dimensions: null }],
+          usage_info: { pages_processed: 1 },
+        });
+      }
+      if (request.method === "DELETE" && path === "/v1/files/file-1") {
+        return Response.json({ id: "file-1", object: "file", deleted: true });
+      }
+      return Response.json({ error: `unexpected ${request.method} ${path}` }, { status: 404 });
+    },
+  });
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ocr-"));
+  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-ocr-manifest-")), "extractions.json");
+  writeFileSync(manifestPath, JSON.stringify({
+    plugins: [{
+      id: "mistral-ocr",
+      name: "Mistral OCR",
+      source_kind: "ocr",
+      authoritative: true,
+      command: ["pdfbucket-mistral-ocr", "$pdf", "$output", service.url.origin],
+      accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+    }],
+  }));
+  const previous = process.env.MISTRAL_API_KEY;
+  process.env.MISTRAL_API_KEY = "fixture-key";
+  let app: Awaited<ReturnType<typeof serveBucket>>;
+  try {
+    app = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+  } finally {
+    if (previous === undefined) delete process.env.MISTRAL_API_KEY;
+    else process.env.MISTRAL_API_KEY = previous;
+  }
+  try {
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(fixture)], "ocr.pdf", { type: "application/pdf" }));
+    form.set("pdf_url", "https://example.org/ocr.pdf");
+    form.set("title_hint", "OCR fixture");
+    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+    const response = await app.request("/api/items/ocr/extractions/mistral-ocr", { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(ExtractionOutcomeSchema.parse(await response.json())).toMatchObject({
+      status: "succeeded", source_kind: "ocr", authoritative: true,
+    });
+    expect(await (await app.request("/api/ai/text/ocr")).text()).toContain("Structured mathematics.");
+    expect(calls).toEqual(["POST /v1/files", "GET /v1/files/file-1/url", "POST /v1/ocr", "DELETE /v1/files/file-1"]);
+  } finally {
+    await app.stop();
+    service.stop(true);
+  }
+}, 30_000);

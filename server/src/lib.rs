@@ -1,8 +1,9 @@
-//! The PDF Bucket server: capture, the PDF and reader URLs, the library API and the index
+//! The Math PDF Reader server: capture, the PDF and reader URLs, the library API and the index
 //! export, served by the desktop app in its own process and by `pdf-bucket serve` for tests and
 //! evidence runs.
 pub mod ai;
 pub mod app;
+pub mod arxiv;
 pub mod config;
 pub mod contract;
 pub mod error;

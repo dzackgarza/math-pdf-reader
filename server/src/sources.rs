@@ -14,7 +14,7 @@ use url::Url;
 use crate::contract::{
     AppConfigRebuild, NonEmpty, Provenance, RebuildOutcome, RebuildOutcomeRestoredMetadata,
     RebuildOutcomeUnrestoredAttemptsItem, RebuildOutcomeUnrestoredAttemptsItemStatus, SourceCheck,
-    Timestamp, TitleSource,
+    SourceLineage, Timestamp, TitleSource,
 };
 use crate::error::AppResult;
 use crate::store::{stage, ResolvedMetadata, Restoration, StageFailure, Staged, Store};
@@ -145,6 +145,7 @@ async fn fetch_original(
 pub struct RecoverableItem {
     pub key: String,
     pub provenance: Provenance,
+    pub source_lineage: Option<SourceLineage>,
     pub title: String,
     pub title_source: TitleSource,
     pub authors: Vec<String>,
@@ -161,7 +162,15 @@ async fn restore(
     from: &str,
     pdf: &Staged,
 ) -> AppResult<RebuildOutcome> {
-    let stored_sha256 = match store.restore(&item.key, pdf, &item.provenance).await? {
+    let stored_sha256 = match store
+        .restore(
+            &item.key,
+            pdf,
+            &item.provenance,
+            item.source_lineage.as_ref(),
+        )
+        .await?
+    {
         Restoration::Present => return Ok(RebuildOutcome::Present { key }),
         Restoration::Restored { stored_sha256 } => stored_sha256,
     };

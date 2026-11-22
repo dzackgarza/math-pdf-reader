@@ -41,7 +41,7 @@ agent-memory maintain move <key> --to global/advice
 ```
 <!-- agent-memory:end -->
 
-# PDF Bucket
+# Math PDF Reader
 
 A standalone desktop app that replaces reading PDFs in the browser. Browser extensions
 intercept every PDF navigation in Chrome and Firefox and hand the PDF to the bucket, which
@@ -55,10 +55,10 @@ Zotero stays the citation store; the bucket is the reading store.
 The desktop app the user runs is an installed copy: the binary in `~/.local/bin` and its runtime
 files (library bundle with the reader, extraction manifest, Python environment, capture
 extensions) in `$XDG_DATA_HOME/pdf-bucket-app`. A commit to this checkout does not change it. The
-user sees a change only after `just provision`, which builds, installs and restarts the app, and
-builds both capture extensions, has addons.mozilla.org sign a changed Firefox build, and installs
-them where Chromium loads the unpacked build and where the bucket serves Firefox its updates. An
-extension whose version differs from the provisioned one refuses captures until it is replaced.
+user sees desktop-app changes only after `just provision`, which builds, installs and restarts the
+app. Browser extension changes use the private `just _provision-extensions` recipe, which builds,
+signs and installs the extensions independently; an extension whose version differs from the
+provisioned one refuses captures until it is replaced.
 
 Every start of the app goes through `scripts/launch`, which provisions first when the build input's hash differs from the stamp of the last provision, so an old build cannot open. `just provision` is still how a change reaches the running app without a restart by the user.
 
@@ -74,7 +74,7 @@ Verify that behaviour against the running app on port 8770, not only against the
 ## Where the plan is
 
 The execution tracker is the GitHub issue tree rooted at
-[#4 PDF Bucket roadmap](https://github.com/dzackgarza/math-pdf-reader/issues/4): its
+[#4 Math PDF Reader roadmap](https://github.com/dzackgarza/math-pdf-reader/issues/4): its
 sub-issues are the milestones in delivery order, each with its definition of done and its
 blockers. The plan of record, with the invariants, the Decision Log and the handoff, is a
 card in the agent-memory vault, not a file in this repo.

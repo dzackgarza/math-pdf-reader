@@ -36,7 +36,7 @@ import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
-import { readOrganization } from "./store";
+import { readOrganization, recordMetadata } from "./store";
 
 setDefaultTimeout(30_000);
 
@@ -134,6 +134,66 @@ let page: Page;
 const shot = async (name: string) => {
   await page.screenshot({ path: join(screenshots, `${name}.png`) });
 };
+
+test("arXiv promotion selects the preferred item and reports when it needs rebuilding", async () => {
+  const arxiv = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      if (new URL(request.url).pathname === "/api/query") {
+        return new Response(
+          "<feed><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><author><name>An Author</name></author></entry></feed>",
+          { headers: { "Content-Type": "application/atom+xml" } },
+        );
+      }
+      return new Response(fixture("problem-set.pdf"), { headers: { "Content-Type": "application/pdf" } });
+    },
+  });
+  const endpoint = (path: string) => new URL(path, arxiv.url).href;
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-arxiv-ui-"));
+  const config = loadAppConfig(CONFIG_PATH);
+  const app = await serveBucket({
+    root,
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    config: {
+      ...config,
+      arxiv: { api_url: endpoint("/api/query"), abs_url: endpoint("/abs/"), pdf_url: endpoint("/pdf/"), e_print_url: endpoint("/e-print/") },
+    },
+  });
+  try {
+    const form = new FormData();
+    form.set("pdf", new File([fixture("lecture-notes.pdf")], "original.pdf"));
+    form.set("pdf_url", published("/~author/lattices.pdf"));
+    form.set("title_hint", "Promotion Notes");
+    const capture = await app.request("/capture-bytes", { method: "POST", body: form });
+    expect(capture.ok).toBe(true);
+    await recordMetadata(root, "original", "resolver", { title: "Promotion Notes", authors: ["An Author"], year: 2024 });
+
+    await page.goto(`${app.origin}/`);
+    await page.waitForSelector(row("original"));
+    await page.click(row("original"));
+    await (await byRole("button", "Find on arXiv")).click();
+    await (await byRole("button", "Use this version")).click();
+    await page.waitForSelector(row("1234.5678v1"));
+    await shows('aside[aria-label="Item details"]', "Promotion Notes");
+    await shot("arxiv-promotion");
+
+    const away = mkdtempSync(join(tmpdir(), "pdf-bucket-arxiv-ui-away-"));
+    renameSync(join(root, "1234.5678v1.pdf"), join(away, "preferred.pdf"));
+    await page.goto(`${app.origin}/`);
+    await page.waitForSelector(row("original"));
+    await page.click(row("original"));
+    await (await byRole("button", "Find on arXiv")).click();
+    await (await byRole("button", "Use this version")).click();
+    await shows("body", "The preferred arXiv PDF is missing; use Needs Re-fetch to rebuild it.");
+    await shows('button[aria-label="Needs Re-fetch"] span:last-child', "1");
+    await shot("arxiv-promotion-missing");
+  } finally {
+    await app.stop();
+    arxiv.stop(true);
+  }
+}, 120_000);
 // The filing as the server wrote it to disk.
 const organization = async () => readOrganization(bucket.root);
 const row = (key: string) => `tr[data-item-id="${key}"]`;
@@ -2386,6 +2446,8 @@ test("an extraction past its time limit shows the limit and that nothing was wri
         {
           id: "hang",
           name: "Slow extractor",
+          source_kind: "document_structure",
+          authoritative: true,
           command: ["sh", join(fixtures, "plugins/extractor.sh"), "hang", "$pdf", "$output"],
           accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
         },
@@ -2415,13 +2477,17 @@ test("an extraction past its time limit shows the limit and that nothing was wri
     await page.goto(`${slow.origin}/`);
     await page.waitForSelector(row(key));
     await page.click(row(key));
+    const finished = page.waitForResponse(
+      (response) => response.url().endsWith(`/api/items/${key}/extractions/hang`) && response.request().method() === "POST",
+    ).then(() => performance.now());
     await page.click('button[aria-label="Run extraction"]');
     await shows(`${row(key)} [role="status"]`, "Extracting");
-
+    const completedAt = await finished;
     await shows(
       "aside [role='alert']",
       "Slow extractor ran past its 1 s limit and was stopped; nothing was written",
     );
+    expect(performance.now() - completedAt).toBeLessThan(10_000);
     await shot("extraction-timed-out");
   } finally {
     await slow.stop();
@@ -2601,6 +2667,8 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
         {
           id: "markdown",
           name: "Markdown extractor",
+          source_kind: "document_structure",
+          authoritative: true,
           command: ["sh", join(fixtures, "plugins/extractor.sh"), "markdown", "$pdf", "$output"],
           accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
         },
@@ -2630,8 +2698,13 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
     await page.click('button[aria-label="Open the assistant"]');
     await shows('section[aria-label="Extraction"]', "No extraction");
     await shot("reader-no-extraction");
+    const finished = page.waitForResponse(
+      (response) => response.url().endsWith(`/api/items/${key}/extractions/markdown`) && response.request().method() === "POST",
+    ).then(() => performance.now());
     await page.click('section[aria-label="Extraction"] button[aria-label="Run extraction"]');
+    const completedAt = await finished;
     await shows('section[aria-label="Extraction"]', "Extracted: the assistant reads the extraction");
+    expect(performance.now() - completedAt).toBeLessThan(10_000);
     await shot("reader-extracted");
 
     await page.click('button[aria-label="Collapse the assistant"]');

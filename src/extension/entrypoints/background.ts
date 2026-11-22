@@ -94,7 +94,7 @@ export default defineBackground(() => {
       case "lost":
         return failed(
           "extension",
-          "the browser stopped PDF Bucket's extension each time before the bucket answered; the bucket may hold the PDF",
+          "the browser stopped Math PDF Reader's extension each time before the bucket answered; the bucket may hold the PDF",
         );
       case "complete":
         return postDownloadToBucket(
@@ -212,7 +212,7 @@ export default defineBackground(() => {
 
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     const reportFailure = (error: unknown) =>
-      sendResponse(failed("extension", `PDF Bucket's extension failed: ${String(error)}`));
+      sendResponse(failed("extension", `Math PDF Reader's extension failed: ${String(error)}`));
     const message = RuntimeMessageSchema.safeParse(raw);
     if (!message.success) {
       reportFailure(message.error);

@@ -138,10 +138,10 @@ function ExtractionStrip({ extraction }: { extraction: NonNullable<PaneProps["ex
           <FileText aria-hidden className="h-3.5 w-3.5" />
         )}
         {running
-          ? "Extracting… the assistant reads the PDF's own text until it finishes"
+          ? "Extracting… the assistant will open when it finishes"
           : state.status === "extracted"
             ? "Extracted: the assistant reads the extraction"
-            : "No extraction: the assistant reads the PDF's own text"}
+            : "No extraction: run an extraction before opening the assistant"}
       </p>
       <ExtractionRunner {...extraction} />
     </section>

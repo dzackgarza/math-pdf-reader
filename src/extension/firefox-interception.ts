@@ -41,8 +41,8 @@ function asHtml(headers: HttpHeaders): HttpHeaders {
 function savingDocument(target: string): Uint8Array {
   const script = JSON.stringify(target).replaceAll("<", "\\u003c");
   return new TextEncoder().encode(
-    '<!doctype html><meta charset="utf-8"><title>Saving… · PDF Bucket</title>' +
-      "<p>Saving the PDF to PDF Bucket…</p>" +
+    '<!doctype html><meta charset="utf-8"><title>Saving… · Math PDF Reader</title>' +
+      "<p>Saving the PDF to Math PDF Reader…</p>" +
       `<script>addEventListener("load", () => location.replace(${script}));</script>`,
   );
 }

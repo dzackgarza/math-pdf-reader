@@ -847,7 +847,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     });
     try {
       await openStatus("unreachable");
-      expect(await text("#connection-details")).toContain("not a PDF Bucket status report");
+      expect(await text("#connection-details")).toContain("not a Math PDF Reader status report");
       expect(await badge()).toBe("!");
 
       // The lecture notes are exempted in this tab since the native open above.

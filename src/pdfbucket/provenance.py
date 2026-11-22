@@ -16,7 +16,7 @@ from pathlib import Path
 import pikepdf
 from pydantic import TypeAdapter
 
-from pdfbucket.models import ItemTitle, NonEmpty, PdfRecord, Provenance
+from pdfbucket.models import ItemTitle, NonEmpty, PdfRecord, Provenance, SourceLineage
 
 XMP_NAMESPACE = "https://github.com/dzackgarza/math-pdf-reader/ns/provenance/1.0/"
 # Every document-information key the bucket writes starts with this prefix.
@@ -39,6 +39,7 @@ AUTHORS_KEY = "/PDFBucketAuthors"
 # dc:description, the Dublin Core field for an abstract.
 YEAR_KEY = "/PDFBucketYear"
 ABSTRACT_KEY = "/PDFBucketAbstract"
+LINEAGE_KEY = "/PDFBucketSourceLineage"
 
 # `/Author` holds one text string; several names are joined with "; " (the arXiv and
 # ExifTool convention), which the fallback read splits again.
@@ -136,8 +137,19 @@ def read_record(path: Path) -> PdfRecord:
         authors=authors,
         year=year,
         abstract=docinfo.get(ABSTRACT_KEY),
+        source_lineage=SourceLineage.model_validate_json(docinfo[LINEAGE_KEY]) if LINEAGE_KEY in docinfo else None,
         pages=pages,
     )
+
+
+def embed_lineage(path: Path, output: Path, lineage: SourceLineage) -> None:
+    """Write a staged preferred PDF with its source relationship inside the file."""
+    value = lineage.model_dump_json(by_alias=True)
+    with pikepdf.open(path) as pdf:
+        pdf.docinfo[LINEAGE_KEY] = value
+        with pdf.open_metadata() as metadata:
+            metadata[f"{{{XMP_NAMESPACE}}}source-lineage"] = value
+        pdf.save(output)
 
 
 def embed_metadata(

@@ -46,7 +46,7 @@ function detail(term: string, value: Node | string): Node[] {
 
 // No answer from the background (none in time, or none at all), or one outside the reply contract.
 function unanswered(error: unknown): Failed {
-  return failed("extension", `PDF Bucket's extension gave no usable answer: ${String(error)}`);
+  return failed("extension", `Math PDF Reader's extension gave no usable answer: ${String(error)}`);
 }
 
 // Opening the PDF natively goes through the background, or the navigation is captured again;
@@ -88,7 +88,7 @@ async function leaveTab(pdfUrl: URL): Promise<void> {
 // goes only to the bucket.
 function renderStoredInFrame(response: CaptureResponse): void {
   if (!response.reader_url.startsWith(`${bucketBuild.bucketOrigin}/`)) {
-    throw new Error(`the reader URL ${response.reader_url} is not at PDF Bucket`);
+    throw new Error(`the reader URL ${response.reader_url} is not at Math PDF Reader`);
   }
   const reader = link(response.reader_url, response.provenance.title_hint);
   reader.target = "_blank";
@@ -96,7 +96,7 @@ function renderStoredInFrame(response: CaptureResponse): void {
 }
 
 function renderFailure(pdfUrl: URL, error: Failed["error"], heading: string): void {
-  document.title = `${heading} · PDF Bucket`;
+  document.title = `${heading} · Math PDF Reader`;
   element("heading").textContent = heading;
   element("details").replaceChildren(
     ...detail("Error", error.detail),
@@ -134,7 +134,7 @@ const smallFrame =
 if (newerThanLoaded()) {
   // This page belongs to a build written over the loaded extension, whose background may not
   // understand it. The reload closes this tab; the reloaded background opens the PDF again.
-  element("heading").textContent = "PDF Bucket's extension is reloading to a new build";
+  element("heading").textContent = "Math PDF Reader's extension is reloading to a new build";
   void reopenAfterReload.setValue(pdfUrl.href).then(() => browser.runtime.reload());
 } else if (shownOutcome !== null) {
   settle(pdfUrl, shownOutcome, inFrame);

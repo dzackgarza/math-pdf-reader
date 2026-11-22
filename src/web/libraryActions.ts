@@ -8,6 +8,11 @@
 import type { ExtractionOutcome } from "../contract/extraction";
 import {
   type AdvancedSearchSettings,
+  type ArxivMatch,
+  type ArxivPromotionResponse,
+  type ArxivSearchResponse,
+  ArxivPromotionResponseSchema,
+  ArxivSearchResponseSchema,
   type BucketItem,
   BucketItemSchema,
   type Collection,
@@ -122,6 +127,35 @@ export function saveItemMetadata(
   return context.api
     .call(BucketItemSchema, "PATCH", `${itemPath(key)}/metadata`, metadata)
     .then(done);
+}
+
+export function findArxivMatches(
+  context: ActionContext,
+  key: string,
+): Promise<ArxivSearchResponse> {
+  return context.api.call(
+    ArxivSearchResponseSchema,
+    "POST",
+    `${itemPath(key)}/arxiv`,
+  );
+}
+
+export function promoteArxivMatch(
+  context: ActionContext,
+  key: string,
+  match: ArxivMatch,
+): Promise<ArxivPromotionResponse> {
+  return context.api
+    .call(
+      ArxivPromotionResponseSchema,
+      "POST",
+      `${itemPath(key)}/arxiv/promote`,
+      match,
+    )
+    .then((response) => {
+      context.api.refresh();
+      return response;
+    });
 }
 
 function newCollection(context: ActionContext, name: string, parentId?: string) {

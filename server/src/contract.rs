@@ -73,6 +73,8 @@ macro_rules! contract_types {
 // config `pdf-bucket serve` is given.
 contract_types!(
     AiSessionRequest,
+    ArxivMatch,
+    ArxivPromotionResponse,
     AppConfig,
     BulkCollectionsRequest,
     BulkTagsRequest,
@@ -94,6 +96,7 @@ contract_types!(
     RemovedKeys,
     SavedSearchUpdateRequest,
     Sessions,
+    SourceLineage,
 );
 
 /// The validator of the definition DEF: the whole contract schema, entered at `#/$defs/DEF`.

@@ -6,6 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 git ls-files -co --exclude-standard -z -- \
     src server desktop plugins scripts/provision.sh scripts/launch scripts/amo_signed.py scripts/firefox-policy.sh \
-    wxt.config.ts pdf-bucket.config.json pyproject.toml uv.lock package.json bun.lock Cargo.toml Cargo.lock \
-    tsconfig.json tsconfig.base.json desktop/pdf-bucket-desktop.desktop |
+    pdf-bucket.config.json pyproject.toml uv.lock package.json bun.lock Cargo.toml Cargo.lock \
+    tsconfig.json tsconfig.base.json desktop/pdf-bucket-desktop.desktop \
+    ':(exclude)src/extension/**' ':(exclude)wxt.config.ts' |
     sort -zu | xargs -0 sha256sum | sha256sum | cut -d' ' -f1

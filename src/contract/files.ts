@@ -12,6 +12,7 @@ import {
   ReadingSchema,
   ReadingSessionSchema,
   SavedSearchSchema,
+  SourceLineageSchema,
   SourceCheckSchema,
   ZoteroRecordSchema,
 } from "./library";
@@ -26,6 +27,8 @@ export const ItemFilingSchema = z.strictObject({
   // The last check of the PDF URL, and the item's mirrors with theirs.
   sourceCheck: SourceCheckSchema,
   mirrors: z.array(MirrorSchema),
+  // Present for an original item and its promoted preferred representation.
+  sourceLineage: SourceLineageSchema.optional(),
   modifiedAt: z.iso.datetime({ offset: true }),
   // Present once a send has created the item in Zotero.
   zotero: ZoteroRecordSchema.optional(),
@@ -68,6 +71,8 @@ export const ExtractionRecordSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("none") }),
   z.strictObject({
     status: z.literal("extracted"),
+    sourceKind: z.enum(["arxiv_latex", "ocr", "document_structure"]),
+    authoritative: z.boolean(),
     markdown: ExtractionFileRecordSchema,
     files: z.array(ExtractionFileRecordSchema),
   }),

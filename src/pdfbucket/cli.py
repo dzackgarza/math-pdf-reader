@@ -20,6 +20,7 @@ from pdfbucket.models import (
     Provenance,
     Read,
     ReadOutcome,
+    SourceLineage,
     StoreFailure,
     TitleSource,
     Unreadable,
@@ -27,12 +28,13 @@ from pdfbucket.models import (
 from pdfbucket.provenance import (
     MissingProvenanceError,
     embed_metadata,
+    embed_lineage,
     embed_provenance,
     read_record,
 )
 from pdfbucket.thumbnails import render_first_page
 
-app = App(help="PDF Bucket's pikepdf and MuPDF commands")
+app = App(help="Math PDF Reader's pikepdf and MuPDF commands")
 
 READ_OUTCOMES: TypeAdapter[list[ReadOutcome]] = TypeAdapter(list[ReadOutcome])
 
@@ -79,6 +81,28 @@ def embed_metadata_command(
     write_bytes(embed_metadata(pdf, ItemTitle(text=text, source=source), list(author), year, abstract))
 
 
+@app.command(name="embed-lineage")
+def embed_lineage_command(
+    pdf: Path,
+    output: Path,
+    *,
+    original_key: str,
+    original_provenance: str,
+    preferred_key: str,
+    discovered_source_url: str,
+    promoted_at: str,
+) -> None:
+    """Write a staged preferred PDF with its source lineage."""
+    lineage = SourceLineage(
+        original_key=original_key,
+        original_provenance=Provenance.model_validate_json(original_provenance),
+        preferred_key=preferred_key,
+        discovered_source_url=discovered_source_url,
+        promoted_at=promoted_at,
+    )
+    embed_lineage(pdf, output, lineage)
+
+
 def read_one(path: Path) -> ReadOutcome:
     # A torn or foreign file is one file's outcome, not a failure of the whole read.
     try:
@@ -90,7 +114,7 @@ def read_one(path: Path) -> ReadOutcome:
 @app.command
 def read(*paths: Path) -> None:
     """Print, for each PATH in order, what the PDF says about itself or why it cannot be read."""
-    print(READ_OUTCOMES.dump_json([read_one(path) for path in paths]).decode())
+    print(READ_OUTCOMES.dump_json([read_one(path) for path in paths], by_alias=True).decode())
 
 
 # Annotations that hold no reader's mark: a link, a form field, and the pop-up window a markup

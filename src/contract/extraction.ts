@@ -4,9 +4,13 @@
 import { z } from "zod";
 import { NonEmptySchema, Sha256Schema } from "./text";
 
+export const ExtractionSourceSchema = z.enum(["arxiv"]);
+export const ExtractionSourceKindSchema = z.enum(["arxiv_latex", "ocr", "document_structure"]);
+
 export const PdfLimitSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("max_pages"), value: z.int().positive() }),
   z.strictObject({ kind: z.literal("max_bytes"), value: z.int().positive() }),
+  z.strictObject({ kind: z.literal("source"), value: ExtractionSourceSchema }),
 ]);
 
 // What an extraction plugin accepts: a PDF within every listed limit; no limits means any PDF.
@@ -20,15 +24,22 @@ export const PdfInputSchema = z.strictObject({
 // `plugins/manifests/extractions.json`: `$pdf` and `$output` in a command are replaced by the
 // stored PDF and an empty output directory; on exit 0 the plugin has written
 // `$output/extraction.md` and, when it has more, files under `$output/artifacts/`.
+const ExtractionManifestPluginSchema = z
+  .strictObject({
+    id: NonEmptySchema,
+    name: NonEmptySchema,
+    source_kind: ExtractionSourceKindSchema,
+    authoritative: z.boolean(),
+    command: z.array(z.string()).min(1),
+    accepted_inputs: z.array(PdfInputSchema).min(1),
+  })
+  .refine(
+    (plugin) => !/\b(pdftotext|pymupdf|fitz)\b/i.test(plugin.command.join(" ")),
+    "generic PDF text commands are not structured extraction providers",
+  );
+
 export const ExtractionManifestSchema = z.strictObject({
-  plugins: z.array(
-    z.strictObject({
-      id: NonEmptySchema,
-      name: NonEmptySchema,
-      command: z.array(z.string()).min(1),
-      accepted_inputs: z.array(PdfInputSchema).min(1),
-    }),
-  ),
+  plugins: z.array(ExtractionManifestPluginSchema),
 });
 
 export const ExtractionPluginsResponseSchema = z.strictObject({
@@ -36,6 +47,8 @@ export const ExtractionPluginsResponseSchema = z.strictObject({
     z.strictObject({
       id: NonEmptySchema,
       name: NonEmptySchema,
+      source_kind: ExtractionSourceKindSchema,
+      authoritative: z.boolean(),
       accepted_inputs: z.array(PdfInputSchema),
     }),
   ),
@@ -55,6 +68,8 @@ export const ExtractionOutcomeSchema = z.discriminatedUnion("status", [
     status: z.literal("succeeded"),
     key: NonEmptySchema,
     plugin_id: NonEmptySchema,
+    source_kind: ExtractionSourceKindSchema,
+    authoritative: z.literal(true),
     markdown: ArtifactFileSchema,
     artifacts: z.array(ArtifactFileSchema),
   }),
@@ -69,7 +84,7 @@ export const ExtractionOutcomeSchema = z.discriminatedUnion("status", [
     status: z.literal("rejected"),
     key: NonEmptySchema,
     plugin_id: NonEmptySchema,
-    violations: z.array(z.strictObject({ limit: PdfLimitSchema, observed: z.int() })),
+    violations: z.array(z.strictObject({ limit: PdfLimitSchema, observed: z.union([z.int(), z.string()]) })),
   }),
   z.strictObject({
     status: z.literal("timed_out"),
@@ -93,3 +108,33 @@ export const EXTRACTION_OUTCOME_STATUS = {
   timed_out: 504,
 } as const satisfies Record<ExtractionOutcome["status"], number>;
 export type ExtractionManifest = z.infer<typeof ExtractionManifestSchema>;
+
+const ARXIV_PATH =
+  /^\/(?:pdf|abs|e-print)\/(?:(?:[a-z-]+(?:\.[a-z]{2})?\/\d{7})|(?:\d{4}\.\d{4,5}))(?:v\d+)?\/?$/i;
+
+export function sourceMatchesUrl(
+  source: z.infer<typeof ExtractionSourceSchema>,
+  pdfUrl: string,
+): boolean {
+  if (source !== "arxiv") {
+    return false;
+  }
+  try {
+    const url = new URL(pdfUrl);
+    return (
+      (url.hostname === "arxiv.org" || url.hostname.endsWith(".arxiv.org")) &&
+      ARXIV_PATH.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function pluginAcceptsUrl(plugin: ExtractionPlugin, pdfUrl: string): boolean {
+  return plugin.accepted_inputs.some(
+    (input) =>
+      input.limits.every(
+        (limit) => limit.kind !== "source" || sourceMatchesUrl(limit.value, pdfUrl),
+      ),
+  );
+}

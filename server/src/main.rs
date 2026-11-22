@@ -30,7 +30,7 @@ use pdf_bucket::store::Store;
 use tokio::sync::Notify;
 
 #[derive(Parser)]
-#[command(name = "pdf-bucket", version, about = "The PDF Bucket server")]
+#[command(name = "pdf-bucket", version, about = "The Math PDF Reader server")]
 struct Cli {
     #[command(subcommand)]
     command: Command,

@@ -63,7 +63,7 @@ async function refusal(response: Response): Promise<Failed> {
   const envelope = await checkedBody(response, ApiErrorSchema);
   const detail = envelope.ok
     ? `${status} ${envelope.value.error.kind}: ${envelope.value.error.message}`
-    : `${status}, not a PDF Bucket error document: ${envelope.detail}`;
+    : `${status}, not a Math PDF Reader error document: ${envelope.detail}`;
   return failed("post-bucket", detail);
 }
 
@@ -76,7 +76,7 @@ async function captureOutcome(
   if (!posted.ok) {
     return failed(
       "post-bucket",
-      `PDF Bucket is not reachable at ${bucketOrigin} (${posted.detail})`,
+      `Math PDF Reader is not reachable at ${bucketOrigin} (${posted.detail})`,
     );
   }
   if (!posted.value.ok) {
@@ -123,7 +123,7 @@ export async function importToBucket(url: string, bucketOrigin: string): Promise
   if (!posted.ok) {
     return failed(
       "post-bucket",
-      `PDF Bucket is not reachable at ${bucketOrigin} (${posted.detail})`,
+      `Math PDF Reader is not reachable at ${bucketOrigin} (${posted.detail})`,
     );
   }
   if (!posted.value.ok) {

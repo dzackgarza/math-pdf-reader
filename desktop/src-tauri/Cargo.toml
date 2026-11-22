@@ -1,7 +1,7 @@
 [package]
 name = "pdf-bucket-desktop"
 version = "1.0.0"
-description = "PDF Bucket desktop window"
+description = "Math PDF Reader desktop window"
 authors = ["Zack Garza"]
 edition = "2021"
 

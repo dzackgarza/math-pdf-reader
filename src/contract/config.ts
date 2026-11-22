@@ -28,6 +28,14 @@ export const AppConfigSchema = z.strictObject({
   }),
   // Zotero's local HTTP server; the send action writes through its local write API.
   zotero: z.strictObject({ url: z.url({ protocol: /^http$/ }) }),
+  // arXiv discovery and promotion endpoints. Production values are the public arXiv hosts;
+  // tests may point these at a deterministic local fixture publisher.
+  arxiv: z.strictObject({
+    api_url: z.url(),
+    abs_url: z.url(),
+    pdf_url: z.url(),
+    e_print_url: z.url(),
+  }),
   // `just rebuild-cache`: downloads at once, and how long one may take before its URL is dead.
   rebuild: z.strictObject({
     concurrent_downloads: z.number().int().positive(),

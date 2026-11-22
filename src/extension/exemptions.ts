@@ -88,7 +88,7 @@ export async function chromeInterception(
     received: async () =>
       failed(
         "fetch-pdf",
-        "PDF Bucket did not send this frame to the capture page (the page was opened " +
+        "Math PDF Reader did not send this frame to the capture page (the page was opened " +
           "directly, or reopened from the history). Follow the link to the PDF again.",
       ),
     intercepts: async (tabId, url) => {

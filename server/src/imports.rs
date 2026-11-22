@@ -86,13 +86,19 @@ struct Answer {
     html: bool,
 }
 
-async fn get(url: &Url, settings: &AppConfigRebuild, root: &Path) -> AppResult<Answer> {
+async fn get(
+    url: &Url,
+    settings: &AppConfigRebuild,
+    root: &Path,
+    policy: reqwest::redirect::Policy,
+) -> AppResult<Answer> {
     let unreachable = |reason| NoPdf::Unreachable {
         url: url.clone(),
         reason,
     };
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(settings.download_timeout_seconds.get()))
+        .redirect(policy)
         .build()
         .map_err(unreachable)?;
     let response = client.get(url.clone()).send().await.map_err(unreachable)?;
@@ -178,7 +184,13 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild, root: &Path) ->
         url: url.to_string(),
         reason,
     })?;
-    let answer = get(&page_url, settings, root).await?;
+    let answer = get(
+        &page_url,
+        settings,
+        root,
+        reqwest::redirect::Policy::default(),
+    )
+    .await?;
     if !answer.html {
         if !answer.body.is_pdf() {
             return Err(NoPdf::NotPdf { url: page_url }.into());
@@ -206,7 +218,13 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild, root: &Path) ->
             url: tags.pdf_url.clone(),
             reason,
         })?;
-    let pdf = get(&pdf_url, settings, root).await?;
+    let pdf = get(
+        &pdf_url,
+        settings,
+        root,
+        reqwest::redirect::Policy::default(),
+    )
+    .await?;
     if pdf.html || !pdf.body.is_pdf() {
         return Err(NoPdf::NotPdf { url: pdf_url }.into());
     }
@@ -223,6 +241,39 @@ pub async fn find_pdf_at(url: &str, settings: &AppConfigRebuild, root: &Path) ->
         filename: url_filename(&pdf_url),
         pdf_url: pdf_url.to_string(),
         title_hint,
+    })
+}
+
+/// Fetch an arXiv PDF directly, without following a redirect away from its trusted origin.
+pub async fn find_arxiv_pdf_at(
+    url: &str,
+    settings: &AppConfigRebuild,
+    root: &Path,
+) -> AppResult<Upload> {
+    let pdf_url = Url::parse(url).map_err(|reason| NoPdf::BadUrl {
+        url: url.to_string(),
+        reason,
+    })?;
+    let origin = pdf_url.origin();
+    let policy = reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= 10 {
+            attempt.error("too many redirects")
+        } else if attempt.url().origin() != origin {
+            attempt.error("arXiv PDF redirected to a different origin")
+        } else {
+            attempt.follow()
+        }
+    });
+    let answer = get(&pdf_url, settings, root, policy).await?;
+    if answer.html || !answer.body.is_pdf() {
+        return Err(NoPdf::NotPdf { url: pdf_url }.into());
+    }
+    let filename = url_filename(&pdf_url);
+    Ok(Upload {
+        pdf: answer.body,
+        title_hint: filename.clone().unwrap_or_else(|| url.to_string()),
+        filename,
+        pdf_url: url.to_string(),
     })
 }
 

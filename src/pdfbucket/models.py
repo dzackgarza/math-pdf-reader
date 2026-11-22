@@ -58,6 +58,18 @@ class ItemTitle(BaseModel):
     source: TitleSource
 
 
+class SourceLineage(BaseModel):
+    """The original and preferred representations of a promoted source."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    original_key: NonEmpty = Field(alias="originalKey")
+    original_provenance: Provenance = Field(alias="originalProvenance")
+    preferred_key: NonEmpty = Field(alias="preferredKey")
+    discovered_source_url: Url = Field(alias="discoveredSourceUrl")
+    promoted_at: Timestamp = Field(alias="promotedAt")
+
+
 class PdfRecord(BaseModel):
     """What a stored PDF says about itself, read from the file alone."""
 
@@ -69,6 +81,7 @@ class PdfRecord(BaseModel):
     # Recorded from Zotero's Retrieve metadata; None when it gave none.
     year: int | None
     abstract: NonEmpty | None
+    source_lineage: SourceLineage | None = None
     pages: Annotated[int, Field(ge=1)]
 
 

@@ -28,7 +28,10 @@ test("every extraction command is on the PATH the server gives plugins and takes
     if (program === undefined) {
       throw new Error(`plugin ${plugin.id} names no command`);
     }
-    expect(Bun.which(program, { PATH: path }), plugin.id).not.toBeNull();
+    const executable = Bun.which(program, { PATH: path });
+    if (executable === null) {
+      throw new Error(`${plugin.id} command ${program} is not available on the plugin PATH`);
+    }
     expect(
       rest.some((argument) => argument.includes("$pdf")),
       plugin.id,
@@ -38,4 +41,28 @@ test("every extraction command is on the PATH the server gives plugins and takes
       plugin.id,
     ).toBe(true);
   }
+});
+
+test("generic PDF text commands are not accepted as structured providers", () => {
+  expect(() =>
+    ExtractionManifestSchema.parse({
+      plugins: [
+        {
+          id: "text",
+          name: "PDF text",
+          source_kind: "document_structure",
+          authoritative: true,
+          command: ["pdftotext", "$pdf", "$output/extraction.md"],
+          accepted_inputs: [
+            {
+              kind: "pdf",
+              id: "pdf",
+              label: "PDF",
+              limits: [],
+            },
+          ],
+        },
+      ],
+    }),
+  ).toThrow(/generic PDF text commands/);
 });

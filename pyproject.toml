@@ -1,7 +1,7 @@
 [project]
 name = "pdfbucket"
 version = "1.0.0"
-description = "PDF Bucket: pikepdf and MuPDF commands the server runs on stored PDFs, and the extraction plugins."
+description = "Math PDF Reader: pikepdf and MuPDF commands the server runs on stored PDFs, and the extraction plugins."
 requires-python = ">=3.14"
 dependencies = [
     "cyclopts>=4.25.3",

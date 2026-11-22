@@ -2,7 +2,7 @@
 // layout and every write; these commands read the PDFs and bytes it names.
 import { z } from "zod";
 import { ProvenanceSchema } from "./capture";
-import { TitleSourceSchema } from "./library";
+import { SourceLineageSchema, TitleSourceSchema } from "./library";
 import { NonEmptySchema } from "./text";
 
 // What a stored PDF says about itself, read from the file alone (`pdfbucket read`).
@@ -12,6 +12,7 @@ export const PdfRecordSchema = z.strictObject({
   authors: z.array(NonEmptySchema),
   year: z.int().nullable(),
   abstract: NonEmptySchema.nullable(),
+  source_lineage: SourceLineageSchema.nullable(),
   pages: z.int().min(1),
 });
 
@@ -31,7 +32,7 @@ export const StoreFailureSchema = z.strictObject({
 
 // A stored item as the library and the index export hold it: its key, which the server derives
 // from the file name, and what its PDF says about it.
-export const StoredItemSchema = PdfRecordSchema.omit({ pages: true }).extend({
+export const StoredItemSchema = PdfRecordSchema.omit({ pages: true, source_lineage: true }).extend({
   key: NonEmptySchema,
 });
 

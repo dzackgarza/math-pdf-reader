@@ -37,7 +37,7 @@ export default defineConfig({
   imports: false,
   vite: () => ({ define: extensionDefine(loadAppConfig(CONFIG_PATH)) }),
   manifest: ({ browser }) => ({
-    name: "PDF Bucket",
+    name: "Math PDF Reader",
     version: extensionVersion(),
     permissions:
       browser === "firefox"

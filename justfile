@@ -1,4 +1,4 @@
-# PDF Bucket — standalone PDF reading bucket: browser capture, EmbedPDF reader, send to Zotero.
+# Math PDF Reader — standalone PDF reading bucket: browser capture, EmbedPDF reader, send to Zotero.
 #
 # One Cargo workspace: server/ is the bucket server (axum), desktop/src-tauri the Tauri app that
 # runs it in its own process. One Bun package: src/contract (the zod contracts the server's types
@@ -20,8 +20,8 @@ ai_review_ci_default_branch := "main"
 default:
     @just --list
 
-# Build the web bundle, the desktop binary and its bundles into dist/ and target/. The capture
-# extensions are built only by `just provision`, which installs them.
+# Build the web bundle and desktop binary into dist/ and target/. Browser extensions are built
+# separately by the private `_provision-extensions` recipe.
 # NO_STRIP: linuxdeploy's bundled strip cannot read the `.relr.dyn` sections of current distro
 # libraries and fails the AppImage (tauri-apps/tauri#8929; Tauri's AppImage guide).
 build:
@@ -39,6 +39,10 @@ provision:
 # install, with no start of the app, which the launch itself starts.
 provision-for-launch:
     @scripts/provision.sh --for-launch
+
+[private]
+_provision-extensions:
+    @scripts/provision-extensions.sh
 
 # Write the index export ($XDG_DATA_HOME/pdf-bucket-export/index.json): every stored item's
 # provenance, filing and extraction record, and the collections, saved searches and reading
@@ -71,7 +75,7 @@ build-web:
 # Merge the Firefox enterprise policy through which Firefox installs and updates the capture
 # add-on from the bucket (scripts/firefox-policy.sh) into /etc/firefox/policies/policies.json,
 # keeping the policies already there. Needs sudo, once; Firefox reads it at its next start.
-# `just provision` refuses to run without it.
+# The private `_provision-extensions` recipe refuses to run without it.
 firefox-policy:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -84,6 +88,10 @@ firefox-policy:
 # Drive both built capture extensions (chromium and firefox on PATH) against the fixture site; screenshots land in $TMPDIR/pdf-bucket-capture-e2e.
 test-capture:
     @bun test tests/capture-e2e.test.ts
+
+# Run the mutating Zotero integration suite against the real local Zotero write API.
+test-zotero-live:
+    @bun test tests/server-send-live.ts --timeout 180000
 
 # Open the desktop app from source (`tauri dev`); it serves the configured bucket itself.
 run: build-web
@@ -99,6 +107,8 @@ test-desktop: build-web
 
 # Run commit-tier Python and Bun QC through the central implementation.
 test-commit:
+    @bun run typecheck
+    @bun run build
     @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-commit
 
 # Run the full Python and Bun test suites before pushing, then provision the desktop app from the

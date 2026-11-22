@@ -42,11 +42,11 @@ function code(text: string): HTMLElement {
 }
 
 const HEADINGS: Record<BucketState["kind"], string> = {
-  ready: "Connected to PDF Bucket",
+  ready: "Connected to Math PDF Reader",
   "not-ready": "Connected, but it cannot store PDFs",
-  stale: "This extension is not the build PDF Bucket was provisioned with",
+  stale: "This extension is not the build Math PDF Reader was provisioned with",
   "check-failed": "Connected, but it cannot tell whether it can store PDFs",
-  unreachable: "PDF Bucket is not running",
+  unreachable: "Math PDF Reader is not running",
 };
 
 function renderConnection(state: BucketState): void {
@@ -90,7 +90,7 @@ function renderSwitch(enabled: boolean): void {
   box.disabled = false;
   element("capture-label", HTMLSpanElement).textContent = `Capture PDF links in ${browserName}`;
   element("capture-hint", HTMLParagraphElement).textContent = enabled
-    ? "PDF links open in PDF Bucket, which keeps a copy."
+    ? "PDF links open in Math PDF Reader, which keeps a copy."
     : `PDF links open in ${browserName}'s own viewer; nothing is stored.`;
 }
 
@@ -172,7 +172,7 @@ async function sendTabs(): Promise<void> {
     .sendMessage(message)
     .then((raw) => DoneReplySchema.parse(raw))
     .catch((error: unknown) =>
-      failed("extension", `PDF Bucket's extension gave no usable answer: ${String(error)}`),
+      failed("extension", `Math PDF Reader's extension gave no usable answer: ${String(error)}`),
     );
   if (reply.kind === "failed") {
     renderSendFailure(reply.error.detail);

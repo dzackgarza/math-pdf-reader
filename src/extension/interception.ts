@@ -121,7 +121,7 @@ const pdfDisposition = (evidence: PdfEvidence) =>
   /\.pdf(["']|$)/.test(evidence.disposition);
 
 // The name and value of a response header, the part of either browser's header type read here.
-type ResponseHeader = { name: string; value?: string | undefined };
+export type ResponseHeader = { name: string; value?: string | undefined };
 
 export function isPdfResponse(url: string, headers: ResponseHeader[]): boolean {
   const header = (name: string) =>

@@ -1,4 +1,4 @@
-# PDF Bucket
+# Math PDF Reader
 
 A standalone desktop app that replaces reading PDFs in the browser.
 Browser extensions intercept PDF navigations in Chrome and Firefox and hand the PDF to the bucket, which stores it with embedded provenance, opens it in an EmbedPDF reader, and lets you file it, extract it, and send it to Zotero when it matters.
@@ -32,9 +32,9 @@ If the whole data root is lost, `just import-index` restores the filing and the 
 
 ## Running
 
-PDF Bucket runs while its app runs, like Zotero: the app is the bucket's server, as Zotero is the server of its local API, and **Quit PDF Bucket** in the tray stops it.
+Math PDF Reader runs while its app runs, like Zotero: the app is the bucket's server, as Zotero is the server of its local API, and **Quit Math PDF Reader** in the tray stops it.
 Closing the window hides it to the tray; the bucket keeps capturing.
-Click the tray icon for **Show PDF Bucket** and **Quit PDF Bucket**. Starting PDF Bucket while it runs shows the running window.
+Click the tray icon for **Show Math PDF Reader** and **Quit Math PDF Reader**. Starting Math PDF Reader while it runs shows the running window.
 If the bucket cannot serve (its port is taken, the web bundle is missing, the `.envrc` is blocked), the window shows why.
 
 `just provision` builds the app, installs it at `~/.local/bin/pdf-bucket-desktop` with a launcher entry, an icon and a login autostart entry, and starts it.
@@ -46,7 +46,7 @@ On Hyprland, the session target starts it: `just provision` adds a drop-in to `h
 
 Every PDF tab has a collapsible right sidebar (collapsed by default, resizable by its left edge, both remembered) that shows OpenCode's own web UI in a frame, one chat per stored PDF.
 The app runs `opencode serve` privately for it: loopback port `ai.port`, its own data (sessions) under `$XDG_DATA_HOME/pdf-bucket-ai`, and a generated password in the file `password` there. It reads your own OpenCode config and model catalogue (providers, models), and your logins (`auth.json`) are linked in; the `reader` agent is layered over them. The server starts on the first expanded pane and ends with the app.
-The chat uses the `reader` agent on `ai.model`. That agent runs no command, edits no file and starts no sub-agent. It may fetch only from the bucket: the PDF's text at `GET /api/ai/text/{key}` (`?page=N` for one page); once a PDF has a stored extraction (docs/m4.md), the text is that Markdown. The chat always carries what the reader shows (the page, and where it lies in the extraction) as an instruction entry that the bucket updates at each page the reader reports; the page's text is at `GET /api/ai/view/{key}`.
+The chat uses the `reader` agent on `ai.model`. That agent runs no command, edits no file and starts no sub-agent. It may fetch only the stored structured extraction from the bucket at `GET /api/ai/text/{key}`; the assistant is unavailable until an extraction exists. The chat always carries what the reader shows (the page, and where it lies in the extraction) as an instruction entry that the bucket updates at each page the reader reports; the page's location in the extraction is at `GET /api/ai/view/{key}`.
 If `ai.binary` is not on the app's PATH, or the server does not answer within `ai.startup_timeout_seconds`, the pane shows the reason (the server's log is `opencode.log` in the same directory) and **Try again**.
 
 ### Hyprland
@@ -89,8 +89,8 @@ Each extension exists once, in `~/.local/share/pdf-bucket-app/extensions`:
 | `chrome-mv3/` | Chrome and Chromium, Manifest V3, loaded unpacked |
 | `firefox-mv2/` and `firefox.xpi` | Firefox, Manifest V2, and its package signed by addons.mozilla.org |
 
-`just provision`, which every push runs, builds both from the pushed commit, installs them there, and removes the builds from the checkout.
-addons.mozilla.org signs a changed Firefox build as an unlisted add-on during the provision.
+The private `just _provision-extensions` recipe builds both from the current commit, installs them there,
+and removes the builds from the checkout. addons.mozilla.org signs a changed Firefox build as an unlisted add-on.
 The version is `1.0.<n>`, where `<n>` is the number of commits in the checkout, so each commit's build has a greater version than the one before.
 The bucket reports the provisioned versions at `/status`. An extension whose version differs refuses every capture, shows `OLD` on its badge, and waits for the provisioned build:
 
@@ -99,17 +99,17 @@ The bucket reports the provisioned versions at `/status`. An extension whose ver
 - Firefox installs it from the bucket at its next add-on update check, within a few minutes.
 
 A PDF link opens in the desktop window.
-The browser tab goes back to the page you clicked the link on, or closes when it was opened only for the PDF. If PDF Bucket cannot save the PDF, the tab stays with the error and a link that opens the PDF in the browser.
+The browser tab goes back to the page you clicked the link on, or closes when it was opened only for the PDF. If Math PDF Reader cannot save the PDF, the tab stays with the error and a link that opens the PDF in the browser.
 
 Once installed, the extension has a toolbar button.
 Its badge shows the state: `ON` means the bucket answers and PDF links go to it, `OFF` means capture is switched off in this browser, `OLD` means the extension is not the provisioned build, and `!` means the bucket is not reachable or cannot store PDFs.
 Click the button to see the bucket's address, version and data folder, switch capture on or off for this browser, and see the last capture.
 The same page is the extension's options page.
 
-Each browser needs one setup step, and `just provision` stops until it is done:
+Each browser needs one setup step after running the private extension recipe:
 
-- **Chrome or Chromium:** run `just provision` once, so that the installed directory exists.
-  Then open `chrome://extensions`, turn on Developer mode, remove any other PDF Bucket, press **Load unpacked** and choose `~/.local/share/pdf-bucket-app/extensions/chrome-mv3`.
+- **Chrome or Chromium:** run `just _provision-extensions` once, so that the installed directory exists.
+  Then open `chrome://extensions`, turn on Developer mode, remove any other Math PDF Reader, press **Load unpacked** and choose `~/.local/share/pdf-bucket-app/extensions/chrome-mv3`.
 
 - **Firefox:** run `just firefox-policy`, which asks for sudo, then restart Firefox.
   The recipe merges an enterprise policy into `/etc/firefox/policies/policies.json`: Firefox force-installs the add-on from the bucket, checks the bucket for updates, and checks every add-on for updates each 120 seconds.
@@ -119,7 +119,7 @@ Each browser needs one setup step, and `just provision` stops until it is done:
 ```bash
 just                # list recipes
 just run            # desktop app from source (`tauri dev`), serving the configured bucket
-just build          # web bundle, both extension targets, desktop binary
+just build          # web bundle and desktop binary
 just provision      # build, install and start the app
 just export-index   # write the index export
 just rebuild-cache  # re-download missing PDFs from the export

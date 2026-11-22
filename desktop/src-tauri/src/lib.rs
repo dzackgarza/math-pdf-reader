@@ -29,7 +29,7 @@ use tauri_plugin_opener::OpenerExt;
 fn report(app: &AppHandle, what: &str, error: impl fmt::Display) {
     app.dialog()
         .message(format!("{what}: {error}"))
-        .title("PDF Bucket")
+        .title("Math PDF Reader")
         .kind(MessageDialogKind::Error)
         .show(|_| {});
 }
@@ -151,7 +151,7 @@ fn ask_before_quitting(app: &AppHandle, reason: &str) {
         .message(format!(
             "{reason}\n\nQuit anyway? Annotations that are not saved are lost."
         ))
-        .title("PDF Bucket")
+        .title("Math PDF Reader")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Quit".to_string(),
@@ -347,7 +347,11 @@ pub fn run() -> tauri::Result<()> {
                 .ok_or(tauri::Error::WindowNotFound)
                 .and_then(|window| diagnostics::attach(&window))
             {
-                report(app.handle(), "Window diagnostics could not be installed", error);
+                report(
+                    app.handle(),
+                    "Window diagnostics could not be installed",
+                    error,
+                );
             }
             #[cfg(target_os = "linux")]
             if let Err(error) = app
@@ -376,8 +380,8 @@ pub fn run() -> tauri::Result<()> {
 
             // Linux tray icons (StatusNotifierItem through libayatana-appindicator) report no
             // clicks, so every click opens this menu.
-            let show = MenuItemBuilder::with_id("show", "Show PDF Bucket").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit PDF Bucket").build(app)?;
+            let show = MenuItemBuilder::with_id("show", "Show Math PDF Reader").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit Math PDF Reader").build(app)?;
             let menu = MenuBuilder::new(app)
                 .item(&show)
                 .separator()

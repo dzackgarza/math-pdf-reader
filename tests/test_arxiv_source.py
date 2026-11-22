@@ -82,7 +82,7 @@ def extract(pdf: Path, output: Path, origin: str) -> subprocess.CompletedProcess
 
 def test_a_paper_strewn_across_files_becomes_one_markdown_document(arxiv: tuple[str, dict[str, bytes]], tmp_path: Path) -> None:
     origin, packages = arxiv
-    packages["2301.01234"] = tar_of({"main.tex": MAIN, "intro.tex": INTRO, "results.tex": RESULTS})
+    packages["2301.01234v2"] = tar_of({"main.tex": MAIN, "intro.tex": INTRO, "results.tex": RESULTS})
     output = tmp_path / "out"
 
     done = extract(stored(tmp_path, "https://arxiv.org/pdf/2301.01234v2"), output, origin)
@@ -96,13 +96,14 @@ def test_a_paper_strewn_across_files_becomes_one_markdown_document(arxiv: tuple[
     assert "noise" not in markdown
     assert "private remark" not in markdown
     flattened = (output / "artifacts" / "source.tex").read_text()
+    assert (output / "artifacts" / "source.eprint").read_bytes() == packages["2301.01234v2"]
     assert "\\input{intro}" not in flattened
     assert "A lattice is a free" in flattened
 
 
 def test_a_single_gzipped_tex_file_is_a_paper(arxiv: tuple[str, dict[str, bytes]], tmp_path: Path) -> None:
     origin, packages = arxiv
-    packages["math/0002066"] = gzip.compress(b"\\documentclass{article}\\begin{document}Hello $x$.\\end{document}")
+    packages["math/0002066v1"] = gzip.compress(b"\\documentclass{article}\\begin{document}Hello $x$.\\end{document}")
     output = tmp_path / "out"
 
     done = extract(stored(tmp_path, "https://arxiv.org/pdf/math/0002066v1"), output, origin)
@@ -115,6 +116,8 @@ def test_a_single_gzipped_tex_file_is_a_paper(arxiv: tuple[str, dict[str, bytes]
     ("pdf_url", "package", "message"),
     [
         ("https://example.org/paper.pdf", b"", "is not an arXiv URL"),
+        ("https://notarxiv.org/pdf/2301.00001", b"", "is not an arXiv URL"),
+        ("https://example.org/arxiv.org/pdf/2301.00001", b"", "is not an arXiv URL"),
         ("https://arxiv.org/pdf/2301.00001", b"%PDF-1.5 only a pdf", "only a PDF"),
         ("https://arxiv.org/pdf/2301.00002", gzip.compress(b"\\input amstex plain TeX"), "plain TeX"),
     ],

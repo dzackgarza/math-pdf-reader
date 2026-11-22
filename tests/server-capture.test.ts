@@ -7,6 +7,7 @@ import { parseHTML } from "linkedom";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
+import { captureForm as makeCaptureForm } from "./capture-helpers";
 
 const fixture = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 const pdfSource = "https://www.math.example.edu/~author/lattices.pdf";
@@ -21,17 +22,8 @@ async function bucket() {
   return { root, app };
 }
 
-function captureForm(
-  bytes: Uint8Array<ArrayBuffer>,
-  filename: string,
-  titleHint: string,
-): FormData {
-  const form = new FormData();
-  form.set("pdf", new File([bytes], filename, { type: "application/pdf" }));
-  form.set("pdf_url", pdfSource);
-  form.set("title_hint", titleHint);
-  return form;
-}
+const captureForm = (bytes: Uint8Array<ArrayBuffer>, filename: string, titleHint: string) =>
+  makeCaptureForm(bytes, pdfSource, filename, titleHint);
 
 // The Highwire `citation_*` tags the Zotero Connector reads.
 async function citationTags(response: Response): Promise<Record<string, string>> {

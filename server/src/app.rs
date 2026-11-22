@@ -36,7 +36,8 @@ use crate::state::{bucket_item, parse_body, Shared};
 use crate::store::{stage, stage_file, Captured, StageFailure, Upload};
 use crate::titles::retrieve_metadata;
 use crate::{
-    ai, extensions, extractions, guard, guesses, library, send, sessions, source_routes, thumbnails,
+    ai, arxiv, extensions, extractions, guard, guesses, library, send, sessions, source_routes,
+    thumbnails,
 };
 
 /// The origin a request was made to, from its Host header.
@@ -53,7 +54,7 @@ pub fn origin(headers: &HeaderMap) -> AppResult<String> {
 /// Stores an upload that came in a request to ORIGIN. A new item then runs Retrieve metadata in
 /// the background, as long as Zotero takes, and its outcome is a `metadata` event; the PDF stays
 /// stored whatever the outcome.
-async fn store(state: &Shared, origin: &str, upload: &Upload) -> AppResult<Captured> {
+pub(crate) async fn store(state: &Shared, origin: &str, upload: &Upload) -> AppResult<Captured> {
     let captured = state
         .store
         .capture(upload, &state.held_keys().await?)
@@ -454,6 +455,7 @@ pub fn router(state: Shared) -> Router {
         .merge(send::routes())
         .merge(source_routes::routes())
         .merge(sessions::routes())
+        .merge(arxiv::routes())
         .merge(extensions::routes())
         .merge(extractions::routes())
         .merge(thumbnails::routes())

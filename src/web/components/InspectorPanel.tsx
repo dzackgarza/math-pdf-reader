@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Pencil,
   RefreshCw,
+  Search,
   Send,
   Trash2,
   X,
@@ -18,6 +19,9 @@ import prettyBytes from "pretty-bytes";
 import { type ReactNode, useState } from "react";
 import type {
   BucketItem,
+  ArxivMatch,
+  ArxivPromotionResponse,
+  ArxivSearchResponse,
   Collection,
   Extraction,
   ItemNote,
@@ -66,6 +70,11 @@ export type ItemMetadataActions = {
   save: (metadata: ManualMetadataRequest) => Promise<void>;
 };
 
+export type ItemArxivActions = {
+  search: () => Promise<ArxivSearchResponse>;
+  promote: (match: ArxivMatch) => Promise<ArxivPromotionResponse>;
+};
+
 type InspectorPanelProps = {
   item: BucketItem;
   related: Related[];
@@ -74,6 +83,8 @@ type InspectorPanelProps = {
   knownTags: string[];
   filing: ItemFilingActions;
   metadata: ItemMetadataActions;
+  arxiv: ItemArxivActions;
+  onPromoted: (result: ArxivPromotionResponse) => void;
   noteDraft: NoteDraft;
   sources: ItemSourceActions & { verifying: boolean };
   send: ItemSendActions;
@@ -165,9 +176,22 @@ function SourceLine({
 }
 
 // The PDF URL and the mirrors, a field to add a mirror, and Verify.
-function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelProps["sources"] }) {
+function Sources({
+  item,
+  sources,
+  arxiv,
+  onPromoted,
+}: {
+  item: BucketItem;
+  sources: InspectorPanelProps["sources"];
+  arxiv: ItemArxivActions;
+  onPromoted: (result: ArxivPromotionResponse) => void;
+}) {
   const [draft, setDraft] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
+  const [matches, setMatches] = useState<ArxivSearchResponse | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [promoting, setPromoting] = useState<string | null>(null);
   return (
     <div className="w-full space-y-2">
       <ul className="space-y-1">
@@ -204,6 +228,75 @@ function Sources({ item, sources }: { item: BucketItem; sources: InspectorPanelP
         <p role="alert" className="text-xs break-words text-danger">
           {failure}
         </p>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          setSearching(true);
+          setFailure(null);
+          arxiv.search().then(setMatches, (error: Error) => setFailure(error.message)).finally(() => setSearching(false));
+        }}
+        disabled={searching}
+        className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs font-medium hover:bg-surface disabled:opacity-60"
+      >
+        <Search aria-hidden className={`h-3.5 w-3.5 ${searching ? "animate-pulse" : ""}`} />
+        {searching ? "Searching arXiv…" : "Find on arXiv"}
+      </button>
+      {matches !== null && (
+        <div className="space-y-2 rounded-md border border-line bg-surface/40 p-2 text-xs">
+          {matches.matches.length === 0 ? (
+            <p className="text-muted">No arXiv result met the {matches.threshold.toLocaleString(undefined, { style: "percent" })} match threshold.</p>
+          ) : (
+            <>
+              <p className="font-medium text-muted">Possible arXiv matches</p>
+              <ul className="space-y-2">
+                {matches.matches.map((match) => (
+                  <li key={`${match.id}v${match.version}`} className="space-y-0.5">
+                    <a
+                      href={match.absUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {match.title}
+                    </a>
+                    <p className="text-muted">
+                      {match.authors.join(", ")}
+                      {match.year === null ? "" : ` · ${match.year}`}
+                      {` · ${(match.score * 100).toFixed(0)}%`}
+                    </p>
+                    <a
+                      href={match.pdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-accent hover:underline"
+                    >
+                      arXiv:{match.id}v{match.version}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const candidate = `${match.id}v${match.version}`;
+                        setPromoting(candidate);
+                        setFailure(null);
+                        arxiv.promote(match).then(
+                          onPromoted,
+                          (error: Error) => setFailure(error.message),
+                        ).finally(() => setPromoting(null));
+                      }}
+                      disabled={promoting !== null}
+                      className="ml-2 rounded-md border border-line px-2 py-0.5 font-medium hover:bg-panel disabled:opacity-60"
+                    >
+                      {promoting === `${match.id}v${match.version}`
+                        ? "Fetching…"
+                        : "Use this version"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
       <button
         type="button"
@@ -408,7 +501,12 @@ function Details({
             />
           </Row>
           <Row label="Sources">
-            <Sources item={item} sources={props.sources} />
+            <Sources
+              item={item}
+              sources={props.sources}
+              arxiv={props.arxiv}
+              onPromoted={props.onPromoted}
+            />
           </Row>
           <Row label="Extraction">
             <div className="w-full space-y-2">

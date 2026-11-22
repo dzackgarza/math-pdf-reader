@@ -1,7 +1,7 @@
 [package]
 name = "pdf-bucket"
 version = "1.0.0"
-description = "PDF Bucket server: capture, PDF and reader URLs, library API, index export"
+description = "Math PDF Reader server: capture, PDF and reader URLs, library API, index export"
 authors = ["Zack Garza"]
 edition = "2021"
 
@@ -14,6 +14,9 @@ path = "src/main.rs"
 
 [lints]
 workspace = true
+
+[features]
+arxiv-fixtures = []
 
 [dependencies]
 askama = "0.16.1"
@@ -33,9 +36,10 @@ lockable = "0.2.0"
 lol_html = "3.0.1"
 nix = { version = "0.31.3", features = ["fs", "process", "signal"] }
 percent-encoding = "2.3.2"
+quick-xml = { version = "0.37.5", features = ["serialize"] }
 regex = "1.13.1"
 regress = "0.12.0"
-reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json", "query"] }
 sanitize-filename = "0.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"

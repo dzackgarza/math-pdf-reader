@@ -96,9 +96,17 @@ pub fn record() -> io::Result<PathBuf> {
         std::process::id(),
         path.display(),
         std::env::vars()
-            .filter(|(name, _)| ["WEBKIT_", "GDK_", "GSK_", "WAYLAND_", "XDG_SESSION", "LIBGL_", "MESA_"]
-                .iter()
-                .any(|prefix| name.starts_with(prefix)))
+            .filter(|(name, _)| [
+                "WEBKIT_",
+                "GDK_",
+                "GSK_",
+                "WAYLAND_",
+                "XDG_SESSION",
+                "LIBGL_",
+                "MESA_"
+            ]
+            .iter()
+            .any(|prefix| name.starts_with(prefix)))
             .collect::<Vec<_>>()
     );
     Ok(path)
@@ -139,7 +147,10 @@ fn probe(window: &WebviewWindow, webview: &webkit2gtk::WebView, probes: &Arc<Pro
         "probe {id} ({why}): web process responsive={}; {}; {}",
         webview.is_web_process_responsive(),
         widget_state("webview", webview),
-        toplevel.map_or_else(|| "no toplevel".to_string(), |top| widget_state("window", &top))
+        toplevel.map_or_else(
+            || "no toplevel".to_string(),
+            |top| widget_state("window", &top)
+        )
     );
     if let Err(error) = window.eval(format!("window.__bucketDiagnostics?.probe({id})")) {
         diag!("probe {id}: could not be sent to the page: {error}");
@@ -191,7 +202,10 @@ pub fn attach(window: &WebviewWindow) -> tauri::Result<()> {
             diag!("web process terminated: {reason:?}");
         });
         webview.connect_is_web_process_responsive_notify(|webview| {
-            diag!("web process responsive={}", webview.is_web_process_responsive());
+            diag!(
+                "web process responsive={}",
+                webview.is_web_process_responsive()
+            );
         });
         webview.connect_load_failed(|_, event, uri, error| {
             diag!("load failed at {event:?} for {uri}: {error}");

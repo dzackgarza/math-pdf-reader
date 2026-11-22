@@ -11,6 +11,7 @@
 //! written into it again, as a rebase replays a commit onto the branch it missed.
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{ErrorKind, Write};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -19,6 +20,7 @@ use axum::body::Bytes;
 use axum::http::StatusCode;
 use clearurls::UrlCleaner;
 use futures::{Stream, StreamExt};
+use nix::fcntl::{renameat2, RenameFlags};
 use sha2::{Digest, Sha256};
 use tempfile::{NamedTempFile, TempPath};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -26,9 +28,11 @@ use tokio::sync::{Mutex, OwnedMutexGuard};
 use tokio_util::io::ReaderStream;
 
 use crate::config::{BucketConfig, PAGE_OUT_OF_RANGE_EXIT, PDF_HEADER_WINDOW};
-use crate::contract::{ApiErrorErrorKind, Provenance, StoredItem, Timestamp, TitleSource};
+use crate::contract::{
+    ApiErrorErrorKind, NonEmpty, Provenance, SourceLineage, StoredItem, Timestamp, TitleSource,
+};
 use crate::error::{AppError, AppResult};
-use crate::index::{CachedRead, FileRead, Signature};
+use crate::index::{stored_item, CachedRead, FileRead, Signature};
 use crate::layout::{self, candidate_keys, is_pdf, Key};
 use crate::python::{PdfFailure, Python};
 use crate::sources::{digest, sha256};
@@ -164,6 +168,24 @@ fn temporary(directory: &Path) -> std::io::Result<NamedTempFile> {
         .tempfile_in(directory)
 }
 
+#[cfg(feature = "arxiv-fixtures")]
+fn promotion_test_gate(phase: &str) -> std::io::Result<()> {
+    let Some(base) = std::env::var_os(format!("PDF_BUCKET_TEST_PROMOTION_{phase}")) else {
+        return Ok(());
+    };
+    let base = PathBuf::from(base);
+    std::fs::write(base.with_extension("ready"), b"ready")?;
+    let release = base.with_extension("release");
+    let start = std::time::Instant::now();
+    while !release.try_exists()? {
+        if start.elapsed() > Duration::from_secs(30) {
+            return Err(std::io::Error::other("promotion test gate timed out"));
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    Ok(())
+}
+
 /// BYTES written to a unique temporary file in DIRECTORY and synced to disk.
 fn staged(directory: &Path, bytes: &[u8]) -> std::io::Result<TempPath> {
     let mut file = temporary(directory)?;
@@ -263,6 +285,13 @@ async fn trash_all(paths: Vec<PathBuf>) -> AppResult<()> {
         .await
         .map_err(AppError::internal)?
         .map_err(|error| AppError::store_failed(format!("cannot move to the trash: {error}")))
+}
+
+fn remove_empty_directory(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_dir(path) {
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
 }
 
 fn not_a_pdf(message: &str) -> AppError {
@@ -405,6 +434,37 @@ impl Store {
         Ok((output, stored_sha256))
     }
 
+    async fn embed_lineage(
+        &self,
+        source: &Path,
+        lineage: &SourceLineage,
+    ) -> AppResult<(TempPath, String)> {
+        let output = temporary(self.root())?.into_temp_path();
+        let args = vec![
+            "embed-lineage".to_string(),
+            format!("--original-key={}", lineage.original_key.as_str()),
+            format!(
+                "--original-provenance={}",
+                serde_json::to_string(&lineage.original_provenance)?
+            ),
+            format!("--preferred-key={}", lineage.preferred_key.as_str()),
+            format!("--discovered-source-url={}", lineage.discovered_source_url),
+            format!("--promoted-at={}", lineage.promoted_at),
+            "--".to_string(),
+            source.to_string_lossy().into_owned(),
+            output.to_string_lossy().into_owned(),
+        ];
+        self.inner.python.run(&args).await?;
+        #[cfg(feature = "arxiv-fixtures")]
+        if std::env::var_os("PDF_BUCKET_TEST_LINEAGE_SYNC_FAILURE").is_some() {
+            return Err(AppError::store_failed("injected lineage sync failure"));
+        }
+        let file = tokio::fs::File::open(&output).await?;
+        file.sync_all().await?;
+        let sha256 = digest(ReaderStream::new(file)).await?;
+        Ok((output, sha256))
+    }
+
     /// The stored item whose PDF was captured from these original bytes, if any.
     async fn holding(&self, original_sha256: &str) -> AppResult<Option<StoredItem>> {
         Ok(self
@@ -445,10 +505,131 @@ impl Store {
                 "the bytes carry no %PDF- header in their first 1024 bytes",
             ));
         }
-        let original_sha256 = upload.pdf.sha256.clone();
-        if let Some(item) = self.holding(&original_sha256).await? {
+        if let Some(item) = self.holding(&upload.pdf.sha256).await? {
             return self.already(item).await;
         }
+        let (embedded, stored_sha256) = self.prepare_capture(upload).await?;
+        self.place_capture(upload, held, embedded, stored_sha256)
+            .await
+    }
+
+    /// Stores a separate source representation even when its original bytes are already stored.
+    pub async fn capture_distinct(
+        &self,
+        upload: &Upload,
+        held: &BTreeSet<String>,
+        metadata: &ResolvedMetadata,
+        original_key: &NonEmpty,
+        original_provenance: &Provenance,
+    ) -> AppResult<(Captured, SourceLineage)> {
+        let (embedded, _) = self.prepare_capture(upload).await?;
+        let bytes = self
+            .inner
+            .python
+            .run(&metadata_args(&embedded, TitleSource::Resolver, metadata))
+            .await?;
+        let root = self.root().to_path_buf();
+        let embedded = blocking(move || staged(&root, &bytes)).await?;
+        let _placing = self.inner.placing.lock().await;
+        for key in candidate_keys(upload.filename.as_deref(), &upload.pdf.sha256) {
+            let path = layout::pdf_path(self.root(), &key);
+            if held.contains(key.as_str())
+                || path.try_exists()?
+                || layout::markdown_path(self.root(), &key).try_exists()?
+                || layout::extraction_dir(self.root(), &key).try_exists()?
+            {
+                continue;
+            }
+            let lineage = SourceLineage {
+                original_key: original_key.clone(),
+                original_provenance: original_provenance.clone(),
+                preferred_key: key.as_str().try_into().expect("a store key is nonempty"),
+                discovered_source_url: upload.pdf_url.clone(),
+                promoted_at: Timestamp::now(),
+            };
+            let (output, stored_sha256) = self.embed_lineage(&embedded, &lineage).await?;
+            let record = match self.read_records(&[output.to_path_buf()]).await?.pop() {
+                Some(FileRead::Read(record))
+                    if record.source_lineage.as_ref() == Some(&lineage) =>
+                {
+                    record
+                }
+                Some(FileRead::Read(_)) => {
+                    return Err(AppError::store_failed(
+                        "the staged PDF did not retain its source lineage",
+                    ))
+                }
+                Some(FileRead::Unreadable(message)) => return Err(AppError::store_failed(message)),
+                None => return Err(AppError::store_failed("the staged PDF returned no record")),
+            };
+            let item = stored_item(&key, *record);
+            let root = self.root().to_path_buf();
+            let markdown = layout::markdown_path(&root, &key);
+            let extraction = layout::extraction_dir(&root, &key);
+            let directory = root.join(format!(
+                ".promotion-{}-{}",
+                hex::encode(key.as_str()),
+                uuid::Uuid::new_v4()
+            ));
+            blocking(move || {
+                std::fs::create_dir(&directory)?;
+                std::fs::File::open(&root)?.sync_all()?;
+                #[cfg(feature = "arxiv-fixtures")]
+                promotion_test_gate("CREATED")?;
+                let pending = directory.join("pending.pdf");
+                let anchor = directory.join("source.pdf");
+                std::fs::hard_link(&output, &pending)?;
+                std::fs::File::open(&directory)?.sync_all()?;
+                #[cfg(feature = "arxiv-fixtures")]
+                promotion_test_gate("PENDING")?;
+                std::fs::hard_link(&output, &anchor)?;
+                std::fs::File::open(&directory)?.sync_all()?;
+                #[cfg(feature = "arxiv-fixtures")]
+                promotion_test_gate("BEFORE")?;
+                if markdown.try_exists()? || extraction.try_exists()? {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "promotion key gained existing extraction files",
+                    ));
+                }
+                let source_dir = std::fs::File::open(&directory)?;
+                let root_dir = std::fs::File::open(&root)?;
+                renameat2(
+                    &source_dir,
+                    &pending,
+                    &root_dir,
+                    &path,
+                    RenameFlags::RENAME_NOREPLACE,
+                )
+                .map_err(std::io::Error::from)?;
+                #[cfg(feature = "arxiv-fixtures")]
+                promotion_test_gate("AFTER")?;
+                std::fs::File::open(&directory)?.sync_all()?;
+                std::fs::File::open(&root)?.sync_all()
+            })
+            .await?;
+            return Ok((
+                Captured {
+                    item,
+                    stored_sha256,
+                    existing: false,
+                },
+                lineage,
+            ));
+        }
+        Err(AppError::store_failed(format!(
+            "every key {:?} gives is held by a different PDF, the filing or the index export",
+            upload.filename
+        )))
+    }
+
+    async fn prepare_capture(&self, upload: &Upload) -> AppResult<(TempPath, String)> {
+        if !upload.pdf.is_pdf() {
+            return Err(not_a_pdf(
+                "the bytes carry no %PDF- header in their first 1024 bytes",
+            ));
+        }
+        let original_sha256 = upload.pdf.sha256.clone();
         let pdf_url = URL_CLEANER
             .clear_single_url_str(&upload.pdf_url)
             .map_err(|error| AppError::invalid(format!("the PDF URL does not parse: {error}")))?
@@ -466,13 +647,22 @@ impl Store {
                 .try_into()
                 .map_err(|_empty| AppError::invalid("the title hint is empty"))?,
         };
-        let (embedded, stored_sha256) = self.embedded(upload.pdf.path(), &provenance).await?;
+        self.embedded(upload.pdf.path(), &provenance).await
+    }
 
+    async fn place_capture(
+        &self,
+        upload: &Upload,
+        held: &BTreeSet<String>,
+        embedded: TempPath,
+        stored_sha256: String,
+    ) -> AppResult<Captured> {
+        let original_sha256 = &upload.pdf.sha256;
         let _placing = self.inner.placing.lock().await;
-        if let Some(item) = self.holding(&original_sha256).await? {
+        if let Some(item) = self.holding(original_sha256).await? {
             return self.already(item).await;
         }
-        for key in candidate_keys(upload.filename.as_deref(), &original_sha256) {
+        for key in candidate_keys(upload.filename.as_deref(), original_sha256) {
             let path = layout::pdf_path(self.root(), &key);
             if held.contains(key.as_str()) || path.exists() {
                 continue;
@@ -584,7 +774,14 @@ impl Store {
         if rebased && !self.only_metadata_since(&key, &stored_sha256, base_sha256) {
             return Ok(Replacement::Stale { stored_sha256 });
         }
-        let stored = self.require_stored(&key).await?;
+        let indexed = self
+            .item(key.as_str())
+            .await?
+            .ok_or_else(|| AppError::unknown_item(key.as_str()))?;
+        let lineage = indexed
+            .source_lineage
+            .filter(|lineage| lineage.preferred_key.as_str() == key.as_str());
+        let stored = indexed.stored;
         let saved_sha256 = sha256(&bytes);
         let root = self.root().to_path_buf();
         let saved = blocking({
@@ -606,8 +803,8 @@ impl Store {
             .await?
             .pop()
             .expect("one path read gives one outcome");
-        let carried = match offered {
-            FileRead::Read(record) => record.provenance,
+        let offered = match offered {
+            FileRead::Read(record) => record,
             FileRead::Unreadable(message) => {
                 return Err(AppError::api(
                     StatusCode::UNPROCESSABLE_ENTITY,
@@ -616,11 +813,23 @@ impl Store {
                 ))
             }
         };
-        if serde_json::to_value(&carried)? != serde_json::to_value(&stored.provenance)? {
+        if serde_json::to_value(&offered.provenance)? != serde_json::to_value(&stored.provenance)?
+            || offered
+                .source_lineage
+                .as_ref()
+                .is_some_and(|offered| Some(offered) != lineage.as_ref())
+        {
             return Ok(Replacement::ProvenanceMismatch);
         }
+        let restored_lineage = lineage.is_some() && offered.source_lineage.is_none();
+        let (placed, placed_sha256) =
+            if let Some(lineage) = lineage.as_ref().filter(|_| restored_lineage) {
+                self.embed_lineage(&placed, lineage).await?
+            } else {
+                (placed, placed_sha256)
+            };
         blocking(move || commit(placed, &path, Placement::Over)).await?;
-        if rebased {
+        if rebased || restored_lineage {
             self.metadata_written(&key, saved_sha256, placed_sha256);
         }
         Ok(Replacement::Replaced)
@@ -656,6 +865,7 @@ impl Store {
         key: &str,
         pdf: &Staged,
         provenance: &Provenance,
+        lineage: Option<&SourceLineage>,
     ) -> AppResult<Restoration> {
         let parsed = Key::parse(key).ok_or_else(|| {
             AppError::store_failed(format!(
@@ -669,6 +879,20 @@ impl Store {
             )));
         }
         let (embedded, stored_sha256) = self.embedded(pdf.path(), provenance).await?;
+        let (embedded, stored_sha256) = match lineage {
+            Some(lineage)
+                if lineage.preferred_key.as_str() == key
+                    && lineage.discovered_source_url == provenance.pdf_url =>
+            {
+                self.embed_lineage(&embedded, lineage).await?
+            }
+            Some(_) => {
+                return Err(AppError::store_failed(format!(
+                    "{key} has inconsistent recovery lineage"
+                )))
+            }
+            None => (embedded, stored_sha256),
+        };
         let _placing = self.inner.placing.lock().await;
         let path = layout::pdf_path(self.root(), &parsed);
         if path.exists() {
@@ -683,7 +907,7 @@ impl Store {
         let key = self.existing_key(key)?;
         let _key = self.lock(&key).await;
         let root = self.root();
-        let paths: Vec<PathBuf> = [
+        let mut paths: Vec<PathBuf> = [
             layout::markdown_path(root, &key),
             layout::extraction_dir(root, &key),
             layout::pdf_path(root, &key),
@@ -692,8 +916,153 @@ impl Store {
         .filter(|path| path.exists())
         .collect();
         let names = paths.iter().map(|path| file_name(path)).collect();
+        let expected = self.item(key.as_str()).await?.and_then(|item| {
+            item.source_lineage
+                .filter(|lineage| lineage.preferred_key.as_str() == key.as_str())
+        });
+        let (anchors, directories) = self
+            .promotion_anchors(key.as_str(), expected.as_ref())
+            .await?;
+        paths.extend(anchors);
         trash_all(paths).await?;
+        for directory in directories {
+            remove_empty_directory(&directory)?;
+        }
         Ok(names)
+    }
+
+    async fn promotion_anchors(
+        &self,
+        key: &str,
+        expected: Option<&SourceLineage>,
+    ) -> AppResult<(Vec<PathBuf>, Vec<PathBuf>)> {
+        let root = self.root();
+        let prefix = format!(".promotion-{}-", hex::encode(key));
+        let mut anchors = Vec::new();
+        let mut directories = Vec::new();
+        for entry in std::fs::read_dir(root)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(id) = name.strip_prefix(&prefix) else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(id).is_err() || !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let directory = entry.path();
+            if directory.join("pending.pdf").try_exists()? {
+                continue;
+            }
+            let anchor = directory.join("source.pdf");
+            let entries: Vec<_> = std::fs::read_dir(&directory)?.collect::<Result<_, _>>()?;
+            if entries.len() != 1
+                || !entries[0].file_type()?.is_file()
+                || entries[0].path() != anchor
+            {
+                return Err(AppError::store_failed(format!(
+                    "{} contains unexpected files",
+                    directory.display()
+                )));
+            }
+            let read = self
+                .read_records(std::slice::from_ref(&anchor))
+                .await?
+                .pop();
+            match read {
+                Some(FileRead::Read(record))
+                    if record.source_lineage.as_ref() == expected && expected.is_some() => {}
+                _ => {
+                    return Err(AppError::store_failed(format!(
+                        "{} does not belong to {key}",
+                        anchor.display()
+                    )))
+                }
+            }
+            anchors.push(anchor);
+            directories.push(directory);
+        }
+        Ok((anchors, directories))
+    }
+
+    pub async fn forget_promotion(
+        &self,
+        key: &str,
+        expected: Option<&SourceLineage>,
+    ) -> AppResult<()> {
+        let (anchors, directories) = self.promotion_anchors(key, expected).await?;
+        trash_all(anchors).await?;
+        for directory in directories {
+            remove_empty_directory(&directory)?;
+        }
+        Ok(())
+    }
+
+    /// Called only under the organization root lock, which excludes live promotions.
+    pub(crate) async fn clean_pending_promotions(&self) -> AppResult<()> {
+        let root = self.root();
+        for entry in std::fs::read_dir(root)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(name) = name.strip_prefix(".promotion-") else {
+                continue;
+            };
+            let Some((encoded, transaction)) = name.split_once('-') else {
+                continue;
+            };
+            let Ok(key_bytes) = hex::decode(encoded) else {
+                continue;
+            };
+            let Ok(key) = String::from_utf8(key_bytes) else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(transaction).is_err()
+                || Key::parse(&key).is_none()
+                || !entry.file_type()?.is_dir()
+            {
+                continue;
+            }
+            let directory = entry.path();
+            let entries: Vec<_> = std::fs::read_dir(&directory)?.collect::<Result<_, _>>()?;
+            if entries.is_empty() {
+                remove_empty_directory(&directory)?;
+                std::fs::File::open(root)?.sync_all()?;
+                continue;
+            }
+            let pending = directory.join("pending.pdf");
+            let anchor = directory.join("source.pdf");
+            if entries.len() > 2
+                || !entries.iter().all(|file| {
+                    (file.path() == pending || file.path() == anchor)
+                        && file.file_type().is_ok_and(|kind| kind.is_file())
+                })
+                || !pending.try_exists()?
+            {
+                continue;
+            }
+            let read = self
+                .read_records(std::slice::from_ref(&pending))
+                .await?
+                .pop();
+            if !matches!(read, Some(FileRead::Read(record)) if record.source_lineage.as_ref().is_some_and(|lineage|
+                lineage.preferred_key.as_str() == key && lineage.discovered_source_url == record.provenance.pdf_url))
+            {
+                continue;
+            }
+            if anchor.try_exists()? {
+                let pending_metadata = std::fs::metadata(&pending)?;
+                let anchor_metadata = std::fs::metadata(&anchor)?;
+                if pending_metadata.dev() != anchor_metadata.dev()
+                    || pending_metadata.ino() != anchor_metadata.ino()
+                {
+                    continue;
+                }
+                std::fs::remove_file(&anchor)?;
+            }
+            std::fs::remove_file(&pending)?;
+            remove_empty_directory(&directory)?;
+            std::fs::File::open(root)?.sync_all()?;
+        }
+        Ok(())
     }
 
     /// Places a finished extraction beside KEY's PDF: the previous `<key>.md` and
@@ -773,8 +1142,12 @@ impl Store {
             "--page".to_string(),
             page.to_string(),
             "--".to_string(),
-            layout::pdf_path(self.root(), &key).to_string_lossy().into_owned(),
-            layout::markdown_path(self.root(), &key).to_string_lossy().into_owned(),
+            layout::pdf_path(self.root(), &key)
+                .to_string_lossy()
+                .into_owned(),
+            layout::markdown_path(self.root(), &key)
+                .to_string_lossy()
+                .into_owned(),
         ];
         self.inner.python.json(&args).await.map_err(page_failure)
     }

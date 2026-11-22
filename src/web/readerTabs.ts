@@ -2,7 +2,7 @@
 // whether the Library tab is the one shown, and a place for the library's item menu, which a
 // PDF's tab shows below its own entries.
 import type { ItemExtractionActions } from "./components/ExtractionRunner";
-import type { Extraction } from "../contract/library";
+import type { BucketItem, Extraction } from "../contract/library";
 import { createContext, type ReactNode, useContext } from "react";
 
 // The context menu of KEY's item with TAB_ENTRIES first; null when the library holds no KEY.
@@ -10,7 +10,9 @@ export type ItemMenu = (key: string, tabEntries: ReactNode) => ReactNode | null;
 
 // What the reader's side pane shows and does about KEY's extraction; null when the library holds
 // no KEY.
-export type ReaderExtraction = (key: string) => (ItemExtractionActions & { state: Extraction }) | null;
+export type ReaderExtraction = (key: string) =>
+  | (ItemExtractionActions & { item: BucketItem; state: Extraction })
+  | null;
 
 export type ReaderTabsApi = {
   openReader: (key: string, title: string) => void;

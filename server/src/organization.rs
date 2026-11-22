@@ -16,8 +16,8 @@ use crate::config::ACTIVITY_KEPT;
 use crate::contract::{
     from_json, Activity, ApiErrorErrorKind, Collection, CollectionUpdateRequest, Contract,
     ItemFiling, ItemNote, Mirror, NonEmpty, Organization, Preferences, Reading, RemovedKeys, Rule,
-    RuleCollectionOperator, SavedSearch, SavedSearchMatch, SourceCheck, Theme, Timestamp, Trimmed,
-    ZoteroRecord,
+    RuleCollectionOperator, SavedSearch, SavedSearchMatch, SourceCheck, SourceLineage, Theme,
+    Timestamp, Trimmed, ZoteroRecord,
 };
 use crate::error::{AppError, AppResult};
 use crate::store::Store;
@@ -88,6 +88,7 @@ pub fn unfiled(captured_at: &Timestamp) -> ItemFiling {
         reading: Reading::Unread,
         source_check: SourceCheck::Unchecked,
         mirrors: Vec::new(),
+        source_lineage: None,
         modified_at: captured_at.clone(),
         zotero: None,
     }
@@ -96,6 +97,19 @@ pub fn unfiled(captured_at: &Timestamp) -> ItemFiling {
 pub fn non_empty(text: &str) -> NonEmpty {
     text.try_into()
         .expect("callers pass keys, ids and trimmed values, which are never empty")
+}
+
+pub fn remove_preferred_lineage(mut org: Organization, preferred_key: &str) -> Organization {
+    for item in org.items.values_mut() {
+        if item
+            .source_lineage
+            .as_ref()
+            .is_some_and(|lineage| lineage.preferred_key.as_str() == preferred_key)
+        {
+            item.source_lineage = None;
+        }
+    }
+    org
 }
 
 pub fn filing<'a>(org: &'a Organization, item: &str) -> Option<&'a ItemFiling> {
@@ -587,17 +601,22 @@ impl OrganizationStore {
     }
 
     /// Forgets an item whose PDF is gone: it counts as removed on purpose, and its filing goes.
-    pub async fn forget(&self, key: &str) -> AppResult<Organization> {
+    pub async fn forget(
+        &self,
+        key: &str,
+        lineage: Option<&SourceLineage>,
+    ) -> AppResult<Organization> {
         let _locked = self.lock().await?;
         if self.store.pdf_path(key)?.is_some() {
             return Err(AppError::invalid(format!(
                 "{key} has a stored PDF; delete the item instead"
             )));
         }
+        self.store.forget_promotion(key, lineage).await?;
         let mut removed = self.removed().await?;
         removed.insert(key.to_string());
         self.write_removed(removed).await?;
-        let next = remove_item(self.read().await?, key);
+        let next = remove_preferred_lineage(remove_item(self.read().await?, key), key);
         self.write(&next).await?;
         Ok(next)
     }
