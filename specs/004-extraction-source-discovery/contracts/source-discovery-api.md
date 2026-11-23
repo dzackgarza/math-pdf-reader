@@ -7,6 +7,17 @@
 Returns ranked candidates with a visible threshold. Candidates below the threshold are not
 returned.
 
+Errors use the repository error contract (`{ error: { kind, message } }`, `ApiError` in
+`src/contract/library.ts`):
+
+| Condition | Required response | Requirement |
+| --- | --- | --- |
+| The stored title is a placeholder (file name, "View PDF", "None", empty) | A client error that tells the user to set the title first; no request goes to arXiv | FR-018 |
+| arXiv answers HTTP 429 or 503 | An upstream error whose message names arXiv and, when arXiv sends `Retry-After`, when to retry; the message does not contain the query URL | FR-017 |
+| arXiv cannot be reached | An upstream error whose message names arXiv | FR-017 |
+
+The `ApiError` kind list has no upstream kind now. T070 adds one to the shared contract.
+
 ## Promotion
 
 `POST /api/items/{key}/arxiv/promote`

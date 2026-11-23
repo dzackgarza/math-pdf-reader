@@ -2,7 +2,7 @@
 
 **Feature Branch**: `004-extraction-source-discovery`
 **Created**: 2026-11-22
-**Status**: Draft
+**Status**: Partially implemented
 **Input**: Existing extraction plugins, arXiv eligibility, and source-discovery behavior
 
 ## User Scenarios & Testing *(mandatory)*
@@ -66,6 +66,9 @@ with expected source-backed content.
 - Metadata may be incomplete or contain unusual mathematical notation.
 - Providers may be unavailable, time out, or return invalid output.
 - The arXiv API may refuse a discovery request (HTTP 429 or 503) or be unreachable.
+- The stored title may be a placeholder: a file name, a page label such as "View PDF",
+  the text "None", or empty. A search with such a title cannot find the paper.
+- The stored metadata may hold a title and no authors or abstract.
 - Repeating promotion for the same arXiv identifier is idempotent and does not create
   another preferred representation.
 - A promotion that downloads successfully but fails while recording metadata or lineage
@@ -118,6 +121,20 @@ with expected source-backed content.
   API supplies it, when to retry. It MUST NOT return an empty candidate list.
   Discovery MUST keep its requests to the arXiv API at least 3 seconds apart, as the
   arXiv API terms of use require.
+- **FR-018**: Discovery MUST refuse to search when the stored title is a placeholder
+  (the PDF's file name, a known page label such as "View PDF", the text "None", or
+  empty). The refusal MUST tell the user to set the title first.
+- **FR-019**: The inspector MUST show the lineage on both items of a promotion: on the
+  preferred item, the original item and its captured PDF URL; on the original item,
+  the preferred item and its arXiv URL. Each MUST link to the other item.
+
+## Open Questions
+
+- [NEEDS CLARIFICATION: Can a title alone make a match confident? The source now
+  scores a title-only item on the title alone, so an exact title match scores 1.0 and
+  can be promoted. Alternatives: (a) keep this; (b) require authors or an abstract
+  before a match can pass 0.80; (c) allow a title-only match only when the normalized
+  titles are identical and the arXiv entry is the only result.]
 
 ### Key Entities
 - **Extraction Job**: Requested provider operation and status.

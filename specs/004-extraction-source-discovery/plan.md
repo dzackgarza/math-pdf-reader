@@ -143,4 +143,7 @@ archive, validates that the archive is readable and contains source files, and w
 
 ## Complexity Tracking
 
-No constitution violations.
+| Violation in the source | Principle | Owning task |
+| --- | --- | --- |
+| The index gives an extraction directory without `metadata.json` a silent `document_structure`, non-authoritative default (`server/src/index.rs`). | IV. Fail Loudly | T065 |
+| The page-to-extraction mapping code is still in the tree with no caller (`Store::locate`, `src/pdfbucket/locate.py`). | III. Reader Context Is Minimal and Explicit | T066 |
