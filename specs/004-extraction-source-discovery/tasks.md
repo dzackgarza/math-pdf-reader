@@ -78,13 +78,15 @@ durable lineage, arXiv eligibility, and preserved embedded provenance.
 - [X] T019 [P] [US2] Add API contract tests for ranked candidates, visible threshold, malformed candidates, low-confidence candidates, and non-ArXiv URLs in `tests/server-sources.test.ts`
 - [X] T020 [US2] Add an end-to-end promotion test using a real local source fixture that verifies the promoted item, original item, lineage, embedded provenance, and arXiv eligibility in `tests/server-sources.test.ts`
 - [X] T021 [US2] Add a failure-path integration test proving failed fetch, invalid PDF, or persistence failure leaves the original item usable and reports an explicit error in `tests/server-sources.test.ts`
-- [ ] T021a [US2] Add idempotency and atomicity tests proving repeated promotion reuses the preferred item and failed metadata/lineage persistence leaves no unlinked item
+- [X] T021a [US2] Add idempotency and atomicity tests proving repeated promotion reuses the preferred item and failed metadata/lineage persistence leaves no unlinked item
+  - Evidence (source): `tests/server-sources.test.ts` covers repeat promotion (`confident arXiv promotion preserves the original and is idempotent`, `simultaneous promotions from separate server processes reuse one preferred item`, `repeating promotion of a missing preferred item does not create a duplicate`) and failed persistence (`metadata recording failure rolls back a newly captured preferred PDF`, `lineage persistence failure never publishes a preferred PDF`).
 
 ### Implementation for User Story 2
 
 - [X] T022 [P] [US2] Implement deterministic arXiv candidate search, confidence thresholding, and candidate contracts in `server/src/arxiv.rs`
 - [X] T023 [US2] Implement server-side candidate validation and source fetch verification for `POST /api/items/{key}/arxiv/promote` in `server/src/arxiv.rs` and `server/src/imports.rs`
-- [ ] T024 [US2] Implement safe promoted-item capture/linkage in `server/src/store.rs` and `server/src/organization.rs` without changing the original item's embedded provenance or ordinary hash-safe recovery
+- [X] T024 [US2] Implement safe promoted-item capture/linkage in `server/src/store.rs` and `server/src/organization.rs` without changing the original item's embedded provenance or ordinary hash-safe recovery
+  - Evidence (source): `Store::capture_distinct` in `server/src/store.rs` places the preferred item with its lineage; `promote` in `server/src/arxiv.rs` checks the original's provenance again under the filing lock before placement.
 - [X] T025 [US2] Expose promotion response and lineage state through `server/src/app.rs`, `server/src/state.rs`, and `src/contract/library.ts`
 - [X] T025a [US2] Make both original and preferred items expose the same source lineage and make the preferred item the sole selected representation in library state
 - [X] T026 [US2] Add browser actions for candidate search and explicit promotion/replacement in `src/web/libraryActions.ts`
@@ -125,9 +127,12 @@ required by FR-008 through FR-010.
 
 - [X] T036 [P] Update `specs/004-extraction-source-discovery/quickstart.md` with the final promotion and extraction commands
 - [X] T037 [P] Add user-facing source/provenance and promotion wording to `README.md` and relevant UI copy
-- [ ] T038 Run `git diff --check` and the focused Bun/Rust tests from `specs/004-extraction-source-discovery/quickstart.md`
-- [ ] T039 Run `just test-commit` and the applicable Rust/QC recipes; record any repository-wide pre-existing failures without weakening this feature's checks
-- [ ] T040 Verify user-visible behavior through the normal launcher; do not run manual provisioning
+- [X] T038 Run `git diff --check` and the focused Bun/Rust tests from `specs/004-extraction-source-discovery/quickstart.md`
+  - Discharged by T061.
+- [X] T039 Run `just test-commit` and the applicable Rust/QC recipes; record any repository-wide pre-existing failures without weakening this feature's checks
+  - Discharged locally by T061. Push QC in CI fails in setup; see T071.
+- [X] T040 Verify user-visible behavior through the normal launcher; do not run manual provisioning
+  - Discharged by T062.
 - [X] T041 Assert the 20-fixture discovery corpus meets the 95% known-match ranking criterion
 
 ## Phase 7: Convergence
@@ -138,19 +143,22 @@ required by FR-008 through FR-010.
 - [X] T045 Add a server extraction fixture test for a true OCR or document-structure provider on a non-arXiv item per FR-009 (missing)
 - [X] T046 Add server integration coverage proving malformed or missing arXiv source leaves no authoritative or PDF-text substitute result per FR-010 and T031 (partial)
 - [X] T047 Preserve the original downloaded arXiv e-print archive as the authoritative source artifact while retaining derived Markdown as convenience output per the plan Archive Contract (partial)
-- [ ] T048 Verify user-visible behavior through the normal launcher and record the result without manual provisioning per T040 and the constitution Development Workflow (missing)
+- [X] T048 Verify user-visible behavior through the normal launcher and record the result without manual provisioning per T040 and the constitution Development Workflow (missing)
+  - Discharged by T062.
 - [X] T049 Add the deterministic 20-paper discovery corpus and assert at least 95% known-match ranking per SC-002 and T041 (missing)
 - [X] T050 Remove approximate page-to-extraction mapping from assistant context and expose only exact reader page context plus an authoritative-extraction pointer per Constitution III (contradicts)
 
 ## Phase 8: Convergence
 
-- [ ] T051 Complete atomic promotion failure-injection coverage and prove rollback preserves the original item per T042, FR-014 (partial)
+- [X] T051 Complete atomic promotion failure-injection coverage and prove rollback preserves the original item per T042, FR-014 (partial)
+  - Evidence (source): each FR-014 step has a failure test in `tests/server-sources.test.ts`: source fetch (`a failed preferred-source fetch leaves the original item usable`), PDF placement (`promotion does not overwrite or remove a PDF placed by another writer`), metadata (`metadata recording failure rolls back a newly captured preferred PDF`, `a metadata failure never publishes the preferred PDF`), and lineage (`lineage persistence failure never publishes a preferred PDF`).
 - [X] T052 Complete the UI extraction readiness/failure timing assertion within 10 seconds per T043, SC-004 (missing)
 - [X] T053 Complete server-boundary arXiv extraction coverage with an authoritative source artifact per T044, FR-008 (missing)
 - [X] T054 Complete server-boundary true OCR/document-structure fixture coverage for non-arXiv items per T045, FR-009 (missing)
 - [X] T055 Complete malformed/missing-source integration coverage proving no authoritative PDF-text fallback per T046, FR-010 (partial)
 - [X] T056 Complete preservation of the original downloaded e-print archive as the authoritative artifact per T047 and the plan Archive Contract (partial)
-- [ ] T057 Complete normal-launcher runtime verification without manual provisioning per T048 and the constitution Development Workflow (missing)
+- [X] T057 Complete normal-launcher runtime verification without manual provisioning per T048 and the constitution Development Workflow (missing)
+  - Discharged by T062.
 - [X] T058 Complete the deterministic 20-paper corpus and 95% ranking assertion per T049, SC-002 (missing)
 - [X] T059 CRITICAL: Remove approximate page-to-extraction mapping from assistant context and expose only exact page context plus the authoritative-extraction pointer per T050 and Constitution III (contradicts)
 
@@ -211,3 +219,13 @@ and repository QC.
   - Result (source fingerprint matched the checkout after `scripts/launch` rebuilt): search on `07410103` returned `threshold: 0.80` with one match `1212.1675` at score `1.0`; promotion created a distinct preferred item `1212.1675v3` holding `sourceLineage` to `07410103`, and the original stayed in the library; extraction on `1111.3209v4` (`POST /api/items/1111.3209v4/extractions/arxiv-source`) succeeded with `source_kind: arxiv_latex`, `authoritative: true`, and artifacts `source.eprint` and `source.tex`. Two defects surfaced and are recorded as T063 and T064.
 - [X] T063 Notify the index exporter when an extraction is placed, so the export carries the extraction's `sourceKind` and `authoritative` instead of a stale record, proven by a test that fails before the fix and passes after per FR-008, FR-011, and the plan Archive Contract (missing; found by T062)
 - [ ] T064 Neutralize the `\input`/`\include` targets an arXiv source package does not ship before `latexpand` flattens it, so a paper whose source pulls in a system package (for example `\input{xy}` for xypic) converts instead of failing per the plan Archive Contract conversion-failure path (partial; found by T062)
+
+## Phase 10: Convergence
+
+- [ ] T065 Report an extraction directory without `metadata.json` as an explicit unlabelled extraction state in `server/src/index.rs`, the library contract and `src/web/components/ExtractionRunner.tsx`, so the user re-runs the extraction. The index now gives such a directory a silent `document_structure`, non-authoritative default. Per Constitution IV and FR-011 (contradicts). In the running app, the arXiv LaTeX extraction of `1508.07880v1` shows as `document_structure`, not authoritative, and the assistant gets no extraction for it.
+- [ ] T066 Delete the page-to-extraction mapping that T059 left with no caller: `Store::locate` and `ExtractionLines` in `server/src/store.rs`, `src/pdfbucket/locate.py`, the `locate` command in `src/pdfbucket/cli.py`, and `tests/test_locate.py`, per Constitution III and T059 (partial).
+- [ ] T067 Compare authors by normalized name (surname and initials, with case and diacritics folded) in `author_similarity` in `server/src/arxiv.rs`, so "J. Kollár" matches "János Kollár". The exact full-string comparison gives abbreviated captured authors a score of zero, which keeps an exact-title match below the 0.80 threshold. Per FR-004 and the edge case "Metadata may be incomplete" (partial).
+- [ ] T068 Query arXiv by title terms instead of the exact phrase `ti:"<title>"` in `search_candidates` in `server/src/arxiv.rs`, and rank the candidates locally, so a captured title that differs in TeX markup, punctuation or subtitle still returns candidates, per FR-004 and the edge case "unusual mathematical notation" (partial).
+- [ ] T069 Make the SC-002 corpus test in `tests/server-sources.test.ts` use captured-style metadata (abbreviated, reordered or missing authors, TeX in titles, changed subtitles) and an Atom feed that also holds distractor entries. The test now searches with each paper's exact title and authors against a feed that holds only the 20 corpus entries. Per SC-002 (partial).
+- [ ] T070 Report an arXiv API refusal (HTTP 429 or 503, with its `Retry-After`) or an unreachable API as a distinct upstream error that names arXiv and when to retry, and keep requests to the arXiv API at least 3 seconds apart, in `server/src/arxiv.rs` and the discovery controls in `src/web/components/InspectorPanel.tsx`. A refusal now shows as an `internal` error that contains the query URL. Per FR-017 (missing).
+- [ ] T071 Replace `webkit2gtk-driver` with `webkitgtk-webdriver` in the `ci-setup` recipe in `justfile`. The CI image has no install candidate for the old package, so Push QC fails in setup and no QC gate runs. Per T039 and the constitution Development Workflow (partial).

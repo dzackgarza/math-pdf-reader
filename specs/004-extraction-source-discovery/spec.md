@@ -65,6 +65,7 @@ with expected source-backed content.
 - Multiple candidates may have similar titles or authors.
 - Metadata may be incomplete or contain unusual mathematical notation.
 - Providers may be unavailable, time out, or return invalid output.
+- The arXiv API may refuse a discovery request (HTTP 429 or 503) or be unreachable.
 - Repeating promotion for the same arXiv identifier is idempotent and does not create
   another preferred representation.
 - A promotion that downloads successfully but fails while recording metadata or lineage
@@ -112,6 +113,11 @@ with expected source-backed content.
   sources matching its original SHA-256.
 - **FR-016**: Promotion of an already-promoted identifier/version MUST be idempotent
   and MUST return the existing preferred item and lineage.
+- **FR-017**: When the arXiv API refuses a discovery request or cannot be reached,
+  discovery MUST fail with an explicit upstream error that names arXiv and, when the
+  API supplies it, when to retry. It MUST NOT return an empty candidate list.
+  Discovery MUST keep its requests to the arXiv API at least 3 seconds apart, as the
+  arXiv API terms of use require.
 
 ### Key Entities
 - **Extraction Job**: Requested provider operation and status.
