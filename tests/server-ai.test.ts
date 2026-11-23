@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { AiSessionRequestSchema } from "../src/contract/ai";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { ApiErrorSchema } from "../src/contract/library";
@@ -33,10 +33,18 @@ async function storedBucket(
     config,
   });
   const form = new FormData();
-  form.set("pdf", new File([readFileSync(longNotes)], "long-notes.pdf", { type: "application/pdf" }));
+  form.set(
+    "pdf",
+    new File([readFileSync(longNotes)], "long-notes.pdf", {
+      type: "application/pdf",
+    }),
+  );
   form.set("pdf_url", "https://www.math.example.edu/~author/long-notes.pdf");
   form.set("title_hint", "Long Notes");
-  expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+  expect(
+    (await app.request("/capture-bytes", { method: "POST", body: form }))
+      .status,
+  ).toBe(200);
   return app;
 }
 
@@ -75,7 +83,9 @@ test("a page outside the PDF is refused as a bad request that names the page cou
   const response = await app.request("/api/ai/text/long-notes?page=9999");
 
   expect(response.status).toBe(400);
-  expect(ApiErrorSchema.parse(await response.json()).error.message).toContain("has ");
+  expect(ApiErrorSchema.parse(await response.json()).error.message).toContain(
+    "has ",
+  );
   await app.stop();
 });
 
@@ -91,13 +101,18 @@ test("an assistant that cannot start is reported as unavailable, with its own ou
   });
 
   expect(response.status).toBe(502);
-  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("ai_unavailable");
+  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe(
+    "ai_unavailable",
+  );
   await app.stop();
 });
 
 const view = (app: Awaited<ReturnType<typeof storedBucket>>) =>
   app.request("/api/ai/view/long-notes").then((response) => response.text());
-const readPage = (app: Awaited<ReturnType<typeof storedBucket>>, page: number) =>
+const readPage = (
+  app: Awaited<ReturnType<typeof storedBucket>>,
+  page: number,
+) =>
   app.request("/api/items/long-notes/reading", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -136,38 +151,72 @@ test("the view gives a search hint without guessing extraction line ranges", asy
 // the instruction entries it is given. The bucket treats a server that answers as its own.
 function fakeAssistant() {
   const entries: Record<string, unknown> = {};
+  const workspaces: Record<string, string> = {};
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
       const { pathname } = new URL(request.url);
-      const entry = pathname.match(/^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/(.+)$/);
+      const entry = pathname.match(
+        /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries\/(.+)$/,
+      );
       if (entry && request.method === "PUT") {
-        entries[`${entry[1]}/${entry[2]}`] = ((await request.json()) as { value: unknown }).value;
+        entries[`${entry[1]}/${entry[2]}`] = (
+          (await request.json()) as { value: unknown }
+        ).value;
         return new Response(null, { status: 204 });
       }
       if (pathname === "/api/session" && request.method === "POST") {
+        const body = (await request.json()) as {
+          location: { directory: string };
+        };
+        workspaces.ses_fake = body.location.directory;
         return Response.json({ data: { id: "ses_fake" } });
       }
       if (pathname === "/api/pair") return Response.json({ code: "code" });
       return Response.json({ data: {} });
     },
   });
-  return { entries, port: server.port, stop: () => server.stop(true) };
+  return {
+    entries,
+    workspaces,
+    port: server.port,
+    stop: () => server.stop(true),
+  };
 }
 
-test("an assistant session refuses to start without a structured extraction", async () => {
+test("an assistant session starts without an extraction and names the stored raw PDF", async () => {
   const assistant = fakeAssistant();
-  const app = await storedBucket("true", undefined, assistant.port);
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+  const app = await storedBucket("true", root, assistant.port);
   const response = await app.request("/api/ai/session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key: "long-notes" }),
   });
 
-  expect(response.status).toBe(400);
-  expect(ApiErrorSchema.parse(await response.json()).error.message).toContain(
-    "no structured extraction",
-  );
+  expect(response.status).toBe(200);
+  const workspace = assistant.workspaces.ses_fake;
+  const instructions = readFileSync(join(workspace, "AGENTS.md"), "utf8");
+  expect(instructions).toContain(join(root, "long-notes.pdf"));
+  const aiRoot = dirname(dirname(workspace));
+  const config = JSON.parse(
+    readFileSync(join(aiRoot, "reader.json"), "utf8"),
+  ) as {
+    agents: {
+      reader: {
+        permissions: Array<{
+          action: string;
+          resource: string;
+          effect: string;
+        }>;
+      };
+    };
+  };
+  expect(config.agents.reader.permissions).toContainEqual({
+    action: "read",
+    resource: `${root}/*.pdf`,
+    effect: "allow",
+  });
   await app.stop();
   assistant.stop();
 });
@@ -177,12 +226,18 @@ test("the assistant's chat is told the reader's page as soon as the reader repor
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
   extraction(root, "# Extracted notes\n");
   const app = await storedBucket("true", root, assistant.port);
-  expect((await app.request("/api/ai/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: "long-notes" }),
-  })).status).toBe(200);
-  expect(assistant.entries["ses_fake/reader-view"]).toContain("has not recorded a page");
+  expect(
+    (
+      await app.request("/api/ai/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "long-notes" }),
+      })
+    ).status,
+  ).toBe(200);
+  expect(assistant.entries["ses_fake/reader-view"]).toContain(
+    "has not recorded a page",
+  );
 
   expect((await readPage(app, 7)).status).toBe(200);
 
