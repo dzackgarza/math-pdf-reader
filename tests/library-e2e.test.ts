@@ -2,7 +2,14 @@
 // served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
 // Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 
-import { afterAll, beforeAll, beforeEach, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -29,7 +36,12 @@ import type {
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
 import { $ } from "bun";
-import puppeteer, { type Browser, type Dialog, type HTTPRequest, type Page } from "puppeteer-core";
+import puppeteer, {
+  type Browser,
+  type Dialog,
+  type HTTPRequest,
+  type Page,
+} from "puppeteer-core";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
@@ -45,7 +57,8 @@ const screenshots = join(tmpdir(), "pdf-bucket-library-e2e");
 const viewport = { width: 1400, height: 900 };
 
 // The bytes of a committed fixture PDF.
-const fixture = (file: string) => new Uint8Array(readFileSync(join(fixtures, file)));
+const fixture = (file: string) =>
+  new Uint8Array(readFileSync(join(fixtures, file)));
 // The ten-page notes with a comment after their end: the same pages as another PDF, so the
 // store keeps it as its own item.
 const readingCopy = new Uint8Array([
@@ -66,7 +79,9 @@ const CAPTURES = [
 function executable(name: string): string {
   const path = Bun.which(name);
   if (path === null) {
-    throw new Error(`${name} is not on PATH; the library suite drives the real browser`);
+    throw new Error(
+      `${name} is not on PATH; the library suite drives the real browser`,
+    );
   }
   return path;
 }
@@ -121,7 +136,9 @@ async function startBucket() {
       body: form,
     });
     if (!response.ok) {
-      throw new Error(`capture of ${key} failed: ${response.status} ${await response.text()}`);
+      throw new Error(
+        `capture of ${key} failed: ${response.status} ${await response.text()}`,
+      );
     }
   }
   return bucket;
@@ -146,7 +163,9 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
           { headers: { "Content-Type": "application/atom+xml" } },
         );
       }
-      return new Response(fixture("problem-set.pdf"), { headers: { "Content-Type": "application/pdf" } });
+      return new Response(fixture("problem-set.pdf"), {
+        headers: { "Content-Type": "application/pdf" },
+      });
     },
   });
   const endpoint = (path: string) => new URL(path, arxiv.url).href;
@@ -158,7 +177,12 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
     extractionsManifest: EXTRACTIONS_MANIFEST,
     config: {
       ...config,
-      arxiv: { api_url: endpoint("/api/query"), abs_url: endpoint("/abs/"), pdf_url: endpoint("/pdf/"), e_print_url: endpoint("/e-print/") },
+      arxiv: {
+        api_url: endpoint("/api/query"),
+        abs_url: endpoint("/abs/"),
+        pdf_url: endpoint("/pdf/"),
+        e_print_url: endpoint("/e-print/"),
+      },
     },
   });
   try {
@@ -166,9 +190,16 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
     form.set("pdf", new File([fixture("lecture-notes.pdf")], "original.pdf"));
     form.set("pdf_url", published("/~author/lattices.pdf"));
     form.set("title_hint", "Promotion Notes");
-    const capture = await app.request("/capture-bytes", { method: "POST", body: form });
+    const capture = await app.request("/capture-bytes", {
+      method: "POST",
+      body: form,
+    });
     expect(capture.ok).toBe(true);
-    await recordMetadata(root, "original", "resolver", { title: "Promotion Notes", authors: ["An Author"], year: 2024 });
+    await recordMetadata(root, "original", "resolver", {
+      title: "Promotion Notes",
+      authors: ["An Author"],
+      year: 2024,
+    });
 
     await page.goto(`${app.origin}/`);
     await page.waitForSelector(row("original"));
@@ -186,7 +217,10 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
     await page.click(row("original"));
     await (await byRole("button", "Find on arXiv")).click();
     await (await byRole("button", "Use this version")).click();
-    await shows("body", "The preferred arXiv PDF is missing; use Needs Re-fetch to rebuild it.");
+    await shows(
+      "body",
+      "The preferred arXiv PDF is missing; use Needs Re-fetch to rebuild it.",
+    );
     await shows('button[aria-label="Needs Re-fetch"] span:last-child', "1");
     await shot("arxiv-promotion-missing");
   } finally {
@@ -198,12 +232,15 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
 const organization = async () => readOrganization(bucket.root);
 const row = (key: string) => `tr[data-item-id="${key}"]`;
 const rowKeys = () =>
-  page.$$eval("tr[data-item-id]", (rows) => rows.map((tr) => tr.getAttribute("data-item-id")));
+  page.$$eval("tr[data-item-id]", (rows) =>
+    rows.map((tr) => tr.getAttribute("data-item-id")),
+  );
 // Waits until the element at SELECTOR shows TEXT. Its text only: `::-p-text` also matches the
 // value typed into a field, so it passes while the change is still on its way to the server.
 const shows = (selector: string, text: string) =>
   page.waitForFunction(
-    (css, wanted) => document.querySelector(css)?.textContent?.includes(wanted) === true,
+    (css, wanted) =>
+      document.querySelector(css)?.textContent?.includes(wanted) === true,
     {},
     selector,
     text,
@@ -214,7 +251,9 @@ const byRole = async (role: string, label: string) => {
   const text = (element: Element) => element.textContent?.trim();
   await page.waitForFunction(
     (css, wanted) =>
-      [...document.querySelectorAll(css)].some((element) => element.textContent?.trim() === wanted),
+      [...document.querySelectorAll(css)].some(
+        (element) => element.textContent?.trim() === wanted,
+      ),
     {},
     selector,
     label,
@@ -269,7 +308,8 @@ const openTabKeys = () =>
 const readerKeys = async () =>
   (
     await page.evaluate(async () => {
-      const viewer = document.querySelector<EmbedPdfContainer>("embedpdf-container");
+      const viewer =
+        document.querySelector<EmbedPdfContainer>("embedpdf-container");
       const documents = (await viewer?.registry)
         ?.getPlugin<DocumentManagerPlugin>("document-manager")
         ?.provides();
@@ -283,7 +323,9 @@ const readerKeys = async () =>
 const scrollOf = (key: string) =>
   page.evaluate(async (css) => {
     const viewer = document.querySelector<EmbedPdfContainer>(css);
-    const viewport = (await viewer?.registry)?.getPlugin<ViewportPlugin>("viewport")?.provides();
+    const viewport = (await viewer?.registry)
+      ?.getPlugin<ViewportPlugin>("viewport")
+      ?.provides();
     if (viewport === undefined) {
       throw new Error(`${css} has no viewport plugin`);
     }
@@ -308,7 +350,9 @@ const scrollBy = async (key: string, down: number) => {
   await page.evaluate(
     async (css, to) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const viewport = (await viewer?.registry)?.getPlugin<ViewportPlugin>("viewport")?.provides();
+      const viewport = (await viewer?.registry)
+        ?.getPlugin<ViewportPlugin>("viewport")
+        ?.provides();
       if (viewport === undefined) {
         throw new Error(`${css} has no viewport plugin`);
       }
@@ -325,7 +369,9 @@ const scrolledFrom = (key: string, top: number) =>
   page.waitForFunction(
     async (css, from) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const viewport = (await viewer?.registry)?.getPlugin<ViewportPlugin>("viewport")?.provides();
+      const viewport = (await viewer?.registry)
+        ?.getPlugin<ViewportPlugin>("viewport")
+        ?.provides();
       return viewport !== undefined && viewport.getMetrics().scrollTop !== from;
     },
     {},
@@ -342,7 +388,9 @@ const keysReach = async (key: string) => {
   await page.waitForFunction(
     async (css, unzoomed) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const zoom = (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides();
+      const zoom = (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides();
       return zoom !== undefined && zoom.getState().zoomLevel !== unzoomed;
     },
     {},
@@ -375,8 +423,11 @@ const readerLoaded = async (key: string) => {
   console.info("reader test load", { key, stage: "document" });
   await page.waitForFunction(
     async (css, wanted) => {
-      const registry = await document.querySelector<EmbedPdfContainer>(css)?.registry;
-      const documents = registry?.getPlugin<DocumentManagerPlugin>("document-manager")?.provides();
+      const registry =
+        await document.querySelector<EmbedPdfContainer>(css)?.registry;
+      const documents = registry
+        ?.getPlugin<DocumentManagerPlugin>("document-manager")
+        ?.provides();
       const scroll = registry?.getPlugin<ScrollPlugin>("scroll")?.provides();
       if (documents === undefined || scroll === undefined) {
         return false;
@@ -398,7 +449,10 @@ const readerLoaded = async (key: string) => {
         root !== null &&
         root !== undefined &&
         [...root.querySelectorAll(`${box} img`)].some(
-          (image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+          (image) =>
+            image instanceof HTMLImageElement &&
+            image.complete &&
+            image.naturalWidth > 0,
         )
       );
     },
@@ -415,8 +469,12 @@ const showsPage = (key: string, pageNumber: number) =>
   page.waitForFunction(
     async (css, wanted) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const input = viewer?.shadowRoot?.querySelector('input[inputmode="numeric"]');
-      const scroll = (await viewer?.registry)?.getPlugin<ScrollPlugin>("scroll")?.provides();
+      const input = viewer?.shadowRoot?.querySelector(
+        'input[inputmode="numeric"]',
+      );
+      const scroll = (await viewer?.registry)
+        ?.getPlugin<ScrollPlugin>("scroll")
+        ?.provides();
       return (
         input instanceof HTMLInputElement &&
         input.value === wanted &&
@@ -440,7 +498,10 @@ const goToPage = async (key: string, pageNumber: number) => {
     key,
     pageNumber,
     stage: "submit",
-    value: await page.$eval(pageInput(key), (input) => (input as HTMLInputElement).value),
+    value: await page.$eval(
+      pageInput(key),
+      (input) => (input as HTMLInputElement).value,
+    ),
   });
   await page.keyboard.press("Enter");
   console.info("reader test page entry", {
@@ -449,8 +510,12 @@ const goToPage = async (key: string, pageNumber: number) => {
     stage: "submitted",
     state: await page.evaluate(async (css) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const scroll = (await viewer?.registry)?.getPlugin<ScrollPlugin>("scroll")?.provides();
-      const viewport = (await viewer?.registry)?.getPlugin<ViewportPlugin>("viewport")?.provides();
+      const scroll = (await viewer?.registry)
+        ?.getPlugin<ScrollPlugin>("scroll")
+        ?.provides();
+      const viewport = (await viewer?.registry)
+        ?.getPlugin<ViewportPlugin>("viewport")
+        ?.provides();
       if (scroll === undefined || viewport === undefined) {
         throw new Error(`${css} has no scroll or viewport plugin`);
       }
@@ -482,7 +547,9 @@ const goToPage = async (key: string, pageNumber: number) => {
 const firstPageCorner = async (key: string) => {
   await page.evaluate(async (css) => {
     const viewer = document.querySelector<EmbedPdfContainer>(css);
-    const scroll = (await viewer?.registry)?.getPlugin<ScrollPlugin>("scroll")?.provides();
+    const scroll = (await viewer?.registry)
+      ?.getPlugin<ScrollPlugin>("scroll")
+      ?.provides();
     if (scroll === undefined) {
       throw new Error(`${css} has no scroll plugin`);
     }
@@ -502,7 +569,8 @@ const firstPageCorner = async (key: string) => {
               .sort((one, other) => one.y - other.y);
             const first = tops[0];
             return (
-              first !== undefined && first.y >= 0 && { x: first.x, y: first.y, width: first.width }
+              first !== undefined &&
+              first.y >= 0 && { x: first.x, y: first.y, width: first.width }
             );
           },
           {},
@@ -512,10 +580,14 @@ const firstPageCorner = async (key: string) => {
       ).jsonValue(),
     );
   // A zoom still settling moves and resizes the page, so the corner is taken once it stays put.
-  for (let before = await corner(); ; ) {
+  for (let before = await corner(); ;) {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const after = await corner();
-    if (after.x === before.x && after.y === before.y && after.width === before.width) {
+    if (
+      after.x === before.x &&
+      after.y === before.y &&
+      after.width === before.width
+    ) {
       return after;
     }
     before = after;
@@ -549,7 +621,8 @@ const writeNote = async (key: string, note: string, down = 160) => {
     key,
     stage: "corner",
     corner,
-    existingEditor: (await page.$(inViewer(key, '[contenteditable="true"]'))) !== null,
+    existingEditor:
+      (await page.$(inViewer(key, '[contenteditable="true"]'))) !== null,
   });
   if ((await page.$(inViewer(key, '[contenteditable="true"]'))) !== null) {
     await page.mouse.click(corner.x + 120, corner.y + down);
@@ -579,8 +652,10 @@ const notesOnFirstPage = async (key: string) => {
       if (annotations === undefined) {
         throw new Error(`${css} has no annotation plugin`);
       }
-      return (await annotations.getPageAnnotations({ pageIndex: 0 }).toPromise()).flatMap(
-        (annotation) => (annotation.contents === undefined ? [] : [annotation.contents]),
+      return (
+        await annotations.getPageAnnotations({ pageIndex: 0 }).toPromise()
+      ).flatMap((annotation) =>
+        annotation.contents === undefined ? [] : [annotation.contents],
       );
     }, viewerOf(key)),
   );
@@ -590,7 +665,9 @@ const zoomOf = async (key: string) =>
   z.union([z.number(), z.enum(["automatic", "fit-page", "fit-width"])]).parse(
     await page.evaluate(async (css) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const zoom = (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides();
+      const zoom = (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides();
       if (zoom === undefined) {
         throw new Error(`${css} has no zoom plugin`);
       }
@@ -614,16 +691,23 @@ const openBrowser = async () => {
   });
   await browser
     .defaultBrowserContext()
-    .overridePermissions(bucket.origin, ["clipboard-read", "clipboard-sanitized-write"]);
+    .overridePermissions(bucket.origin, [
+      "clipboard-read",
+      "clipboard-sanitized-write",
+    ]);
   page = await browser.newPage();
-  page.on("console", (message) => console.info("browser console", message.type(), message.text()));
+  page.on("console", (message) =>
+    console.info("browser console", message.type(), message.text()),
+  );
 };
 
 beforeAll(async () => {
   mkdirSync(screenshots, { recursive: true });
   // The app serves the bundle in dist/web; build it from the current source as `just provision`
   // does. `bun test` sets NODE_ENV=test, under which Vite bundles React's development build.
-  await $`just build-web`.env({ ...process.env, NODE_ENV: "production" }).quiet();
+  await $`just build-web`
+    .env({ ...process.env, NODE_ENV: "production" })
+    .quiet();
   bucket = await startBucket();
   await openBrowser();
 }, 60_000);
@@ -669,8 +753,12 @@ test("typing a new collection name in the details files the item into that new c
   await shot("details-filed");
 
   const org = await organization();
-  const created = org.collections.filter((collection) => collection.name === "Birational geometry");
-  expect(org.items.lattices?.collections).toEqual(created.map((collection) => collection.id));
+  const created = org.collections.filter(
+    (collection) => collection.name === "Birational geometry",
+  );
+  expect(org.items.lattices?.collections).toEqual(
+    created.map((collection) => collection.id),
+  );
   expect(created).toHaveLength(1);
 });
 
@@ -696,7 +784,9 @@ test("the details pane edits bibliographic metadata and shows the saved values a
     await page.click('button[aria-label="Edit metadata"]');
     await page.waitForSelector('input[aria-label="Title"]');
     await page.waitForFunction(() => {
-      const image = document.querySelector<HTMLImageElement>('aside img[alt="First page"]');
+      const image = document.querySelector<HTMLImageElement>(
+        'aside img[alt="First page"]',
+      );
       return image?.complete === true && image.naturalWidth > 0;
     });
     await shot("details-metadata-edit");
@@ -706,7 +796,10 @@ test("the details pane edits bibliographic metadata and shows the saved values a
 
     await page.click('input[aria-label="Title"]', { count: 3 });
     await page.keyboard.press("Backspace");
-    await page.type('input[aria-label="Title"]', "Corrected title from the paper");
+    await page.type(
+      'input[aria-label="Title"]',
+      "Corrected title from the paper",
+    );
     await page.type(
       'textarea[aria-label="Authors, one per line"]',
       "Ada Researcher\nBenoit Scholar",
@@ -723,13 +816,15 @@ test("the details pane edits bibliographic metadata and shows the saved values a
     expect(await page.$eval("aside h2", (heading) => heading.textContent)).toBe(
       "Corrected title from the paper",
     );
-    expect(await page.$eval("aside header", (header) => header.textContent)).toContain(
-      "Ada Researcher, Benoit Scholar · 2024",
-    );
+    expect(
+      await page.$eval("aside header", (header) => header.textContent),
+    ).toContain("Ada Researcher, Benoit Scholar · 2024");
     const payload = LibraryPayloadSchema.parse(
       await (await fetch(`${bucket.origin}/api/library`)).json(),
     );
-    expect(payload.items.find((item) => item.id === captured.key)).toMatchObject({
+    expect(
+      payload.items.find((item) => item.id === captured.key),
+    ).toMatchObject({
       titleSource: "manual",
       abstract: "A corrected abstract.",
     });
@@ -761,9 +856,13 @@ test("the row context menu adds a tag and files into a new collection", async ()
   await shows(row("problems"), "exercises");
 
   const org = await organization();
-  const quadratic = org.collections.filter((collection) => collection.name === "Quadratic forms");
+  const quadratic = org.collections.filter(
+    (collection) => collection.name === "Quadratic forms",
+  );
   expect(quadratic).toHaveLength(1);
-  expect(org.items.problems?.collections).toEqual(quadratic.map((collection) => collection.id));
+  expect(org.items.problems?.collections).toEqual(
+    quadratic.map((collection) => collection.id),
+  );
   expect(org.items.problems?.tags).toEqual(["exercises"]);
 });
 
@@ -777,7 +876,9 @@ test("a PDF tab's context menu holds its item's menu: Add Tag… there tags the 
   await (await menuItem("Add Tag…")).click();
   await page.type('[role="dialog"] input', "from-tab");
   await page.keyboard.press("Enter");
-  await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null);
+  await page.waitForFunction(
+    () => document.querySelector('[role="dialog"]') === null,
+  );
   expect((await organization()).items.notes?.tags).toContain("from-tab");
   await page.click(tab("notes"), { button: "right" });
   await (await menuItem("Close Tab")).click();
@@ -831,7 +932,11 @@ test("an item deleted elsewhere while its row menu is open closes the menu and l
     method: "DELETE",
   });
   expect(deleted.ok).toBe(true);
-  await page.waitForFunction((selector) => document.querySelector(selector) === null, {}, row(key));
+  await page.waitForFunction(
+    (selector) => document.querySelector(selector) === null,
+    {},
+    row(key),
+  );
 
   expect(await page.evaluate(() => document.body.innerText)).not.toContain(
     "The library failed to render",
@@ -845,14 +950,20 @@ test("Ctrl+F searches the table, Ctrl+P goes to an item by fuzzy title, Ctrl+Shi
   await page.keyboard.down("Control");
   await page.keyboard.press("f");
   await page.keyboard.up("Control");
-  const focused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+  const focused = await page.evaluate(() =>
+    document.activeElement?.getAttribute("aria-label"),
+  );
   expect(focused).toBe("Search");
   await page.keyboard.type("quadratic");
-  await page.waitForFunction(() => document.querySelectorAll("tr[data-item-id]").length === 1);
+  await page.waitForFunction(
+    () => document.querySelectorAll("tr[data-item-id]").length === 1,
+  );
   expect(await rowKeys()).toEqual(["problems"]);
   await page.click('input[aria-label="Search"]', { count: 3 });
   await page.keyboard.press("Backspace");
-  await page.waitForFunction(() => document.querySelectorAll("tr[data-item-id]").length > 1);
+  await page.waitForFunction(
+    () => document.querySelectorAll("tr[data-item-id]").length > 1,
+  );
 
   await page.keyboard.down("Control");
   await page.keyboard.press("p");
@@ -860,7 +971,9 @@ test("Ctrl+F searches the table, Ctrl+P goes to an item by fuzzy title, Ctrl+Shi
   await page.keyboard.type("intlat");
   await shot("palette-items");
   await page.keyboard.press("Enter");
-  await page.waitForSelector("aside h2 ::-p-text(Lectures on integral lattices)");
+  await page.waitForSelector(
+    "aside h2 ::-p-text(Lectures on integral lattices)",
+  );
 
   await page.keyboard.down("Control");
   await page.keyboard.down("Shift");
@@ -884,7 +997,9 @@ test("Delete and Enter on a focused button act on that button, not on the select
   await page.keyboard.press("Delete");
   expect(await page.$('[role="alertdialog"], [role="dialog"]')).toBeNull();
   await page.keyboard.press("Enter");
-  expect(await page.$eval(unfiled, (button) => button.getAttribute("aria-pressed"))).toBe("true");
+  expect(
+    await page.$eval(unfiled, (button) => button.getAttribute("aria-pressed")),
+  ).toBe("true");
   expect(await openTabKeys()).toEqual(tabsBefore);
 
   await page.keyboard.press("Enter");
@@ -896,24 +1011,40 @@ test("wheel reading keeps its position as pages render", async () => {
   await readerLoaded("reading");
   await scrollSettled("reading");
   const idleMoves = await page.evaluate(async () => {
-    const viewer = document.querySelector<EmbedPdfContainer>("embedpdf-container");
+    const viewer =
+      document.querySelector<EmbedPdfContainer>("embedpdf-container");
     const registry = await viewer?.registry;
     const viewport = registry?.getPlugin<ViewportPlugin>("viewport");
-    const documents = registry?.getPlugin<DocumentManagerPlugin>("document-manager")?.provides();
+    const documents = registry
+      ?.getPlugin<DocumentManagerPlugin>("document-manager")
+      ?.provides();
     const key = documents?.getActiveDocumentId();
-    if (viewport === null || viewport === undefined || key === null || key === undefined) {
+    if (
+      viewport === null ||
+      viewport === undefined ||
+      key === null ||
+      key === undefined
+    ) {
       throw new Error("the reader has no active viewport");
     }
-    viewport.provides().forDocument(key).scrollTo({ x: 0, y: 400, behavior: "instant" });
+    viewport
+      .provides()
+      .forDocument(key)
+      .scrollTo({ x: 0, y: 400, behavior: "instant" });
     const destinations: { x: number; y: number }[] = [];
-    const stop = viewport.onScrollRequest(key, ({ x, y }) => destinations.push({ x, y }));
+    const stop = viewport.onScrollRequest(key, ({ x, y }) =>
+      destinations.push({ x, y }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 600));
     stop();
     return destinations;
   });
   expect(idleMoves).toEqual([]);
   await page.mouse.move(900, 600);
-  for (const delta of [...Array<number>(24).fill(240), ...Array<number>(24).fill(-240)]) {
+  for (const delta of [
+    ...Array<number>(24).fill(240),
+    ...Array<number>(24).fill(-240),
+  ]) {
     const before = await scrollOf("reading");
     await page.mouse.wheel({ deltaY: delta });
     await scrolledFrom("reading", before.top);
@@ -937,7 +1068,9 @@ test("reader back and forward walk the positions visited in the PDF and stay in 
   await page.waitForFunction(
     async (css) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const viewport = (await viewer?.registry)?.getPlugin<ViewportPlugin>("viewport")?.provides();
+      const viewport = (await viewer?.registry)
+        ?.getPlugin<ViewportPlugin>("viewport")
+        ?.provides();
       return viewport?.getMetrics().scrollTop === 0;
     },
     {},
@@ -997,17 +1130,21 @@ test("back returns to the place inside the page an outline entry or a search mat
 
   // The sidebar holds the page thumbnails, then the outline of the notes' section titles. It is
   // opened first: opening it can change the pages' scale, and with it every scroll position.
-  await page.click(inViewer("outlined", '[data-epdf-i="sidebar-button"] button'));
+  await page.click(
+    inViewer("outlined", '[data-epdf-i="sidebar-button"] button'),
+  );
   await page.waitForSelector(inViewer("outlined", '[role="tab"]'));
   const [, outlineTab] = await page.$$(inViewer("outlined", '[role="tab"]'));
   await outlineTab?.click();
   const scaleOf = () =>
     page.evaluate(async (css) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      return (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides().getState()
-        .currentZoomLevel;
+      return (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides()
+        .getState().currentZoomLevel;
     }, viewerOf("outlined"));
-  for (let before = await scaleOf(); ; ) {
+  for (let before = await scaleOf(); ;) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     const after = await scaleOf();
     if (after === before) {
@@ -1037,7 +1174,9 @@ test("back returns to the place inside the page an outline entry or a search mat
     {},
     viewerOf("outlined"),
   );
-  const center = z.object({ x: z.number(), y: z.number() }).parse(await entry.jsonValue());
+  const center = z
+    .object({ x: z.number(), y: z.number() })
+    .parse(await entry.jsonValue());
   await page.mouse.click(center.x, center.y);
   await showsPage("outlined", 3);
   await scrollSettled("outlined");
@@ -1092,7 +1231,10 @@ test("a link in the PDF to another page is a jump that back returns from, to the
   const top = (await scrollOf(key)).top;
   const left = await scrollBy(key, 40);
   const scale = corner.width / 612;
-  await page.mouse.click(corner.x + 249 * scale, corner.y - (left.top - top) + 165 * scale);
+  await page.mouse.click(
+    corner.x + 249 * scale,
+    corner.y - (left.top - top) + 165 * scale,
+  );
   await showsPage(key, 3);
   await scrollSettled(key);
   await page.click(readerButton(key, "back"));
@@ -1121,7 +1263,9 @@ test("the reader draws a font the PDF does not embed with a fallback font the bu
   const record = (request: HTTPRequest) => requested.push(request.url());
   page.on("request", record);
   try {
-    const font = page.waitForRequest((request) => /\.(ttf|otf)$/.test(request.url()));
+    const font = page.waitForRequest((request) =>
+      /\.(ttf|otf)$/.test(request.url()),
+    );
     await page.goto(`${bucket.origin}/read/${key}`);
     await readerLoaded(key);
     await font;
@@ -1143,7 +1287,9 @@ test("the reader link button copies the captured PDF URL", async () => {
   await page.evaluate(() => navigator.clipboard.writeText("probe"));
 
   await page.click(readerButton("lattices", "copy-link"));
-  await page.waitForSelector(`${readerOf("lattices")} [role="status"]::-p-text(PDF link copied)`);
+  await page.waitForSelector(
+    `${readerOf("lattices")} [role="status"]::-p-text(PDF link copied)`,
+  );
 
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     published("/~author/lattices.pdf"),
@@ -1178,9 +1324,9 @@ test("each PDF opens in its own tab after the Library tab, which keeps its selec
   await shownReader("problems");
   await keysReach("problems");
   expect(await openTabKeys()).toEqual(["problems"]);
-  expect(await page.$eval(tab("problems"), (element) => element.textContent)).toBe(
-    titleOf("problems"),
-  );
+  expect(
+    await page.$eval(tab("problems"), (element) => element.textContent),
+  ).toBe(titleOf("problems"));
   // The tab strip holds the way back, so the reader in a tab shows no Library button.
   expect(await page.$(readerButton("problems", "library"))).toBeNull();
   await shot("tabs-reader");
@@ -1241,7 +1387,8 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
     await page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
     await page.waitForFunction(
       async (closed) => {
-        const viewer = document.querySelector<EmbedPdfContainer>("embedpdf-container");
+        const viewer =
+          document.querySelector<EmbedPdfContainer>("embedpdf-container");
         const documents = (await viewer?.registry)
           ?.getPlugin<DocumentManagerPlugin>("document-manager")
           ?.provides();
@@ -1262,7 +1409,9 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
   await page.waitForFunction(
     async (css, before) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
-      const zoom = (await viewer?.registry)?.getPlugin<ZoomPlugin>("zoom")?.provides();
+      const zoom = (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides();
       return zoom !== undefined && zoom.getState().zoomLevel !== before;
     },
     {},
@@ -1302,7 +1451,9 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
   await (await menuItem("Sleep Tab")).click();
   await asleep(first);
   await shownReader(second);
-  expect(await readerKeys()).toEqual(later.filter((key) => key !== third).sort());
+  expect(await readerKeys()).toEqual(
+    later.filter((key) => key !== third).sort(),
+  );
 
   for (const key of [first, ...later]) {
     const deleted = await fetch(`${bucket.origin}/api/items/${key}`, {
@@ -1328,12 +1479,16 @@ test("closing a PDF's tab right after a note is written saves the note into the 
     .waitForSelector(row("outlined"), { visible: true, timeout: 15_000 })
     .catch(async () => {
       const shown = await page.evaluate(() => ({
-        tabs: [...document.querySelectorAll("[data-tab-key]")].map((element) => element.outerHTML),
-        dialogs: [...document.querySelectorAll('[role="alertdialog"], [role="alert"]')].map(
-          (element) => element.textContent,
+        tabs: [...document.querySelectorAll("[data-tab-key]")].map(
+          (element) => element.outerHTML,
         ),
+        dialogs: [
+          ...document.querySelectorAll('[role="alertdialog"], [role="alert"]'),
+        ].map((element) => element.textContent),
       }));
-      throw new Error(`closing the tab did not show the library: ${JSON.stringify(shown)}`);
+      throw new Error(
+        `closing the tab did not show the library: ${JSON.stringify(shown)}`,
+      );
     });
   expect(await openTabKeys()).toEqual([]);
   console.info("reader note-close test", { stage: "tab-closed" });
@@ -1346,7 +1501,9 @@ test("closing a PDF's tab right after a note is written saves the note into the 
     await page.evaluate(async (css) => {
       const viewer = document.querySelector<EmbedPdfContainer>(css);
       const registry = await viewer?.registry;
-      const documents = registry?.getPlugin<DocumentManagerPlugin>("document-manager")?.provides();
+      const documents = registry
+        ?.getPlugin<DocumentManagerPlugin>("document-manager")
+        ?.provides();
       const scroll = registry?.getPlugin<ScrollPlugin>("scroll")?.provides();
       const active = documents?.getActiveDocumentId();
       return {
@@ -1389,7 +1546,8 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
 
   const refused = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
+      response.url().endsWith("/api/items/reading/pdf") &&
+      response.request().method() === "PUT",
   );
   const note = `Written over a stale PDF ${Date.now()}`;
   await writeNote("reading", note);
@@ -1403,7 +1561,9 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
   const ask = await page.waitForSelector('[role="alertdialog"]', {
     visible: true,
   });
-  expect(await ask?.evaluate((element) => element.textContent)).toContain("changed elsewhere");
+  expect(await ask?.evaluate((element) => element.textContent)).toContain(
+    "changed elsewhere",
+  );
   await pressInDialog("Cancel");
   await page.waitForSelector('[role="alertdialog"]', { hidden: true });
   await page.waitForSelector(`${tab("reading")}[data-state="active"]`);
@@ -1413,7 +1573,8 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
 
   const kept = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
+      response.url().endsWith("/api/items/reading/pdf") &&
+      response.request().method() === "PUT",
   );
   await page.click(`${conflict} button::-p-text(Save my copy over it)`);
   expect((await kept).status()).toBe(200);
@@ -1432,12 +1593,17 @@ test("a failed annotation save still warns before leaving the reader page", asyn
   const path = join(bucket.root, "lattices.pdf");
   const original = sha256(readFileSync(path));
   const mode = statSync(bucket.root).mode;
-  await page.tracing.start({ path: join(screenshots, "reader-failed-save.trace.json"), screenshots: true });
+  await page.tracing.start({
+    path: join(screenshots, "reader-failed-save.trace.json"),
+    screenshots: true,
+  });
   // A read-only store lets the real server read the PDF but prevents its atomic save.
   chmodSync(bucket.root, 0o500);
   try {
     const failed = page.waitForResponse(
-      (response) => response.url().endsWith("/api/items/lattices/pdf") && response.request().method() === "PUT",
+      (response) =>
+        response.url().endsWith("/api/items/lattices/pdf") &&
+        response.request().method() === "PUT",
     );
     await writeNote("lattices", "This note must survive a failed save", 480);
     expect((await failed).status()).toBe(500);
@@ -1452,7 +1618,9 @@ test("a failed annotation save still warns before leaving the reader page", asyn
       });
       page.once("load", () => resolve("navigated"));
     });
-    await page.evaluate(() => { location.href = "/"; });
+    await page.evaluate(() => {
+      location.href = "/";
+    });
     const decision = await outcome;
     await shot("reader-failed-save-after-leaving");
     expect(decision).toBe("beforeunload");
@@ -1468,7 +1636,10 @@ test("a failed annotation save still warns before leaving the reader page", asyn
 test("saving my copy can recover after another save changes an already conflicting PDF", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");
-  await page.tracing.start({ path: join(screenshots, "reader-repeated-conflict.trace.json"), screenshots: true });
+  await page.tracing.start({
+    path: join(screenshots, "reader-repeated-conflict.trace.json"),
+    screenshots: true,
+  });
   const saveElsewhere = async (comment: string) => {
     const stored = await fetch(`${bucket.origin}/pdf/reading.pdf`);
     const tag = stored.headers.get("ETag");
@@ -1485,9 +1656,12 @@ test("saving my copy can recover after another save changes an already conflicti
     });
     expect(response.status).toBe(200);
   };
-  const nextSave = () => page.waitForResponse(
-    (response) => response.url().endsWith("/api/items/reading/pdf") && response.request().method() === "PUT",
-  );
+  const nextSave = () =>
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/items/reading/pdf") &&
+        response.request().method() === "PUT",
+    );
   try {
     await saveElsewhere("first external save");
     const refused = nextSave();
@@ -1520,7 +1694,10 @@ test("saving my copy can recover after another save changes an already conflicti
 test("a capture made while the library is open opens its PDF in a tab", async () => {
   await openLibrary();
   const form = new FormData();
-  form.set("pdf", new File([readFileSync(join(fixtures, "problem-set.pdf"))], "problems.pdf"));
+  form.set(
+    "pdf",
+    new File([readFileSync(join(fixtures, "problem-set.pdf"))], "problems.pdf"),
+  );
   form.set("pdf_url", published("/~author/problems.pdf"));
   form.set("title_hint", "Problem set on quadratic forms");
   const response = await fetch(`${bucket.origin}/capture-bytes`, {
@@ -1548,21 +1725,30 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
       const headers = { "Content-Type": "application/json" };
       const { pathname } = new URL(request.url);
       if (request.method === "GET" && pathname === "/version") {
-        return new Response(readFileSync(join(fixtures, "zotero/version.json")), { headers });
+        return new Response(
+          readFileSync(join(fixtures, "zotero/version.json")),
+          { headers },
+        );
       }
       const { url } = z
         .strictObject({ operation: z.literal("resolve_url"), url: z.url() })
         .parse(await request.json());
       if (url === arxivPdf) {
         await answered;
-        return new Response(readFileSync(join(fixtures, "zotero/resolve-arxiv.json")), {
-          headers,
-        });
+        return new Response(
+          readFileSync(join(fixtures, "zotero/resolve-arxiv.json")),
+          {
+            headers,
+          },
+        );
       }
-      return new Response(readFileSync(join(fixtures, "zotero/resolve-unidentified.json")), {
-        status: 422,
-        headers,
-      });
+      return new Response(
+        readFileSync(join(fixtures, "zotero/resolve-unidentified.json")),
+        {
+          status: 422,
+          headers,
+        },
+      );
     },
   });
   const app = await serveBucket({
@@ -1594,7 +1780,9 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
 
     const key = await capture("lecture-notes.pdf", arxivPdf, "View PDF");
     await shownReader(key);
-    expect(await page.$eval(tab(key), (element) => element.textContent)).toContain("View PDF");
+    expect(
+      await page.$eval(tab(key), (element) => element.textContent),
+    ).toContain("View PDF");
     // The same PDF on its own reader page, whose title and citation tags a Zotero Connector
     // reads.
     await own.goto(`${app.origin}/read/${key}`);
@@ -1604,19 +1792,26 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
     await shows(tab(key), title);
     await own.waitForFunction(
       (wanted) =>
-        document.querySelector('meta[name="citation_title"]')?.getAttribute("content") === wanted &&
-        document.title === wanted,
+        document
+          .querySelector('meta[name="citation_title"]')
+          ?.getAttribute("content") === wanted && document.title === wanted,
       {},
       title,
     );
     await shot("zotero-retitled-reader");
 
-    await capture("problem-set.pdf", published("/~author/problems.pdf"), "Problem set");
+    await capture(
+      "problem-set.pdf",
+      published("/~author/problems.pdf"),
+      "Problem set",
+    );
     await shows('[role="alert"]', "Retrieve metadata for ");
     await shot("zotero-unidentified");
 
     zotero.stop(true);
-    await page.waitForSelector('[role="status"][aria-label="Zotero is not running: start Zotero"]');
+    await page.waitForSelector(
+      '[role="status"][aria-label="Zotero is not running: start Zotero"]',
+    );
     await shot("zotero-not-running");
   } finally {
     await own.close();
@@ -1634,7 +1829,8 @@ test("a PDF that asks for its outline opens with the outline closed, unless the 
       return false;
     }
     return [...viewer.shadowRoot.querySelectorAll("span")].some(
-      (entry) => entry.textContent === "Gram matrices" && entry.checkVisibility(),
+      (entry) =>
+        entry.textContent === "Gram matrices" && entry.checkVisibility(),
     );
   };
   const openOutlined = async () => {
@@ -1645,7 +1841,8 @@ test("a PDF that asks for its outline opens with the outline closed, unless the 
   expect(await page.evaluate(outlineShown, viewerOf("outlined"))).toBe(false);
   await shot("reader-outline-closed");
 
-  const toggle = 'button[role="switch"][aria-label="Open the outline when a PDF opens"]';
+  const toggle =
+    'button[role="switch"][aria-label="Open the outline when a PDF opens"]';
   const openSettings = async () => {
     await page.goto(`${bucket.origin}/#/settings`);
     await page.waitForSelector(toggle);
@@ -1682,7 +1879,9 @@ test("the theme follows a dark system setting until Settings chooses Light, in t
       return viewer.activeColorScheme;
     }, viewerOf("lattices"));
   };
-  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+  await page.emulateMediaFeatures([
+    { name: "prefers-color-scheme", value: "dark" },
+  ]);
 
   expect(await libraryBackground()).toBe(LIBRARY.dark);
   expect(await viewerScheme()).toBe("dark");
@@ -1690,15 +1889,19 @@ test("the theme follows a dark system setting until Settings chooses Light, in t
 
   await libraryBackground();
   await page.select(themeSelect, "light");
-  await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
-  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
-    LIBRARY.light,
+  await page.waitForFunction(
+    () => document.documentElement.dataset.theme === "light",
   );
+  expect(
+    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+  ).toBe(LIBRARY.light);
   expect(await viewerScheme()).toBe("light");
   expect(await libraryBackground()).toBe(LIBRARY.light);
 
   await page.select(themeSelect, "system");
-  await page.waitForFunction(() => document.documentElement.dataset.theme === "system");
+  await page.waitForFunction(
+    () => document.documentElement.dataset.theme === "system",
+  );
   await page.emulateMediaFeatures();
 });
 
@@ -1732,7 +1935,9 @@ test("night mode in the reader draws the PDF's pages light on dark, and turns of
   const nightMode = readerButton("lattices", "night-mode");
   const toggleNightMode = async (pressed: boolean) => {
     await page.click(nightMode);
-    await page.waitForSelector(pressed ? `${nightMode}${ACTIVE}` : `${nightMode}:not(${ACTIVE})`);
+    await page.waitForSelector(
+      pressed ? `${nightMode}${ACTIVE}` : `${nightMode}:not(${ACTIVE})`,
+    );
   };
   await page.goto(`${bucket.origin}/read/lattices`);
   expect(await pixelAt(await margin())).toEqual([255, 255, 255]);
@@ -1777,7 +1982,8 @@ test("leaving the reader page while a note is still being saved asks first, and 
   // The saves of the PDF still in flight: the note's first save, and the save of its text after.
   let inFlight = 0;
   const isSave = (request: HTTPRequest) =>
-    request.method() === "PUT" && request.url().endsWith("/api/items/lattices/pdf");
+    request.method() === "PUT" &&
+    request.url().endsWith("/api/items/lattices/pdf");
   const ended = (request: HTTPRequest) => {
     if (isSave(request)) {
       inFlight -= 1;
@@ -1807,7 +2013,9 @@ test("leaving the reader page while a note is still being saved asks first, and 
   try {
     await writeNote("lattices", `A note on leaving ${Date.now()}`, 480);
     await started;
-    const asked = new Promise<void>((resolve) => page.once("dialog", () => resolve()));
+    const asked = new Promise<void>((resolve) =>
+      page.once("dialog", () => resolve()),
+    );
     await page.evaluate(() => {
       location.href = "/";
     });
@@ -1817,7 +2025,8 @@ test("leaving the reader page while a note is still being saved asks first, and 
 
     const saved = page.waitForResponse(
       (response) =>
-        response.url().endsWith("/api/items/lattices/pdf") && response.request().method() === "PUT",
+        response.url().endsWith("/api/items/lattices/pdf") &&
+        response.request().method() === "PUT",
     );
     holding = false;
     for (const request of held.splice(0)) {
@@ -1875,9 +2084,12 @@ test("a right-click on selected text keeps the selection, and the highlight in i
   expect(await selected()).toBeGreaterThan(0);
   const saved = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/api/items/problems/pdf") && response.request().method() === "PUT",
+      response.url().endsWith("/api/items/problems/pdf") &&
+      response.request().method() === "PUT",
   );
-  await page.click(inViewer("problems", '[data-epdf-i="add-highlight"] button'));
+  await page.click(
+    inViewer("problems", '[data-epdf-i="add-highlight"] button'),
+  );
   expect((await saved).status()).toBe(200);
   const highlights = await page.evaluate(
     async (css, highlight) => {
@@ -1888,9 +2100,9 @@ test("a right-click on selected text keeps the selection, and the highlight in i
       if (annotations === undefined) {
         throw new Error(`${css} has no annotation plugin`);
       }
-      return (await annotations.getPageAnnotations({ pageIndex: 0 }).toPromise()).filter(
-        (annotation) => annotation.type === highlight,
-      ).length;
+      return (
+        await annotations.getPageAnnotations({ pageIndex: 0 }).toPromise()
+      ).filter((annotation) => annotation.type === highlight).length;
     },
     viewerOf("problems"),
     PdfAnnotationSubtype.HIGHLIGHT,
@@ -1902,7 +2114,8 @@ test("a note saved after a metadata write to the open PDF keeps that metadata, a
   const saved = () =>
     page.waitForResponse(
       (response) =>
-        response.url().endsWith("/api/items/lattices/pdf") && response.request().method() === "PUT",
+        response.url().endsWith("/api/items/lattices/pdf") &&
+        response.request().method() === "PUT",
     );
   await page.goto(`${bucket.origin}/read/lattices`);
   await readerLoaded("lattices");
@@ -1958,12 +2171,18 @@ test("the reader records the last viewed page, the library shows it out of the p
   expect((await recorded).status()).toBe(200);
 
   await openLibrary();
-  expect(await page.$eval(`${row("reading")} [data-reading]`, (cell) => cell.textContent)).toBe(
-    "4 / 10",
-  );
-  expect(await page.$eval(`${row("lattices")} [data-reading]`, (cell) => cell.textContent)).toBe(
-    "Unread",
-  );
+  expect(
+    await page.$eval(
+      `${row("reading")} [data-reading]`,
+      (cell) => cell.textContent,
+    ),
+  ).toBe("4 / 10");
+  expect(
+    await page.$eval(
+      `${row("lattices")} [data-reading]`,
+      (cell) => cell.textContent,
+    ),
+  ).toBe("Unread");
   await shot("library-reading");
 
   await page.goto(`${bucket.origin}/read/reading`);
@@ -1974,14 +2193,21 @@ test("the reader records the last viewed page, the library shows it out of the p
 test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Shift+Enter step through the matches", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");
-  const field = inViewer("reading", '[data-sidebar-id="search-panel"] input[type="text"]');
+  const field = inViewer(
+    "reading",
+    '[data-sidebar-id="search-panel"] input[type="text"]',
+  );
   await page.keyboard.down("Control");
   await page.keyboard.press("f");
   await page.keyboard.up("Control");
   await page.waitForFunction(
     (css) => {
       const root = document.querySelector(css)?.shadowRoot;
-      return root?.activeElement?.matches('[data-sidebar-id="search-panel"] input') === true;
+      return (
+        root?.activeElement?.matches(
+          '[data-sidebar-id="search-panel"] input',
+        ) === true
+      );
     },
     {},
     viewerOf("reading"),
@@ -2002,7 +2228,9 @@ test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Sh
   await page.keyboard.up("Shift");
   await showsPage("reading", 10);
   console.info("reader search test", { stage: "previous-match", page: 10 });
-  expect(await page.$eval(field, (input) => (input as HTMLInputElement).value)).toBe("unimodular");
+  expect(
+    await page.$eval(field, (input) => (input as HTMLInputElement).value),
+  ).toBe("unimodular");
 });
 
 test("a PDF tab whose item left the bucket closes once Close Without Saving confirms the reading it cannot record", async () => {
@@ -2068,7 +2296,9 @@ test("the Timeline shows a reading session with the pages read for at least five
   expect(await page.$('[data-timeline-key="reading"]')).toBeNull();
   await page.select('select[aria-label="Shortest reading"]', "5");
   const entry = await page.waitForSelector('[data-timeline-key="reading"]');
-  expect(await entry?.evaluate((element) => element.textContent)).toContain("pp. 1–2");
+  expect(await entry?.evaluate((element) => element.textContent)).toContain(
+    "pp. 1–2",
+  );
   await shot("timeline");
   await page.click('[data-timeline-key="reading"] a');
   await shownReader("reading");
@@ -2082,9 +2312,9 @@ test("the grid view shows each PDF's first page, and a double-click opens the re
   await page.waitForFunction(
     (count) =>
       document.querySelectorAll("[data-card-id] img").length === count &&
-      [...document.querySelectorAll<HTMLImageElement>("[data-card-id] img")].every(
-        (image) => image.complete && image.naturalWidth > 0,
-      ),
+      [
+        ...document.querySelectorAll<HTMLImageElement>("[data-card-id] img"),
+      ].every((image) => image.complete && image.naturalWidth > 0),
     {},
     keys.length,
   );
@@ -2099,7 +2329,9 @@ test("the grid view shows each PDF's first page, and a double-click opens the re
 
   await page.click('[data-card-id="reading"]');
   await page.waitForFunction(() => {
-    const image = document.querySelector<HTMLImageElement>('aside img[alt="First page"]');
+    const image = document.querySelector<HTMLImageElement>(
+      'aside img[alt="First page"]',
+    );
     return image !== null && image.naturalWidth > 0;
   });
   await page.click('[data-card-id="reading"]', { count: 2 });
@@ -2133,17 +2365,23 @@ test("rows chosen with their checkboxes are tagged and filed together", async ()
   );
   await (await menuItem("Quadratic forms")).click();
   expect((await filed).status()).toBe(200);
-  await page.waitForFunction(() => document.querySelector('[role="menu"]') === null);
+  await page.waitForFunction(
+    () => document.querySelector('[role="menu"]') === null,
+  );
 
   const org = await organization();
-  const forms = org.collections.find((collection) => collection.name === "Quadratic forms");
+  const forms = org.collections.find(
+    (collection) => collection.name === "Quadratic forms",
+  );
   for (const key of chosen) {
     expect(org.items[key]?.tags).toContain("survey");
     expect(org.items[key]?.collections).toContain(forms?.id ?? "");
   }
   expect(org.items.reading?.tags ?? []).not.toContain("survey");
   await page.click('button[aria-label="Clear selection"]');
-  await page.waitForFunction(() => !document.body.textContent?.includes("selected"));
+  await page.waitForFunction(
+    () => !document.body.textContent?.includes("selected"),
+  );
 });
 
 test("Guess Metadata in the menu of a row outside the checked rows guesses that row; in a checked row, every checked row", async () => {
@@ -2151,7 +2389,9 @@ test("Guess Metadata in the menu of a row outside the checked rows guesses that 
   // are the ones the library asked for.
   const guessed: string[] = [];
   const answerGuess = (request: HTTPRequest) => {
-    const guess = /^\/api\/items\/([^/]+)\/guess-metadata$/.exec(new URL(request.url()).pathname);
+    const guess = /^\/api\/items\/([^/]+)\/guess-metadata$/.exec(
+      new URL(request.url()).pathname,
+    );
     if (guess === null) {
       void request.continue();
       return;
@@ -2187,7 +2427,10 @@ test("Guess Metadata in the menu of a row outside the checked rows guesses that 
     await page.waitForSelector("::-p-text(2 selected)");
 
     expect(await guessFrom("reading")).toEqual(["reading"]);
-    expect((await guessFrom("problems")).sort()).toEqual(["lattices", "problems"]);
+    expect((await guessFrom("problems")).sort()).toEqual([
+      "lattices",
+      "problems",
+    ]);
   } finally {
     page.off("request", answerGuess);
     await page.setRequestInterception(false);
@@ -2206,7 +2449,9 @@ test("Import URL and Add Folder in the toolbar add PDFs to the library", async (
   await page.keyboard.press("Enter");
   await page.waitForSelector(row("imported"));
   // The dialog closes once the server has accepted the URL.
-  await page.waitForFunction(() => document.querySelector('[role="dialog"]') === null);
+  await page.waitForFunction(
+    () => document.querySelector('[role="dialog"]') === null,
+  );
 
   const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-folder-"));
   // A PDF the library does not hold yet: the problem set with a comment after its end.
@@ -2226,7 +2471,9 @@ test("Import URL and Add Folder in the toolbar add PDFs to the library", async (
     await (await fetch(`${bucket.origin}/api/library`)).json(),
   );
   const added = payload.items.find((item) => item.id === "folder notes");
-  expect(added?.provenance.pdf_url).toBe(pathToFileURL(join(folder, "folder notes.pdf")).href);
+  expect(added?.provenance.pdf_url).toBe(
+    pathToFileURL(join(folder, "folder notes.pdf")).href,
+  );
 });
 
 test("the Related tab lists the PDFs that share authors, collections, topics or tags with the selected one", async () => {
@@ -2237,7 +2484,9 @@ test("the Related tab lists the PDFs that share authors, collections, topics or 
     ...(org.items[key]?.tags ?? []),
   ];
   const sharing = Object.keys(org.items).filter(
-    (key) => key !== "problems" && filing(key).some((entry) => filing("problems").includes(entry)),
+    (key) =>
+      key !== "problems" &&
+      filing(key).some((entry) => filing("problems").includes(entry)),
   );
   expect(sharing.length).toBeGreaterThan(0);
 
@@ -2263,13 +2512,20 @@ test("an unsent note outlives a tab switch and another selection; a note is dele
   await page.click(row("lattices"));
   await page.click(row("outlined"));
   await (await byRole("tab", "Notes")).click();
-  const kept = await page.$eval('textarea[aria-label="New note"]', (field) => field.value);
+  const kept = await page.$eval(
+    'textarea[aria-label="New note"]',
+    (field) => field.value,
+  );
   expect(kept).toBe(draft);
 
   await (await byRole("button", "Add note")).click();
   await shows("aside article", draft);
-  expect(await page.$eval('textarea[aria-label="New note"]', (field) => field.value)).toBe("");
-  expect((await organization()).items.outlined?.notes.map((note) => note.note)).toEqual([draft]);
+  expect(
+    await page.$eval('textarea[aria-label="New note"]', (field) => field.value),
+  ).toBe("");
+  expect(
+    (await organization()).items.outlined?.notes.map((note) => note.note),
+  ).toEqual([draft]);
 
   await page.click('button[aria-label="Delete note"]');
   await shot("note-delete-confirm");
@@ -2277,7 +2533,9 @@ test("an unsent note outlives a tab switch and another selection; a note is dele
   expect((await organization()).items.outlined?.notes).toHaveLength(1);
   await page.click('button[aria-label="Delete note"]');
   await (await byRole("button", "Delete note")).click();
-  await page.waitForFunction(() => document.querySelector("aside article") === null);
+  await page.waitForFunction(
+    () => document.querySelector("aside article") === null,
+  );
   expect((await organization()).items.outlined?.notes).toEqual([]);
 });
 
@@ -2304,13 +2562,19 @@ test("collection cards show counts and pins; a collection keeps a description, K
   await page.goto(`${bucket.origin}/#/organization/collections`);
   await page.waitForSelector("[data-collection-id]");
   const org = await organization();
-  const forms = org.collections.find((collection) => collection.name === "Quadratic forms");
+  const forms = org.collections.find(
+    (collection) => collection.name === "Quadratic forms",
+  );
   if (forms === undefined) {
     throw new Error("no Quadratic forms collection");
   }
-  const held = Object.values(org.items).filter((filing) => filing.collections.includes(forms.id));
+  const held = Object.values(org.items).filter((filing) =>
+    filing.collections.includes(forms.id),
+  );
   const card = `[data-collection-id="${forms.id}"]`;
-  expect(await page.$eval(card, (entry) => entry.textContent)).toContain(`${held.length} PDFs`);
+  expect(await page.$eval(card, (entry) => entry.textContent)).toContain(
+    `${held.length} PDFs`,
+  );
   const unpinned = await cards();
   await page.click(`${card} button[aria-label="Pin"]`);
   await page.waitForSelector(`${card} button[aria-label="Unpin"]`);
@@ -2325,7 +2589,10 @@ test("collection cards show counts and pins; a collection keeps a description, K
     forms.id,
   );
   await page.click('button[aria-label="Edit description"]');
-  await page.type('[role="dialog"] input', "Genus theory and the Hasse–Minkowski theorem");
+  await page.type(
+    '[role="dialog"] input',
+    "Genus theory and the Hasse–Minkowski theorem",
+  );
   await page.keyboard.press("Enter");
   await shows("main", "Genus theory and the Hasse–Minkowski theorem");
   await page.click('button[role="switch"][aria-label="Keep offline"]');
@@ -2348,7 +2615,9 @@ test("collection cards show counts and pins; a collection keeps a description, K
   await shot("collection-page");
 
   const after = await organization();
-  const saved = after.collections.find((collection) => collection.id === forms.id);
+  const saved = after.collections.find(
+    (collection) => collection.id === forms.id,
+  );
   expect([saved?.description, saved?.pinned, saved?.keepOffline]).toEqual([
     "Genus theory and the Hasse–Minkowski theorem",
     true,
@@ -2373,7 +2642,9 @@ test("a smart collection built from rules lists the PDFs meeting all of them, an
   const payload = LibraryPayloadSchema.parse(
     await (await fetch(`${bucket.origin}/api/library`)).json(),
   );
-  const forms = payload.collections.find((collection) => collection.name === "Quadratic forms");
+  const forms = payload.collections.find(
+    (collection) => collection.name === "Quadratic forms",
+  );
   if (forms === undefined) {
     throw new Error("no Quadratic forms collection");
   }
@@ -2391,18 +2662,36 @@ test("a smart collection built from rules lists the PDFs meeting all of them, an
 
   await page.goto(`${bucket.origin}/#/organization/saved`);
   await page.click('button[aria-label="Smart Collection"]');
-  await page.type('[role="dialog"] input[aria-label="Name"]', "Unread quadratic forms");
-  await page.select('[role="dialog"] select[aria-label="Rule 1 field"]', "collection");
-  await page.select('[role="dialog"] select[aria-label="Rule 1 value"]', forms.id);
+  await page.type(
+    '[role="dialog"] input[aria-label="Name"]',
+    "Unread quadratic forms",
+  );
+  await page.select(
+    '[role="dialog"] select[aria-label="Rule 1 field"]',
+    "collection",
+  );
+  await page.select(
+    '[role="dialog"] select[aria-label="Rule 1 value"]',
+    forms.id,
+  );
   await page.click('[role="dialog"] button[aria-label="Add rule"]');
-  await page.select('[role="dialog"] select[aria-label="Rule 2 field"]', "reading");
-  await page.select('[role="dialog"] select[aria-label="Rule 2 value"]', "unread");
+  await page.select(
+    '[role="dialog"] select[aria-label="Rule 2 field"]',
+    "reading",
+  );
+  await page.select(
+    '[role="dialog"] select[aria-label="Rule 2 value"]',
+    "unread",
+  );
   await shot("dialog-smart-collection");
   await page.click('[role="dialog"] button[type="submit"]');
-  await page.waitForFunction(() => location.hash.startsWith("#/organization/saved/"));
+  await page.waitForFunction(() =>
+    location.hash.startsWith("#/organization/saved/"),
+  );
   const rowsNow = async (count: number) => {
     await page.waitForFunction(
-      (wanted) => document.querySelectorAll("tr[data-item-id]").length === wanted,
+      (wanted) =>
+        document.querySelectorAll("tr[data-item-id]").length === wanted,
       {},
       count,
     );
@@ -2448,8 +2737,16 @@ test("an extraction past its time limit shows the limit and that nothing was wri
           name: "Slow extractor",
           source_kind: "document_structure",
           authoritative: true,
-          command: ["sh", join(fixtures, "plugins/extractor.sh"), "hang", "$pdf", "$output"],
-          accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+          command: [
+            "sh",
+            join(fixtures, "plugins/extractor.sh"),
+            "hang",
+            "$pdf",
+            "$output",
+          ],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
         },
       ],
     }),
@@ -2477,9 +2774,13 @@ test("an extraction past its time limit shows the limit and that nothing was wri
     await page.goto(`${slow.origin}/`);
     await page.waitForSelector(row(key));
     await page.click(row(key));
-    const finished = page.waitForResponse(
-      (response) => response.url().endsWith(`/api/items/${key}/extractions/hang`) && response.request().method() === "POST",
-    ).then(() => performance.now());
+    const finished = page
+      .waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/items/${key}/extractions/hang`) &&
+          response.request().method() === "POST",
+      )
+      .then(() => performance.now());
     await page.click('button[aria-label="Run extraction"]');
     await shows(`${row(key)} [role="status"]`, "Extracting");
     const completedAt = await finished;
@@ -2506,7 +2807,8 @@ test("the library at a narrow width", async () => {
 test("Verify marks a PDF whose URL no longer serves it Offline; a mirror that serves it keeps it Cached", async () => {
   served.delete("/~author/problems.pdf");
   await openLibrary();
-  const status = () => page.$eval(`${row("problems")} [data-status]`, (cell) => cell.textContent);
+  const status = () =>
+    page.$eval(`${row("problems")} [data-status]`, (cell) => cell.textContent);
   expect(await status()).toBe("Cached");
   await page.click(row("problems"));
   const details = 'aside[aria-label="Item details"]';
@@ -2551,7 +2853,9 @@ test("Verify marks a PDF whose URL no longer serves it Offline; a mirror that se
 test("a lost PDF the export holds is listed under Needs Re-fetch until Rebuild restores it", async () => {
   // The export is written after every change; wait until it holds the item to be lost.
   const exported = async () =>
-    existsSync(bucket.indexExport) ? readFileSync(bucket.indexExport, "utf8") : "";
+    existsSync(bucket.indexExport)
+      ? readFileSync(bucket.indexExport, "utf8")
+      : "";
   while (!(await exported()).includes('"key": "lattices"')) {
     await Bun.sleep(50);
   }
@@ -2564,7 +2868,9 @@ test("a lost PDF the export holds is listed under Needs Re-fetch until Rebuild r
   await page.waitForFunction(() => location.hash === "#/needs-refetch");
   await page.waitForSelector('[data-missing-key="lattices"]');
   await shot("library-needs-refetch");
-  await page.click('[data-missing-key="lattices"] button[aria-label="Rebuild"]');
+  await page.click(
+    '[data-missing-key="lattices"] button[aria-label="Rebuild"]',
+  );
   await page.waitForFunction(
     () => document.querySelector('[data-missing-key="lattices"]') === null,
   );
@@ -2600,7 +2906,8 @@ test("the Library entry counts the PDFs; each quick filter narrows the library a
   const sortedRows = async () => (await rowKeys()).sort();
   const rowCount = (count: number) =>
     page.waitForFunction(
-      (wanted) => document.querySelectorAll("tr[data-item-id]").length === wanted,
+      (wanted) =>
+        document.querySelectorAll("tr[data-item-id]").length === wanted,
       {},
       count,
     );
@@ -2615,15 +2922,23 @@ test("the Library entry counts the PDFs; each quick filter narrows the library a
     // Each filter must discriminate: it keeps some items and drops others.
     expect(filter.keys.length).toBeGreaterThan(0);
     expect(filter.keys.length).toBeLessThan(all.length);
-    expect(await page.$eval(chip(filter.name), (button) => button.textContent?.trim())).toBe(
-      `${filter.name}${filter.keys.length}`,
-    );
+    expect(
+      await page.$eval(chip(filter.name), (button) =>
+        button.textContent?.trim(),
+      ),
+    ).toBe(`${filter.name}${filter.keys.length}`);
     await page.click(chip(filter.name));
-    await page.waitForFunction((hash) => location.hash === hash, {}, filter.hash);
+    await page.waitForFunction(
+      (hash) => location.hash === hash,
+      {},
+      filter.hash,
+    );
     await rowCount(filter.keys.length);
     expect(await sortedRows()).toEqual(filter.keys);
     expect(await pressed(filter.name)).toBe("true");
-    expect(await page.$eval("nav a", (link) => link.getAttribute("aria-current"))).toBe("page");
+    expect(
+      await page.$eval("nav a", (link) => link.getAttribute("aria-current")),
+    ).toBe("page");
   }
   await shot("library-quick-filter");
 
@@ -2644,7 +2959,9 @@ test("the Sort menu orders the table by the chosen column and direction", async 
 
   await page.click('button[aria-label="Sort"]');
   await (await byRole("menuitemradio", "Title")).click();
-  await page.waitForFunction(() => document.querySelector('[role="menu"]') === null);
+  await page.waitForFunction(
+    () => document.querySelector('[role="menu"]') === null,
+  );
   await page.click('button[aria-label="Sort"]');
   await (await byRole("menuitemradio", "Ascending")).click();
   await shot("library-sorted");
@@ -2669,8 +2986,16 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
           name: "Markdown extractor",
           source_kind: "document_structure",
           authoritative: true,
-          command: ["sh", join(fixtures, "plugins/extractor.sh"), "markdown", "$pdf", "$output"],
-          accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+          command: [
+            "sh",
+            join(fixtures, "plugins/extractor.sh"),
+            "markdown",
+            "$pdf",
+            "$output",
+          ],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
         },
       ],
     }),
@@ -2687,7 +3012,9 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
     form.set("pdf_url", published("/~author/problems.pdf"));
     form.set("title_hint", "Problem set on quadratic forms");
     const { key } = CaptureResponseSchema.parse(
-      await (await bucket.request("/capture-bytes", { method: "POST", body: form })).json(),
+      await (
+        await bucket.request("/capture-bytes", { method: "POST", body: form })
+      ).json(),
     );
     await page.goto(`${bucket.origin}/`);
     await page.waitForSelector(row(key));
@@ -2696,21 +3023,35 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
     await page.click(row(key), { count: 2 });
     await shownReader(key);
     await page.click('button[aria-label="Open the assistant"]');
-    await shows('section[aria-label="Extraction"]', "No extraction");
+    await shows(
+      'section[aria-label="Extraction"]',
+      "No extraction: the assistant reads the raw PDF",
+    );
     await shot("reader-no-extraction");
-    const finished = page.waitForResponse(
-      (response) => response.url().endsWith(`/api/items/${key}/extractions/markdown`) && response.request().method() === "POST",
-    ).then(() => performance.now());
-    await page.click('section[aria-label="Extraction"] button[aria-label="Run extraction"]');
+    const finished = page
+      .waitForResponse(
+        (response) =>
+          response.url().endsWith(`/api/items/${key}/extractions/markdown`) &&
+          response.request().method() === "POST",
+      )
+      .then(() => performance.now());
+    await page.click(
+      'section[aria-label="Extraction"] button[aria-label="Run extraction"]',
+    );
     const completedAt = await finished;
-    await shows('section[aria-label="Extraction"]', "Extracted: the assistant reads the extraction");
+    await shows(
+      'section[aria-label="Extraction"]',
+      "Extracted: the assistant reads the extraction",
+    );
     expect(performance.now() - completedAt).toBeLessThan(10_000);
     await shot("reader-extracted");
 
     await page.click('button[aria-label="Collapse the assistant"]');
     await page.waitForSelector('aside [role="status"][title="Extracted"]');
     await page.click('[role="tab"]:first-of-type');
-    await page.waitForSelector(`${row(key)} [data-extraction]`, { visible: true });
+    await page.waitForSelector(`${row(key)} [data-extraction]`, {
+      visible: true,
+    });
     await shot("library-extracted");
   } finally {
     await bucket.stop();

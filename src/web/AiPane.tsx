@@ -71,13 +71,20 @@ function Chat({ itemKey }: { itemKey: string }) {
   useEffect(() => {
     let current = true;
     setSession({ status: "loading" });
-    request(AiSessionSchema, "POST", "/api/ai/session", AiSessionRequestSchema.parse({ key: itemKey }))
+    request(
+      AiSessionSchema,
+      "POST",
+      "/api/ai/session",
+      AiSessionRequestSchema.parse({ key: itemKey }),
+    )
       .then(
         ({ pairUrl, sessionUrl }) =>
-          current && setSession({ status: "ready", address: pairUrl, chat: sessionUrl }),
+          current &&
+          setSession({ status: "ready", address: pairUrl, chat: sessionUrl }),
       )
       .catch(
-        (error: Error) => current && setSession({ status: "failed", message: error.message }),
+        (error: Error) =>
+          current && setSession({ status: "failed", message: error.message }),
       );
     return () => {
       current = false;
@@ -87,7 +94,8 @@ function Chat({ itemKey }: { itemKey: string }) {
   if (session.status === "loading") {
     return (
       <output className="flex items-center gap-2 p-4 text-sm text-muted">
-        <LoaderCircle aria-hidden className="h-4 w-4 animate-spin" /> Starting the assistant
+        <LoaderCircle aria-hidden className="h-4 w-4 animate-spin" /> Starting
+        the assistant
       </output>
     );
   }
@@ -95,9 +103,12 @@ function Chat({ itemKey }: { itemKey: string }) {
     return (
       <div role="alert" className="p-4 text-sm">
         <p className="flex items-center gap-2 font-medium text-danger">
-          <AlertTriangle aria-hidden className="h-4 w-4" /> The assistant is not available
+          <AlertTriangle aria-hidden className="h-4 w-4" /> The assistant is not
+          available
         </p>
-        <p className="mt-2 break-words whitespace-pre-wrap text-muted">{session.message}</p>
+        <p className="mt-2 break-words whitespace-pre-wrap text-muted">
+          {session.message}
+        </p>
         <button
           type="button"
           onClick={() => setAttempt((count) => count + 1)}
@@ -126,22 +137,32 @@ function Chat({ itemKey }: { itemKey: string }) {
 }
 
 // Whether the assistant reads an extraction of this PDF, and the control to make one.
-function ExtractionStrip({ extraction }: { extraction: NonNullable<PaneProps["extraction"]> }) {
+function ExtractionStrip({
+  extraction,
+}: {
+  extraction: NonNullable<PaneProps["extraction"]>;
+}) {
   const { state, attempt } = extraction;
   const running = attempt?.kind === "running";
   return (
-    <section aria-label="Extraction" className="shrink-0 space-y-2 border-b border-line px-3 py-2">
+    <section
+      aria-label="Extraction"
+      className="shrink-0 space-y-2 border-b border-line px-3 py-2"
+    >
       <p className="flex items-center gap-2 text-xs text-muted">
         {running ? (
-          <LoaderCircle aria-hidden className="h-3.5 w-3.5 animate-spin text-accent" />
+          <LoaderCircle
+            aria-hidden
+            className="h-3.5 w-3.5 animate-spin text-accent"
+          />
         ) : (
           <FileText aria-hidden className="h-3.5 w-3.5" />
         )}
         {running
-          ? "Extracting… the assistant will open when it finishes"
+          ? "Extracting… the assistant continues to read the raw PDF"
           : state.status === "extracted"
             ? "Extracted: the assistant reads the extraction"
-            : "No extraction: run an extraction before opening the assistant"}
+            : "No extraction: the assistant reads the raw PDF"}
       </p>
       <ExtractionRunner {...extraction} />
     </section>
@@ -177,7 +198,10 @@ export function AiPane({ itemKey, pane, onChange, extraction }: PaneProps) {
             className="mt-2 flex h-6 w-6 items-center justify-center text-muted"
           >
             {extraction.attempt?.kind === "running" ? (
-              <LoaderCircle aria-hidden className="h-4 w-4 animate-spin text-accent" />
+              <LoaderCircle
+                aria-hidden
+                className="h-4 w-4 animate-spin text-accent"
+              />
             ) : (
               <FileText
                 aria-hidden
@@ -209,7 +233,11 @@ export function AiPane({ itemKey, pane, onChange, extraction }: PaneProps) {
         onPointerMove={(event) => {
           if (dragging) {
             const width = start.current.width + start.current.x - event.clientX;
-            onChange({ width: Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width))) });
+            onChange({
+              width: Math.round(
+                Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width)),
+              ),
+            });
           }
         }}
         onPointerUp={() => setDragging(false)}
@@ -228,7 +256,9 @@ export function AiPane({ itemKey, pane, onChange, extraction }: PaneProps) {
         </button>
       </header>
       {extraction !== null && <ExtractionStrip extraction={extraction} />}
-      <div className={`min-h-0 flex-1 ${dragging ? "pointer-events-none" : ""}`}>
+      <div
+        className={`min-h-0 flex-1 ${dragging ? "pointer-events-none" : ""}`}
+      >
         <Chat key={itemKey} itemKey={itemKey} />
       </div>
     </aside>

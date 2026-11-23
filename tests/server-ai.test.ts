@@ -107,6 +107,37 @@ test("an assistant that cannot start is reported as unavailable, with its own ou
   await app.stop();
 });
 
+test("starting the assistant grants read access to the stored raw PDF", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+  const app = await storedBucket("false", root);
+  const response = await app.request("/api/ai/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "long-notes" }),
+  });
+
+  expect(response.status).toBe(502);
+  const config = JSON.parse(
+    readFileSync(join(dirname(app.indexExport), "ai/reader.json"), "utf8"),
+  ) as {
+    agents: {
+      reader: {
+        permissions: Array<{
+          action: string;
+          resource: string;
+          effect: string;
+        }>;
+      };
+    };
+  };
+  expect(config.agents.reader.permissions).toContainEqual({
+    action: "read",
+    resource: `${root}/*.pdf`,
+    effect: "allow",
+  });
+  await app.stop();
+});
+
 const view = (app: Awaited<ReturnType<typeof storedBucket>>) =>
   app.request("/api/ai/view/long-notes").then((response) => response.text());
 const readPage = (
@@ -198,25 +229,6 @@ test("an assistant session starts without an extraction and names the stored raw
   const workspace = assistant.workspaces.ses_fake;
   const instructions = readFileSync(join(workspace, "AGENTS.md"), "utf8");
   expect(instructions).toContain(join(root, "long-notes.pdf"));
-  const aiRoot = dirname(dirname(workspace));
-  const config = JSON.parse(
-    readFileSync(join(aiRoot, "reader.json"), "utf8"),
-  ) as {
-    agents: {
-      reader: {
-        permissions: Array<{
-          action: string;
-          resource: string;
-          effect: string;
-        }>;
-      };
-    };
-  };
-  expect(config.agents.reader.permissions).toContainEqual({
-    action: "read",
-    resource: `${root}/*.pdf`,
-    effect: "allow",
-  });
   await app.stop();
   assistant.stop();
 });

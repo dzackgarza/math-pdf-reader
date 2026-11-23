@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Assistant Extraction Authority and Page Context
+# Specification Quality Checklist: Assistant Paper Sources and Page Context
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-11-22
