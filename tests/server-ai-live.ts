@@ -106,6 +106,7 @@ test("the assistant answers from the raw PDF without a structured extraction", a
     expect(messages.status).toBe(200);
     const answer = MessagesSchema.parse(await messages.json())
       .data.flatMap((message) => message.content)
+      .filter((part) => part.type === "text")
       .map((part) => part.text ?? "")
       .join("\n");
     console.info("raw-PDF assistant answer", answer);
