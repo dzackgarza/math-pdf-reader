@@ -108,6 +108,7 @@ test("the assistant answers from the raw PDF without a structured extraction", a
       .data.flatMap((message) => message.content)
       .map((part) => part.text ?? "")
       .join("\n");
+    console.info("raw-PDF assistant answer", answer);
 
     expect(answer).toContain("Z1");
     expect(answer).toContain("determinant 1");

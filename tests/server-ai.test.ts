@@ -48,7 +48,7 @@ async function storedBucket(
   return app;
 }
 
-test("the assistant refuses PDFs without a structured extraction", async () => {
+test("the structured-text endpoint identifies a missing extraction", async () => {
   const app = await storedBucket("true");
 
   const response = await app.request("/api/ai/text/long-notes");
@@ -77,14 +77,27 @@ test("the assistant text endpoint serves only the structured extraction", async 
   await app.stop();
 });
 
-test("a page outside the PDF is refused as a bad request that names the page count", async () => {
+test("the raw-PDF text endpoint serves exactly one page without an extraction", async () => {
   const app = await storedBucket("true");
 
-  const response = await app.request("/api/ai/text/long-notes?page=9999");
+  const response = await app.request("/api/ai/pdf-text/long-notes?page=1");
+
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  expect(text).toContain("--- page 1 of 210 ---");
+  expect(text).toContain("The lattice Z1 has determinant 1");
+  expect(text).not.toContain("Lecture 2");
+  await app.stop();
+});
+
+test("a page outside the raw PDF is refused as a bad request that names the page count", async () => {
+  const app = await storedBucket("true");
+
+  const response = await app.request("/api/ai/pdf-text/long-notes?page=9999");
 
   expect(response.status).toBe(400);
   expect(ApiErrorSchema.parse(await response.json()).error.message).toContain(
-    "has ",
+    "has 210 pages",
   );
   await app.stop();
 });
@@ -229,6 +242,7 @@ test("an assistant session starts without an extraction and names the stored raw
   const workspace = assistant.workspaces.ses_fake;
   const instructions = readFileSync(join(workspace, "AGENTS.md"), "utf8");
   expect(instructions).toContain(join(root, "long-notes.pdf"));
+  expect(instructions).toContain("/api/ai/pdf-text/long-notes?page=N");
   await app.stop();
   assistant.stop();
 });

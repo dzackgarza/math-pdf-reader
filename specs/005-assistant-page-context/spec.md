@@ -9,23 +9,25 @@
 
 ### User Story 1 - Start a session for a stored paper (Priority: P1)
 
-The user can ask questions about every stored paper. The assistant reads the original
-PDF and uses a valid structured extraction as additional context when one exists.
+The user can ask questions about every stored paper. The assistant reads page-addressed
+text from the original PDF and uses a valid structured extraction as additional context
+when one exists.
 
-**Independent Test**: Start sessions with valid, missing, and invalid extractions.
+**Independent Test**: Ask for a sentence from a known page with valid, missing, and
+invalid extractions.
 
 **Acceptance Scenarios**:
 1. **Given** a valid structured extraction, **When** a session starts, **Then** the
    assistant is directed to both the original PDF and the extraction.
-2. **Given** no valid extraction, **When** a session starts, **Then** the session
-   opens and directs the assistant to the original PDF.
+2. **Given** no valid extraction, **When** the user asks about a PDF page, **Then** the
+   assistant answers from that page of the original PDF.
 3. **Given** a garbled PDF text snippet, **When** a session starts, **Then** the
    snippet is not used as a replacement for reading the paper.
 
 ### User Story 2 - Ask about the current page (Priority: P1)
 
-The user can ask about the page currently displayed in the reader, and the assistant
-can inspect that page in the original PDF and locate the relevant passage in an
+The user can ask about the page currently displayed in the reader. The assistant can
+fetch that page's text from the original PDF and locate the relevant passage in an
 available structured extraction using its own tools.
 
 **Independent Test**: Display a known page and inspect the context sent for a
@@ -69,8 +71,9 @@ extraction.
 ### Functional Requirements
 - **FR-001**: Every stored PDF MUST support assistant sessions regardless of
   extraction state.
-- **FR-002**: Assistant context MUST identify the original stored PDF and permit the
-  assistant to read it directly.
+- **FR-002**: Assistant context MUST identify the original stored PDF and its
+  page-text address. The assistant MUST be able to read a selected page without a
+  structured extraction.
 - **FR-003**: Page context MUST include the exact page number supplied by the reader.
 - **FR-004**: When an authoritative extraction exists, page context MUST identify it
   and direct the assistant to search and read it with its own tools.
@@ -101,8 +104,8 @@ extraction.
 - **SC-001**: 100% of valid-session tests identify the original PDF and any available
   authoritative extraction.
 - **SC-002**: 100% of page-context tests include the exact reader page number.
-- **SC-003**: 100% of missing-extraction session tests succeed and identify the raw
-  PDF.
+- **SC-003**: 100% of missing-extraction session tests succeed, identify the raw PDF,
+  and answer a question from a selected raw-PDF page.
 - **SC-004**: 0% of tests use naively extracted PDF text as authoritative structured
   content.
 - **SC-005**: 100% of assistant execution failures produce a distinct explicit error.
@@ -111,6 +114,7 @@ extraction.
 
 ## Assumptions
 - The reader already knows the exact displayed page number.
-- The assistant can read PDF files directly.
+- The configured model may reject PDF file attachments. The bucket supplies text from
+  one raw-PDF page per request so the model can read the paper as text.
 - The assistant can search or navigate an available authoritative extraction itself.
 - A page hint is optional and subordinate to the original PDF and any extraction.
