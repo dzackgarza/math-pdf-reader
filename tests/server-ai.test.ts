@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AiSessionRequestSchema } from "../src/contract/ai";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import { ExtractionOutcomeSchema } from "../src/contract/extraction";
 import { ApiErrorSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
@@ -22,6 +23,7 @@ async function storedBucket(
   binary: string,
   root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-")),
   aiPort?: number,
+  extractionsManifest = EXTRACTIONS_MANIFEST,
 ) {
   const config = loadAppConfig(CONFIG_PATH);
   config.ai.binary = binary;
@@ -29,7 +31,7 @@ async function storedBucket(
   const app = await serveBucket({
     root,
     zoteroUrl: closedPortUrl(),
-    extractionsManifest: EXTRACTIONS_MANIFEST,
+    extractionsManifest,
     config,
   });
   const form = new FormData();
@@ -227,6 +229,73 @@ function fakeAssistant() {
     stop: () => server.stop(true),
   };
 }
+
+test("an extraction placed after a chat opens refreshes the chat's paper-source instructions", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+  const manifestDirectory = mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-"));
+  const manifest = join(manifestDirectory, "extractions.json");
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "markdown",
+          name: "Markdown extraction fixture",
+          source_kind: "document_structure",
+          authoritative: true,
+          command: [
+            join(import.meta.dir, "fixtures/plugins/extractor.sh"),
+            "markdown",
+            "$pdf",
+            "$output",
+          ],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
+        },
+      ],
+    }),
+  );
+  const app = await storedBucket("true", root, assistant.port, manifest);
+  expect(
+    (
+      await app.request("/api/ai/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "long-notes" }),
+      })
+    ).status,
+  ).toBe(200);
+  expect((await readPage(app, 2)).status).toBe(200);
+  const workspace = assistant.workspaces.ses_fake;
+  expect(readFileSync(join(workspace, "AGENTS.md"), "utf8")).not.toContain(
+    "/api/ai/text/long-notes",
+  );
+  expect(assistant.entries["ses_fake/reader-view"]).not.toContain(
+    "/api/ai/text/long-notes",
+  );
+
+  const extracted = await app.request(
+    "/api/items/long-notes/extractions/markdown",
+    {
+      method: "POST",
+    },
+  );
+
+  expect(extracted.status).toBe(200);
+  expect(ExtractionOutcomeSchema.parse(await extracted.json()).status).toBe(
+    "succeeded",
+  );
+  expect(readFileSync(join(workspace, "AGENTS.md"), "utf8")).toContain(
+    "/api/ai/text/long-notes",
+  );
+  expect(assistant.entries["ses_fake/reader-view"]).toContain(
+    "/api/ai/text/long-notes",
+  );
+  await app.stop();
+  assistant.stop();
+});
 
 test("an assistant session starts without an extraction and names the stored raw PDF", async () => {
   const assistant = fakeAssistant();
