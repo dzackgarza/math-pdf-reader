@@ -546,7 +546,8 @@ async fn text(
     };
     if page.is_some() {
         return Err(AppError::invalid(
-            "page-specific PDF text is unavailable; read the stored PDF directly",
+            "page-specific PDF text is unavailable from this extraction endpoint; use \
+             /api/ai/pdf-text/{key}?page=N",
         ));
     }
     Ok((
