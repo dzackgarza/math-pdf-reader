@@ -1,0 +1,59 @@
+# Research: Assistant Paper Sources and Page Context
+
+## Raw paper access
+
+**Decision**: Serve text from exactly one raw-PDF page at
+`GET /api/ai/pdf-text/{key}?page=N` and tell the assistant to fetch that address.
+
+**Rationale**: The configured model advertises text and image input and rejects PDF
+attachments. PyMuPDF already provides page text through the store's Python boundary.
+The bucket-only webfetch permission can reach the page route without shell access or a
+new provider dependency.
+
+**Alternatives considered**: Direct PDF attachment was tested and rejected by the
+configured model. Other tested model routes were unavailable. Full-document raw text
+was rejected because it is unbounded and would blur the distinction between raw paper
+text and a structured extraction. Shell extraction was rejected because the reader
+agent must not execute commands.
+
+## Reader page context
+
+**Decision**: Put the exact reported page and the corresponding raw-page address in
+the `reader-view` instruction entry. Add the authoritative-extraction address when one
+exists. Do not infer extraction line ranges.
+
+**Rationale**: Page identity comes from the reader. Page text comes from the same page
+of the original PDF. Extraction navigation remains a search operation by the assistant,
+not an approximate mapping owned by the bucket.
+
+**Alternatives considered**: Reintroducing `pdfbucket locate` would infer a line range
+from text similarity and violate the explicit-context requirement. Supplying a raw
+snippet without the page route would not let the assistant read beyond the snippet.
+
+## Extraction after session creation
+
+**Decision**: After successful extraction placement, refresh an existing assistant
+workspace and its `reader-view` instruction from the backend. Do not start OpenCode for
+a PDF whose assistant has never opened.
+
+**Rationale**: Extraction can finish after the assistant starts. The open session must
+receive the new optional context, while an unused assistant must remain dormant. The
+backend is the common boundary for inspector and assistant-pane extraction runs.
+
+**Alternatives considered**: Reopening the pane manually leaves stale instructions and
+makes the status text inaccurate. Refreshing only from React misses other extraction
+callers and splits the state transition across layers.
+
+## Verification
+
+**Decision**: Prove non-first-page content at the real bucket HTTP boundary and use a
+real-provider test that observes the raw-page request as well as the visible answer.
+Prove the post-extraction context transition with the real fixture extractor.
+
+**Rationale**: Page-1-only tests do not discriminate page selection, and an answer alone
+does not prove which source supplied it. A real extraction run covers the state
+transition users trigger.
+
+**Alternatives considered**: A fake language model or extraction output written directly
+into the root would bypass the behavior under test. Assertions about configuration alone
+do not prove an answer path.
