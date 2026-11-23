@@ -10,13 +10,25 @@ import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const longNotes = join(import.meta.dir, "fixtures/long-notes.pdf");
 
-function extraction(root: string, markdown: string) {
-  mkdirSync(join(root, "long-notes.extraction"), { recursive: true });
+function extraction(
+  root: string,
+  markdown: string,
+  sourceKind: "document_structure" | "arxiv_latex" = "document_structure",
+) {
+  const artifactDirectory = join(root, "long-notes.extraction");
+  mkdirSync(artifactDirectory, { recursive: true });
   writeFileSync(
-    join(root, "long-notes.extraction/metadata.json"),
-    JSON.stringify({ sourceKind: "document_structure", authoritative: true }),
+    join(artifactDirectory, "metadata.json"),
+    JSON.stringify({ sourceKind, authoritative: true }),
   );
   writeFileSync(join(root, "long-notes.md"), markdown);
+  if (sourceKind === "arxiv_latex") {
+    writeFileSync(join(artifactDirectory, "source.tex"), "\\section{Notes}\n");
+    writeFileSync(
+      join(artifactDirectory, "source.eprint"),
+      "arXiv source archive\n",
+    );
+  }
 }
 
 async function storedBucket(
@@ -50,6 +62,34 @@ async function storedBucket(
   return app;
 }
 
+function fixtureExtractionManifest(): string {
+  const directory = mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-"));
+  const manifest = join(directory, "extractions.json");
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "markdown",
+          name: "Markdown extraction fixture",
+          source_kind: "document_structure",
+          authoritative: true,
+          command: [
+            join(import.meta.dir, "fixtures/plugins/extractor.sh"),
+            "markdown",
+            "$pdf",
+            "$output",
+          ],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
+        },
+      ],
+    }),
+  );
+  return manifest;
+}
+
 test("the structured-text endpoint identifies a missing extraction", async () => {
   const app = await storedBucket("true");
 
@@ -79,16 +119,20 @@ test("the assistant text endpoint serves only the structured extraction", async 
   await app.stop();
 });
 
-test("the raw-PDF text endpoint serves exactly one page without an extraction", async () => {
+test("the raw-PDF text endpoint serves exactly one selected non-first page without an extraction", async () => {
   const app = await storedBucket("true");
 
-  const response = await app.request("/api/ai/pdf-text/long-notes?page=1");
+  const response = await app.request("/api/ai/pdf-text/long-notes?page=2");
 
   expect(response.status).toBe(200);
   const text = await response.text();
-  expect(text).toContain("--- page 1 of 210 ---");
-  expect(text).toContain("The lattice Z1 has determinant 1");
-  expect(text).not.toContain("Lecture 2");
+  expect(text).toContain("--- page 2 of 210 ---");
+  expect(text).toContain("Lecture 2");
+  expect(text).toContain(
+    "The lattice Z2 has determinant 1 and 2 · 2 vectors of norm 1.",
+  );
+  expect(text.match(/^--- page \d+ of \d+ ---$/gm)).toHaveLength(1);
+  expect(text).not.toContain("Lecture 1");
   await app.stop();
 });
 
@@ -98,9 +142,9 @@ test("a page outside the raw PDF is refused as a bad request that names the page
   const response = await app.request("/api/ai/pdf-text/long-notes?page=9999");
 
   expect(response.status).toBe(400);
-  expect(ApiErrorSchema.parse(await response.json()).error.message).toContain(
-    "has 210 pages",
-  );
+  const error = ApiErrorSchema.parse(await response.json()).error;
+  expect(error.kind).toBe("invalid_request");
+  expect(error.message).toContain("has 210 pages");
   await app.stop();
 });
 
@@ -122,7 +166,7 @@ test("an assistant that cannot start is reported as unavailable, with its own ou
   await app.stop();
 });
 
-test("starting the assistant grants read access to the stored raw PDF", async () => {
+test("the generated assistant permission configuration grants read access to the stored raw PDF", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
   const app = await storedBucket("false", root);
   const response = await app.request("/api/ai/session", {
@@ -173,7 +217,9 @@ test("the view reports the exact shown page even without structured extraction",
   const response = await app.request("/api/ai/view/long-notes");
 
   expect(response.status).toBe(200);
-  expect(await response.text()).toContain("page 3 of 200");
+  const shown = await response.text();
+  expect(shown).toContain("page 3 of 200");
+  expect(shown).toContain("/api/ai/pdf-text/long-notes?page=3");
   await app.stop();
 });
 
@@ -233,30 +279,7 @@ function fakeAssistant() {
 test("an extraction placed after a chat opens refreshes the chat's paper-source instructions", async () => {
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
-  const manifestDirectory = mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-"));
-  const manifest = join(manifestDirectory, "extractions.json");
-  writeFileSync(
-    manifest,
-    JSON.stringify({
-      plugins: [
-        {
-          id: "markdown",
-          name: "Markdown extraction fixture",
-          source_kind: "document_structure",
-          authoritative: true,
-          command: [
-            join(import.meta.dir, "fixtures/plugins/extractor.sh"),
-            "markdown",
-            "$pdf",
-            "$output",
-          ],
-          accepted_inputs: [
-            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
-          ],
-        },
-      ],
-    }),
-  );
+  const manifest = fixtureExtractionManifest();
   const app = await storedBucket("true", root, assistant.port, manifest);
   expect(
     (
@@ -296,6 +319,56 @@ test("an extraction placed after a chat opens refreshes the chat's paper-source 
   await app.stop();
   assistant.stop();
 });
+
+test("an extraction without an open chat leaves the assistant dormant", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+  const aiPort = Number(new URL(closedPortUrl()).port);
+  const app = await storedBucket(
+    join(root, "assistant-must-not-start"),
+    root,
+    aiPort,
+    fixtureExtractionManifest(),
+  );
+
+  const extracted = await app.request(
+    "/api/items/long-notes/extractions/markdown",
+    { method: "POST" },
+  );
+
+  expect(extracted.status).toBe(200);
+  expect(ExtractionOutcomeSchema.parse(await extracted.json()).status).toBe(
+    "succeeded",
+  );
+  await app.stop();
+});
+
+for (const sourceKind of ["document_structure", "arxiv_latex"] as const) {
+  test(`an assistant session with ${sourceKind} extraction names its text endpoint in workspace instructions`, async () => {
+    const assistant = fakeAssistant();
+    const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
+    extraction(root, "# Extracted notes\n", sourceKind);
+    const app = await storedBucket("true", root, assistant.port);
+    const response = await app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+
+    expect(response.status).toBe(200);
+    const instructions = readFileSync(
+      join(assistant.workspaces.ses_fake, "AGENTS.md"),
+      "utf8",
+    );
+    expect(instructions).toContain(`GET ${app.origin}/api/ai/text/long-notes`);
+    expect(instructions).toContain(
+      sourceKind === "arxiv_latex"
+        ? join(root, "long-notes.extraction/source.tex")
+        : join(root, "long-notes.md"),
+    );
+    await app.stop();
+    assistant.stop();
+  });
+}
 
 test("an assistant session starts without an extraction and names the stored raw PDF", async () => {
   const assistant = fakeAssistant();
@@ -338,6 +411,7 @@ test("the assistant's chat is told the reader's page as soon as the reader repor
 
   const entry = String(assistant.entries["ses_fake/reader-view"]);
   expect(entry).toContain("The reader shows page 7 of 200");
+  expect(entry).toContain("/api/ai/pdf-text/long-notes?page=7");
   expect(entry).toContain("/api/ai/view/long-notes");
   expect(entry).not.toContain("--- page 7 of ");
   await app.stop();

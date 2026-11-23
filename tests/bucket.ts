@@ -3,13 +3,16 @@
 // over real HTTP to the origin it prints.
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { type AppConfig, CONFIG_PATH, REPO_ROOT } from "../src/contract/config";
 
 // Built once per test run by tests/preload.ts.
 export const SERVER_BINARY = join(REPO_ROOT, "target/debug/pdf-bucket");
-export const EXTRACTIONS_MANIFEST = join(REPO_ROOT, "plugins/manifests/extractions.json");
+export const EXTRACTIONS_MANIFEST = join(
+  REPO_ROOT,
+  "plugins/manifests/extractions.json",
+);
 
 export type BucketOptions = {
   root: string;
@@ -31,6 +34,9 @@ export type BucketOptions = {
 export type Bucket = {
   origin: string;
   indexExport: string;
+  // Helper directories this bucket created; a test that owns its temporary files removes these
+  // after stopping it.
+  temporaryPaths: string[];
   // PATH is a path on the bucket's origin, such as `/api/library`.
   request(path: string, init?: RequestInit): Promise<Response>;
   stop(): Promise<void>;
@@ -40,15 +46,27 @@ function configPath(config: AppConfig | undefined): string {
   if (config === undefined) {
     return CONFIG_PATH;
   }
-  const path = join(mkdtempSync(join(tmpdir(), "pdf-bucket-config-")), "pdf-bucket.config.json");
+  const path = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-config-")),
+    "pdf-bucket.config.json",
+  );
   writeFileSync(path, JSON.stringify(config));
   return path;
 }
 
 export async function serveBucket(options: BucketOptions): Promise<Bucket> {
   const indexExport =
-    options.indexExport ?? join(mkdtempSync(join(tmpdir(), "pdf-bucket-export-")), "index.json");
+    options.indexExport ??
+    join(mkdtempSync(join(tmpdir(), "pdf-bucket-export-")), "index.json");
   const configFile = configPath(options.config);
+  const extensions =
+    options.extensions ?? mkdtempSync(join(tmpdir(), "pdf-bucket-extensions-"));
+  const temporaryPaths = [
+    ...(options.config === undefined ? [] : [dirname(configFile)]),
+    ...(options.extensions === undefined ? [extensions] : []),
+  ];
+  if (options.indexExport === undefined)
+    temporaryPaths.push(dirname(indexExport));
   const command = [
     SERVER_BINARY,
     "serve",
@@ -60,7 +78,7 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
     "--config",
     configFile,
     "--extensions",
-    options.extensions ?? mkdtempSync(join(tmpdir(), "pdf-bucket-extensions-")),
+    extensions,
   ];
   // Bun.spawn without `env` passes the environment the test process started with; the
   // preload's scratch XDG directories are in process.env now.
@@ -76,7 +94,9 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
   while (!printed.includes("\n")) {
     const { value, done } = await reader.read();
     if (done) {
-      throw new Error(`pdf-bucket serve exited before printing its origin: ${command.join(" ")}`);
+      throw new Error(
+        `pdf-bucket serve exited before printing its origin: ${command.join(" ")}`,
+      );
     }
     printed += new TextDecoder().decode(value);
   }
@@ -85,6 +105,7 @@ export async function serveBucket(options: BucketOptions): Promise<Bucket> {
   return {
     origin,
     indexExport,
+    temporaryPaths,
     request: (path, init) => fetch(new URL(path, origin), init),
     stop: async () => {
       server.kill();
@@ -132,7 +153,10 @@ export async function subscribeEvents(app: Bucket) {
           const fields = new Map(
             block.split("\n").map((line) => {
               const colon = line.indexOf(":");
-              return [line.slice(0, colon), line.slice(colon + 1).trimStart()] as const;
+              return [
+                line.slice(0, colon),
+                line.slice(colon + 1).trimStart(),
+              ] as const;
             }),
           );
           const event = fields.get("event");

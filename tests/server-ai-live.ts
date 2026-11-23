@@ -1,8 +1,9 @@
 // The real configured assistant reads a stored PDF that has no structured extraction and answers
-// with text present only on its first page. This uses a private bucket and assistant server; it
-// does not open or change a chat in the provisioned app. The configured provider must be reachable.
+// with a full sentence present only on page 2. A test proxy observes the real bucket requests.
+// This uses a private bucket and assistant server; it does not open or change a chat in the
+// provisioned app. The configured provider must be reachable.
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -31,7 +32,7 @@ function freePort(): number {
   return port;
 }
 
-test("the assistant answers from the raw PDF without a structured extraction", async () => {
+test("the assistant answers from a non-first raw-PDF page without a structured extraction", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-live-"));
   const config = loadAppConfig(CONFIG_PATH);
   const aiPort = freePort();
@@ -45,7 +46,33 @@ test("the assistant answers from the raw PDF without a structured extraction", a
     // scratch bucket's index-export directory.
     env: { XDG_DATA_HOME: join(process.env.HOME!, ".local", "share") },
   });
+  const pageRequests: string[] = [];
+  const proxy = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const incoming = new URL(request.url);
+      const resource = `${incoming.pathname}${incoming.search}`;
+      if (incoming.pathname === "/api/ai/pdf-text/long-notes") {
+        pageRequests.push(resource);
+      }
+      const headers = new Headers(request.headers);
+      // The bucket derives the assistant's allowed fetch origin from Host. Keep the proxy host so
+      // AGENTS.md and the generated permission configuration use the observed boundary.
+      headers.set("Host", incoming.host);
+      const method = request.method.toUpperCase();
+      return fetch(new URL(resource, app.origin), {
+        method: request.method,
+        headers,
+        body:
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : await request.arrayBuffer(),
+      });
+    },
+  });
   try {
+    const bucketRequest = (path: string, init?: RequestInit) =>
+      fetch(new URL(path, proxy.url), init);
     const form = new FormData();
     form.set(
       "pdf",
@@ -60,11 +87,13 @@ test("the assistant answers from the raw PDF without a structured extraction", a
     form.set("pdf_url", "https://www.math.example.edu/~author/long-notes.pdf");
     form.set("title_hint", "Long Notes");
     expect(
-      (await app.request("/capture-bytes", { method: "POST", body: form }))
+      (await bucketRequest("/capture-bytes", { method: "POST", body: form }))
         .status,
     ).toBe(200);
+    const missing = await bucketRequest("/api/ai/text/long-notes");
+    expect(missing.status).toBe(400);
 
-    const opened = await app.request("/api/ai/session", {
+    const opened = await bucketRequest("/api/ai/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: "long-notes" }),
@@ -78,21 +107,21 @@ test("the assistant answers from the raw PDF without a structured extraction", a
       "utf8",
     ).trim();
     const authorization = `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`;
-    const request = (path: string, init?: RequestInit) =>
+    const assistantRequest = (path: string, init?: RequestInit) =>
       fetch(`${assistantOrigin}${path}`, {
         ...init,
         headers: { ...init?.headers, Authorization: authorization },
       });
 
-    const prompt = await request(`/api/session/${sessionID}/prompt`, {
+    const prompt = await assistantRequest(`/api/session/${sessionID}/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: "Read the original PDF named in AGENTS.md. There is no structured extraction. Quote the full sentence on page 1 that begins 'The lattice'.",
+        text: "Read page 2 of the original PDF named in AGENTS.md through its page-text address. Quote exactly the full sentence on that page that begins 'The lattice'. Include every character, including the final period, and add no markup to the quotation.",
       }),
     });
     expect(prompt.status).toBe(200);
-    const waited = await request(
+    const waited = await assistantRequest(
       `/api/experimental/session/${sessionID}/wait`,
       {
         method: "POST",
@@ -100,7 +129,7 @@ test("the assistant answers from the raw PDF without a structured extraction", a
       },
     );
     expect(waited.status).toBe(204);
-    const messages = await request(
+    const messages = await assistantRequest(
       `/api/session/${sessionID}/message?type=assistant&order=desc&limit=1`,
     );
     expect(messages.status).toBe(200);
@@ -109,12 +138,21 @@ test("the assistant answers from the raw PDF without a structured extraction", a
       .filter((part) => part.type === "text")
       .map((part) => part.text ?? "")
       .join("\n");
-    console.info("raw-PDF assistant answer", answer);
+    console.info("raw-PDF page-2 assistant answer", answer);
+    console.info("raw-PDF requests through the bucket boundary", pageRequests);
 
-    expect(answer).toContain("Z1");
-    expect(answer).toContain("determinant 1");
-    expect(answer).toContain("norm 1");
+    expect(answer).not.toMatch(
+      /\b(?:can(?:not|'t)|could(?:not|n't)|unable|refuse[sd]?)\b|(?:do not|don't) have access|no access/i,
+    );
+    expect(answer).toContain(
+      "The lattice Z2 has determinant 1 and 2 · 2 vectors of norm 1.",
+    );
+    expect(pageRequests).toContain("/api/ai/pdf-text/long-notes?page=2");
   } finally {
+    proxy.stop(true);
     await app.stop();
+    for (const path of [root, ...app.temporaryPaths]) {
+      rmSync(path, { recursive: true, force: true });
+    }
   }
 });

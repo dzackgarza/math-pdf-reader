@@ -323,7 +323,9 @@ async fn run(
         .place_extraction(&key, output.join(EXTRACTION_MARKDOWN), Some(artifacts))
         .await?;
     state.stored();
-    placed(state, &key, plugin)
+    let outcome = placed(state, &key, plugin)?;
+    crate::ai::announce_extraction(state, &key).await?;
+    Ok(outcome)
 }
 
 /// Runs the manifest's plugin PLUGIN_ID on the stored item KEY.
