@@ -112,7 +112,7 @@ session can use the real raw-page route without extraction.
 - [X] T016 [P] Describe the current raw-page, extraction-refresh and exact-page behavior
   in `README.md`, `docs/m4.md` and
   `specs/005-assistant-page-context/quickstart.md`
-- [ ] T017 Install the completed build with `just provision` and verify a no-extraction
+- [X] T017 Install the completed build with `just provision` and verify a no-extraction
   non-first-page answer and post-extraction context through the app on port 8770
 
 ## Dependencies & Execution Order
