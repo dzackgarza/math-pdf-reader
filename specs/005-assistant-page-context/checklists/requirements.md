@@ -27,4 +27,4 @@
 - [x] No implementation details leak into specification
 
 ## Notes
-All checklist items pass. Ready for `$speckit-plan`.
+All checklist items pass. The plan, contracts and task list record the implementation and its verification.

@@ -39,16 +39,16 @@ page, run an extraction, and use the new context in that same session.
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Prove non-first-page selection, exactly one page and the live
+- [X] T005 [P] [US1] Prove non-first-page selection, exactly one page and the live
   raw-page request in `tests/server-ai.test.ts` and `tests/server-ai-live.ts`
-- [ ] T006 [US1] Reproduce and then prevent stale instructions when extraction succeeds
+- [X] T006 [US1] Reproduce and then prevent stale instructions when extraction succeeds
   after a session opens in `tests/server-ai.test.ts`
 
 ### Implementation for User Story 1
 
 - [X] T007 [US1] Open sessions without an extraction and serve
   `GET /api/ai/pdf-text/{key}?page=N` in `server/src/ai.rs`
-- [ ] T008 [US1] Refresh an open session's workspace and reader-view entry after
+- [X] T008 [US1] Refresh an open session's workspace and reader-view entry after
   successful extraction placement without starting an unused assistant in
   `server/src/ai.rs` and `server/src/extractions.rs`
 
