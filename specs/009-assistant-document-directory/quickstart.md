@@ -37,3 +37,15 @@ Run `just provision` and open the reader on port 8770.
    the PDF or the structured extraction.
 4. Place an unregistered artifact with unique contents in the directory after the
    chat opens. Verify that the same conversation reads it and returns those contents.
+
+For URL import, run `bun test tests/server-import.test.ts -t 'Import URL stores'`.
+Compare the embedded source URL and original digest with the publisher fixture and
+open the returned key through its PDF and reader URLs.
+
+In the live test the PDF-only scan has a readable catalog number and an obscured
+signature. Check the answer and the reading limitation. Then check the answer against
+both the Markdown passage and the accession in a separate metadata file.
+
+Run `bun test tests/server-ai.test.ts -t 'failed text hint|damaged original'`.
+A failed hint still delivers the recorded page to the chat. Missing and damaged
+originals produce distinct session errors.

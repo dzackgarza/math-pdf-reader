@@ -55,3 +55,10 @@ hint to locate a passage and reads the paper artifact before answering.
 Successful placement writes into the existing document directory. The bucket does not
 call an OpenCode refresh endpoint. The existing chat discovers current files by reading
 its working directory on a later turn.
+
+## Source and hint failures
+
+Session open returns `404 unknown_item` for a missing original and
+`422 unreadable_pdf` with the file diagnostic for a damaged original. When only
+the optional hint fails, the view and chat entry retain the exact recorded page
+and identify the hint failure. Opening the session still succeeds.

@@ -72,6 +72,23 @@ file read.
   `just provision`, and verify migration, PDF-only access, shell reads and same-session unknown
   artifact discovery against the provisioned app on port 8770
 
+## Acceptance coverage
+
+- FR-005 and SC-002: In `tests/server-ai-live.ts`, ask about visible content in
+  a PDF-only scan and an obscured part of the same source. Verify the readable
+  answer and the explicit limitation independently.
+- FR-006 and SC-003: Read independent facts from Markdown and a separate metadata
+  file in one conversation, without supplying either path.
+- FR-012 and T009: In `tests/server-ai.test.ts`, open the chat with a missing
+  PDF and a damaged PDF. For a valid PDF whose hint extraction fails, verify
+  the recorded page and the separate hint error in the view and chat.
+- FR-009 and SC-005: Check capture layout in `tests/server-document-directory.test.ts`.
+  In `tests/server-import.test.ts`, verify the imported key, document path, embedded
+  provenance and served PDF and reader addresses. Check page reports in
+  `tests/server-ai.test.ts`, annotation saves in `tests/library-api.test.ts`,
+  extraction placement in `tests/server-extractions.test.ts`, and deletion,
+  export and recovery in `tests/index-export.test.ts`.
+
 ## Dependencies & Execution Order
 
 - T001 and T002 precede every implementation task.

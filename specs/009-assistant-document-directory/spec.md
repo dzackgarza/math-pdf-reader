@@ -24,7 +24,8 @@ sources the assistant used.
 
 **Acceptance Scenarios**:
 1. **Given** a paper with no extraction, **When** its assistant opens, **Then** the
-   assistant can answer from the original document in that paper's directory.
+   assistant answers from the original document in that directory when its tools can
+   read the requested content. If the content is illegible, it reports the limitation.
 2. **Given** a paper with an extraction and paper-specific metadata, **When** its
    assistant opens, **Then** the assistant can discover and read those resources without
    being given a separate catalog of their locations. It can use its shell to search
@@ -63,6 +64,9 @@ content in the same chat.
 - A paper-specific artifact has a type the application did not previously know.
 - Two papers have similar titles or source addresses but different document identities.
 - A document directory is missing its original document or that document is invalid.
+  Opening its chat reports which condition prevents reading.
+- If hint extraction fails for a valid PDF, the exact reader page and the session
+  remain available. The page context identifies the hint failure separately.
 
 ## Requirements *(mandatory)*
 
@@ -120,9 +124,12 @@ content in the same chat.
   prompt entry for that artifact.
 - **SC-004**: An extraction added during an open conversation is usable in that same
   conversation in 100% of acceptance cases, with zero restarts or refresh notifications.
-- **SC-005**: Capture, reading, annotation saves, extraction, deletion, export and
-  recovery complete with the same item identity and preserved original document
-  provenance in every affected acceptance case.
+- **SC-005**: Capture and URL import return the key of the directory containing the
+  PDF with its embedded provenance. The key resolves to that PDF and its reader.
+  Reading, annotation saves and extraction keep the key and embedded provenance.
+  Export retains the identity and provenance needed for recovery. Rebuild restores
+  the PDF to the same key. After deletion the paper and its artifacts leave the
+  active store together and its entry disappears from the next export.
 
 ## Assumptions
 

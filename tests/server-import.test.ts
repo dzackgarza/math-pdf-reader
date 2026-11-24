@@ -1,5 +1,8 @@
 // Import URL and Add Folder through the real server and store: a local publisher serves a
 // PDF, an abstract page naming its PDF with Highwire tags, and a page naming none.
+import { createHash } from "node:crypto";
+import { STORE_COMMAND } from "../src/contract/config";
+import { ReadOutcomeListSchema } from "../src/contract/store";
 import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import {
   copyFileSync,
@@ -121,7 +124,7 @@ async function until(holds: () => boolean, what: string) {
 }
 
 test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_url", async () => {
-  const { post, items } = await bucket();
+  const { post, items, root, request } = await bucket();
 
   const direct = await post("/api/import-url", {
     open_reader: false,
@@ -141,6 +144,26 @@ test("Import URL stores a PDF URL and follows an abstract page's citation_pdf_ur
     key: "2401.00001",
     existing: false,
   });
+
+  for (const [key, url, original] of [
+    ["lattices", at("/papers/lattices.pdf"), lectureNotes],
+    [fromPage.key, at("/pdf/2401.00001"), problemSet],
+  ] as const) {
+    const path = join(root, key, `${key}.pdf`);
+    const stored = readFileSync(path);
+    const read = Bun.spawnSync([...STORE_COMMAND, "read", "--", path]);
+    expect(read.exitCode).toBe(0);
+    const [outcome] = ReadOutcomeListSchema.parse(JSON.parse(read.stdout.toString()));
+    expect(outcome).toMatchObject({ status: "read", record: { provenance: {
+      pdf_url: url, original_sha256: createHash("sha256").update(original).digest("hex"),
+    } } });
+    const served = await request(`/pdf/${key}.pdf`);
+    expect(served.status).toBe(200);
+    expect(Buffer.from(await served.arrayBuffer()).equals(stored)).toBe(true);
+    const reader = await request(`/read/${key}`);
+    expect(reader.status).toBe(200);
+    expect(await reader.text()).toContain(`/pdf/${key}.pdf`);
+  }
 
   const byKey = new Map((await items()).map((item) => [item.id, item]));
   expect(byKey.get("lattices")?.provenance).toMatchObject({

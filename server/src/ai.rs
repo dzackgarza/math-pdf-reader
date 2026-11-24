@@ -501,7 +501,15 @@ async fn shown(state: &Shared, key: &str) -> AppResult<Option<(u32, String)>> {
         viewed_at.as_str()
     );
     // Extraction and metadata are current files in the paper directory, not page aliases.
-    let hint = state.store.text(key, Some(page)).await?;
+    let hint = match state.store.text(key, Some(page)).await {
+        Ok(text) => text,
+        Err(error) => {
+            // A concurrent deletion or damaged replacement is a source failure.
+            state.require(key).await?;
+            sentences.push_str(&format!(" Page search hint unavailable: {error}"));
+            return Ok(Some((page, sentences)));
+        }
+    };
     let text = if hint.starts_with("--- page ") {
         hint.split_once('\n').map_or("", |(_, rest)| rest)
     } else {

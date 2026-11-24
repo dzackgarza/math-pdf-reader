@@ -227,7 +227,7 @@ test("a failed text hint preserves the page report and permits opening the chat"
       body: JSON.stringify({ key: "long-notes" }),
     });
     expect(opened.status).toBe(200);
-    expect(assistant.entries["ses_fake/reader-view"]).toContain("page 2 of 200");
+    expect(assistant.entries["ses_fake/reader-view"]).toContain(context.trim());
   } finally {
     await app.stop();
     assistant.stop();

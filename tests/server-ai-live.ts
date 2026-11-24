@@ -2,7 +2,7 @@
 // This uses a private bucket and assistant server; it does not open or change a chat in the
 // provisioned app. The configured provider must be reachable.
 import { expect, test } from "bun:test";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { LibraryPayloadSchema } from "../src/contract/library";
 import { AiSessionSchema } from "../src/contract/ai";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
@@ -64,11 +65,18 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     env: { XDG_DATA_HOME: join(process.env.HOME!, ".local", "share") },
   });
   try {
+    const catalogNumber = String(randomInt(100000, 1000000));
+    const fixtures = join(import.meta.dir, "fixtures");
+    const scan = Bun.spawnSync([
+      join(import.meta.dir, "../.venv/bin/python"), join(fixtures, "assistant-scan.py"),
+      join(fixtures, "long-notes.pdf"), catalogNumber,
+    ]);
+    expect({ status: scan.exitCode, stderr: scan.stderr.toString() }).toEqual({ status: 0, stderr: "" });
     const form = new FormData();
     form.set(
       "pdf",
       new File(
-        [readFileSync(join(import.meta.dir, "fixtures/long-notes.pdf"))],
+        [new Uint8Array(scan.stdout)],
         "long-notes.pdf",
         {
           type: "application/pdf",
@@ -135,8 +143,12 @@ test("the assistant inspects the original PDF with the shell and discovers a new
 
     const pdf = join(root, "long-notes", "long-notes.pdf");
     const expectedHash = createHash("sha256").update(readFileSync(pdf)).digest("hex");
-    const pdfAnswer = await ask("Use your shell in the paper directory to compute the SHA-256 of the original PDF. Return the digest.");
-    expect(pdfAnswer.map((part) => part.text).join(" ")).toContain(expectedHash);
+    const pdfAnswer = await ask("Inspect the original PDF in this directory. Report its SHA-256. From the scanned cover, give the printed catalog number and transcribe the signature on a line labeled Signer. Use UNREADABLE in that field if the source cannot identify the signer. Render and inspect the page or OCR its image as needed. Explain any reading limitation.");
+    const coverAnswer = pdfAnswer.filter((part) => part.type === "text").map((part) => part.text).join(" ");
+    expect(coverAnswer).toContain(expectedHash);
+    expect(coverAnswer).toContain(catalogNumber);
+    expect(coverAnswer.replaceAll("*", "")).toMatch(/Signer:\s*\x60?UNREADABLE/i);
+    expect(coverAnswer).toMatch(/redact|obscur|black(?:ed| box| bar| rectangle)|illegible|unreadable|cannot (?:identify|determine|read)/i);
 
     const pageReport = await app.request("/api/items/long-notes/reading", {
       method: "PUT",
@@ -147,17 +159,21 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     const context = await (await app.request("/api/ai/view/long-notes")).text();
     expect(context).toContain("page 2");
     expect(context).toContain("lattice Z2");
+    const accession = randomUUID();
+    writeFileSync(join(root, "long-notes", "catalog.json"), JSON.stringify({ accession }));
     const marker = `pdf-bucket-live-discovery-${randomUUID()}`;
-    const artifact = join(
-      root,
-      "long-notes",
-      "research-notes",
-      "page-notes.md",
-    );
-    mkdirSync(dirname(artifact), { recursive: true });
-    writeFileSync(artifact, `# Lecture 2\n\nThe lattice $Z^2$ has determinant 1.\n\nSource verification: ${marker}\n`);
+    const paper = join(root, "long-notes");
+    const extracted = join(paper, "long-notes.extraction");
+    mkdirSync(extracted);
+    writeFileSync(join(extracted, "metadata.json"),
+      JSON.stringify({ sourceKind: "document_structure", authoritative: true }));
+    writeFileSync(join(paper, "long-notes.md"), `# Lecture 2\n\nThe lattice $Z^2$ has determinant 1.\n\nSource verification: ${marker}\n`);
+    const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+    expect(library.items.find((item) => item.id === "long-notes")?.extraction).toMatchObject({
+      status: "extracted", sourceKind: "document_structure", authoritative: true,
+    });
     const discoveryParts = await ask(
-      "Find the new Markdown in this paper directory. Use the reader's current page to locate the passage. Use a shell command to read the Markdown. Return the lattice notation exactly as written in that file and its source verification value.",
+      "Find the new Markdown in this paper directory. Use the reader's current page to locate the passage. Use a shell command to read the Markdown. Return the lattice notation exactly as written in that file and its source verification value. Also report the accession identifier from the separate catalog metadata.",
     );
     const discoveryAnswer = discoveryParts
       .filter((part) => part.type === "text")
@@ -176,6 +192,7 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     );
     expect(discoveryAnswer).toContain("Z^2");
     expect(discoveryAnswer).toContain(marker);
+    expect(discoveryAnswer).toContain(accession);
     expect(shellReads.length).toBeGreaterThan(0);
   } finally {
     try {

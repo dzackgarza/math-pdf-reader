@@ -156,10 +156,28 @@ impl AppState {
     }
 
     pub async fn require(&self, key: &str) -> AppResult<IndexedItem> {
-        match self.indexed(key).await? {
-            Some(indexed) => Ok(indexed),
-            None => Err(AppError::unknown_item(key)),
+        let parsed = crate::layout::Key::parse(key).ok_or_else(|| AppError::unknown_item(key))?;
+        let library = self.store.library().await?;
+        if let Some(item) = library
+            .items
+            .into_iter()
+            .find(|item| item.stored.key.as_str() == key)
+        {
+            return Ok(item);
         }
+        let pdf = crate::layout::pdf_path(std::path::Path::new(""), &parsed);
+        if let Some(file) = library
+            .unreadable
+            .into_iter()
+            .find(|file| std::path::Path::new(&file.file) == pdf)
+        {
+            return Err(AppError::api(
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                crate::contract::ApiErrorErrorKind::UnreadablePdf,
+                format!("{}: {}", file.file, file.message),
+            ));
+        }
+        Err(AppError::unknown_item(key))
     }
 
     /// The items the index export holds whose PDF is gone.

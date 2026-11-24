@@ -26,3 +26,7 @@ added later is available on the next turn without an instruction update.
 The reader supplies the displayed page number through `GET /api/ai/view/{key}`.
 Its optional text-layer snippet is a labeled search hint. The assistant uses the
 hint to locate a passage and reads the paper artifact before answering.
+
+If the text layer cannot supply the optional hint for a valid paper, the page
+context still returns the exact reported page. The view and chat identify the hint
+failure separately. See the [session error contract](../../009-assistant-document-directory/contracts/assistant-api.md#source-and-hint-failures).

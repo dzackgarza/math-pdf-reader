@@ -97,7 +97,9 @@ assistant abstraction is added.
 OpenCode owns file discovery, tool choice and reading. The bucket sets the session
 location and updates the displayed page number when the reader reports it. A short
 text-layer snippet can help locate the passage in a complete extraction. The
-assistant checks the passage against a paper artifact.
+assistant checks the passage against a paper artifact. Hint generation can fail
+independently of source validation. Keep the recorded page and report the hint
+error when the original is valid. A missing or damaged original fails session open.
 
 ## Implementation owners
 
