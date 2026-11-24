@@ -26,6 +26,7 @@ pdfbucket-mistral-ocr = "pdfbucket_extractors.mistral_ocr:app"
 [dependency-groups]
 dev = [
     "bibtexparser>=2.0.1",
+    "playwright>=1.55",
     "pytest>=8",
     "selenium>=4.25",
 ]

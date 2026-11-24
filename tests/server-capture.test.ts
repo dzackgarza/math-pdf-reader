@@ -157,6 +157,37 @@ test("PDFs captured at once under one file name all land, each under its own key
   expect(readdirSync(root).sort()).toEqual(keys.toSorted());
 });
 
+test("capture skips an existing document directory and preserves its unrelated artifacts", async () => {
+  const { root, app } = await bucket();
+  const originalDocument = join(root, "download");
+  mkdirSync(join(originalDocument, "research"), { recursive: true });
+  writeFileSync(join(originalDocument, "download.md"), "# Another paper\n");
+  writeFileSync(join(originalDocument, "research", "notes.txt"), "unrelated\n");
+  const original = readFileSync(
+    join(import.meta.dir, "fixtures/problem-set.pdf"),
+  );
+
+  const response = await app.request("/capture-bytes", {
+    method: "POST",
+    body: captureForm(original, "download.pdf", "Download"),
+  });
+
+  expect(response.status).toBe(200);
+  const result = CaptureResponseSchema.parse(await response.json());
+  expect(result.key).toBe(`download--${sha256(original).slice(0, 12)}`);
+  expect(readFileSync(join(originalDocument, "download.md"), "utf8")).toBe(
+    "# Another paper\n",
+  );
+  expect(
+    readFileSync(join(originalDocument, "research", "notes.txt"), "utf8"),
+  ).toBe("unrelated\n");
+  const library = LibraryPayloadSchema.parse(
+    await (await app.request("/api/library")).json(),
+  );
+  expect(library.items.map((item) => item.id)).toEqual([result.key]);
+  expect(library.items[0]?.extraction.status).toBe("none");
+});
+
 test("the same PDF captured from another URL under another name is the item already stored", async () => {
   const { root, app } = await bucket();
   const bytes = readFileSync(fixture);
