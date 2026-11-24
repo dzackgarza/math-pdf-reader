@@ -138,7 +138,7 @@ The arXiv source provider accepts an arXiv identifier/version, downloads the `e-
 archive, validates that the archive is readable and contains source files, and writes:
 
 1. the original archive as the authoritative source artifact;
-2. a derived Markdown convenience view;
+2. one readable Markdown file converted from the main LaTeX document and its includes;
 3. no authoritative result when retrieval, archive validation, or conversion fails.
 
 ## Complexity Tracking

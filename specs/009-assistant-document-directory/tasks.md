@@ -32,32 +32,13 @@ implementation. The real-provider check runs separately from tier 1.
   reads and whole-directory deletion, through the shared layout in
   `server/src/send.rs`, `server/src/store.rs` and their direct consumers
 
-## Phase 3: User Story 1 - Ask with every available paper source (P1) 🎯 MVP
+## Phase 3: Open the paper directory
 
-**Goal**: Each paper's assistant works in its real document directory and discovers the
-original and all current enrichment without a generated source catalog.
-
-**Independent Test**: Open PDF-only and enriched papers through real bucket/OpenCode
-HTTP, inspect session location and permissions, then obtain real-provider answers from
-raw page 2 and a directory artifact.
-
-### Tests for User Story 1
-
-- [X] T006 [US1] Add failing HTTP proofs for document-directory session creation,
-  preservation of an existing session ID through OpenCode move, generic read/glob/grep
-  permissions and absence of generated paper-source catalogs in
-  `tests/server-ai.test.ts`
-- [X] T007 [P] [US1] Extend the real-provider regression so raw-only page access and
-  direct discovery of enriched paper artifacts both require observable tool use in
-  `tests/server-ai-live.ts`
-
-### Implementation for User Story 1
-
-- [X] T008 [US1] Create new sessions in and move existing sessions to the paper directory;
-  replace source-catalog instructions with generic discovery and raw-page guidance in
-  `server/src/ai.rs`
-- [X] T009 [US1] Remove `/api/ai/text/{key}` and update exact-page context without
-  enumerating extraction or metadata artifacts in `server/src/ai.rs` and affected tests
+- [X] T006 Verify the session location and preservation of the session ID on move.
+- [ ] T007 Verify a real shell read of a paper artifact through the live provider.
+- [ ] T008 Grant the reader shell access and direct it to its working directory.
+- [ ] T009 Supply the exact displayed page and optional correlation hint and retire
+  the full-page text route and its instructions.
 
 ## Phase 4: User Story 2 - Enrich an already-open paper (P1)
 
@@ -82,13 +63,13 @@ file read.
 
 ## Phase 5: Cross-cutting verification
 
-- [X] T012 [P] Align the amended constitution and current behavior contracts in
+- [ ] T012 [P] Align the amended constitution and current behavior contracts in
   `.specify/memory/constitution.md`, `specs/005-assistant-page-context/`,
   `specs/009-assistant-document-directory/`, `README.md` and `docs/m4.md`
 - [X] T013 Record the document-directory decision in the `PLAN-PDF-BUCKET-ROADMAP` card's
   Decision Log without changing completed issue claims
-- [X] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
-  `just provision`, and verify migration, raw-only page answers and same-session unknown
+- [ ] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
+  `just provision`, and verify migration, PDF-only access, shell reads and same-session unknown
   artifact discovery against the provisioned app on port 8770
 
 ## Dependencies & Execution Order
@@ -111,5 +92,5 @@ file read.
 ## Implementation Strategy
 
 Deliver the real document directory first, including existing-store migration. Move the
-assistant onto it without weakening raw-page availability. Prove same-chat enrichment
+assistant onto it with its own shell and file tools. Prove same-chat enrichment
 through direct discovery, then provision the installed app and verify real user data.

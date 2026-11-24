@@ -27,7 +27,8 @@ sources the assistant used.
    assistant can answer from the original document in that paper's directory.
 2. **Given** a paper with an extraction and paper-specific metadata, **When** its
    assistant opens, **Then** the assistant can discover and read those resources without
-   being given a separate catalog of their locations.
+   being given a separate catalog of their locations. It can use its shell to search
+   a Markdown extraction and read the matching passage.
 3. **Given** several papers, **When** an assistant session opens, **Then** its document
    directory belongs to the selected paper alone.
 
@@ -112,7 +113,8 @@ content in the same chat.
   document and every complete paper-specific artifact are in the same document
   directory and no current paper artifact resides only in a synthetic workspace.
 - **SC-002**: The assistant answers from the original document without an extraction in
-  100% of extraction-free acceptance cases.
+  every extraction-free acceptance case where its tools can read the PDF. When they
+  cannot, the assistant reports the reading limitation.
 - **SC-003**: The assistant discovers each available extraction and paper-specific
   metadata resource in 100% of enrichment acceptance cases without a source-specific
   prompt entry for that artifact.
@@ -130,6 +132,6 @@ content in the same chat.
   into another metadata file is unnecessary.
 - Existing stored papers retain their contents and identities when their storage is
   reorganized.
-- The assistant still needs a way to read bounded original-document page text when its
-  configured model cannot consume a PDF directly. That necessity does not justify a
-  separate catalog for the other files in the document directory.
+- The assistant chooses the tools it uses in the paper directory, including shell
+  commands. The reader supplies the displayed page number and may supply a short
+  text-layer search hint. The assistant checks the passage in the paper itself.

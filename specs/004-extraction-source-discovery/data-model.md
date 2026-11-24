@@ -22,7 +22,7 @@ Represents source-backed output stored beside a PDF.
 |---|---|
 | provider | Declared external command |
 | status | Visible success/failure state |
-| markdown | Convenience view only |
+| markdown | Single readable Markdown document derived from the main LaTeX file and its includes |
 | source artifact | Required for arXiv LaTeX extraction |
 | authoritative | Explicit state consumed by assistant context |
 | files | Provider artifacts, never an unlabelled PDF text dump |
@@ -83,6 +83,6 @@ usable and reports an explicit failed promotion.
 | source kind | `arxiv_latex`, `true_ocr`, or `document_structure` |
 | authoritative | True only for a complete accepted source-backed artifact |
 | source artifact | Required for `arxiv_latex`; the downloaded source archive |
-| markdown | Derived convenience view; never the authority |
+| markdown | Single Markdown reading copy; authored LaTeX remains authoritative |
 
 Failed or partial provider output is quarantined or removed before the job is marked failed.

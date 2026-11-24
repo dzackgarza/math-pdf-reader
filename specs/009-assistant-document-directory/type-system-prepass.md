@@ -39,8 +39,7 @@ to the paper directory.
 ### Invariants and current violations
 
 - One directory holds each paper's complete current record. The flat layout violates it.
-- The original PDF exists independently of every extraction. Current raw-page access
-  already satisfies this and MUST remain intact.
+- The original PDF exists independently of every extraction. Opening the session must preserve access to this file.
 - Only a completed extraction is visible as complete. Root staging satisfies this;
   the new placement MUST retain it.
 - A session reads current paper artifacts without instruction regeneration. The
@@ -60,7 +59,7 @@ to the paper directory.
 | Assistant open | Existing document directory, session ID | Same session after enrichment or page changes | Source catalog refresh or synthetic current copies |
 | Legacy flat record | One or more recognized legacy paths | Document directory | Overwriting a destination; duplicated current record |
 
-Valid examples include a PDF-only paper, LaTeX source with convenience Markdown,
+Valid examples include a PDF-only paper, LaTeX source with its single Markdown reading copy,
 and an unknown `notes.txt` added directly to the paper directory. Invalid examples
 include a key with a separator, extraction output placed before validation, two
 current PDFs for one key, and migration over an existing destination. An orphan
@@ -135,8 +134,7 @@ for assistant discovery; the library exposes only the typed extraction contract.
 
 The public bucket session request and response are unchanged. The private OpenCode
 session create body gains the real paper directory; existing sessions move when
-their location differs. `/api/ai/pdf-text/{key}?page=N` remains the bounded raw-page
-adapter for models that reject PDFs. `/api/ai/text/{key}` disappears because direct
+their location differs. The displayed page and optional correlation hint are reader state. `/api/ai/text/{key}` disappears because direct
 artifact reads replace it. The library, export and Zotero contracts retain their
 item-relative artifact names.
 

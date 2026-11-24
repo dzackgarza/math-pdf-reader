@@ -1,3 +1,6 @@
+<!-- Sync Impact Report: 3.0.0 to 4.0.0. Principles II–V redefine paper sources,
+tool choice, page hints and acceptance evidence. Features 004, 005 and 009 own
+the extraction, reader context and session contracts respectively. -->
 # Math PDF Reader Constitution
 
 ## Core Principles
@@ -7,51 +10,44 @@ Every stored PDF MUST carry its source URL, capture time, and original SHA-256 i
 the PDF itself. The index and other derived records MAY accelerate lookup, but they
 MUST NOT be the sole source of provenance.
 
-### II. Raw PDF Access and Authoritative Extractions
-Assistant availability and answers MUST NOT require a structured extraction. The
-assistant MUST be able to read bounded text from the stored raw PDF and answer from
-that text when no authoritative extraction exists. An authoritative extraction MUST
-supply additional context when one exists. For arXiv papers, the LaTeX source itself
-is the authoritative artifact; any Markdown conversion is only a convenience view.
-For papers without source, the authoritative extraction MUST come from a true OCR or
-document-structure provider, such as a configured Mistral OCR or MinerU Flash
-provider. Full-document output from `pdftotext`, PyMuPDF, or equivalent PDF text
-libraries MUST NOT be presented as a structured extraction. When a sufficiently
-confident arXiv alternative is discovered for a paper captured from elsewhere, the
-application MUST promote the arXiv version as the preferred source and MUST make
-replacement or re-fetching from that source the primary recovery action. The original
-captured file and its provenance MUST remain preserved as an alternate record unless
-the user explicitly chooses otherwise.
+### II. Paper sources and extraction
 
-### III. One Paper Directory and Explicit Page Context
-Each stored paper MUST have one document directory containing its original PDF
-and every paper-specific artifact. The assistant's working context MUST be that
-directory, not a synthetic workspace or generated source catalog. The assistant MUST
-enumerate the directory and choose among the current artifacts itself. A complete
-artifact added after a chat opens MUST be available in that chat without a session
-restart or source-refresh notification. Assistant page context MUST provide the exact
-page number reported by the reader and the address of that page's text in the stored
-raw PDF. The assistant MUST use the raw-page address when it needs text from a
-particular PDF page. The application MUST NOT perform approximate page-to-extraction
-mapping. Raw-page access MUST remain available without an extraction.
+Every paper directory MUST contain its original PDF, including before enrichment and
+after a failed extraction. Prefer a confidently matched arXiv version. Preserve the
+captured original and its provenance as an alternate, and use the preferred arXiv
+source first when recovering the preferred item. For arXiv enrichment, preserve the
+authored LaTeX and convert its main document and included files into one readable
+Markdown file. The assistant can read the Markdown and consult the LaTeX for details.
+When usable arXiv source is unavailable, enrich the PDF with structured Markdown from
+an eligible OCR or document-structure provider such as MinerU Flash or Mistral OCR.
 
-### IV. Fail Loudly
-A missing or invalid extraction MUST produce an explicit error when the caller
-requests that extraction; it MUST NOT prevent assistant session creation or raw-PDF
-answers. Runtime paths MUST NOT silently fall back, default, return partial success,
-or convert untrusted output into authoritative content. Generic PDF full-text output
-MUST NOT be used to satisfy an extraction request or be stored, selected, or described
-as a structured extraction. Low-fidelity, bounded raw-page text serves the raw-PDF
-reading path only. A structured extraction failure MUST leave that raw-PDF path
-available.
+### III. Paper directory and reader context
 
-### V. Tests Prove the Real Boundary
-Behavior changes MUST be covered at the boundary where users observe them. Tests MUST
-distinguish authoritative extraction from raw PDF text and MUST fail if an extraction
-prerequisite is reintroduced. Raw-PDF tests MUST select a non-first page and prove that
-only the requested page is returned. Assistant tests without an extraction MUST prove
-an answer through the real raw-page HTTP boundary. A test MUST prove that an extraction
-placed after a chat opens becomes available to that chat.
+The app MUST open the assistant in the paper directory. The assistant chooses how to
+discover and inspect files with its own tools, including shell commands. For example,
+it can search a Markdown extraction and use `sed` to read the surrounding passage.
+New files MUST be visible in the same conversation without registration or refresh.
+For a question about the displayed page, supply the exact reader page number. The
+app MAY add a short, labeled snippet from that page as a search hint. The assistant
+locates the corresponding passage and checks it against a paper artifact itself.
+
+### IV. Source fidelity and failures
+
+Text-layer output from `pdftotext`, PyMuPDF and equivalent tools loses mathematical
+layout and reading order. Its sole use for assistant context is the page-correlation
+hint. Answers and quotations MUST be grounded in the PDF or a paper artifact. A
+missing extraction MUST leave the PDF and session available. If the assistant cannot
+read the available sources, it MUST report that limitation. Failed extractions MUST
+report the failure and preserve the last complete result.
+
+### V. Tests prove the real boundary
+
+Acceptance tests MUST open a PDF-only paper, verify access to the original, and
+exercise the reader's own tools in an enriched paper directory, including a real
+shell read. Add a file after the chat opens and verify the same chat reads it.
+Use a page whose text layer garbles a formula. Verify the displayed page number,
+then require an answer supported by the passage in the paper artifact. A quotation
+copied from the hint cannot establish source fidelity.
 
 ## Architecture Constraints
 
@@ -78,4 +74,4 @@ added or materially expanded guidance, and PATCH for non-semantic clarification.
 Reviews and implementation plans MUST check compliance with these principles;
 unresolved violations block completion rather than becoming future work.
 
-**Version**: 3.0.0 | **Ratified**: 2026-11-22 (original adoption date unavailable; first verified repository baseline) | **Last Amended**: 2026-11-24
+**Version**: 4.0.0 | **Ratified**: 2026-11-22 (original adoption date unavailable; first verified repository baseline) | **Last Amended**: 2026-11-24

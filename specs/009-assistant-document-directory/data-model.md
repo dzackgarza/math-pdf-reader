@@ -21,8 +21,7 @@
 - Markdown: `<root>/<key>/<key>.md`; existence marks completion.
 - Artifacts: `<root>/<key>/<key>.extraction/`.
 - Metadata remains in the artifact directory as `metadata.json`.
-- LaTeX source remains authoritative for arXiv extraction; Markdown is a convenience
-  view for that source.
+- LaTeX source remains authoritative for arXiv extraction; the single derived Markdown file is the reading copy for that source.
 - Validation occurs in hidden root staging. The artifact directory moves first and
   Markdown last after previous complete outputs move to trash.
 
@@ -38,7 +37,7 @@
 - One persistent OpenCode session ID per key in the existing chat mapping.
 - `location.directory` equals the absolute document-directory path.
 - Existing sessions retain their ID and move to that directory.
-- `reader-view` supplies exact page and raw-page address only, not a catalog of
+- `reader-view` supplies exact page and optional search hint, not a catalog of
   extraction or metadata files.
 
 ## Legacy Flat Record

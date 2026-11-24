@@ -12,8 +12,7 @@
 
 Replace the flat paper layout and synthetic assistant workspaces with one directory per
 paper. Migrate existing files by rename, point new and existing OpenCode chats at that
-directory, let the model discover current enrichment, and retain only the raw-page HTTP
-adapter needed by models that cannot consume PDFs.
+directory, and let the assistant inspect the original and its enrichment using its own tools.
 
 ## Technical Context
 
@@ -34,26 +33,15 @@ provisioned app verification
 **Performance Goals**: No new target; startup migration uses same-filesystem renames
 
 **Constraints**: Preserve embedded provenance, bytes, keys and stable URLs; raw PDF
-availability never depends on extraction; no shell/edit/subagent or arbitrary-web
-capability; no dual-layout fallback or source-catalog regeneration
+availability never depends on extraction; shell tools operate from the document directory; no dual-layout fallback or source-catalog regeneration
 
 **Scale/Scope**: All store lifecycle paths, all current user papers and one chat per paper
 
 ## Constitution Check
 
-- **I. Provenance**: PASS. Migration and writes rename bytes without replacing embedded
-  provenance; item URLs retain keys.
-- **II. Raw PDF and extraction**: PASS. Raw-page access remains independent and complete
-  extractions remain enrichment, including authoritative LaTeX.
-- **III. One directory and page context**: PASS after the v3.0.0 amendment. Sessions
-  occupy the document directory, exact page context remains, and no source catalog is
-  generated.
-- **IV. Fail loudly**: PASS. Migration collisions and invalid originals fail explicitly;
-  incomplete staging is invisible as complete extraction.
-- **V. Real-boundary tests**: PASS. Tests exercise store HTTP, private OpenCode and the
-  real provider, then the provisioned app on port 8770.
-
-Post-design result: PASS. No fallback, synthetic extraction or weakened proof is present.
+Constitution 4.0 requires the stored PDF, directory discovery with shell access, and
+page hints used only for correlation. The open items in [tasks.md](tasks.md) cover
+runtime changes and provisioned verification.
 
 ## Project Structure
 
@@ -72,7 +60,7 @@ server/src/
 ├── layout.rs       # Document paths and flat-layout migration
 ├── store.rs        # Capture, replacement, extraction and deletion writes
 ├── index.rs        # Document-directory scanning and unreadable originals
-├── ai.rs           # Session location/move, discovery permissions and raw pages
+├── ai.rs           # Session location/move, tool permissions and page hints
 ├── extractions.rs  # No assistant source-catalog refresh
 ├── send.rs         # Zotero attachment reads through the shared layout
 ├── lib.rs          # Migration before serving
@@ -104,38 +92,21 @@ assistant abstraction is added.
   `cargo check --package pdf-bucket`.
 - **Commit boundary**: Failing regression first; directory storage and migration second.
 
-### Put the assistant in the paper directory
+## Design
 
-- **Obligation**: FR-002 through FR-007 and Constitution III.
-- **Preconditions**: Document-directory store; failing session-location regression.
-- **Change**: Create chats in and move existing chats to the directory. Replace generated
-  catalogs with generic discovery instructions and root-wide read-only glob/grep/read
-  permissions. Retain raw-page and exact-page routes; remove extraction-text and refresh.
-- **Acceptance**: One session ID survives movement; arbitrary current files need no new
-  instructions or endpoint; raw-only and enriched papers use the same mechanism.
-- **Proof**: Private-server HTTP regressions, real-provider live discovery, focused
-  assistant tests.
-- **Commit boundary**: Failing assistant regressions first; assistant migration second.
+OpenCode owns file discovery, tool choice and reading. The bucket sets the session
+location and updates the displayed page number when the reader reports it. A short
+text-layer snippet can help locate the passage in a complete extraction. The
+assistant checks the passage against a paper artifact.
 
-### Align contracts and evidence, then provision
+## Implementation owners
 
-- **Obligation**: Current documentation and user-visible proof.
-- **Change**: Amend 005 and 009 records, roadmap Decision Log, README and M4 paths and
-  behavior; provision and inspect the migrated store and assistant.
-- **Acceptance**: No current document prescribes the synthetic workspace or extraction
-  endpoint. Port 8770 demonstrates raw-only and same-chat unknown-artifact discovery.
-- **Proof**: Focused checks, `just provision`, direct HTTP/OpenCode observations and
-  filesystem inspection.
-- **Commit boundary**: Documentation/evidence and verified install, then final delivery.
-
-## System-Level Validation
-
-- Real store: migration preserves byte hashes and readable provenance; extraction and
-  annotation behavior remain intact.
-- Real OpenCode: create/move and permissions are observed through its HTTP API.
-- Real provider: answers require raw page 2 and an unregistered artifact added after
-  session creation.
-- Installed app: existing user data migrates and port 8770 demonstrates both source modes.
+- `server/src/ai.rs` owns session location, tool permissions and reader context.
+- Extraction commands place their completed files through the store's existing
+  extraction contract. See [source discovery](../004-extraction-source-discovery/spec.md).
+- `tests/server-ai.test.ts` and `tests/server-ai-live.ts` exercise the HTTP and
+  provider boundaries. The [validation guide](quickstart.md) specifies the
+  required observations.
 
 ## Risks / Recovery / Stop Rules
 
@@ -143,26 +114,10 @@ assistant abstraction is added.
   never choose or merge silently.
 - OpenCode move failure: surface `ai_unavailable`; never reuse the old location as if it
   were correct.
-- Permission failure: inspect the generated rules and real tool error; do not enable
-  shell or broaden access beyond the store.
+- Permission failure: inspect the session location and the actual tool result.
 - Provider failure: distinguish provider availability from read/discovery failure.
 - Stop for a user decision only if preservation would require deleting or merging two
   different current paper artifacts.
-
-## Progress
-
-- [X] Store regressions and implementation -- real lifecycle evidence required.
-- [X] Assistant regressions and implementation -- session and live discovery evidence.
-- [X] Documents, roadmap, provisioned verification -- current behavior on port 8770.
-
-## Surprises & Discoveries
-
-- Observation: OpenCode already supports session location and session move.
-  Evidence: official `/api/session` and `/api/session/{id}/move` schemas.
-  Consequence: old chats need no replacement or synthetic-workspace symlink.
-- Observation: the configured model cannot consume PDF input.
-  Evidence: prior live provider failure recorded in 005 documents.
-  Consequence: only the bounded raw-page HTTP adapter remains.
 
 ## Decision Log
 

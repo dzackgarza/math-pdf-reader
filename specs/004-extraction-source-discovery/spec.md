@@ -94,8 +94,10 @@ with expected source-backed content.
 - **FR-007**: The application MUST distinguish original provenance from discovered
   source provenance.
 - **FR-008**: An arXiv-source extraction MUST preserve the LaTeX source itself as
-  the authoritative artifact; any derived Markdown is only a convenience view.
-- **FR-009**: Non-arXiv extraction MUST use a true OCR or document-structure
+  the authoritative artifact and assemble the main document and its included LaTeX
+  files into one readable Markdown file in the paper directory.
+- **FR-009**: When usable arXiv source is unavailable, enrichment MUST place Markdown
+  in the paper directory using a true OCR or document-structure
   provider, such as a configured Mistral OCR or MinerU Flash provider.
 - **FR-010**: Generic full-document output from tools such as `pdftotext` or PyMuPDF
   MUST NOT be accepted, stored, selected, or described as a structured extraction.

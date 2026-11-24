@@ -13,15 +13,10 @@
 - **Reader page**: The first visible page reported by EmbedPDF; 1-based.
 - **Reader page count**: The count reported by the reader for display context.
 
-## Raw Page Text
+## Page hint
 
-- **Key**: Selects a stored paper.
-- **Page**: Required 1-based page number.
-- **Text**: The text layer of exactly that page, preceded by its page marker.
-- **Validation**: The page must exist in the PDF. A missing page is an invalid request,
-  not an empty success and not another page.
-
-No raw-page response is saved as an extraction or included in the extraction index.
+An optional short text-layer snippet belongs to the displayed page number. Its only
+role is to help locate the corresponding passage in an extraction.
 
 ## Extraction Metadata
 
@@ -37,8 +32,8 @@ No raw-page response is saved as an extraction or included in the extraction ind
 
 - **Session ID**: OpenCode's stable identifier for the paper's chat.
 - **Location**: The stored paper's document directory for both new and moved sessions.
-- **Reader-view instruction**: Original PDF path, exact reader page, raw-page address
+- **Reader-view instruction**: Exact reader page
   and an optional bounded raw-text search hint. An extraction adds no source-specific
   entry.
-- **Discovery**: Generic read-only file and directory tools observe the current
+- **Discovery**: The assistant's file and shell tools observe the current
   directory contents. A new artifact needs no session restart or source refresh.

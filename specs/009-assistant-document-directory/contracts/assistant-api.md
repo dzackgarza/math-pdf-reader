@@ -11,14 +11,7 @@
 The response still contains `pairUrl` and `sessionUrl`. Before responding, the server
 ensures the stored paper's document directory exists and its chat is located there.
 
-`GET /api/ai/pdf-text/{key}?page=N` remains unchanged. It returns only page N of the
-original PDF as plain text. It does not require or represent an extraction.
-
-`GET /api/ai/view/{key}` returns the exact recorded reader page and the absolute raw-page
-address. It does not enumerate extraction or metadata resources.
-
-`GET /api/ai/text/{key}` is removed. Clients read extraction files from the paper's
-document directory instead.
+For reader page context see the [page-context contract](../../005-assistant-page-context/contracts/assistant-api.md).
 
 ## Private OpenCode API
 
@@ -49,9 +42,13 @@ is an assistant availability error; the bucket does not silently reuse the old l
 
 ## Reader agent capabilities
 
-The reader may list, glob, grep and read beneath the store root and fetch only the
-bucket origin. It cannot run commands, edit files, start subagents or fetch arbitrary
-web addresses. No rule names an individual extraction or metadata file.
+The session's location is the paper directory. The assistant chooses its own file
+and shell tools to inspect the PDF, Markdown, LaTeX or other files there. A file
+added later is available on the next turn without an instruction update.
+
+The reader supplies the displayed page number through `GET /api/ai/view/{key}`.
+Its optional text-layer snippet is a labeled search hint. The assistant uses the
+hint to locate a passage and reads the paper artifact before answering.
 
 ## Extraction lifecycle
 

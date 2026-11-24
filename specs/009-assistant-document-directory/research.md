@@ -47,32 +47,10 @@ A symlink from a synthetic workspace would retain duplicate path authority and h
 artifacts. Recreating instructions after extraction would preserve the rejected
 catalog model.
 
-## Discovery and raw PDF access
+## Directory tools
 
-**Decision**: Allow read-only directory listing, glob, grep and file reads beneath the
-store root. Give only generic instructions to inspect the current directory and use
-available enrichment. Keep `/api/ai/pdf-text/{key}?page=N` for exact raw pages and
-`reader-view` for the reader's current page. Remove `/api/ai/text/{key}` and all
-extraction-refresh behavior.
-
-**Rationale**: The configured model rejects PDF input but can fetch bounded raw-page
-text. Extraction and metadata files need no HTTP adapter: the model can discover and
-read them itself. The permission rules cover current and future artifacts without
-per-file changes. Shell, edits, subagents and arbitrary web access stay denied.
-
-**Alternatives considered**: Keeping the extraction endpoint would retain duplicate
-source handling. Enabling shell for `pdftotext` would violate the assistant security
-boundary. Attaching PDFs directly is not supported by the configured model.
-
-## Verification
-
-**Decision**: Use real HTTP store regressions for layout and migration, the private
-OpenCode server for location and permissions, and the real configured provider for
-raw-page plus unknown-artifact discovery. Verify the provisioned app on port 8770.
-
-**Rationale**: Path helper tests alone cannot prove capture, indexing, extraction or
-user-visible assistant behavior. A generated-instruction assertion cannot prove that
-the model can discover resources.
-
-**Alternatives considered**: Mock model answers were rejected as evidence of source
-use. Endpoint-only tests were rejected because they preserve the old architecture.
+The session location supplies the paper context. The assistant can inspect new
+artifacts using file tools and shell commands without a new endpoint or instruction.
+Keeping the original beside the extraction lets it check a source when conversion
+has lost information. The [page-context spec](../005-assistant-page-context/spec.md)
+defines the displayed page and optional search hint.
