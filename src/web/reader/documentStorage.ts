@@ -40,7 +40,9 @@ const ENTITY_TAG = /^"[0-9a-f]{64}"$/;
 export function entityTag(response: Response): string {
   const tag = response.headers.get("ETag");
   if (tag === null || !ENTITY_TAG.test(tag)) {
-    throw new Error(`${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`);
+    throw new Error(
+      `${response.url} answered without the stored PDF's entity tag (ETag: ${tag})`,
+    );
   }
   return tag;
 }
@@ -117,7 +119,12 @@ export class DocumentStorage {
   }
 
   unsaved(): boolean {
-    return this.pendingSave !== null || this.saving > 0 || this.conflict || this.failure !== null;
+    return (
+      this.pendingSave !== null ||
+      this.saving > 0 ||
+      this.conflict ||
+      this.failure !== null
+    );
   }
 
   private put(bytes: ArrayBuffer) {
@@ -144,7 +151,8 @@ export class DocumentStorage {
     const response = await this.put(await this.exported());
     if (response.status === 412) {
       this.storedTag = entityTag(response);
-      this.failure = "Not saved: the PDF changed elsewhere after it was opened.";
+      this.failure =
+        "Not saved: the PDF changed elsewhere after it was opened.";
       this.conflict = true;
       this.show({ text: this.failure, failed: true });
       return;
@@ -224,8 +232,15 @@ export class DocumentStorage {
   }
 
   // The copy the reader shows, with every change made since the refused save, replaces the
-  // stored PDF.
+  // stored PDF. Clicking its button can itself finish editing a note, so finish the commit and
+  // wait for an ordinary save already in progress. This save includes the pending debounce.
   async keepMine(): Promise<void> {
+    await this.committed();
+    if (this.pendingSave !== null) {
+      clearTimeout(this.pendingSave);
+      this.pendingSave = null;
+    }
+    await this.saves;
     await this.saveCopy();
   }
 
