@@ -12,7 +12,7 @@ use crate::contract::{ArxivMatch, ArxivPromotionResponse, ArxivSearchResponse, N
 use crate::error::{AppError, AppResult};
 use crate::imports::find_arxiv_pdf_at;
 use crate::state::Shared;
-use crate::store::ResolvedMetadata;
+use crate::store::{stage_file, ResolvedMetadata, StageFailure, Upload};
 
 const MATCH_THRESHOLD: f64 = 0.8;
 const MAX_RESULTS: usize = 5;
@@ -346,6 +346,20 @@ async fn existing_promotion(
         .iter()
         .find(|item| item.stored.key.as_str() == key)
         .ok_or_else(|| AppError::unknown_item(key))?;
+    if let Some(lineage) = original.source_lineage.as_ref() {
+        if lineage.preferred_key.as_str() == key
+            && lineage.original_key.as_str() == key
+            && lineage.discovered_source_url == requested.pdf_url
+        {
+            return Ok(Some(ArxivPromotionResponse {
+                key: lineage.preferred_key.clone(),
+                original_key: lineage.original_key.clone(),
+                existing: true,
+                missing: false,
+                source_lineage: lineage.clone(),
+            }));
+        }
+    }
     let embedded = items
         .iter()
         .filter_map(|item| item.source_lineage.as_ref())
@@ -371,7 +385,7 @@ async fn existing_promotion(
         .iter()
         .any(|item| item.stored.key == lineage.preferred_key);
     if missing {
-        state.stored();
+        return Ok(None);
     }
     Ok(Some(ArxivPromotionResponse {
         key: lineage.preferred_key.clone(),
@@ -390,12 +404,126 @@ async fn promote(
     body: Bytes,
 ) -> AppResult<Json<ArxivPromotionResponse>> {
     let _one_at_a_time = state.sends.async_lock(key.clone()).await;
+    let _locked = state.organizations.lock().await?;
     let requested: ArxivMatch = crate::state::parse_body(&body)?;
     validate_promotion(&requested, &state.config.app)?;
     let original = state.require(&key).await?;
     if let Some(existing) = existing_promotion(&state, &key, &requested).await? {
-        return Ok(Json(existing));
+        if existing.key.as_str() == key {
+            return Ok(Json(existing));
+        }
+        let preferred_key = existing.key.as_str();
+        let preferred = state
+            .store
+            .item(preferred_key)
+            .await?
+            .ok_or_else(|| AppError::unknown_item(preferred_key))?;
+        if preferred.source_lineage.as_ref() != Some(&existing.source_lineage)
+            || preferred.stored.provenance.pdf_url != requested.pdf_url
+        {
+            return Err(AppError::store_failed("the linked arXiv item changed"));
+        }
+        let organization = state.organizations.read().await?;
+        if let Some(filing) = organization.items.get(&preferred.stored.key) {
+            let mut empty = crate::organization::unfiled(&preferred.stored.provenance.captured_at);
+            empty.modified_at = filing.modified_at.clone();
+            empty.source_lineage = filing.source_lineage.clone();
+            if filing != &empty {
+                return Err(AppError::invalid(
+                    "the linked arXiv item has filing that requires manual reconciliation",
+                ));
+            }
+        }
+        let preferred_path = state
+            .store
+            .pdf_path(preferred_key)?
+            .ok_or_else(|| AppError::unknown_item(preferred_key))?;
+        let preferred_dir = preferred_path
+            .parent()
+            .expect("a stored PDF has a directory");
+        for entry in std::fs::read_dir(preferred_dir)? {
+            let name = entry?.file_name();
+            if name == format!("{preferred_key}.md").as_str()
+                || name == format!("{preferred_key}.extraction").as_str()
+            {
+                return Err(AppError::invalid(
+                    "the linked arXiv item has extraction that requires manual reconciliation",
+                ));
+            }
+        }
+        let original_sha256 = state
+            .store
+            .open(&key)
+            .await?
+            .ok_or_else(|| AppError::unknown_item(&key))?
+            .sha256;
+        let pdf = stage_file(state.store.root(), &preferred_path)
+            .await
+            .map_err(|failure| match failure {
+                StageFailure::Read(error) | StageFailure::Write(error) => {
+                    AppError::store_failed(error)
+                }
+            })?;
+        let upload = Upload {
+            pdf,
+            filename: None,
+            pdf_url: requested.pdf_url.clone(),
+            title_hint: preferred.stored.title.text.as_str().to_string(),
+        };
+        let metadata = ResolvedMetadata {
+            title: preferred.stored.title.text.as_str().to_string(),
+            authors: preferred
+                .stored
+                .authors
+                .iter()
+                .map(|author| author.as_str().to_string())
+                .collect(),
+            year: preferred.stored.year,
+            abstract_: preferred
+                .stored
+                .abstract_
+                .as_ref()
+                .map(|text| text.as_str().to_string()),
+        };
+        let original_key: NonEmpty = key
+            .clone()
+            .try_into()
+            .map_err(|_| AppError::internal("the original item key is empty"))?;
+        let (captured, lineage) = state
+            .store
+            .replace_from_arxiv(
+                &upload,
+                &metadata,
+                &original_key,
+                &original.stored.provenance,
+                &original_sha256,
+                Some(preferred_key),
+            )
+            .await?;
+        drop(_locked);
+        if let Err(error) = state
+            .organizations
+            .update(|org| crate::organization::remove_item(org, preferred_key))
+            .await
+        {
+            eprintln!("pdf-bucket: arXiv replacement committed; linked filing cleanup awaits retry: {error:?}");
+        }
+        state.stored();
+        return Ok(Json(ArxivPromotionResponse {
+            key: captured.item.key,
+            original_key,
+            existing: false,
+            missing: false,
+            source_lineage: lineage,
+        }));
     }
+    drop(_locked);
+    let original_sha256 = state
+        .store
+        .open(&key)
+        .await?
+        .ok_or_else(|| AppError::unknown_item(&key))?
+        .sha256;
     let candidate = search_candidates(&state, &key)
         .await?
         .matches
@@ -435,8 +563,11 @@ async fn promote(
         .clone()
         .try_into()
         .map_err(|_| AppError::internal("the original item key is empty"))?;
-    let locked = state.organizations.lock().await?;
+    let _locked = state.organizations.lock().await?;
     state.store.clean_pending_promotions().await?;
+    if let Some(existing) = existing_promotion(&state, &key, &requested).await? {
+        return Ok(Json(existing));
+    }
     if state.organizations.removed().await?.contains(&key) {
         return Err(AppError::unknown_item(&key));
     }
@@ -446,19 +577,15 @@ async fn promote(
             "the original item changed during arXiv discovery",
         ));
     }
-    if let Some(existing) = existing_promotion(&state, &key, &requested).await? {
-        return Ok(Json(existing));
-    }
-    let mut held = state.held_keys_locked(&locked).await?;
-    held.extend(state.organizations.removed().await?);
     let (captured, lineage) = state
         .store
-        .capture_distinct(
+        .replace_from_arxiv(
             &upload,
-            &held,
             &metadata,
             &original_key,
             &original.stored.provenance,
+            &original_sha256,
+            None,
         )
         .await?;
     state.stored();

@@ -48,9 +48,22 @@ pub struct Serving {
 pub async fn serve(config: BucketConfig, host: &str, port: u16) -> std::io::Result<Serving> {
     tokio::fs::create_dir_all(&config.root).await?;
     layout::migrate(&config.root)?;
+    let state = AppState::new(config);
+    {
+        let _locked = state
+            .organizations
+            .lock()
+            .await
+            .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
+        state
+            .store
+            .clean_pending_replacements()
+            .await
+            .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
+    }
     let listener = TcpListener::bind((host, port)).await?;
     let origin = format!("http://{}", listener.local_addr()?);
-    let router = app::router(AppState::new(config));
+    let router = app::router(state);
     let task = tokio::spawn(async move { axum::serve(listener, router).await });
     Ok(Serving { origin, task })
 }

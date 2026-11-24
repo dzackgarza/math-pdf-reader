@@ -236,8 +236,7 @@ async fn perform(
         Step::Markdown => {
             let name = format!("{item_key}_extracted.md");
             let parsed = layout::Key::parse(key).expect("an indexed key is a key");
-            let bytes =
-                tokio::fs::read(layout::markdown_path(&state.config.root, &parsed)).await?;
+            let bytes = tokio::fs::read(layout::markdown_path(&state.config.root, &parsed)).await?;
             let attachment = state
                 .zotero
                 .attach_bytes(item_key, &name, &name, &bytes)

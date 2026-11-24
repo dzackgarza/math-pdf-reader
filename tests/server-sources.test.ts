@@ -321,6 +321,12 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
   expect((await request("POST", "/api/items/000-original/mirrors", {
     url: at("/mirror/promotion.pdf"),
   })).status).toBe(200);
+  expect((await request("POST", "/api/bulk/tags", {
+    keys: ["000-original"], add: ["research"], remove: [],
+  })).status).toBe(200);
+  expect((await request("PUT", "/api/items/000-original/reading", {
+    page: 1, pages: 2,
+  })).status).toBe(200);
 
   const search = ArxivSearchResponseSchema.parse(
     await (await request("POST", "/api/items/000-original/arxiv")).json(),
@@ -352,6 +358,8 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
     "https://arxiv.org/pdf/1234.5678v1",
   );
   expect(preferred.mirrors.map((mirror) => mirror.url)).toContain(at("/mirror/promotion.pdf"));
+  expect(preferred.tags).toContain("research");
+  expect(preferred.reading).toMatchObject({ status: "viewed", page: 1, pages: 2 });
   expect((await library()).items.map((entry) => entry.id)).toEqual(["000-original"]);
   expect(readFileSync(join(root, "000-original", "000-original.pdf"))).not.toEqual(lectureNotes);
   expect(existsSync(join(document, "000-original.md"))).toBe(false);
@@ -377,6 +385,8 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
   await capture(lectureNotes, "legacy-original", at("/notes/legacy.pdf"));
   const candidate = await discoveredCandidate(root, "legacy-original", request);
   await capture(problemSet, "legacy-preferred", candidate.pdfUrl);
+  const preferredBefore = (await listItems(root, ["legacy-preferred"]))[0]?.provenance;
+  expect(preferredBefore).toBeDefined();
   const original = (await listItems(root, ["legacy-original"]))[0];
   if (original === undefined) throw new Error("the original PDF is missing");
   const preferredPath = join(root, "legacy-preferred", "legacy-preferred.pdf");
@@ -397,13 +407,33 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
   if (exit !== 0) throw new Error(`legacy lineage fixture failed: ${stderr}`);
   renameSync(embeddedPath, preferredPath);
   writeFileSync(join(root, "legacy-original", "notes.txt"), "original attachment");
+  const obsoleteExtraction = join(root, "legacy-preferred", "legacy-preferred.md");
+  writeFileSync(obsoleteExtraction, "# Reviewed extraction\n");
+  const originalBytes = readFileSync(join(root, "legacy-original", "legacy-original.pdf"));
+  const refused = await request("POST", "/api/items/legacy-original/arxiv/promote", candidate);
+  expect(refused.status).toBe(400);
+  expect(readFileSync(join(root, "legacy-original", "legacy-original.pdf"))).toEqual(originalBytes);
+  expect(existsSync(preferredPath)).toBe(true);
+  renameSync(obsoleteExtraction, join(root, "legacy-preferred", "preferred-notes.txt"));
+  expect((await request("POST", "/api/bulk/tags", {
+    keys: ["legacy-preferred"], add: ["keep"], remove: [],
+  })).status).toBe(200);
+  const filedRefusal = await request("POST", "/api/items/legacy-original/arxiv/promote", candidate);
+  expect(filedRefusal.status).toBe(400);
+  expect(readFileSync(join(root, "legacy-original", "legacy-original.pdf"))).toEqual(originalBytes);
+  expect((await item("legacy-preferred")).tags).toContain("keep");
+  expect((await request("POST", "/api/bulk/tags", {
+    keys: ["legacy-preferred"], add: [], remove: ["keep"],
+  })).status).toBe(200);
   const response = await request("POST", "/api/items/legacy-original/arxiv/promote", candidate);
   expect(response.status).toBe(200);
   const result = ArxivPromotionResponseSchema.parse(await response.json());
   expect(result).toMatchObject({ key: "legacy-original", originalKey: "legacy-original" });
   expect((await library()).items.map((paper) => paper.id)).toEqual(["legacy-original"]);
   expect((await item("legacy-original")).provenance.pdf_url).toBe(candidate.pdfUrl);
+  expect((await item("legacy-original")).provenance).toEqual(preferredBefore);
   expect(readFileSync(join(root, "legacy-original", "notes.txt"), "utf8")).toBe("original attachment");
+  expect(readFileSync(join(root, "legacy-original", "preferred-notes.txt"), "utf8")).toBe("# Reviewed extraction\n");
   expect(existsSync(join(root, "legacy-preferred"))).toBe(false);
 });
 
@@ -883,6 +913,16 @@ test("a failed preferred-source fetch leaves the original item usable", async ()
     "original-failure",
     request,
   );
+  const pdfPath = join(root, "original-failure", "original-failure.pdf");
+  const extractionPath = join(root, "original-failure", "original-failure.md");
+  const originalBytes = readFileSync(pdfPath);
+  writeFileSync(extractionPath, "# Captured extraction\n");
+  expect((await request("POST", "/api/bulk/tags", {
+    keys: ["original-failure"], add: ["saved"], remove: [],
+  })).status).toBe(200);
+  expect((await request("PUT", "/api/items/original-failure/reading", {
+    page: 1, pages: 2,
+  })).status).toBe(200);
   const response = await request(
     "POST",
     "/api/items/original-failure/arxiv/promote",
@@ -897,6 +937,10 @@ test("a failed preferred-source fetch leaves the original item usable", async ()
   expect((await item("original-failure")).provenance.pdf_url).toBe(
     at("/notes/promotion-failure.pdf"),
   );
+  expect((await item("original-failure")).tags).toContain("saved");
+  expect((await item("original-failure")).reading).toMatchObject({ status: "viewed", page: 1, pages: 2 });
+  expect(readFileSync(pdfPath)).toEqual(originalBytes);
+  expect(readFileSync(extractionPath, "utf8")).toBe("# Captured extraction\n");
 });
 
 test("a missing replaced PDF requires recovery and cannot be promoted again", async () => {

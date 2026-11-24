@@ -407,15 +407,10 @@ impl Store {
             .items
             .iter()
             .map(|item| item.stored.key.to_string())
-            .chain(
-                library
-                    .unreadable
-                    .iter()
-                    .filter_map(|file| {
-                        pdf_key(file.file.rsplit('/').next().unwrap_or(&file.file))
-                            .map(|key| key.to_string())
-                    }),
-            )
+            .chain(library.unreadable.iter().filter_map(|file| {
+                pdf_key(file.file.rsplit('/').next().unwrap_or(&file.file))
+                    .map(|key| key.to_string())
+            }))
             .collect();
         let missing = self.missing_promotions(&present).await?;
         library.unreadable.extend(missing.unreadable);

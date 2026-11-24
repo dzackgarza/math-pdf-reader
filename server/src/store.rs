@@ -271,6 +271,44 @@ fn commit(staged: TempPath, path: &Path, placement: Placement) -> std::io::Resul
     std::fs::File::open(directory)?.sync_all()
 }
 
+fn transfer_paper_artifacts(root: &Path, retired: &Path, key: &Key) -> std::io::Result<()> {
+    transfer_paper_artifacts_to(root, retired, key, key)
+}
+
+fn transfer_paper_artifacts_to(
+    root: &Path,
+    retired: &Path,
+    retired_key: &Key,
+    current_key: &Key,
+) -> std::io::Result<()> {
+    let current = layout::document_dir(root, current_key);
+    let old_dir = std::fs::File::open(retired)?;
+    let current_dir = std::fs::File::open(&current)?;
+    let pdf_name = format!("{retired_key}.pdf");
+    let markdown_name = format!("{retired_key}.md");
+    let extraction_name = format!("{retired_key}.extraction");
+    for entry in std::fs::read_dir(retired)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == pdf_name.as_str()
+            || name == markdown_name.as_str()
+            || name == extraction_name.as_str()
+        {
+            continue;
+        }
+        renameat2(
+            &old_dir,
+            &entry.path(),
+            &current_dir,
+            &current.join(name),
+            RenameFlags::RENAME_NOREPLACE,
+        )
+        .map_err(std::io::Error::from)?;
+    }
+    old_dir.sync_all()?;
+    current_dir.sync_all()
+}
+
 pub async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> std::io::Result<T> + Send + 'static,
 ) -> AppResult<T> {
@@ -514,114 +552,208 @@ impl Store {
             .await
     }
 
-    /// Stores a separate source representation even when its original bytes are already stored.
-    pub async fn capture_distinct(
+    /// Replaces one paper directory with the selected arXiv PDF at a single rename commit point.
+    /// Independently authored files travel to the new directory; the old PDF and its extraction
+    /// leave the active store together.
+    pub async fn replace_from_arxiv(
         &self,
         upload: &Upload,
-        held: &BTreeSet<String>,
         metadata: &ResolvedMetadata,
         original_key: &NonEmpty,
         original_provenance: &Provenance,
+        expected_sha256: &str,
+        linked_preferred: Option<&str>,
     ) -> AppResult<(Captured, SourceLineage)> {
-        let (embedded, _) = self.prepare_capture(upload).await?;
-        let bytes = self
-            .inner
-            .python
-            .run(&metadata_args(&embedded, TitleSource::Resolver, metadata))
-            .await?;
-        let root = self.root().to_path_buf();
-        let embedded = blocking(move || staged(&root, &bytes)).await?;
-        let _placing = self.inner.placing.lock().await;
-        for key in candidate_keys(upload.filename.as_deref(), &upload.pdf.sha256) {
-            let path = layout::pdf_path(self.root(), &key);
-            if held.contains(key.as_str())
-                || layout::document_dir(self.root(), &key).try_exists()?
-            {
-                continue;
-            }
-            let lineage = SourceLineage {
-                original_key: original_key.clone(),
-                original_provenance: original_provenance.clone(),
-                preferred_key: key.as_str().try_into().expect("a store key is nonempty"),
-                discovered_source_url: upload.pdf_url.clone(),
-                promoted_at: Timestamp::now(),
-            };
-            let (output, stored_sha256) = self.embed_lineage(&embedded, &lineage).await?;
-            let record = match self.read_records(&[output.to_path_buf()]).await?.pop() {
-                Some(FileRead::Read(record))
-                    if record.source_lineage.as_ref() == Some(&lineage) =>
-                {
-                    record
-                }
-                Some(FileRead::Read(_)) => {
-                    return Err(AppError::store_failed(
-                        "the staged PDF did not retain its source lineage",
-                    ))
-                }
-                Some(FileRead::Unreadable(message)) => return Err(AppError::store_failed(message)),
-                None => return Err(AppError::store_failed("the staged PDF returned no record")),
-            };
-            let item = stored_item(&key, *record);
+        let embedded = if linked_preferred.is_some() {
+            None
+        } else {
+            let (captured, _) = self.prepare_capture(upload).await?;
+            let bytes = self
+                .inner
+                .python
+                .run(&metadata_args(&captured, TitleSource::Resolver, metadata))
+                .await?;
             let root = self.root().to_path_buf();
-            let document = layout::document_dir(&root, &key);
-            let markdown = layout::markdown_path(&root, &key);
-            let extraction = layout::extraction_dir(&root, &key);
-            let directory = root.join(format!(
-                ".promotion-{}-{}",
-                hex::encode(key.as_str()),
-                uuid::Uuid::new_v4()
-            ));
-            blocking(move || {
-                std::fs::create_dir(&directory)?;
-                std::fs::File::open(&root)?.sync_all()?;
-                #[cfg(feature = "arxiv-fixtures")]
-                test_gate("PDF_BUCKET_TEST_PROMOTION_CREATED")?;
-                let pending = directory.join("pending.pdf");
-                let anchor = directory.join("source.pdf");
-                std::fs::hard_link(&output, &pending)?;
-                std::fs::File::open(&directory)?.sync_all()?;
-                #[cfg(feature = "arxiv-fixtures")]
-                test_gate("PDF_BUCKET_TEST_PROMOTION_PENDING")?;
-                std::fs::hard_link(&output, &anchor)?;
-                std::fs::File::open(&directory)?.sync_all()?;
-                #[cfg(feature = "arxiv-fixtures")]
-                test_gate("PDF_BUCKET_TEST_PROMOTION_BEFORE")?;
-                if markdown.try_exists()? || extraction.try_exists()? {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::AlreadyExists,
-                        "promotion key gained existing extraction files",
-                    ));
-                }
-                std::fs::create_dir(&document)?;
-                let source_dir = std::fs::File::open(&directory)?;
-                let root_dir = std::fs::File::open(&root)?;
-                renameat2(
-                    &source_dir,
-                    &pending,
-                    &root_dir,
-                    &path,
-                    RenameFlags::RENAME_NOREPLACE,
-                )
-                .map_err(std::io::Error::from)?;
-                #[cfg(feature = "arxiv-fixtures")]
-                test_gate("PDF_BUCKET_TEST_PROMOTION_AFTER")?;
-                std::fs::File::open(&directory)?.sync_all()?;
-                std::fs::File::open(&root)?.sync_all()
-            })
-            .await?;
-            return Ok((
-                Captured {
-                    item,
-                    stored_sha256,
-                    existing: false,
-                },
-                lineage,
+            Some(blocking(move || staged(&root, &bytes)).await?)
+        };
+        let _placing = self.inner.placing.lock().await;
+        let key = Key::parse(original_key.as_str()).expect("an indexed item has a key");
+        let _key = self.lock(&key).await;
+        if self
+            .item(key.as_str())
+            .await?
+            .as_ref()
+            .map(|item| &item.stored.provenance)
+            != Some(original_provenance)
+        {
+            return Err(AppError::store_failed(
+                "the original item changed during arXiv discovery",
             ));
         }
-        Err(AppError::store_failed(format!(
-            "every key {:?} gives is held by a different PDF, the filing or the index export",
-            upload.filename
-        )))
+        if let Some(other) = self.holding(&upload.pdf.sha256).await? {
+            if other.key != *original_key && Some(other.key.as_str()) != linked_preferred {
+                return Err(AppError::api(
+                    StatusCode::CONFLICT,
+                    ApiErrorErrorKind::StoreFailed,
+                    format!("arXiv PDF is already stored as {}", other.key.as_str()),
+                ));
+            }
+        }
+        let lineage = SourceLineage {
+            original_key: original_key.clone(),
+            original_provenance: original_provenance.clone(),
+            preferred_key: original_key.clone(),
+            discovered_source_url: upload.pdf_url.clone(),
+            promoted_at: Timestamp::now(),
+        };
+        let source = embedded.as_deref().unwrap_or(upload.pdf.path());
+        let (output, stored_sha256) = self.embed_lineage(source, &lineage).await?;
+        let record = match self.read_records(&[output.to_path_buf()]).await?.pop() {
+            Some(FileRead::Read(record)) if record.source_lineage.as_ref() == Some(&lineage) => {
+                record
+            }
+            Some(FileRead::Read(_)) => {
+                return Err(AppError::store_failed(
+                    "the staged PDF did not retain its source lineage",
+                ))
+            }
+            Some(FileRead::Unreadable(message)) => return Err(AppError::store_failed(message)),
+            None => return Err(AppError::store_failed("the staged PDF returned no record")),
+        };
+        let item = stored_item(&key, *record);
+        let root = self.root().to_path_buf();
+        let key_for_swap = key.clone();
+        let expected_sha256 = expected_sha256.to_string();
+        let linked_preferred = linked_preferred.map(str::to_string);
+        let linked_sha256 = upload.pdf.sha256.clone();
+        let (retired, transferred, linked_retired) = blocking(move || {
+            let document = layout::document_dir(&root, &key_for_swap);
+            let anchor_dir = root.join(format!(
+                ".promotion-{}-{}",
+                hex::encode(key_for_swap.as_str()),
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::create_dir(&anchor_dir)?;
+            let pending = anchor_dir.join("pending.pdf");
+            let anchor = anchor_dir.join("source.pdf");
+            std::fs::hard_link(&output, &pending)?;
+            std::fs::hard_link(&output, &anchor)?;
+            std::fs::File::open(&anchor_dir)?.sync_all()?;
+            std::fs::File::open(&root)?.sync_all()?;
+            let staging = tempfile::Builder::new()
+                .prefix(&format!(".replacement-{}-", hex::encode(key_for_swap.as_str())))
+                .tempdir_in(&root)?;
+            #[cfg(feature = "arxiv-fixtures")]
+            test_gate("PDF_BUCKET_TEST_PROMOTION_CREATED")?;
+            output.persist(staging.path().join(format!("{key_for_swap}.pdf")))
+                .map_err(|failed| failed.error)?;
+            std::fs::File::open(staging.path())?.sync_all()?;
+            #[cfg(feature = "arxiv-fixtures")]
+            test_gate("PDF_BUCKET_TEST_PROMOTION_PENDING")?;
+            #[cfg(feature = "arxiv-fixtures")]
+            test_gate("PDF_BUCKET_TEST_PROMOTION_BEFORE")?;
+            let current_sha256 = sha256(&std::fs::read(layout::pdf_path(&root, &key_for_swap))?);
+            if current_sha256 != expected_sha256 {
+                return Err(std::io::Error::other(
+                    "the original PDF changed during arXiv discovery",
+                ));
+            }
+            if let Some(preferred) = linked_preferred.as_ref() {
+                let preferred_key = Key::parse(preferred).expect("a linked item has a valid key");
+                let current_linked = sha256(&std::fs::read(layout::pdf_path(&root, &preferred_key))?);
+                if current_linked != linked_sha256 {
+                    return Err(std::io::Error::other("the linked arXiv PDF changed during replacement"));
+                }
+                let preferred_dir = layout::document_dir(&root, &preferred_key);
+                for entry in std::fs::read_dir(preferred_dir)? {
+                    let entry = entry?;
+                    let name = entry.file_name();
+                    if name == format!("{preferred_key}.pdf").as_str()
+                        || name == format!("{preferred_key}.md").as_str()
+                        || name == format!("{preferred_key}.extraction").as_str()
+                    {
+                        continue;
+                    }
+                    if document.join(name).try_exists()? {
+                        return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "the linked arXiv item has an attachment with the same name as the original item"));
+                    }
+                }
+            }
+            let root_file = std::fs::File::open(&root)?;
+            let linked_retired = if let Some(preferred) = linked_preferred.as_ref() {
+                let key = Key::parse(preferred).expect("a linked item has a valid key");
+                let old = layout::document_dir(&root, &key);
+                let hidden = root.join(format!(
+                    ".linked-retired-{}-{}-{}",
+                    hex::encode(key_for_swap.as_str()),
+                    hex::encode(key.as_str()),
+                    uuid::Uuid::new_v4()
+                ));
+                renameat2(&root_file, &old, &root_file, &hidden, RenameFlags::RENAME_NOREPLACE)
+                    .map_err(std::io::Error::from)?;
+                Some((hidden, old, key))
+            } else {
+                None
+            };
+            if let Err(error) = renameat2(&root_file, staging.path(), &root_file, &document, RenameFlags::RENAME_EXCHANGE) {
+                if let Some((hidden, old, _)) = linked_retired.as_ref() {
+                    renameat2(&root_file, hidden, &root_file, old, RenameFlags::RENAME_NOREPLACE)
+                        .map_err(std::io::Error::from)?;
+                }
+                return Err(std::io::Error::from(error));
+            }
+            let retired = staging.keep();
+            if let Err(error) = root_file.sync_all() {
+                eprintln!("pdf-bucket: arXiv replacement committed but root sync failed: {error}");
+            }
+            if let Err(error) = std::fs::remove_file(&pending)
+                .and_then(|()| std::fs::File::open(&anchor_dir)?.sync_all())
+            {
+                eprintln!("pdf-bucket: arXiv replacement committed but recovery anchor remains pending: {error}");
+            }
+            #[cfg(feature = "arxiv-fixtures")]
+            if let Err(error) = test_gate("PDF_BUCKET_TEST_PROMOTION_AFTER") {
+                eprintln!("pdf-bucket: arXiv replacement committed but test gate failed: {error}");
+            }
+            let transferred = match transfer_paper_artifacts(&root, &retired, &key_for_swap) {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!("pdf-bucket: arXiv replacement committed; paper artifacts remain in {}: {error}", retired.display());
+                    false
+                }
+            };
+            let linked_retired = linked_retired.map(|(hidden, _, key)| {
+                let moved = match transfer_paper_artifacts_to(&root, &hidden, &key, &key_for_swap) {
+                    Ok(()) => true,
+                    Err(error) => {
+                        eprintln!("pdf-bucket: linked arXiv artifacts remain in {}: {error}", hidden.display());
+                        false
+                    }
+                };
+                (hidden, moved)
+            });
+            Ok((retired, transferred, linked_retired))
+        }).await?;
+        if transferred {
+            if let Err(error) = trash_all(vec![retired]).await {
+                eprintln!("pdf-bucket: arXiv replacement committed but retiring the old directory failed: {error}");
+            }
+        }
+        if let Some((hidden, moved)) = linked_retired {
+            if moved {
+                if let Err(error) = trash_all(vec![hidden]).await {
+                    eprintln!("pdf-bucket: linked arXiv directory remains hidden after replacement: {error}");
+                }
+            }
+        }
+        Ok((
+            Captured {
+                item,
+                stored_sha256,
+                existing: false,
+            },
+            lineage,
+        ))
     }
 
     async fn prepare_capture(&self, upload: &Upload) -> AppResult<(TempPath, String)> {
@@ -995,6 +1127,89 @@ impl Store {
         Ok(())
     }
 
+    async fn clean_pending_linked_retirements(&self) -> AppResult<()> {
+        let root = self.root();
+        for entry in std::fs::read_dir(root)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some((encoded_keys, transaction)) = name
+                .strip_prefix(".linked-retired-")
+                .and_then(|text| text.rsplit_once('-'))
+            else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(transaction).is_err() || !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let Some((original_encoded, preferred_encoded)) = encoded_keys.split_once('-') else {
+                continue;
+            };
+            let Ok(bytes) = hex::decode(original_encoded) else {
+                continue;
+            };
+            let Ok(original_text) = String::from_utf8(bytes) else {
+                continue;
+            };
+            let Some(original_key) = Key::parse(&original_text) else {
+                continue;
+            };
+            let Ok(bytes) = hex::decode(preferred_encoded) else {
+                continue;
+            };
+            let Ok(preferred_text) = String::from_utf8(bytes) else {
+                continue;
+            };
+            let Some(preferred_key) = Key::parse(&preferred_text) else {
+                continue;
+            };
+            let hidden = entry.path();
+            let preferred_pdf = hidden.join(format!("{preferred_key}.pdf"));
+            if !preferred_pdf.try_exists()? {
+                continue;
+            }
+            let current_pdf = layout::pdf_path(root, &original_key);
+            if !current_pdf.try_exists()? {
+                continue;
+            }
+            let reads = self.read_records(&[preferred_pdf, current_pdf]).await?;
+            let [FileRead::Read(preferred_record), FileRead::Read(current_record)] =
+                reads.as_slice()
+            else {
+                continue;
+            };
+            let Some(old_lineage) = preferred_record.source_lineage.as_ref() else {
+                continue;
+            };
+            if old_lineage.original_key.as_str() != original_key.as_str()
+                || old_lineage.preferred_key.as_str() != preferred_key.as_str()
+            {
+                continue;
+            }
+            if current_record.provenance == old_lineage.original_provenance {
+                let restored = layout::document_dir(root, &preferred_key);
+                if !restored.try_exists()? {
+                    std::fs::rename(&hidden, restored)?;
+                    std::fs::File::open(root)?.sync_all()?;
+                }
+                continue;
+            }
+            let committed = current_record
+                .source_lineage
+                .as_ref()
+                .is_some_and(|lineage| {
+                    lineage.original_key.as_str() == original_key.as_str()
+                        && lineage.preferred_key.as_str() == original_key.as_str()
+                        && lineage.original_provenance == old_lineage.original_provenance
+                        && lineage.discovered_source_url == old_lineage.discovered_source_url
+                });
+            if committed {
+                transfer_paper_artifacts_to(root, &hidden, &preferred_key, &original_key)?;
+                trash_all(vec![hidden]).await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Called only under the organization root lock, which excludes live promotions.
     pub(crate) async fn clean_pending_promotions(&self) -> AppResult<()> {
         let root = self.root();
@@ -1041,9 +1256,50 @@ impl Store {
                 .read_records(std::slice::from_ref(&pending))
                 .await?
                 .pop();
-            if !matches!(read, Some(FileRead::Read(record)) if record.source_lineage.as_ref().is_some_and(|lineage|
-                lineage.preferred_key.as_str() == key && lineage.discovered_source_url == record.provenance.pdf_url))
+            let Some(FileRead::Read(pending_record)) = read else {
+                continue;
+            };
+            if !pending_record
+                .source_lineage
+                .as_ref()
+                .is_some_and(|lineage| {
+                    lineage.preferred_key.as_str() == key
+                        && lineage.discovered_source_url == pending_record.provenance.pdf_url
+                })
             {
+                continue;
+            }
+            let current = layout::pdf_path(root, &Key::parse(&key).expect("the key was validated"));
+            let committed = if current.try_exists()? {
+                matches!(self.read_records(&[current]).await?.pop(), Some(FileRead::Read(record))
+                    if record.provenance == pending_record.provenance
+                        && record.source_lineage == pending_record.source_lineage)
+            } else {
+                let prefix = format!(".replacement-{}-", hex::encode(key.as_bytes()));
+                let mut committed = false;
+                for hidden in std::fs::read_dir(root)? {
+                    let hidden = hidden?;
+                    if !hidden.file_name().to_string_lossy().starts_with(&prefix) {
+                        continue;
+                    }
+                    let original = hidden.path().join(format!("{key}.pdf"));
+                    if !original.try_exists()? {
+                        continue;
+                    }
+                    committed = matches!(
+                        self.read_records(&[original]).await?.pop(),
+                        Some(FileRead::Read(record)) if pending_record.source_lineage.as_ref()
+                            .is_some_and(|lineage| lineage.original_provenance == record.provenance)
+                    );
+                    if committed {
+                        break;
+                    }
+                }
+                committed
+            };
+            if committed {
+                std::fs::remove_file(&pending)?;
+                std::fs::File::open(&directory)?.sync_all()?;
                 continue;
             }
             if anchor.try_exists()? {
@@ -1060,7 +1316,82 @@ impl Store {
             remove_empty_directory(&directory)?;
             std::fs::File::open(root)?.sync_all()?;
         }
-        Ok(())
+        self.clean_pending_replacements().await
+    }
+
+    /// Complete or discard an interrupted same-key arXiv replacement. A hidden old directory
+    /// is retired only after its independent files have moved into the current paper directory.
+    pub(crate) async fn clean_pending_replacements(&self) -> AppResult<()> {
+        let root = self.root();
+        for entry in std::fs::read_dir(root)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some((encoded, _suffix)) = name
+                .strip_prefix(".replacement-")
+                .and_then(|rest| rest.split_once('-'))
+            else {
+                continue;
+            };
+            let Ok(bytes) = hex::decode(encoded) else {
+                continue;
+            };
+            let Ok(key_text) = String::from_utf8(bytes) else {
+                continue;
+            };
+            let Some(key) = Key::parse(&key_text) else {
+                continue;
+            };
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let hidden = entry.path();
+            let hidden_pdf = hidden.join(format!("{key}.pdf"));
+            if !hidden_pdf.try_exists()? {
+                if std::fs::read_dir(&hidden)?.next().is_some() {
+                    continue;
+                }
+                trash_all(vec![hidden]).await?;
+                continue;
+            }
+            let current_pdf = layout::pdf_path(root, &key);
+            if !current_pdf.try_exists()? {
+                continue;
+            }
+            let reads = self.read_records(&[hidden_pdf, current_pdf]).await?;
+            let [FileRead::Read(hidden_record), FileRead::Read(current_record)] = reads.as_slice()
+            else {
+                return Err(AppError::store_failed(format!(
+                    "cannot classify interrupted replacement {}",
+                    hidden.display()
+                )));
+            };
+            let precommit = hidden_record
+                .source_lineage
+                .as_ref()
+                .is_some_and(|lineage| {
+                    lineage.preferred_key.as_str() == key.as_str()
+                        && lineage.original_key.as_str() == key.as_str()
+                        && lineage.original_provenance == current_record.provenance
+                });
+            let committed = current_record
+                .source_lineage
+                .as_ref()
+                .is_some_and(|lineage| {
+                    lineage.preferred_key.as_str() == key.as_str()
+                        && lineage.original_key.as_str() == key.as_str()
+                        && lineage.original_provenance == hidden_record.provenance
+                });
+            if committed {
+                transfer_paper_artifacts(root, &hidden, &key)?;
+            } else if !precommit {
+                return Err(AppError::store_failed(format!(
+                    "{} does not match the current paper",
+                    hidden.display()
+                )));
+            }
+            trash_all(vec![hidden]).await?;
+        }
+        self.clean_pending_linked_retirements().await
     }
 
     /// Places a finished extraction beside KEY's PDF: the previous `<key>.md` and

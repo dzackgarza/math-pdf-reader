@@ -119,16 +119,15 @@ pub async fn export_index(
         let _locked = documents.organizations.lock().await?;
         documents.index.clean_pending_promotions().await?;
         let library = documents.index.library().await?;
-        let present: BTreeSet<String> =
-            library
-                .items
-                .iter()
-                .map(|item| item.stored.key.to_string())
-                .chain(library.unreadable.iter().filter_map(|item| {
-                    crate::layout::pdf_key(item.file.rsplit('/').next().unwrap_or(&item.file))
-                        .map(|key| key.to_string())
-                }))
-                .collect();
+        let present: BTreeSet<String> = library
+            .items
+            .iter()
+            .map(|item| item.stored.key.to_string())
+            .chain(library.unreadable.iter().filter_map(|item| {
+                crate::layout::pdf_key(item.file.rsplit('/').next().unwrap_or(&item.file))
+                    .map(|key| key.to_string())
+            }))
+            .collect();
         let missing = documents.index.missing_promotions(&present).await?;
         if let Some(unreadable) = missing.unreadable.first() {
             return Err(AppError::store_failed(format!(
@@ -144,7 +143,11 @@ pub async fn export_index(
         )
     };
     if let Some(previous) = read_document::<IndexExport>(export_file).await? {
-        let keys: BTreeSet<&str> = stored.iter().map(|item| item.stored.key.as_str()).collect();
+        let keys: BTreeSet<&str> = stored
+            .iter()
+            .chain(promoted_missing.iter())
+            .map(|item| item.stored.key.as_str())
+            .collect();
         let missing: Vec<String> = previous
             .items
             .iter()
