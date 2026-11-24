@@ -111,3 +111,10 @@ file read.
 Deliver the real document directory first, including existing-store migration. Move the
 assistant onto it with its own shell and file tools. Prove same-chat enrichment
 through direct discovery, then provision the installed app and verify real user data.
+
+## Phase 6: Convergence
+
+- [ ] T015 CRITICAL: Preserve the last complete extraction across replacement failures in `server/src/store.rs`. Exercise a failure during publication through the extraction path and verify that the previous Markdown and its matching artifacts remain available after restart per Constitution IV and FR-008 (contradicts).
+- [ ] T016 Preserve other papers' directories when moving legacy artifacts in `server/src/layout.rs`. Cover a legacy `notes.pdf` beside a current `notes.md/` paper, and the corresponding PDF and extraction suffix collisions. Preserve both identities and their contents, or stop before moving an ambiguous entry and report the conflict per FR-009 and FR-010 (contradicts).
+- [ ] T017 Bind chat reuse in `server/src/ai.rs` to paper identity across deletion and recapture. Open a chat, delete the paper, capture a different PDF under the same key, and verify it gets a fresh conversation while a location move for the original paper retains its conversation per US1/AC3 (partial).
+- [ ] T018 Verify the identity of the extraction input when publishing in `server/src/extractions.rs` and `server/src/store.rs`. Exercise a plugin that finishes after its paper is deleted and the key reused. Report the stale result and preserve the replacement paper and its artifacts per FR-001 and FR-006 (partial).

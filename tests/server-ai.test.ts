@@ -292,6 +292,7 @@ function fakeAssistant() {
   const entries: Record<string, unknown> = {};
   const locations: Record<string, string> = {};
   const moves: string[] = [];
+  let created = 0;
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -309,8 +310,9 @@ function fakeAssistant() {
         const body = (await request.json()) as {
           location: { directory: string };
         };
-        locations.ses_fake = body.location.directory;
-        return Response.json({ data: { id: "ses_fake" } });
+        const id = created++ === 0 ? "ses_fake" : `ses_fake_${created}`;
+        locations[id] = body.location.directory;
+        return Response.json({ data: { id } });
       }
       const session = pathname.match(/^\/api\/session\/([^/]+)$/);
       if (session && request.method === "GET") {
@@ -340,6 +342,41 @@ function fakeAssistant() {
     stop: () => server.stop(true),
   };
 }
+
+test("a different PDF captured under a deleted key gets a new chat", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-recapture-"));
+  const app = await storedBucket("true", root, assistant.port);
+  const open = () => app.request("/api/ai/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "long-notes" }),
+  });
+  try {
+    const first = await open();
+    expect(first.status).toBe(200);
+    const firstSession = (await first.json() as { sessionUrl: string }).sessionUrl;
+    expect((await app.request("/api/items/long-notes", { method: "DELETE" })).status).toBe(200);
+
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
+      "long-notes.pdf", { type: "application/pdf" }));
+    form.set("pdf_url", "https://www.math.example.edu/~author/replacement.pdf");
+    form.set("title_hint", "Replacement Notes");
+    const captured = await app.request("/capture-bytes", { method: "POST", body: form });
+    expect(captured.status).toBe(200);
+    expect((await captured.json() as { key: string }).key).toBe("long-notes");
+
+    const second = await open();
+    expect(second.status).toBe(200);
+    const secondSession = (await second.json() as { sessionUrl: string }).sessionUrl;
+    expect(secondSession).not.toBe(firstSession);
+    expect(assistant.locations.ses_fake_2).toBe(join(root, "long-notes"));
+  } finally {
+    await app.stop();
+    assistant.stop();
+  }
+});
 
 test("an extraction placed after a chat opens changes no workspace or source instruction", async () => {
   const assistant = fakeAssistant();

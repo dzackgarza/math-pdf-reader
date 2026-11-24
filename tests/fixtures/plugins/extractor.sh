@@ -11,6 +11,11 @@ mode=$1
 pdf=$2
 output=$3
 case "$mode" in
+read-only-output)
+	printf '# New extraction\n' >"$output/extraction.md"
+	mkdir "$output/artifacts"
+	chmod 0555 "$output"
+	;;
 record)
 	printf '%s\n' "$@" >"$output/extraction.md"
 	mkdir "$output/artifacts"

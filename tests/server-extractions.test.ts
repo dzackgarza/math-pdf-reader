@@ -315,6 +315,27 @@ test("a run gets the stored PDF and an empty output directory staged in the root
   expect(existsSync(dirname(output))).toBe(false);
 });
 
+test("publication failure preserves the complete extraction after restart", async () => {
+  const { root, app } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20 },
+    { mode: "read-only-output", maxPages: 20 },
+  ]);
+  const extract = (mode: string) => app.request(`/api/items/lattices/extractions/${mode}`, { method: "POST" });
+  expect((await extract("record")).status).toBe(200);
+  const document = join(root, "lattices");
+  const markdown = join(document, "lattices.md");
+  const previous = readFileSync(markdown, "utf8");
+  expect((await extract("read-only-output")).status).toBe(500);
+  await app.stop();
+  const restarted = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: EXTRACTIONS_MANIFEST });
+  try {
+    expect(readFileSync(markdown, "utf8")).toBe(previous);
+    expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(readFileSync(join(document, "lattices.pdf")));
+  } finally {
+    await restarted.stop();
+  }
+});
+
 test("a later run moves the whole previous extraction to the trash; a failed run keeps it", async () => {
   const { root, app } = await bucketWithExtractors([
     { mode: "record", maxPages: 20 },
@@ -375,6 +396,50 @@ test("a plugin that exits 0 without writing extraction.md answers 502 plugin_con
     "plugin_contract_broken",
   );
   expect(readdirSync(root)).toEqual(["lattices"]);
+});
+
+test("an extraction finishing after key reuse cannot publish into the replacement paper", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-stale-extraction-"));
+  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-")), "extractions.json");
+  writeFileSync(manifestPath, JSON.stringify({ plugins: [{
+    id: "await-recapture",
+    name: "Wait for recapture",
+    source_kind: "document_structure",
+    authoritative: true,
+    command: ["sh", join(import.meta.dir, "fixtures/plugins/await-recapture.sh"), "$pdf", "$output"],
+    accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [{ kind: "max_pages", value: 20 }] }],
+  }] }));
+  const app = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+
+  async function capture(path: string) {
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(path)], "lattices.pdf", { type: "application/pdf" }));
+    form.set("pdf_url", `https://example.org/${basename(path)}`);
+    form.set("title_hint", "Test paper");
+    const response = await app.request("/capture-bytes", { method: "POST", body: form });
+    expect(response.status).toBe(200);
+    expect((await response.json()).key).toBe("lattices");
+  }
+
+  await capture(fixture);
+  const running = app.request("/api/items/lattices/extractions/await-recapture", { method: "POST" });
+  const deadline = Date.now() + 5000;
+  while (!existsSync(join(root, "extraction-started")) && Date.now() < deadline)
+    await Bun.sleep(25);
+  expect(existsSync(join(root, "extraction-started"))).toBe(true);
+
+  const removed = await app.request("/api/items/lattices", { method: "DELETE" });
+  expect(removed.status).toBe(200);
+  const replacement = join(import.meta.dir, "fixtures/lecture-notes.pdf");
+  await capture(replacement);
+  writeFileSync(join(root, "extraction-release"), "release");
+
+  const late = await running;
+  expect(late.status).toBe(409);
+  expect(ApiErrorSchema.parse(await late.json()).error.kind).toBe("store_failed");
+  expect(readFileSync(join(root, "lattices", "lattices.pdf"))).not.toEqual(readFileSync(fixture));
+  expect(existsSync(join(root, "lattices", "lattices.md"))).toBe(false);
+  await app.stop();
 });
 
 test("a stored extraction is a paper-directory file, not an extraction endpoint", async () => {
