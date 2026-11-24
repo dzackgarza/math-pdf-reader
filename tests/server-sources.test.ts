@@ -288,7 +288,7 @@ test("a forged confidence score cannot promote an unrelated arXiv candidate", as
   expect((await library()).items).toHaveLength(1);
 });
 
-test("confident arXiv promotion preserves the original and is idempotent", async () => {
+test("confident arXiv replacement keeps one filed paper and is idempotent", async () => {
   served.set("/notes/promotion.pdf", lectureNotes);
   served.set("/pdf/1234.5678v1", problemSet);
   const config = loadAppConfig(CONFIG_PATH);
@@ -314,6 +314,9 @@ test("confident arXiv promotion preserves the original and is idempotent", async
   const originalBefore = (await listItems(root, ["000-original"]))[0]
     ?.provenance;
   expect(originalBefore).toBeDefined();
+  expect((await request("POST", "/api/items/000-original/mirrors", {
+    url: at("/mirror/promotion.pdf"),
+  })).status).toBe(200);
 
   const search = ArxivSearchResponseSchema.parse(
     await (await request("POST", "/api/items/000-original/arxiv")).json(),
@@ -338,17 +341,18 @@ test("confident arXiv promotion preserves the original and is idempotent", async
   expect(first.sourceLineage.originalKey).toBe("000-original");
   expect(first.sourceLineage.preferredKey).toBe(first.key);
 
-  const originalAfter = await item("000-original");
   const preferred = await item(first.key);
-  expect(originalAfter.provenance).toEqual(originalBefore);
-  expect(originalAfter.sourceLineage).toEqual(preferred.sourceLineage);
+  expect(first.key).toBe("000-original");
+  expect(preferred.sourceLineage?.originalProvenance).toEqual(originalBefore);
   expect(preferred.provenance.pdf_url).toBe(
     "https://arxiv.org/pdf/1234.5678v1",
   );
-  expect((await library()).items).toHaveLength(2);
+  expect(preferred.mirrors.map((mirror) => mirror.url)).toContain(at("/mirror/promotion.pdf"));
+  expect((await library()).items.map((entry) => entry.id)).toEqual(["000-original"]);
+  expect(readFileSync(join(root, "000-original", "000-original.pdf"))).not.toEqual(lectureNotes);
 
   expect(second).toMatchObject({ existing: true, key: first.key });
-  expect((await library()).items).toHaveLength(2);
+  expect((await library()).items.map((entry) => entry.id)).toEqual(["000-original"]);
 });
 
 test("simultaneous promotions from separate server processes reuse one preferred item", async () => {
