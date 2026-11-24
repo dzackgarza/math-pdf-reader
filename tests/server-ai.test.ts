@@ -408,6 +408,48 @@ test("deleting an unopened legacy chat clears its key before recapture", async (
   }
 });
 
+test("first page update does not send a replacement paper to an unverified legacy chat", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-ambiguous-view-"));
+  const app = await storedBucket("true", root, assistant.port);
+  assistant.locations.ses_legacy = join(root, "long-notes");
+  mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
+  writeFileSync(join(dirname(app.indexExport), "ai/chats.json"),
+    JSON.stringify({ "long-notes": "ses_legacy" }));
+  try {
+    expect((await readPage(app, 2)).status).toBe(200);
+    expect(assistant.entries["ses_legacy/reader-view"]).toBeUndefined();
+    expect(assistant.locations.ses_legacy).toBe(join(root, "long-notes"));
+  } finally {
+    await app.stop();
+    assistant.stop();
+  }
+});
+
+test("first open starts a new chat for an unverified legacy mapping", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-ambiguous-open-"));
+  const app = await storedBucket("true", root, assistant.port);
+  assistant.locations.ses_legacy = join(root, "long-notes");
+  mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
+  writeFileSync(join(dirname(app.indexExport), "ai/chats.json"),
+    JSON.stringify({ "long-notes": "ses_legacy" }));
+  try {
+    const opened = await app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+    expect(opened.status).toBe(200);
+    expect((await opened.json() as { sessionUrl: string }).sessionUrl).toContain("/session/ses_fake");
+    expect(assistant.locations.ses_legacy).toBe(join(root, "long-notes"));
+    expect(assistant.moves).toEqual([]);
+  } finally {
+    await app.stop();
+    assistant.stop();
+  }
+});
+
 test("a stale chat record cannot receive page context from a replacement paper", async () => {
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-stale-view-"));
