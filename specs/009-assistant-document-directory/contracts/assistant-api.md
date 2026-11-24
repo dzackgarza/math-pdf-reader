@@ -59,11 +59,16 @@ its working directory on a later turn.
 The bucket checks the input PDF's embedded provenance before it publishes an
 extraction. If another paper now has the same key, the request returns
 `409 store_failed`. If publication fails, the previous Markdown and its
-artifacts remain available. Startup restores them if the process stopped during
-publication.
+artifacts remain available. Renaming the rollback journal out of its active
+location commits the new extraction. A process stop before that rename restores
+the previous pair on startup. A process restart after the rename keeps the new pair.
 
 A chat belongs to the captured paper. Reopening that paper retains its chat.
 Deleting it and capturing a different paper under the same key starts a new chat.
+A legacy mapping that contains only a session ID gives no evidence of paper
+identity. The first open creates a conversation bound to the current PDF's
+provenance. The earlier conversation stays in OpenCode. Page updates go only to
+a conversation whose recorded provenance matches the current paper.
 
 ## Source and hint failures
 

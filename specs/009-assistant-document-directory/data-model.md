@@ -34,9 +34,10 @@
 
 ## Assistant Session
 
-- One persistent OpenCode session ID per key in the existing chat mapping.
+- The chat mapping pairs a session ID with the captured paper's provenance. A key
+  can be reused after deletion, so the key alone cannot identify a conversation.
 - `location.directory` equals the absolute document-directory path.
-- Existing sessions retain their ID and move to that directory.
+- A session bound to the same paper retains its ID when it moves to that directory.
 - `reader-view` supplies exact page and optional search hint, not a catalog of
   extraction or metadata files.
 
@@ -44,8 +45,9 @@
 
 Recognized paths are `<root>/<key>.pdf`, `<root>/<key>.md` and
 `<root>/<key>.extraction/`. Startup moves each to the corresponding document-directory
-path. It refuses to overwrite any existing destination. After a partial move, the next
-start moves only remaining sources.
+path. Each move requires a free destination name. A dangling symlink occupies its
+name even when its target is missing. A collision preserves both entries and reports
+their paths. After a partial move, the next start moves only remaining sources.
 
 ## Invariants
 

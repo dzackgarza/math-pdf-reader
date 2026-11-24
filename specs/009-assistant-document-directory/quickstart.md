@@ -17,8 +17,9 @@ The checks MUST establish:
   migration resumes; destination collision fails loudly.
 - Indexing, annotation saves, export, rebuild and deletion continue through the new
   paths without changing keys or item-relative artifact names.
-- A new OpenCode chat is created in the document directory. An existing chat moves
-  there without changing its session ID.
+- A new OpenCode chat opens in the document directory. A chat bound to the same
+  paper moves there with its session ID intact. A legacy ID with no recorded
+  provenance receives no page updates. Opening the paper creates a fresh chat.
 
 ## Provisioned validation
 
