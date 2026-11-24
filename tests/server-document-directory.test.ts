@@ -2,10 +2,13 @@ import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   renameSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -224,4 +227,23 @@ test("migration preserves paper directories whose keys look like legacy artifact
     }
     expect(existsSync(join(root, "notes", currentKey))).toBe(false);
   }
+});
+
+test("migration does not overwrite a dangling destination symlink", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-directory-symlink-"));
+  const legacy = await legacyPdf(root, "conflict", fixture);
+  const destination = join(root, "conflict", "conflict.pdf");
+  mkdirSync(join(root, "conflict"));
+  symlinkSync("missing.pdf", destination);
+
+  await expect(
+    serveBucket({
+      root,
+      zoteroUrl: closedPortUrl(),
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+    }),
+  ).rejects.toThrow("pdf-bucket serve exited before printing its origin");
+  expect(lstatSync(destination).isSymbolicLink()).toBe(true);
+  expect(readlinkSync(destination)).toBe("missing.pdf");
+  expect(readFileSync(join(root, "conflict.pdf"))).toEqual(legacy);
 });
