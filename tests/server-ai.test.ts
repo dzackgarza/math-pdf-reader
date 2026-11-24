@@ -12,8 +12,9 @@ import { dirname, join } from "node:path";
 import { AiSessionRequestSchema } from "../src/contract/ai";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { ExtractionOutcomeSchema } from "../src/contract/extraction";
-import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
+import { ApiErrorSchema, ArxivPromotionResponseSchema, ArxivSearchResponseSchema, LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
+import { recordMetadata } from "./store";
 
 const longNotes = join(import.meta.dir, "fixtures/long-notes.pdf");
 
@@ -44,8 +45,8 @@ async function storedBucket(
   aiPort?: number,
   extractionsManifest = EXTRACTIONS_MANIFEST,
   env?: Record<string, string>,
+  config = loadAppConfig(CONFIG_PATH),
 ) {
-  const config = loadAppConfig(CONFIG_PATH);
   config.ai.binary = binary;
   if (aiPort !== undefined) config.ai.port = aiPort;
   const app = await serveBucket({
@@ -479,6 +480,109 @@ test("a stale chat record cannot receive page context from a replacement paper",
     assistant.stop();
   }
 });
+
+test("arXiv replacement routes each reader page to the current edition's chat", async () => {
+  const assistant = fakeAssistant();
+  let servePreferred = false;
+  const preferredBytes = readFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"));
+  const publisher = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const path = new URL(request.url).pathname;
+      if (path === "/api/query") {
+        return new Response(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><published>2024-01-01T00:00:00Z</published><author><name>An Author</name></author></entry></feed>`, {
+          headers: { "Content-Type": "application/atom+xml" },
+        });
+      }
+      if (path === "/pdf/1234.5678v1" && servePreferred) {
+        return new Response(preferredBytes, { headers: { "Content-Type": "application/pdf" } });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-edition-"));
+  const config = loadAppConfig(CONFIG_PATH);
+  const at = (path: string) => new URL(path, publisher.url).href;
+  config.arxiv = {
+    api_url: at("/api/query"),
+    abs_url: at("/abs/"),
+    pdf_url: at("/pdf/"),
+    e_print_url: at("/e-print/"),
+  };
+  const app = await storedBucket("true", root, assistant.port, EXTRACTIONS_MANIFEST, undefined, config);
+  const open = () => app.request("/api/ai/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "long-notes" }),
+  });
+  const promote = (candidate: object) => app.request("/api/items/long-notes/arxiv/promote", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(candidate),
+  });
+  try {
+    await recordMetadata(root, "long-notes", "resolver", {
+      title: "Promotion Notes", authors: ["An Author"], year: 2024,
+    });
+    const search = ArxivSearchResponseSchema.parse(
+      await (await app.request("/api/items/long-notes/arxiv", { method: "POST" })).json(),
+    );
+    const candidate = search.matches[0];
+    if (candidate === undefined) throw new Error("the arXiv edition was not discovered");
+
+    const first = await open();
+    expect(first.status).toBe(200);
+    const firstUrl = (await first.json() as { sessionUrl: string }).sessionUrl;
+    expect(firstUrl).toContain("/session/ses_fake");
+    expect((await readPage(app, 1)).status).toBe(200);
+    const capturedFirstPageView = String(assistant.entries["ses_fake/reader-view"]);
+    expect((await readPage(app, 2)).status).toBe(200);
+    const capturedView = String(assistant.entries["ses_fake/reader-view"]);
+    expect(capturedView).toContain("page 2 of 200");
+
+    const failed = await promote(candidate);
+    expect(failed.status).toBe(422);
+    expect((await (await open()).json() as { sessionUrl: string }).sessionUrl).toBe(firstUrl);
+    expect((await readPage(app, 3)).status).toBe(200);
+    const failedView = String(assistant.entries["ses_fake/reader-view"]);
+    expect(failedView).toContain("page 3 of 200");
+    expect(failedView).not.toBe(capturedView);
+
+    servePreferred = true;
+    const replaced = await promote(candidate);
+    expect(replaced.status).toBe(200);
+    expect(ArxivPromotionResponseSchema.parse(await replaced.json()).key).toBe("long-notes");
+    expect((await readPage(app, 1)).status).toBe(200);
+    expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
+    expect(assistant.entries["ses_fake_2/reader-view"]).toBeUndefined();
+
+    const fresh = await open();
+    expect(fresh.status).toBe(200);
+    const freshUrl = (await fresh.json() as { sessionUrl: string }).sessionUrl;
+    expect(freshUrl).not.toBe(firstUrl);
+    expect(freshUrl).toContain("/session/ses_fake_2");
+    const firstPreferredView = String(assistant.entries["ses_fake_2/reader-view"]);
+    expect(firstPreferredView).toContain("page 1 of 200");
+    expect(firstPreferredView).not.toBe(failedView);
+    const hint = (entry: string) => entry.split("search hint only (not authoritative source text): ")[1]?.trim();
+    expect(hint(capturedFirstPageView)).toBeTruthy();
+    expect(hint(firstPreferredView)).toBeTruthy();
+    expect(hint(firstPreferredView)).not.toBe(hint(capturedFirstPageView));
+    expect((await readPage(app, 2)).status).toBe(200);
+    expect(String(assistant.entries["ses_fake_2/reader-view"])).toContain("page 2 of 200");
+    expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
+
+    const repeated = ArxivPromotionResponseSchema.parse(await (await promote(candidate)).json());
+    expect(repeated).toMatchObject({ key: "long-notes", existing: true });
+    expect((await (await open()).json() as { sessionUrl: string }).sessionUrl).toBe(freshUrl);
+    expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
+  } finally {
+    await app.stop();
+    assistant.stop();
+    publisher.stop(true);
+  }
+}, 60_000);
 
 test("an extraction placed after a chat opens changes no workspace or source instruction", async () => {
   const assistant = fakeAssistant();
