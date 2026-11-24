@@ -356,8 +356,7 @@ export const ArxivSearchResponseSchema = z.strictObject({
   matches: z.array(ArxivMatchSchema),
 });
 
-// The result of explicitly promoting one confident arXiv candidate. The original item remains
-// intact; this names the item containing the fetched arXiv version.
+// The result of replacing one paper's PDF with a confident arXiv candidate.
 export const ArxivPromotionResponseSchema = z.strictObject({
   key: NonEmptySchema,
   originalKey: NonEmptySchema,

@@ -40,6 +40,7 @@ import {
 } from "../format";
 import type { ItemSourceActions, SendAttempt, SendWay } from "../libraryActions";
 import type { Related } from "../librarySelectors";
+import { BucketRequestError } from "../useLibraryApi";
 import { CollectionChip, TagChip } from "./Chips";
 import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
 import { FilingPicker } from "./FilingEditors";
@@ -249,6 +250,7 @@ function Sources({
           ) : (
             <>
               <p className="font-medium text-muted">Possible arXiv matches</p>
+              <p className="text-muted">Replacing this PDF removes the captured copy. A failed download keeps the current PDF.</p>
               <ul className="space-y-2">
                 {matches.matches.map((match) => (
                   <li key={`${match.id}v${match.version}`} className="space-y-0.5">
@@ -280,8 +282,15 @@ function Sources({
                         setPromoting(candidate);
                         setFailure(null);
                         arxiv.promote(match).then(
-                          onPromoted,
-                          (error: Error) => setFailure(error.message),
+                          (result) => {
+                            setMatches(null);
+                            onPromoted(result);
+                          },
+                          (error: Error) => setFailure(
+                            error instanceof BucketRequestError && error.kind === "no_pdf_at_url"
+                              ? `The current PDF remains available. ${error.message}`
+                              : `Could not confirm replacement. ${error.message}`,
+                          ),
                         ).finally(() => setPromoting(null));
                       }}
                       disabled={promoting !== null}
@@ -289,7 +298,7 @@ function Sources({
                     >
                       {promoting === `${match.id}v${match.version}`
                         ? "Fetching…"
-                        : "Use this version"}
+                        : "Replace with arXiv PDF"}
                     </button>
                   </li>
                 ))}
@@ -452,7 +461,7 @@ function Details({
     <>
       {/* A fixed height: the image loads after the panel draws, and must not push the fields down. */}
       <img
-        src={thumbnailPath(item.id, 640)}
+        src={`${thumbnailPath(item.id, 640)}&revision=${item.provenance.original_sha256}`}
         alt="First page"
         className={`mx-4 mt-4 w-[calc(100%-2rem)] rounded border border-line bg-panel object-cover object-top ${editing ? "h-32" : "h-64"}`}
       />

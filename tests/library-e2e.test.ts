@@ -208,6 +208,8 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
     await page.goto(`${app.origin}/`);
     await page.waitForSelector(row("original"));
     await page.click(row("original"));
+    const originalThumbnail = await page.$eval('aside[aria-label="Item details"] img[alt="First page"]',
+      (image) => (image as HTMLImageElement).src);
     await (await byRole("button", "Find on arXiv")).click();
     await shows('aside[aria-label="Item details"]', "arXiv:1234.5678v1");
     const panel = await page.$eval('aside[aria-label="Item details"]', (element) => element.textContent);
@@ -222,15 +224,29 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
     const failedSourceLinks = await page.$$eval('aside[aria-label="Item details"] a',
       (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
     expect(failedSourceLinks).toContain(published("/~author/lattices.pdf"));
+    await (await byRole("button", "Replace with arXiv PDF")).evaluate(
+      (button) => button.scrollIntoView({ block: "center" }),
+    );
     await shot("arxiv-replacement-failed");
 
+    await (await byRole("button", "Open")).click();
+    await shownReader("original");
+    await (await byRole("tab", "Library")).click();
+    expect(await readerKeys()).toContain("original");
     downloadFails = false;
     await (await byRole("button", "Replace with arXiv PDF")).click();
     await shows("body", "Replaced the PDF with the arXiv version.");
+    expect(await readerKeys()).toEqual([]);
     const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
     expect(library.items).toHaveLength(1);
     expect(library.items[0]?.provenance.pdf_url).toBe("https://arxiv.org/pdf/1234.5678v1");
-    await shows('aside[aria-label="Item details"]', "https://arxiv.org/pdf/1234.5678v1");
+    await shows('aside[aria-label="Item details"]', "arxiv.org");
+    const sourceLinks = await page.$$eval('aside[aria-label="Item details"] a',
+      (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
+    expect(sourceLinks).toContain("https://arxiv.org/pdf/1234.5678v1");
+    const preferredThumbnail = await page.$eval('aside[aria-label="Item details"] img[alt="First page"]',
+      (image) => (image as HTMLImageElement).src);
+    expect(preferredThumbnail).not.toBe(originalThumbnail);
     await shot("arxiv-replacement");
   } finally {
     await app.stop();

@@ -568,7 +568,7 @@ export default function Workspace({
                   return;
                 }
                 setSelectedId(result.key);
-                context.notify("The arXiv version is now a separate library item; the original capture was preserved.");
+                context.notify("Replaced the PDF with the arXiv version.");
               }}
               noteDraft={{
                 text: noteDraftOf(selected.id),

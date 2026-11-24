@@ -145,17 +145,14 @@ export function promoteArxivMatch(
   key: string,
   match: ArxivMatch,
 ): Promise<ArxivPromotionResponse> {
-  return context.api
-    .call(
+  return context.closeReader(key).then(() =>
+    context.api.call(
       ArxivPromotionResponseSchema,
       "POST",
       `${itemPath(key)}/arxiv/promote`,
       match,
-    )
-    .then((response) => {
-      context.api.refresh();
-      return response;
-    });
+    ),
+  );
 }
 
 function newCollection(context: ActionContext, name: string, parentId?: string) {
