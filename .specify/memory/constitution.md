@@ -23,14 +23,17 @@ replacement or re-fetching from that source the primary recovery action. The ori
 captured file and its provenance MUST remain preserved as an alternate record unless
 the user explicitly chooses otherwise.
 
-### III. Reader Context Is Minimal and Explicit
-Assistant page context MUST provide the exact page number reported by the reader and
-the address of that page's text in the stored raw PDF. It MUST also provide the pointer
-to the authoritative extraction when one exists. The assistant MUST use the raw-page
-address when it needs text from a particular PDF page and MUST search and read the
-authoritative extraction using its own tools when one exists. The application MUST NOT
-perform approximate page-to-extraction mapping. The exact reader page number and
-raw-page address MUST still be supplied when no authoritative extraction exists.
+### III. One Paper Directory and Explicit Page Context
+Each stored paper MUST have one document directory containing its original PDF
+and every paper-specific artifact. The assistant's working context MUST be that
+directory, not a synthetic workspace or generated source catalog. The assistant MUST
+enumerate the directory and choose among the current artifacts itself. A complete
+artifact added after a chat opens MUST be available in that chat without a session
+restart or source-refresh notification. Assistant page context MUST provide the exact
+page number reported by the reader and the address of that page's text in the stored
+raw PDF. The assistant MUST use the raw-page address when it needs text from a
+particular PDF page. The application MUST NOT perform approximate page-to-extraction
+mapping. Raw-page access MUST remain available without an extraction.
 
 ### IV. Fail Loudly
 A missing or invalid extraction MUST produce an explicit error when the caller
@@ -75,4 +78,4 @@ added or materially expanded guidance, and PATCH for non-semantic clarification.
 Reviews and implementation plans MUST check compliance with these principles;
 unresolved violations block completion rather than becoming future work.
 
-**Version**: 2.0.0 | **Ratified**: 2026-11-22 (original adoption date unavailable; first verified repository baseline) | **Last Amended**: 2026-11-24
+**Version**: 3.0.0 | **Ratified**: 2026-11-22 (original adoption date unavailable; first verified repository baseline) | **Last Amended**: 2026-11-24
