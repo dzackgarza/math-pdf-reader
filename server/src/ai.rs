@@ -133,7 +133,7 @@ impl ChatRecord {
             Self::Current {
                 provenance: stored, ..
             } => stored == provenance,
-            Self::Legacy(_) => true,
+            Self::Legacy(_) => false,
         }
     }
 }
@@ -406,18 +406,7 @@ impl Ai {
                     .error_for_status()
                     .map_err(unavailable)?;
                 }
-                let id = id.to_string();
-                if matches!(record, ChatRecord::Legacy(_)) {
-                    chats.insert(
-                        key.to_string(),
-                        ChatRecord::Current {
-                            id: id.clone(),
-                            provenance: provenance.clone(),
-                        },
-                    );
-                    write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
-                }
-                return Ok(id.clone());
+                return Ok(id.to_string());
             }
         }
         let created: Data<Created> = self
@@ -449,21 +438,6 @@ impl Ai {
     pub async fn forget(&self, key: &str) -> AppResult<()> {
         let (file, mut chats) = self.chat_file().await?;
         if chats.remove(key).is_some() {
-            write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn bind_legacy(&self, key: &str, provenance: &Provenance) -> AppResult<()> {
-        let (file, mut chats) = self.chat_file().await?;
-        if let Some(ChatRecord::Legacy(id)) = chats.get(key) {
-            chats.insert(
-                key.to_string(),
-                ChatRecord::Current {
-                    id: id.clone(),
-                    provenance: provenance.clone(),
-                },
-            );
             write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
         }
         Ok(())

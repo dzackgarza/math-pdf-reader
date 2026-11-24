@@ -92,9 +92,6 @@ impl AppState {
     /// restart, and then its filing goes.
     pub async fn remove(&self, key: &str) -> AppResult<Organization> {
         let _chat = self.ai.chats.lock().await;
-        if let Some(indexed) = self.indexed(key).await? {
-            self.ai.bind_legacy(key, &indexed.stored.provenance).await?;
-        }
         let keys = [key.to_string()];
         self.organizations.record_removal(&keys).await?;
         if let Err(error) = self.store.remove(key).await {

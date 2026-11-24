@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { AiSessionRequestSchema } from "../src/contract/ai";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { ExtractionOutcomeSchema } from "../src/contract/extraction";
-import { ApiErrorSchema } from "../src/contract/library";
+import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const longNotes = join(import.meta.dir, "fixtures/long-notes.pdf");
@@ -542,16 +542,21 @@ test("an extraction without an open chat leaves the assistant dormant", async ()
   await app.stop();
 });
 
-test("an existing assistant chat moves to the paper directory without changing its id", async () => {
+test("a provenance-bound assistant chat moves to the paper directory without changing its id", async () => {
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
   const oldWorkspace = join(root, "legacy-workspace");
   assistant.locations.ses_fake = oldWorkspace;
   const app = await storedBucket("true", root, assistant.port);
+  const library = LibraryPayloadSchema.parse(
+    await (await app.request("/api/library")).json(),
+  );
+  const paper = library.items.find((item) => item.id === "long-notes");
+  expect(paper).toBeDefined();
   mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
   writeFileSync(
     join(dirname(app.indexExport), "ai/chats.json"),
-    JSON.stringify({ "long-notes": "ses_fake" }),
+    JSON.stringify({ "long-notes": { id: "ses_fake", provenance: paper!.provenance } }),
   );
 
   const response = await app.request("/api/ai/session", {
