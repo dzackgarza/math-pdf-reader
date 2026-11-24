@@ -240,10 +240,14 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
     const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
     expect(library.items).toHaveLength(1);
     expect(library.items[0]?.provenance.pdf_url).toBe("https://arxiv.org/pdf/1234.5678v1");
+    expect(library.items[0]?.sourceLineage?.originalProvenance.pdf_url).toBe(published("/~author/lattices.pdf"));
     await shows('aside[aria-label="Item details"]', "arxiv.org");
+    const promotedPanel = await page.$eval('aside[aria-label="Item details"]', (element) => element.textContent);
+    expect(promotedPanel).toContain("Original capture");
     const sourceLinks = await page.$$eval('aside[aria-label="Item details"] a',
       (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
     expect(sourceLinks).toContain("https://arxiv.org/pdf/1234.5678v1");
+    expect(sourceLinks).toContain(published("/~author/lattices.pdf"));
     const preferredThumbnail = await page.$eval('aside[aria-label="Item details"] img[alt="First page"]',
       (image) => (image as HTMLImageElement).src);
     expect(preferredThumbnail).not.toBe(originalThumbnail);
