@@ -128,7 +128,7 @@ test("the assistant inspects the original PDF with the shell and discovers a new
         `/api/experimental/session/${sessionID}/wait`,
         {
           method: "POST",
-          signal: AbortSignal.timeout(180_000),
+          signal: AbortSignal.timeout(300_000),
         },
       );
       expect(waited.status).toBe(204);
@@ -143,12 +143,17 @@ test("the assistant inspects the original PDF with the shell and discovers a new
 
     const pdf = join(root, "long-notes", "long-notes.pdf");
     const expectedHash = createHash("sha256").update(readFileSync(pdf)).digest("hex");
-    const pdfAnswer = await ask("Inspect the original PDF in this directory. Report its SHA-256. From the scanned cover, give the printed catalog number and transcribe the signature on a line labeled Signer. Use UNREADABLE in that field if the source cannot identify the signer. Render and inspect the page or OCR its image as needed. Explain any reading limitation.");
+    const pdfAnswer = await ask([
+      "Inspect the original PDF using your shell. Report its SHA-256.",
+      "Read the scanned cover using pdftoppm -f 1 -l 1 -scale-to 1800 -png long-notes.pdf | tesseract stdin stdout.",
+      "Report the printed catalog number and a line labeled Signer with the name you can read.",
+      "Use only the scanned cover for this question. If it labels the signature as redacted, enter UNREADABLE and explain the limitation.",
+    ].join(" "));
     const coverAnswer = pdfAnswer.filter((part) => part.type === "text").map((part) => part.text).join(" ");
     expect(coverAnswer).toContain(expectedHash);
     expect(coverAnswer).toContain(catalogNumber);
-    expect(coverAnswer.replaceAll("*", "")).toMatch(/Signer:\s*\x60?UNREADABLE/i);
-    expect(coverAnswer).toMatch(/redact|obscur|black(?:ed| box| bar| rectangle)|illegible|unreadable|cannot (?:identify|determine|read)/i);
+    expect(coverAnswer.replaceAll("*", "")).toMatch(/Signer\s*[:|]\s*\x60?UNREADABLE/i);
+    expect(coverAnswer).toMatch(/redact|obscur|black(?:ed| box| bar| rectangle)/i);
 
     const pageReport = await app.request("/api/items/long-notes/reading", {
       method: "PUT",

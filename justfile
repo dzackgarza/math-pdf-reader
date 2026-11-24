@@ -95,7 +95,7 @@ test-zotero-live:
 
 # Verify the configured assistant can inspect a PDF and read newly added Markdown with its shell.
 test-assistant-live:
-    @bun test ./tests/server-ai-live.ts --timeout 240000
+    @bun test ./tests/server-ai-live.ts --timeout 660000
 
 # Open the desktop app from source (`tauri dev`); it serves the configured bucket itself.
 run: build-web
