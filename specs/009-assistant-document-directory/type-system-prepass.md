@@ -70,7 +70,7 @@ manufacture a current PDF or hide its absence.
 
 ### Bounded primitives and products
 
-- `layout::Key(String)` remains the only validated paper identity.
+- `layout::Key(String)` identifies the library item. Embedded current provenance identifies its edition for chat reuse and page delivery.
 - `DocumentDirectory { key: Key, path: PathBuf }` is the conceptual product. It is
   represented by `layout::document_dir(root, &Key)` rather than a second wrapper
   because no behavior requires a separate public type.

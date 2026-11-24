@@ -32,16 +32,14 @@ provisioned app verification
 
 **Performance Goals**: No new target; startup migration uses same-filesystem renames
 
-**Constraints**: Preserve embedded provenance, bytes, keys and stable URLs; raw PDF
+**Constraints**: Preserve PDF bytes and embedded provenance during layout migration. Keep the library key and URLs stable across edition replacement; raw PDF
 availability never depends on extraction; shell tools operate from the document directory; no dual-layout fallback or source-catalog regeneration
 
 **Scale/Scope**: All store lifecycle paths, all current user papers and one chat per paper
 
 ## Constitution Check
 
-Constitution 4.0 requires the stored PDF, directory discovery with shell access, and
-page hints used only for correlation. The [task list](tasks.md) covers
-runtime changes and provisioned verification.
+Under Constitution 5.0, migration preserves the PDF and its provenance. Explicit arXiv replacement installs the arXiv PDF at the same key and embeds the captured provenance as history. Only the current PDF and its current enrichment supply answers. The assistant uses its own directory and shell tools. Page snippets serve only as search hints. The [validation guide](quickstart.md) checks these rules in the installed reader after the final runtime change.
 
 ## Project Structure
 
@@ -86,7 +84,7 @@ assistant abstraction is added.
   real-HTTP regression.
 - **Change**: Introduce document paths and resumable non-overwriting migration; move all
   producers, readers and deletion to those paths.
-- **Acceptance**: Every lifecycle operation preserves identity and provenance; unknown
+- **Acceptance**: Layout migration preserves the key, bytes and provenance; unknown
   artifacts travel with deletion; no flat current copy remains.
 - **Proof**: Focused document, extraction, library, source, send and export tests, plus
   `cargo check --package pdf-bucket`.
@@ -109,6 +107,12 @@ error when the current PDF is valid. A missing or damaged PDF fails session open
 - `tests/server-ai.test.ts` and `tests/server-ai-live.ts` exercise the HTTP and
   provider boundaries. The [validation guide](quickstart.md) specifies the
   required observations.
+
+## Edition changes and live enrichment
+
+For FR-013 and SC-006, use the current PDF’s embedded provenance when opening a chat and when routing a page update. Both paths already compare provenance in `server/src/ai.rs`. Exercise them through the reader and the replacement action owned by feature 004. Compare both conversations before and after navigation. A page event between replacement and the first new chat must never reach the previous edition.
+
+For US2, run an eligible extractor from the app while the chat is open. Verify that the next turn reads its published passage. Keep the independent unknown-file test for generic discovery. Run these acceptance checks on the installed build after the last relevant implementation change.
 
 ## Risks / Recovery / Stop Rules
 

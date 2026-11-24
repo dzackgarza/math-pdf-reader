@@ -59,3 +59,12 @@ their paths. After a partial move, the next start moves only remaining sources.
 4. Incomplete enrichment is not in the document directory.
 5. Item keys, reader/PDF URLs, embedded provenance and PDF bytes survive flat-store migration.
 6. No synthetic workspace holds current copies or catalogs of paper artifacts.
+
+## Edition transitions
+
+| Operation | Current PDF at the library key | Chat on next open |
+|---|---|---|
+| Successful replacement | arXiv PDF with its own embedded provenance | Fresh chat bound to the arXiv edition |
+| Failed replacement | Captured PDF | Existing captured-edition chat |
+| Repeat selection of the current arXiv version | Same arXiv PDF | Existing arXiv-edition chat |
+| Completed extraction | Same PDF, with new reading material | Same chat can read the published passage |

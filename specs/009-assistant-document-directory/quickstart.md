@@ -50,3 +50,12 @@ both the Markdown passage and the accession in a separate metadata file.
 Run `bun test tests/server-ai.test.ts -t 'failed text hint|damaged original'`.
 A failed hint still delivers the recorded page to the chat. Missing and damaged
 PDF failures produce distinct session errors.
+
+## Replacement and enrichment in the installed reader
+
+Use disposable papers with a known arXiv match and distinguishable passages. Start from the final provisioned revision on port 8770 with the configured assistant and an eligible extraction provider available.
+
+1. Open the captured edition’s chat, record its session ID, and ask about a passage. Exercise a failed replacement download. Reopen the chat, verify the earlier exchange, and navigate to a different page. Check that the same session receives the displayed page.
+2. Complete replacement. Navigate before opening a chat and check that the captured session receives no page update. Open the assistant at the same library address. Verify a new session ID, ask about an arXiv-only passage, and compare the answer with that edition. Navigate again and check both session transcripts for the destination of the page update.
+3. Repeat selection of the same arXiv version. Verify that the session ID and the earlier arXiv answer persist.
+4. With the chat open, run extraction from the app. After success ask for a passage unique to the published extraction without giving its path. Verify the answer, the file read and the unchanged session ID.

@@ -76,3 +76,7 @@ Session open returns `404 unknown_item` for a missing current PDF and
 `422 unreadable_pdf` with the file diagnostic for a damaged current PDF. When only
 the optional hint fails, the view and chat entry retain the exact recorded page
 and identify the hint failure. Opening the session still succeeds.
+
+## Edition change at a stable key
+
+After replacement commits, the next session open returns a fresh conversation for the arXiv PDF. Page updates can reach only a session bound to the current edition, including before that first open. After a failed replacement the captured edition keeps its conversation and page updates. A repeat selection of the current arXiv version reuses its conversation. Successful extraction makes its published files available on the next turn in the same session.

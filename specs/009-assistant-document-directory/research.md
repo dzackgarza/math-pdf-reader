@@ -54,3 +54,11 @@ artifacts using file tools and shell commands without a new endpoint or instruct
 Keeping the original beside the extraction lets it check a source when conversion
 has lost information. The [page-context spec](../005-assistant-page-context/spec.md)
 defines the displayed page and optional search hint.
+
+## Conversation identity across editions
+
+**Decision**: Reuse the provenance comparison in `server/src/ai.rs` for session open and page delivery.
+
+**Rationale**: Replacement changes the current PDF’s provenance under the same key. Failed replacement, an idempotent repeat, and extraction leave the current provenance intact.
+
+**Alternatives considered**: A directory or key alone would reuse earlier answers after replacement. Hashing the current file bytes would also split conversations after ordinary annotation saves.
