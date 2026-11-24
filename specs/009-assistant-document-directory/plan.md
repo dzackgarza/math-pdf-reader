@@ -35,7 +35,7 @@ provisioned app verification
 **Constraints**: Preserve PDF bytes and embedded provenance during layout migration. Keep the library key and URLs stable across edition replacement; raw PDF
 availability never depends on extraction; shell tools operate from the document directory; no dual-layout fallback or source-catalog regeneration
 
-**Scale/Scope**: All store lifecycle paths, all current user papers and one chat per paper
+**Scale/Scope**: All store lifecycle paths, all current user papers and one current chat for the displayed edition
 
 ## Constitution Check
 

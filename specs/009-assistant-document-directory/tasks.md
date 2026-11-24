@@ -47,9 +47,9 @@ Open a PDF-only paper and check an answer against its visible content. Open an e
 **Goal**: A completed artifact added after session creation is available in that same chat
 without a restart, source-catalog update or refresh notification.
 
-**Independent Test**: Create a chat, add a unique unregistered artifact directly to its
-paper directory, then ask for its unique content in the same session and observe a direct
-file read.
+**Independent Test**: Run extraction from the app with the chat open. Ask for a
+passage in the published output and verify the same session reads it (T023).
+T010 separately checks discovery of an unregistered file added to the directory.
 
 ### Tests for User Story 2
 
@@ -133,14 +133,16 @@ through direct discovery, then provision the installed app and verify real user 
 
 ## Phase 9: User Story 2 — Read an extraction completed during chat (P1)
 
-- [ ] T023 [P] [US2] Extend `tests/server-ai-live.ts`: open the PDF-only chat, invoke an eligible extraction through the app’s extraction action, wait for publication, and ask the same session for a passage unique to the output. Compare the answer and observed file read with the published passage without supplying its path. Keep the existing unknown-file discovery case. If this exposes a failure, commit the failing case before correcting its owner in `server/src/extractions.rs` or `server/src/ai.rs`.
+- [X] T023 [P] [US2] Extend `tests/server-ai-live.ts`: open the PDF-only chat, invoke an eligible extraction through the app’s extraction action, wait for publication, and ask the same session for a passage unique to the output. Compare the answer and observed file read with the published passage without supplying its path. Keep the existing unknown-file discovery case. If this exposes a failure, commit the failing case before correcting its owner in `server/src/extractions.rs` or `server/src/ai.rs`.
 
 ## Phase 10: User Story 3 — Continue reading after edition replacement (P1)
 
-- [ ] T024 [P] [US3] In `tests/server-ai.test.ts`, exercise the public replacement, session-open and reader page-report actions with distinguishable editions, using the arXiv fixtures in `tests/server-sources.test.ts`. Verify that a failed download preserves the captured session and subsequent page delivery. After success at the same key, navigate before opening a new chat and verify the old transcript receives no update. Open the fresh session, navigate again, and check both transcripts. Repeat replacement with the same arXiv version and verify the new session ID persists. If a branch fails, commit its failing regression before correcting the edition check at session open or page delivery in `server/src/ai.rs`.
+- [X] T024 [P] [US3] In `tests/server-ai.test.ts`, exercise the public replacement, session-open and reader page-report actions with distinguishable editions, using the arXiv fixtures in `tests/server-sources.test.ts`. Verify that a failed download preserves the captured session and subsequent page delivery. After success at the same key, navigate before opening a new chat and verify the old transcript receives no update. Open the fresh session, navigate again, and check both transcripts. Repeat replacement with the same arXiv version and verify the new session ID persists. If a branch fails, commit its failing regression before correcting the edition check at session open or page delivery in `server/src/ai.rs`.
 
 ## Phase 11: Installed acceptance
 
 - [ ] T025 After T023 and T024 and any resulting fixes, provision the final revision and execute the installed-reader scenarios in `specs/009-assistant-document-directory/quickstart.md` on port 8770. Verify a same-chat answer from an app-produced extraction and an arXiv-only answer after replacement. Compare sessions and page updates across failure, success and repeat selection.
+
+  Installed acceptance on 2026-11-24 verified the captured-edition answer, retention of the captured session after an arXiv PDF returned 404, a fresh session after successful replacement, page delivery to the current edition, and chat reuse on repeat selection. The installed arXiv extractor published Markdown in the open chat’s directory. Two answer checks remain: compare an answer with a passage unique to the replacement PDF, and verify a shell read and quotation from the published Markdown in the existing chat. The configured provider returned `429 provider.free-limit` before those answers completed.
 
 Both remaining story checks depend on the completed US1 directory session. T023 and T024 exercise separate paths and can run in parallel. T025 consumes both outcomes.
