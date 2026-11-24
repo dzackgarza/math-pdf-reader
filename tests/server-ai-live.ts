@@ -29,7 +29,7 @@ const MessagesSchema = z.object({
             state: z
               .object({
                 status: z.string(),
-                input: z.record(z.string(), z.unknown()),
+                content: z.array(z.object({ text: z.string().optional() })).optional(),
               })
               .passthrough()
               .optional(),
@@ -64,7 +64,6 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     env: { XDG_DATA_HOME: join(process.env.HOME!, ".local", "share") },
   });
   try {
-    const bucketRequest = (path: string, init?: RequestInit) => app.request(path, init);
     const form = new FormData();
     form.set(
       "pdf",
@@ -82,12 +81,12 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     );
     form.set("title_hint", "Long Notes");
     expect(
-      (await bucketRequest("/capture-bytes", { method: "POST", body: form }))
+      (await app.request("/capture-bytes", { method: "POST", body: form }))
         .status,
     ).toBe(200);
-    expect((await bucketRequest("/api/ai/text/long-notes")).status).toBe(404);
+    expect((await app.request("/api/ai/text/long-notes")).status).toBe(404);
 
-    const opened = await bucketRequest("/api/ai/session", {
+    const opened = await app.request("/api/ai/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: "long-notes" }),
@@ -139,6 +138,15 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     const pdfAnswer = await ask("Use your shell in the paper directory to compute the SHA-256 of the original PDF. Return the digest.");
     expect(pdfAnswer.map((part) => part.text).join(" ")).toContain(expectedHash);
 
+    const pageReport = await app.request("/api/items/long-notes/reading", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: 2, pages: 210 }),
+    });
+    expect(pageReport.status).toBe(200);
+    const context = await (await app.request("/api/ai/view/long-notes")).text();
+    expect(context).toContain("page 2");
+    expect(context).toContain("lattice Z2");
     const marker = `pdf-bucket-live-discovery-${randomUUID()}`;
     const artifact = join(
       root,
@@ -147,9 +155,9 @@ test("the assistant inspects the original PDF with the shell and discovers a new
       "page-notes.md",
     );
     mkdirSync(dirname(artifact), { recursive: true });
-    writeFileSync(artifact, `# Lecture 2\n\nSource verification: ${marker}\n`);
+    writeFileSync(artifact, `# Lecture 2\n\nThe lattice $Z^2$ has determinant 1.\n\nSource verification: ${marker}\n`);
     const discoveryParts = await ask(
-      "Find the new Markdown in this paper directory. Use a shell command to read its Lecture 2 passage and report the source verification value.",
+      "Find the new Markdown in this paper directory. Use the reader's current page to locate the passage. Use a shell command to read the Markdown. Return the lattice notation exactly as written in that file and its source verification value.",
     );
     const discoveryAnswer = discoveryParts
       .filter((part) => part.type === "text")
@@ -163,14 +171,15 @@ test("the assistant inspects the original PDF with the shell and discovers a new
       .data.flatMap((message) => message.content)
       .filter((part) => part.type === "tool");
     const shellReads = toolCalls.filter((part) =>
-      part.name === "bash" && part.state?.status === "completed" &&
-      JSON.stringify(part.state).includes(marker)
+      part.name === "shell" && part.state?.status === "completed" &&
+      part.state.content?.some((block) => block.text?.includes(marker))
     );
+    expect(discoveryAnswer).toContain("Z^2");
     expect(discoveryAnswer).toContain(marker);
     expect(shellReads.length).toBeGreaterThan(0);
   } finally {
     try {
-    await app.stop();
+      await app.stop();
     } finally {
       for (const path of [root, ...app.temporaryPaths]) {
         rmSync(path, { recursive: true, force: true });

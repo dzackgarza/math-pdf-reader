@@ -35,9 +35,9 @@ implementation. The real-provider check runs separately from tier 1.
 ## Phase 3: Open the paper directory
 
 - [X] T006 Verify the session location and preservation of the session ID on move.
-- [ ] T007 Verify a real shell read of a paper artifact through the live provider.
-- [ ] T008 Grant the reader shell access and direct it to its working directory.
-- [ ] T009 Supply the exact displayed page and optional correlation hint and retire
+- [X] T007 Verify a real shell read of a paper artifact through the live provider.
+- [X] T008 Grant the reader shell access and direct it to its working directory.
+- [X] T009 Supply the exact displayed page and optional correlation hint and retire
   the full-page text route and its instructions.
 
 ## Phase 4: User Story 2 - Enrich an already-open paper (P1)
@@ -63,7 +63,7 @@ file read.
 
 ## Phase 5: Cross-cutting verification
 
-- [ ] T012 [P] Align the amended constitution and current behavior contracts in
+- [X] T012 [P] Align the amended constitution and current behavior contracts in
   `.specify/memory/constitution.md`, `specs/005-assistant-page-context/`,
   `specs/009-assistant-document-directory/`, `README.md` and `docs/m4.md`
 - [X] T013 Record the document-directory decision in the `PLAN-PDF-BUCKET-ROADMAP` card's

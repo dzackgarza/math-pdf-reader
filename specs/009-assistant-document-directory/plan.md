@@ -16,7 +16,7 @@ directory, and let the assistant inspect the original and its enrichment using i
 
 ## Technical Context
 
-**Language/Version**: Rust edition 2024, TypeScript/Bun, Python 3 with PyMuPDF
+**Language/Version**: Rust edition 2021, TypeScript/Bun, Python 3 with PyMuPDF
 
 **Primary Dependencies**: Axum, Tokio, OpenCode session APIs, Zod, existing extraction
 commands
@@ -40,7 +40,7 @@ availability never depends on extraction; shell tools operate from the document 
 ## Constitution Check
 
 Constitution 4.0 requires the stored PDF, directory discovery with shell access, and
-page hints used only for correlation. The open items in [tasks.md](tasks.md) cover
+page hints used only for correlation. The [task list](tasks.md) covers
 runtime changes and provisioned verification.
 
 ## Project Structure

@@ -178,7 +178,7 @@ test("the assistant can discover paper artifacts with file and shell tools", asy
     effect: "allow",
   });
   expect(config.agents.reader.permissions).toContainEqual({
-    action: "bash",
+    action: "shell",
     resource: "*",
     effect: "allow",
   });

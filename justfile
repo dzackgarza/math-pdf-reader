@@ -93,7 +93,7 @@ test-capture:
 test-zotero-live:
     @bun test tests/server-send-live.ts --timeout 180000
 
-# Ask the configured assistant to quote a raw PDF page with no structured extraction.
+# Verify the configured assistant can inspect a PDF and read newly added Markdown with its shell.
 test-assistant-live:
     @bun test ./tests/server-ai-live.ts --timeout 240000
 
