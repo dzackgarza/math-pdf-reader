@@ -26,7 +26,7 @@ pub fn organization_file(root: &Path) -> PathBuf {
     root.join("organization.json")
 }
 
-fn removed_file(root: &Path) -> PathBuf {
+pub(crate) fn removed_file(root: &Path) -> PathBuf {
     root.join("removed.json")
 }
 

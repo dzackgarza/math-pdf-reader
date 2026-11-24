@@ -218,15 +218,6 @@ impl Store {
             if uuid::Uuid::parse_str(transaction).is_err() {
                 continue;
             }
-            let Ok(key_bytes) = hex::decode(encoded) else {
-                continue;
-            };
-            let Ok(key) = String::from_utf8(key_bytes) else {
-                continue;
-            };
-            if Key::parse(&key).is_none() || present.contains(&key) {
-                continue;
-            }
             let directory = entry.path();
             if !entry.file_type()?.is_dir() || directory.join("pending.pdf").try_exists()? {
                 continue;
@@ -235,7 +226,7 @@ impl Store {
             if !anchor.try_exists()? {
                 continue;
             }
-            anchors.push((key, anchor));
+            anchors.push((encoded.to_string(), anchor));
         }
         let paths: Vec<_> = anchors.iter().map(|(_, path)| path.clone()).collect();
         let reads = if paths.is_empty() {
@@ -245,14 +236,26 @@ impl Store {
         };
         let mut items = Vec::new();
         let mut unreadable = Vec::new();
-        for ((key, path), read) in anchors.into_iter().zip(reads) {
+        for ((token, path), read) in anchors.into_iter().zip(reads) {
+            if let FileRead::Read(record) = &read {
+                if record
+                    .source_lineage
+                    .as_ref()
+                    .is_some_and(|lineage| present.contains(lineage.preferred_key.as_str()))
+                {
+                    continue;
+                }
+            }
             match read {
                 FileRead::Read(record) => match record.source_lineage {
                     Some(ref lineage)
-                        if lineage.preferred_key.as_str() == key
+                        if crate::store::transaction_token(lineage.preferred_key.as_str())
+                            == token
+                            && Key::parse(lineage.preferred_key.as_str()).is_some()
                             && lineage.discovered_source_url == record.provenance.pdf_url =>
                     {
-                        let parsed = Key::parse(&key).expect("promotion keys were validated");
+                        let parsed = Key::parse(lineage.preferred_key.as_str())
+                            .expect("lineage keys are validated");
                         items.push(IndexedItem {
                             pages: record.pages.get(),
                             source_lineage: record.source_lineage.clone(),

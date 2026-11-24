@@ -500,14 +500,6 @@ async fn promote(
                 Some(preferred_key),
             )
             .await?;
-        drop(_locked);
-        if let Err(error) = state
-            .organizations
-            .update(|org| crate::organization::remove_item(org, preferred_key))
-            .await
-        {
-            eprintln!("pdf-bucket: arXiv replacement committed; linked filing cleanup awaits retry: {error:?}");
-        }
         state.stored();
         return Ok(Json(ArxivPromotionResponse {
             key: captured.item.key,

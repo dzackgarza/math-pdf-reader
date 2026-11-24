@@ -42,6 +42,17 @@ use crate::sources::{digest, sha256};
 static URL_CLEANER: LazyLock<UrlCleaner> =
     LazyLock::new(|| UrlCleaner::from_embedded_rules().expect("the embedded rules parse"));
 
+/// A transaction name fits Linux NAME_MAX for every valid paper key. Short keys retain their
+/// readable hex identity; long keys use a digest and are verified against the PDF lineage.
+pub(crate) fn transaction_token(key: &str) -> String {
+    let encoded = hex::encode(key);
+    if ".promotion-".len() + encoded.len() + 1 + 36 <= crate::config::NAME_MAX {
+        encoded
+    } else {
+        sha256(key.as_bytes())
+    }
+}
+
 /// A PDF offered for storage and where it came from. `filename` is the name the PDF was
 /// offered under, if any.
 pub struct Upload {
@@ -624,13 +635,14 @@ impl Store {
         let root = self.root().to_path_buf();
         let key_for_swap = key.clone();
         let expected_sha256 = expected_sha256.to_string();
+        let linked_for_metadata = linked_preferred.and_then(Key::parse);
         let linked_preferred = linked_preferred.map(str::to_string);
         let linked_sha256 = upload.pdf.sha256.clone();
         let (retired, transferred, linked_retired) = blocking(move || {
             let document = layout::document_dir(&root, &key_for_swap);
             let anchor_dir = root.join(format!(
                 ".promotion-{}-{}",
-                hex::encode(key_for_swap.as_str()),
+                transaction_token(key_for_swap.as_str()),
                 uuid::Uuid::new_v4()
             ));
             std::fs::create_dir(&anchor_dir)?;
@@ -641,7 +653,7 @@ impl Store {
             std::fs::File::open(&anchor_dir)?.sync_all()?;
             std::fs::File::open(&root)?.sync_all()?;
             let staging = tempfile::Builder::new()
-                .prefix(&format!(".replacement-{}-", hex::encode(key_for_swap.as_str())))
+                .prefix(&format!(".replacement-{}-", transaction_token(key_for_swap.as_str())))
                 .tempdir_in(&root)?;
             #[cfg(feature = "arxiv-fixtures")]
             test_gate("PDF_BUCKET_TEST_PROMOTION_CREATED")?;
@@ -683,12 +695,7 @@ impl Store {
             let linked_retired = if let Some(preferred) = linked_preferred.as_ref() {
                 let key = Key::parse(preferred).expect("a linked item has a valid key");
                 let old = layout::document_dir(&root, &key);
-                let hidden = root.join(format!(
-                    ".linked-retired-{}-{}-{}",
-                    hex::encode(key_for_swap.as_str()),
-                    hex::encode(key.as_str()),
-                    uuid::Uuid::new_v4()
-                ));
+                let hidden = root.join(format!(".linked-retired-{}", uuid::Uuid::new_v4()));
                 renameat2(&root_file, &old, &root_file, &hidden, RenameFlags::RENAME_NOREPLACE)
                     .map_err(std::io::Error::from)?;
                 Some((hidden, old, key))
@@ -740,7 +747,24 @@ impl Store {
             }
         }
         if let Some((hidden, moved)) = linked_retired {
-            if moved {
+            let preferred_key =
+                linked_for_metadata.expect("a linked retirement has a preferred key");
+            let preferred_pdf = hidden.join(format!("{preferred_key}.pdf"));
+            let metadata = match self.read_records(&[preferred_pdf]).await?.pop() {
+                Some(FileRead::Read(record)) => {
+                    self.retire_linked_metadata(&preferred_key, &record.provenance)
+                        .await
+                }
+                _ => Err(AppError::store_failed(
+                    "the retired linked PDF cannot be read",
+                )),
+            };
+            if let Err(error) = metadata {
+                eprintln!(
+                    "pdf-bucket: linked arXiv metadata cleanup remains in {}: {error:?}",
+                    hidden.display()
+                );
+            } else if moved {
                 if let Err(error) = trash_all(vec![hidden]).await {
                     eprintln!("pdf-bucket: linked arXiv directory remains hidden after replacement: {error}");
                 }
@@ -1067,7 +1091,7 @@ impl Store {
         expected: Option<&SourceLineage>,
     ) -> AppResult<(Vec<PathBuf>, Vec<PathBuf>)> {
         let root = self.root();
-        let prefix = format!(".promotion-{}-", hex::encode(key));
+        let prefix = format!(".promotion-{}-", transaction_token(key));
         let mut anchors = Vec::new();
         let mut directories = Vec::new();
         for entry in std::fs::read_dir(root)? {
@@ -1127,53 +1151,96 @@ impl Store {
         Ok(())
     }
 
+    async fn retire_linked_metadata(
+        &self,
+        preferred_key: &Key,
+        provenance: &Provenance,
+    ) -> AppResult<()> {
+        let root = self.root();
+        let organization_path = crate::organization::organization_file(root);
+        let organization = crate::organization::read_organization(&organization_path).await?;
+        if let Some(filing) = crate::organization::filing(&organization, preferred_key.as_str()) {
+            let mut empty = crate::organization::unfiled(&provenance.captured_at);
+            empty.modified_at = filing.modified_at.clone();
+            empty.source_lineage = filing.source_lineage.clone();
+            if filing != &empty {
+                return Err(AppError::store_failed(
+                    "the retired linked item has filing that requires reconciliation",
+                ));
+            }
+        }
+        let removed_path = crate::organization::removed_file(root);
+        let mut removed =
+            crate::organization::read_document::<crate::contract::RemovedKeys>(&removed_path)
+                .await?
+                .unwrap_or_else(|| crate::contract::RemovedKeys {
+                    version: 1.try_into().expect("1 is the removed keys version"),
+                    keys: Vec::new(),
+                });
+        if !removed
+            .keys
+            .iter()
+            .any(|key| key.as_str() == preferred_key.as_str())
+        {
+            removed.keys.push(
+                preferred_key
+                    .as_str()
+                    .to_string()
+                    .try_into()
+                    .expect("a key is nonempty"),
+            );
+            crate::organization::write_json(&removed_path, &removed).await?;
+        }
+        if crate::organization::filing(&organization, preferred_key.as_str()).is_some() {
+            let next = crate::organization::remove_item(organization, preferred_key.as_str());
+            crate::organization::write_json(&organization_path, &next).await?;
+        }
+        Ok(())
+    }
+
     async fn clean_pending_linked_retirements(&self) -> AppResult<()> {
         let root = self.root();
         for entry in std::fs::read_dir(root)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            let Some((encoded_keys, transaction)) = name
-                .strip_prefix(".linked-retired-")
-                .and_then(|text| text.rsplit_once('-'))
-            else {
+            let Some(transaction) = name.strip_prefix(".linked-retired-") else {
                 continue;
             };
             if uuid::Uuid::parse_str(transaction).is_err() || !entry.file_type()?.is_dir() {
                 continue;
             }
-            let Some((original_encoded, preferred_encoded)) = encoded_keys.split_once('-') else {
-                continue;
-            };
-            let Ok(bytes) = hex::decode(original_encoded) else {
-                continue;
-            };
-            let Ok(original_text) = String::from_utf8(bytes) else {
-                continue;
-            };
-            let Some(original_key) = Key::parse(&original_text) else {
-                continue;
-            };
-            let Ok(bytes) = hex::decode(preferred_encoded) else {
-                continue;
-            };
-            let Ok(preferred_text) = String::from_utf8(bytes) else {
-                continue;
-            };
-            let Some(preferred_key) = Key::parse(&preferred_text) else {
-                continue;
-            };
             let hidden = entry.path();
-            let preferred_pdf = hidden.join(format!("{preferred_key}.pdf"));
-            if !preferred_pdf.try_exists()? {
+            let pdfs: Vec<_> = std::fs::read_dir(&hidden)?
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .filter(|child| child.file_name().to_string_lossy().ends_with(".pdf"))
+                .map(|child| child.path())
+                .collect();
+            let reads = self.read_records(&pdfs).await?;
+            let linked: Vec<_> = pdfs
+                .into_iter()
+                .zip(reads)
+                .filter_map(|(path, read)| {
+                    let FileRead::Read(record) = read else {
+                        return None;
+                    };
+                    let lineage = record.source_lineage.as_ref()?;
+                    let preferred = Key::parse(lineage.preferred_key.as_str())?;
+                    let original = Key::parse(lineage.original_key.as_str())?;
+                    (original != preferred
+                        && path.file_name()?.to_str()? == format!("{preferred}.pdf"))
+                    .then_some((record, original, preferred))
+                })
+                .collect();
+            let [(preferred_record, original_key, preferred_key)] = linked.as_slice() else {
                 continue;
-            }
-            let current_pdf = layout::pdf_path(root, &original_key);
+            };
+            let current_pdf = layout::pdf_path(root, original_key);
             if !current_pdf.try_exists()? {
                 continue;
             }
-            let reads = self.read_records(&[preferred_pdf, current_pdf]).await?;
-            let [FileRead::Read(preferred_record), FileRead::Read(current_record)] =
-                reads.as_slice()
+            let Some(FileRead::Read(current_record)) =
+                self.read_records(&[current_pdf]).await?.pop()
             else {
                 continue;
             };
@@ -1204,6 +1271,8 @@ impl Store {
                 });
             if committed {
                 transfer_paper_artifacts_to(root, &hidden, &preferred_key, &original_key)?;
+                self.retire_linked_metadata(&preferred_key, &preferred_record.provenance)
+                    .await?;
                 trash_all(vec![hidden]).await?;
             }
         }
@@ -1219,19 +1288,10 @@ impl Store {
             let Some(name) = name.strip_prefix(".promotion-") else {
                 continue;
             };
-            let Some((encoded, transaction)) = name.split_once('-') else {
+            let Some((token, transaction)) = name.split_once('-') else {
                 continue;
             };
-            let Ok(key_bytes) = hex::decode(encoded) else {
-                continue;
-            };
-            let Ok(key) = String::from_utf8(key_bytes) else {
-                continue;
-            };
-            if uuid::Uuid::parse_str(transaction).is_err()
-                || Key::parse(&key).is_none()
-                || !entry.file_type()?.is_dir()
-            {
+            if uuid::Uuid::parse_str(transaction).is_err() || !entry.file_type()?.is_dir() {
                 continue;
             }
             let directory = entry.path();
@@ -1259,23 +1319,23 @@ impl Store {
             let Some(FileRead::Read(pending_record)) = read else {
                 continue;
             };
-            if !pending_record
-                .source_lineage
-                .as_ref()
-                .is_some_and(|lineage| {
-                    lineage.preferred_key.as_str() == key
-                        && lineage.discovered_source_url == pending_record.provenance.pdf_url
-                })
+            let Some(lineage) = pending_record.source_lineage.as_ref() else {
+                continue;
+            };
+            let key = lineage.preferred_key.as_str();
+            if transaction_token(key) != token
+                || Key::parse(key).is_none()
+                || lineage.discovered_source_url != pending_record.provenance.pdf_url
             {
                 continue;
             }
-            let current = layout::pdf_path(root, &Key::parse(&key).expect("the key was validated"));
+            let current = layout::pdf_path(root, &Key::parse(key).expect("the key was validated"));
             let committed = if current.try_exists()? {
                 matches!(self.read_records(&[current]).await?.pop(), Some(FileRead::Read(record))
                     if record.provenance == pending_record.provenance
                         && record.source_lineage == pending_record.source_lineage)
             } else {
-                let prefix = format!(".replacement-{}-", hex::encode(key.as_bytes()));
+                let prefix = format!(".replacement-{}-", transaction_token(key));
                 let mut committed = false;
                 for hidden in std::fs::read_dir(root)? {
                     let hidden = hidden?;
@@ -1326,38 +1386,42 @@ impl Store {
         for entry in std::fs::read_dir(root)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            let Some((encoded, _suffix)) = name
+            let Some((token, _suffix)) = name
                 .strip_prefix(".replacement-")
                 .and_then(|rest| rest.split_once('-'))
             else {
-                continue;
-            };
-            let Ok(bytes) = hex::decode(encoded) else {
-                continue;
-            };
-            let Ok(key_text) = String::from_utf8(bytes) else {
-                continue;
-            };
-            let Some(key) = Key::parse(&key_text) else {
                 continue;
             };
             if !entry.file_type()?.is_dir() {
                 continue;
             }
             let hidden = entry.path();
-            let hidden_pdf = hidden.join(format!("{key}.pdf"));
-            if !hidden_pdf.try_exists()? {
-                if std::fs::read_dir(&hidden)?.next().is_some() {
-                    continue;
-                }
+            let entries: Vec<_> = std::fs::read_dir(&hidden)?.collect::<Result<_, _>>()?;
+            if entries.is_empty() {
                 trash_all(vec![hidden]).await?;
                 continue;
             }
+            let matching: Vec<_> = entries
+                .into_iter()
+                .filter_map(|file| {
+                    let name = file.file_name();
+                    let stem = std::path::Path::new(&name).file_stem()?.to_str()?;
+                    let key = Key::parse(stem)?;
+                    (name.to_str()? == format!("{key}.pdf")
+                        && transaction_token(key.as_str()) == token)
+                        .then_some((key, file.path()))
+                })
+                .collect();
+            let [(key, hidden_pdf)] = matching.as_slice() else {
+                continue;
+            };
             let current_pdf = layout::pdf_path(root, &key);
             if !current_pdf.try_exists()? {
                 continue;
             }
-            let reads = self.read_records(&[hidden_pdf, current_pdf]).await?;
+            let reads = self
+                .read_records(&[hidden_pdf.clone(), current_pdf])
+                .await?;
             let [FileRead::Read(hidden_record), FileRead::Read(current_record)] = reads.as_slice()
             else {
                 return Err(AppError::store_failed(format!(
