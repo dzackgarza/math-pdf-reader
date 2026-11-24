@@ -15,10 +15,15 @@ fn retire(journal: &Path) -> io::Result<()> {
     let root = journal.parent().expect("journal is in the store");
     let discard = tempfile::tempdir_in(root)?;
     fs::rename(journal, discard.path().join("retired"))?;
-    File::open(root)?.sync_all()
+    // The rename is the commit point. A later sync failure cannot turn an installed new
+    // extraction into a failed HTTP result, since the rollback journal is already gone.
+    if let Err(error) = File::open(root).and_then(|directory| directory.sync_all()) {
+        eprintln!("pdf-bucket: extraction journal retired but directory sync failed: {error}");
+    }
+    Ok(())
 }
 
-fn rollback(root: &Path, journal: &Path) -> io::Result<()> {
+fn restore(root: &Path, journal: &Path) -> io::Result<()> {
     let key = Key::parse(&fs::read_to_string(journal.join("key"))?).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "invalid extraction journal key")
     })?;
@@ -41,6 +46,11 @@ fn rollback(root: &Path, journal: &Path) -> io::Result<()> {
         }
     }
     File::open(layout::document_dir(root, &key))?.sync_all()?;
+    Ok(())
+}
+
+fn rollback(root: &Path, journal: &Path) -> io::Result<()> {
+    restore(root, journal)?;
     retire(journal)
 }
 
@@ -102,15 +112,21 @@ pub fn publish(
         #[cfg(feature = "arxiv-fixtures")]
         crate::store::test_gate("PDF_BUCKET_TEST_EXTRACTION_PUBLISH")?;
         fs::rename(markdown, &markdown_path)?;
-        File::open(layout::document_dir(root, key))?.sync_all()
+        File::open(layout::document_dir(root, key))?.sync_all()?;
+        retire(&journal)
     };
     if let Err(error) = install() {
-        rollback(root, &journal).map_err(|restore| {
+        restore(root, &journal).map_err(|restore_error| {
             io::Error::other(format!(
-                "{error}; could not restore the previous extraction: {restore}"
+                "{error}; could not restore the previous extraction: {restore_error}"
             ))
         })?;
+        if let Err(cleanup) = retire(&journal) {
+            return Err(io::Error::other(format!(
+                "{error}; previous extraction restored; journal cleanup pending: {cleanup}"
+            )));
+        }
         return Err(error);
     }
-    retire(&journal)
+    Ok(())
 }

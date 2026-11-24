@@ -398,6 +398,9 @@ test("retirement failure restores the previous extraction before the HTTP error"
     writeFileSync(`${gate}.release`, "go");
     const failed = await request;
     expect(failed.status).toBe(500);
+    expect(ApiErrorSchema.parse(await failed.json()).error.message).toContain(
+      "previous extraction restored; journal cleanup pending",
+    );
     expect(readFileSync(markdown, "utf8")).toBe(previous);
     expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(source);
   } finally {
