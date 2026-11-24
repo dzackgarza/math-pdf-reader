@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::config::{EXTRACTION_SUFFIX, KEY_HASH_PREFIX, MAX_KEY_BYTES, PDF_HEADER_WINDOW};
+use nix::fcntl::{renameat2, RenameFlags};
 use sanitize_filename::{
     is_sanitized_with_options, sanitize_with_options, Options, OptionsForCheck,
 };
@@ -185,15 +186,19 @@ pub fn migrate(root: &Path) -> std::io::Result<()> {
                     ),
                 ));
             }
-            if destination.try_exists()? {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AlreadyExists,
-                    format!(
-                        "cannot migrate {}: {} already exists",
-                        source.display(),
-                        destination.display()
-                    ),
-                ));
+            match std::fs::symlink_metadata(destination) {
+                Ok(_) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        format!(
+                            "cannot migrate {}: {} already exists",
+                            source.display(),
+                            destination.display()
+                        ),
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
             }
             pending = true;
         }
@@ -201,21 +206,32 @@ pub fn migrate(root: &Path) -> std::io::Result<()> {
             continue;
         }
         std::fs::create_dir_all(&directory)?;
+        let root_dir = std::fs::File::open(root)?;
+        let document_dir = std::fs::File::open(&directory)?;
         for (source, destination, _) in moves {
             if !source.try_exists()? {
                 continue;
             }
-            if destination.try_exists()? {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AlreadyExists,
+            renameat2(
+                &root_dir,
+                source.file_name().expect("a legacy source has a file name"),
+                &document_dir,
+                destination
+                    .file_name()
+                    .expect("a document artifact has a file name"),
+                RenameFlags::RENAME_NOREPLACE,
+            )
+            .map_err(|error| {
+                let error = std::io::Error::from(error);
+                std::io::Error::new(
+                    error.kind(),
                     format!(
-                        "cannot migrate {}: {} already exists",
+                        "cannot migrate {} to {}: {error}",
                         source.display(),
                         destination.display()
                     ),
-                ));
-            }
-            std::fs::rename(source, destination)?;
+                )
+            })?;
         }
         std::fs::File::open(directory)?.sync_all()?;
     }
