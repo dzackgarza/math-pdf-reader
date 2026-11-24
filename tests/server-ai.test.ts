@@ -378,6 +378,66 @@ test("a different PDF captured under a deleted key gets a new chat", async () =>
   }
 });
 
+test("deleting an unopened legacy chat clears its key before recapture", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-legacy-delete-"));
+  const app = await storedBucket("true", root, assistant.port);
+  assistant.locations.ses_legacy = join(root, "long-notes");
+  mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
+  writeFileSync(join(dirname(app.indexExport), "ai/chats.json"),
+    JSON.stringify({ "long-notes": "ses_legacy" }));
+  try {
+    expect((await app.request("/api/items/long-notes", { method: "DELETE" })).status).toBe(200);
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
+      "long-notes.pdf", { type: "application/pdf" }));
+    form.set("pdf_url", "https://www.math.example.edu/~author/replacement.pdf");
+    form.set("title_hint", "Replacement Notes");
+    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+    const opened = await app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+    expect(opened.status).toBe(200);
+    expect((await opened.json() as { sessionUrl: string }).sessionUrl).toContain("/session/ses_fake");
+    expect(assistant.moves).toEqual([]);
+  } finally {
+    await app.stop();
+    assistant.stop();
+  }
+});
+
+test("a stale chat record cannot receive page context from a replacement paper", async () => {
+  const assistant = fakeAssistant();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-stale-view-"));
+  const app = await storedBucket("true", root, assistant.port);
+  const chatFile = join(dirname(app.indexExport), "ai/chats.json");
+  try {
+    const opened = await app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+    expect(opened.status).toBe(200);
+    const oldRecord = readFileSync(chatFile);
+    const oldView = assistant.entries["ses_fake/reader-view"];
+    expect((await app.request("/api/items/long-notes", { method: "DELETE" })).status).toBe(200);
+    const form = new FormData();
+    form.set("pdf", new File([readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
+      "long-notes.pdf", { type: "application/pdf" }));
+    form.set("pdf_url", "https://www.math.example.edu/~author/replacement.pdf");
+    form.set("title_hint", "Replacement Notes");
+    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+    writeFileSync(chatFile, oldRecord);
+    expect((await readPage(app, 2)).status).toBe(200);
+    expect(assistant.entries["ses_fake/reader-view"]).toBe(oldView);
+  } finally {
+    await app.stop();
+    assistant.stop();
+  }
+});
+
 test("an extraction placed after a chat opens changes no workspace or source instruction", async () => {
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));

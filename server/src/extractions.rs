@@ -194,15 +194,16 @@ fn produced(plugin_id: &str, output: &Path) -> AppResult<bool> {
     Ok(names.iter().any(|name| name == EXTRACTION_ARTIFACTS))
 }
 
-fn artifact(root: &Path, path: &Path) -> AppResult<(NonEmpty, crate::contract::Sha256, i64)> {
+fn artifact(path: &Path, relative: &Path) -> AppResult<(NonEmpty, crate::contract::Sha256, i64)> {
+    if !path.symlink_metadata()?.is_file() {
+        return Err(broken(format!(
+            "expected a regular file at {}",
+            path.display()
+        )));
+    }
     let bytes = std::fs::read(path)?;
-    let relative = path
-        .strip_prefix(root)
-        .expect("an artifact lies in the root")
-        .to_string_lossy()
-        .into_owned();
     Ok((
-        nonempty(relative),
+        nonempty(relative.to_string_lossy().into_owned()),
         sha256(&bytes)
             .try_into()
             .expect("a SHA-256 digest is 64 hex digits"),
@@ -210,25 +211,40 @@ fn artifact(root: &Path, path: &Path) -> AppResult<(NonEmpty, crate::contract::S
     ))
 }
 
-// The placed Markdown and artifacts, with their hashes.
-fn placed(
-    state: &Shared,
+// Read every result while it is staged. A bad artifact must fail the run before publication.
+fn staged_result(
+    output: &Path,
     key: &str,
     plugin: &ExtractionManifestPluginsItem,
 ) -> AppResult<ExtractionOutcome> {
-    let root = &state.config.root;
     let parsed = Key::parse(key).expect("an indexed key is a key");
+    let root = Path::new("");
     let document = layout::document_dir(root, &parsed);
-    let (path, sha256, size) = artifact(&document, &layout::markdown_path(root, &parsed))?;
+    let public_markdown = layout::markdown_path(root, &parsed);
+    let (path, sha256, size) = artifact(
+        &output.join(EXTRACTION_MARKDOWN),
+        public_markdown
+            .strip_prefix(&document)
+            .expect("Markdown belongs to the paper"),
+    )?;
     let mut artifacts = Vec::new();
-    let directory = layout::extraction_dir(root, &parsed);
+    let public_artifacts = layout::extraction_dir(root, &parsed);
+    let public_artifacts = public_artifacts
+        .strip_prefix(&document)
+        .expect("artifacts belong to the paper");
+    let directory = output.join(EXTRACTION_ARTIFACTS);
     if directory.is_dir() {
         for entry in WalkDir::new(&directory).sort_by_file_name() {
             let entry = entry.map_err(AppError::internal)?;
-            if entry.file_type().is_file()
+            if !entry.file_type().is_dir()
                 && entry.file_name().to_string_lossy() != EXTRACTION_METADATA
             {
-                let (path, sha256, size) = artifact(&document, entry.path())?;
+                let relative = entry
+                    .path()
+                    .strip_prefix(&directory)
+                    .expect("walked staged artifact");
+                let (path, sha256, size) =
+                    artifact(entry.path(), &public_artifacts.join(relative))?;
                 artifacts.push(ExtractionOutcomeSucceededArtifactsItem { path, sha256, size });
             }
         }
@@ -319,12 +335,17 @@ async fn run(
         })
         .to_string(),
     )?;
+    let outcome = staged_result(&output, &key, plugin)?;
     state
         .store
-        .place_extraction(&key, output.join(EXTRACTION_MARKDOWN), Some(artifacts))
+        .place_extraction(
+            &key,
+            &indexed.stored.provenance,
+            output.join(EXTRACTION_MARKDOWN),
+            Some(artifacts),
+        )
         .await?;
     state.stored();
-    let outcome = placed(state, &key, plugin)?;
     Ok(outcome)
 }
 

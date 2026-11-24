@@ -91,15 +91,22 @@ impl AppState {
     /// as removed before its PDF goes to the trash, so the index export drops it even across a
     /// restart, and then its filing goes.
     pub async fn remove(&self, key: &str) -> AppResult<Organization> {
+        let _chat = self.ai.chats.lock().await;
+        if let Some(indexed) = self.indexed(key).await? {
+            self.ai.bind_legacy(key, &indexed.stored.provenance).await?;
+        }
         let keys = [key.to_string()];
         self.organizations.record_removal(&keys).await?;
         if let Err(error) = self.store.remove(key).await {
             self.organizations.withdraw_removal(&keys).await?;
             return Err(error);
         }
-        self.organizations
+        let organization = self
+            .organizations
             .update(|org| remove_preferred_lineage(remove_item(org, key), key))
-            .await
+            .await?;
+        self.ai.forget(key).await?;
+        Ok(organization)
     }
 
     /// The keys a new capture may not take although no PDF holds them: the keys the filing or

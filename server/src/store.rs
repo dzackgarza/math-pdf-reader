@@ -169,8 +169,8 @@ fn temporary(directory: &Path) -> std::io::Result<NamedTempFile> {
 }
 
 #[cfg(feature = "arxiv-fixtures")]
-fn promotion_test_gate(phase: &str) -> std::io::Result<()> {
-    let Some(base) = std::env::var_os(format!("PDF_BUCKET_TEST_PROMOTION_{phase}")) else {
+pub(crate) fn test_gate(variable: &str) -> std::io::Result<()> {
+    let Some(base) = std::env::var_os(variable) else {
         return Ok(());
     };
     let base = PathBuf::from(base);
@@ -179,7 +179,7 @@ fn promotion_test_gate(phase: &str) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     while !release.try_exists()? {
         if start.elapsed() > Duration::from_secs(30) {
-            return Err(std::io::Error::other("promotion test gate timed out"));
+            return Err(std::io::Error::other(format!("{variable} timed out")));
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -575,17 +575,17 @@ impl Store {
                 std::fs::create_dir(&directory)?;
                 std::fs::File::open(&root)?.sync_all()?;
                 #[cfg(feature = "arxiv-fixtures")]
-                promotion_test_gate("CREATED")?;
+                test_gate("PDF_BUCKET_TEST_PROMOTION_CREATED")?;
                 let pending = directory.join("pending.pdf");
                 let anchor = directory.join("source.pdf");
                 std::fs::hard_link(&output, &pending)?;
                 std::fs::File::open(&directory)?.sync_all()?;
                 #[cfg(feature = "arxiv-fixtures")]
-                promotion_test_gate("PENDING")?;
+                test_gate("PDF_BUCKET_TEST_PROMOTION_PENDING")?;
                 std::fs::hard_link(&output, &anchor)?;
                 std::fs::File::open(&directory)?.sync_all()?;
                 #[cfg(feature = "arxiv-fixtures")]
-                promotion_test_gate("BEFORE")?;
+                test_gate("PDF_BUCKET_TEST_PROMOTION_BEFORE")?;
                 if markdown.try_exists()? || extraction.try_exists()? {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::AlreadyExists,
@@ -604,7 +604,7 @@ impl Store {
                 )
                 .map_err(std::io::Error::from)?;
                 #[cfg(feature = "arxiv-fixtures")]
-                promotion_test_gate("AFTER")?;
+                test_gate("PDF_BUCKET_TEST_PROMOTION_AFTER")?;
                 std::fs::File::open(&directory)?.sync_all()?;
                 std::fs::File::open(&root)?.sync_all()
             })
@@ -1069,29 +1069,23 @@ impl Store {
     pub async fn place_extraction(
         &self,
         key: &str,
+        expected_provenance: &Provenance,
         markdown: PathBuf,
         artifacts: Option<PathBuf>,
     ) -> AppResult<()> {
         let key = self.existing_key(key)?;
         let _key = self.lock(&key).await;
-        let root = self.root().to_path_buf();
-        let document = layout::document_dir(&root, &key);
-        let markdown_path = layout::markdown_path(&root, &key);
-        let extraction_dir = layout::extraction_dir(&root, &key);
-        let previous: Vec<PathBuf> = [&markdown_path, &extraction_dir]
-            .into_iter()
-            .filter(|path| path.exists())
-            .cloned()
-            .collect();
-        if !previous.is_empty() {
-            trash_all(previous).await?;
+        let current = self.item(key.as_str()).await?;
+        if current.as_ref().map(|item| &item.stored.provenance) != Some(expected_provenance) {
+            return Err(AppError::api(
+                StatusCode::CONFLICT,
+                ApiErrorErrorKind::StoreFailed,
+                format!("{key}.pdf changed while its extraction ran"),
+            ));
         }
+        let root = self.root().to_path_buf();
         blocking(move || {
-            if let Some(artifacts) = artifacts {
-                std::fs::rename(artifacts, &extraction_dir)?;
-            }
-            std::fs::rename(markdown, &markdown_path)?;
-            std::fs::File::open(&document)?.sync_all()
+            crate::extraction_publication::publish(&root, &key, &markdown, artifacts.as_deref())
         })
         .await
     }

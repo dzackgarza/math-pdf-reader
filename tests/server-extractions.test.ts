@@ -85,7 +85,7 @@ async function bucketWithExtractors(
     body: form,
   });
   expect(captured.status).toBe(200);
-  return { root, app };
+  return { root, app, manifestPath };
 }
 
 test("the shipped extraction plugins are listed with their accepted inputs", async () => {
@@ -336,6 +336,41 @@ test("publication failure preserves the complete extraction after restart", asyn
   }
 });
 
+test("restart restores the previous extraction when publication stops between the two renames", async () => {
+  const { app, root, manifestPath } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20 },
+    { mode: "markdown", maxPages: 20 },
+  ]);
+  const record = await app.request("/api/items/lattices/extractions/record", { method: "POST" });
+  expect(record.status).toBe(200);
+  const document = join(root, "lattices");
+  const markdown = join(document, "lattices.md");
+  const original = readFileSync(markdown, "utf8");
+  await app.stop();
+  const options = { root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath };
+  const gate = join(root, ".publication");
+  const publishing = await serveBucket({ ...options, env: { PDF_BUCKET_TEST_EXTRACTION_PUBLISH: gate } });
+  const request = publishing.request("/api/items/lattices/extractions/markdown", { method: "POST" })
+    .catch(() => undefined);
+  try {
+    const deadline = performance.now() + 15000;
+    while (!existsSync(`${gate}.ready`) && performance.now() < deadline) await Bun.sleep(20);
+    expect(existsSync(`${gate}.ready`)).toBe(true);
+  } finally {
+    await publishing.stop();
+    await request;
+  }
+  const restarted = await serveBucket(options);
+  try {
+    expect(readFileSync(markdown, "utf8")).toBe(original);
+    expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(
+      readFileSync(join(document, "lattices.pdf")),
+    );
+  } finally {
+    await restarted.stop();
+  }
+}, 30000);
+
 test("a later run moves the whole previous extraction to the trash; a failed run keeps it", async () => {
   const { root, app } = await bucketWithExtractors([
     { mode: "record", maxPages: 20 },
@@ -432,12 +467,14 @@ test("an extraction finishing after key reuse cannot publish into the replacemen
   expect(removed.status).toBe(200);
   const replacement = join(import.meta.dir, "fixtures/lecture-notes.pdf");
   await capture(replacement);
+  const replacementPdf = join(root, "lattices", "lattices.pdf");
+  const storedReplacement = readFileSync(replacementPdf);
   writeFileSync(join(root, "extraction-release"), "release");
 
   const late = await running;
   expect(late.status).toBe(409);
   expect(ApiErrorSchema.parse(await late.json()).error.kind).toBe("store_failed");
-  expect(readFileSync(join(root, "lattices", "lattices.pdf"))).not.toEqual(readFileSync(fixture));
+  expect(readFileSync(replacementPdf)).toEqual(storedReplacement);
   expect(existsSync(join(root, "lattices", "lattices.md"))).toBe(false);
   await app.stop();
 });

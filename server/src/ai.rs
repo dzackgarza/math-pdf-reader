@@ -20,14 +20,14 @@ use axum::{Json, Router};
 use base64::Engine;
 use percent_encoding::utf8_percent_encode;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
 use crate::app::origin;
 use crate::config::{BucketConfig, ProcessEnv, URI_COMPONENT};
-use crate::contract::{AiSession, AiSessionRequest, ApiErrorErrorKind, Reading};
+use crate::contract::{AiSession, AiSessionRequest, ApiErrorErrorKind, Provenance, Reading};
 use crate::error::{AppError, AppResult};
 use crate::layout::{self, Key};
 use crate::state::{bucket_item, parse_body, Shared};
@@ -63,8 +63,8 @@ pub struct Ai {
     http: Client,
     /// The server this process started, with the bucket origin its config allows.
     started: Mutex<Option<(Child, String)>>,
-    /// One chat looked up, created or moved at a time.
-    chats: Mutex<()>,
+    /// Serializes chat lookup with paper removal.
+    pub(crate) chats: Mutex<()>,
 }
 
 fn apply_process_env(command: &mut Command, process_env: &ProcessEnv) {
@@ -112,6 +112,30 @@ struct SessionLocation {
 #[derive(Deserialize)]
 struct Pairing {
     code: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+enum ChatRecord {
+    Current { id: String, provenance: Provenance },
+    Legacy(String),
+}
+
+impl ChatRecord {
+    fn id(&self) -> &str {
+        match self {
+            Self::Current { id, .. } | Self::Legacy(id) => id,
+        }
+    }
+
+    fn belongs_to(&self, provenance: &Provenance) -> bool {
+        match self {
+            Self::Current {
+                provenance: stored, ..
+            } => stored == provenance,
+            Self::Legacy(_) => true,
+        }
+    }
 }
 
 impl Ai {
@@ -316,7 +340,7 @@ impl Ai {
         layout::document_dir(&self.data_root, key)
     }
 
-    async fn chat_file(&self) -> AppResult<(PathBuf, BTreeMap<String, String>)> {
+    async fn chat_file(&self) -> AppResult<(PathBuf, BTreeMap<String, ChatRecord>)> {
         let file = self.root.join("chats.json");
         let chats = match tokio::fs::read(&file).await {
             Ok(bytes) => serde_json::from_slice(&bytes)?,
@@ -360,25 +384,39 @@ impl Ai {
         key: &str,
         directory: &FsPath,
         title: &str,
+        provenance: &Provenance,
     ) -> AppResult<String> {
-        let _one = self.chats.lock().await;
         let (file, mut chats) = self.chat_file().await?;
-        if let Some(id) = chats.get(key) {
+        if let Some(record) = chats
+            .get(key)
+            .filter(|record| record.belongs_to(provenance))
+        {
+            let id = record.id();
             if let Some(location) = self.session_location(password, id).await? {
-                if location == directory {
-                    return Ok(id.clone());
+                if location != directory {
+                    self.api(
+                        reqwest::Method::POST,
+                        &format!("/api/session/{id}/move"),
+                        password,
+                    )
+                    .json(&json!({ "directory": directory, "delivery": "steer" }))
+                    .send()
+                    .await
+                    .map_err(unavailable)?
+                    .error_for_status()
+                    .map_err(unavailable)?;
                 }
-                self.api(
-                    reqwest::Method::POST,
-                    &format!("/api/session/{id}/move"),
-                    password,
-                )
-                .json(&json!({ "directory": directory, "delivery": "steer" }))
-                .send()
-                .await
-                .map_err(unavailable)?
-                .error_for_status()
-                .map_err(unavailable)?;
+                let id = id.to_string();
+                if matches!(record, ChatRecord::Legacy(_)) {
+                    chats.insert(
+                        key.to_string(),
+                        ChatRecord::Current {
+                            id: id.clone(),
+                            provenance: provenance.clone(),
+                        },
+                    );
+                    write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
+                }
                 return Ok(id.clone());
             }
         }
@@ -397,9 +435,38 @@ impl Ai {
             .json()
             .await
             .map_err(unavailable)?;
-        chats.insert(key.to_string(), created.data.id.clone());
+        chats.insert(
+            key.to_string(),
+            ChatRecord::Current {
+                id: created.data.id.clone(),
+                provenance: provenance.clone(),
+            },
+        );
         write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
         Ok(created.data.id)
+    }
+
+    pub async fn forget(&self, key: &str) -> AppResult<()> {
+        let (file, mut chats) = self.chat_file().await?;
+        if chats.remove(key).is_some() {
+            write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn bind_legacy(&self, key: &str, provenance: &Provenance) -> AppResult<()> {
+        let (file, mut chats) = self.chat_file().await?;
+        if let Some(ChatRecord::Legacy(id)) = chats.get(key) {
+            chats.insert(
+                key.to_string(),
+                ChatRecord::Current {
+                    id: id.clone(),
+                    provenance: provenance.clone(),
+                },
+            );
+            write_file(file, serde_json::to_vec_pretty(&chats)?).await?;
+        }
+        Ok(())
     }
 
     /// Puts the `reader-view` entry on session ID: a pointer to what the reader shows of KEY.
@@ -463,6 +530,7 @@ async fn open_session(
 ) -> AppResult<Json<AiSession>> {
     let request: AiSessionRequest = parse_body(&body)?;
     let key = request.key.to_string();
+    let _one = state.ai.chats.lock().await;
     let indexed = state.require(&key).await?;
     let ai = &state.ai;
     let bucket_origin = origin(&headers)?;
@@ -470,7 +538,15 @@ async fn open_session(
     let title = indexed.stored.title.text.to_string();
     let parsed = Key::parse(&key).expect("an indexed key is a key");
     let directory = ai.document_directory(&parsed);
-    let id = ai.session(&password, &key, &directory, &title).await?;
+    let id = ai
+        .session(
+            &password,
+            &key,
+            &directory,
+            &title,
+            &indexed.stored.provenance,
+        )
+        .await?;
     ai.put_view(&state, &password, &id, &key, &bucket_origin)
         .await?;
     let code = ai.pair(&password).await?;
@@ -547,11 +623,19 @@ pub async fn announce_view(state: &Shared, key: &str, bucket_origin: &str) -> Ap
     if !ai.answers(&password).await {
         return Ok(());
     }
+    let _one = ai.chats.lock().await;
     let (_, chats) = ai.chat_file().await?;
-    let Some(id) = chats.get(key) else {
+    let Some(record) = chats.get(key) else {
         return Ok(());
     };
-    ai.put_view(state, &password, id, key, bucket_origin).await
+    let Some(indexed) = state.indexed(key).await? else {
+        return Ok(());
+    };
+    if !record.belongs_to(&indexed.stored.provenance) {
+        return Ok(());
+    }
+    ai.put_view(state, &password, record.id(), key, bucket_origin)
+        .await
 }
 
 /// Assistant HTTP routes.

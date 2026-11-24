@@ -56,6 +56,15 @@ Successful placement writes into the existing document directory. The bucket doe
 call an OpenCode refresh endpoint. The existing chat discovers current files by reading
 its working directory on a later turn.
 
+The bucket checks the input PDF's embedded provenance before it publishes an
+extraction. If another paper now has the same key, the request returns
+`409 store_failed`. If publication fails, the previous Markdown and its
+artifacts remain available. Startup restores them if the process stopped during
+publication.
+
+A chat belongs to the captured paper. Reopening that paper retains its chat.
+Deleting it and capturing a different paper under the same key starts a new chat.
+
 ## Source and hint failures
 
 Session open returns `404 unknown_item` for a missing original and

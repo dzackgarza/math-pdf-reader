@@ -8,7 +8,7 @@ printf 'started\n' >"$root/extraction-started"
 attempt=0
 while [ ! -e "$root/extraction-release" ]; do
 	attempt=$((attempt + 1))
-	if [ "$attempt" -ge 100 ]; then
+	if [ "$attempt" -ge 1200 ]; then
 		exit 1
 	fi
 	sleep 0.05

@@ -123,6 +123,7 @@ pub fn extraction_dir(root: &Path, key: &Key) -> PathBuf {
 /// Moves the previous flat layout into each paper's document directory. A partly moved record is
 /// completed on the next call. Two current copies of one artifact are never merged or overwritten.
 pub fn migrate(root: &Path) -> std::io::Result<()> {
+    crate::extraction_publication::recover(root)?;
     let mut keys = BTreeSet::new();
     for entry in std::fs::read_dir(root)? {
         let entry = entry?;
@@ -147,25 +148,60 @@ pub fn migrate(root: &Path) -> std::io::Result<()> {
     for key in keys {
         let directory = document_dir(root, &key);
         let moves = [
-            (root.join(format!("{key}.pdf")), pdf_path(root, &key)),
+            (root.join(format!("{key}.pdf")), pdf_path(root, &key), false),
             (
                 root.join(format!("{key}{EXTRACTION_SUFFIX}")),
                 extraction_dir(root, &key),
+                true,
             ),
-            (root.join(format!("{key}.md")), markdown_path(root, &key)),
+            (
+                root.join(format!("{key}.md")),
+                markdown_path(root, &key),
+                false,
+            ),
         ];
         let mut pending = false;
-        for (source, _) in &moves {
-            if source.try_exists()? {
-                pending = true;
-                break;
+        for (source, destination, expect_directory) in &moves {
+            let kind = match std::fs::symlink_metadata(source) {
+                Ok(metadata) => metadata.file_type(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            let current_document = kind.is_dir()
+                && source
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .and_then(Key::parse)
+                    .is_some_and(|key| pdf_path(root, &key).is_file());
+            if current_document
+                || kind.is_dir() != *expect_directory
+                || (!kind.is_dir() && !kind.is_file())
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "cannot migrate {}: unexpected artifact type",
+                        source.display()
+                    ),
+                ));
             }
+            if destination.try_exists()? {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "cannot migrate {}: {} already exists",
+                        source.display(),
+                        destination.display()
+                    ),
+                ));
+            }
+            pending = true;
         }
         if !pending {
             continue;
         }
         std::fs::create_dir_all(&directory)?;
-        for (source, destination) in moves {
+        for (source, destination, _) in moves {
             if !source.try_exists()? {
                 continue;
             }
