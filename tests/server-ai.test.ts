@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -42,6 +43,7 @@ async function storedBucket(
   root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-")),
   aiPort?: number,
   extractionsManifest = EXTRACTIONS_MANIFEST,
+  env?: Record<string, string>,
 ) {
   const config = loadAppConfig(CONFIG_PATH);
   config.ai.binary = binary;
@@ -50,6 +52,7 @@ async function storedBucket(
     root,
     zoteroUrl: closedPortUrl(),
     extractionsManifest,
+    env,
     config,
   });
   const form = new FormData();
@@ -206,6 +209,52 @@ const readPage = (
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ page, pages: 200 }),
   });
+
+test("a failed text hint preserves the page report and permits opening the chat", async () => {
+  const assistant = fakeAssistant();
+  // The PDF page contains a multiplication sign. An ASCII-only subprocess cannot print it.
+  const app = await storedBucket("true", undefined, assistant.port, EXTRACTIONS_MANIFEST, {
+    PYTHONIOENCODING: "ascii:strict",
+  });
+  try {
+    expect((await readPage(app, 2)).status).toBe(200);
+    const context = await view(app);
+    expect(context).toContain("page 2 of 200");
+    expect(context).toContain("Page search hint unavailable");
+    expect(context).toContain("ascii");
+    const opened = await app.request("/api/ai/session", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+    expect(opened.status).toBe(200);
+    expect(assistant.entries["ses_fake/reader-view"]).toContain("page 2 of 200");
+  } finally {
+    await app.stop();
+    assistant.stop();
+  }
+});
+
+test("opening a chat distinguishes a missing original from a damaged original", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-original-"));
+  const app = await storedBucket("false", root);
+  const pdf = join(root, "long-notes", "long-notes.pdf");
+  const open = () => app.request("/api/ai/session", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "long-notes" }),
+  });
+  try {
+    renameSync(pdf, join(root, "held-original"));
+    const missing = await open();
+    expect(missing.status).toBe(404);
+    expect(ApiErrorSchema.parse(await missing.json()).error.kind).toBe("unknown_item");
+    writeFileSync(pdf, "truncated PDF");
+    const damaged = await open();
+    expect(damaged.status).toBe(422);
+    expect(ApiErrorSchema.parse(await damaged.json()).error.kind).toBe("unreadable_pdf");
+  } finally {
+    await app.stop();
+  }
+});
 
 test("the view reports the exact shown page even without structured extraction", async () => {
   const app = await storedBucket("true");
