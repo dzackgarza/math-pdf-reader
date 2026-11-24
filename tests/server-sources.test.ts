@@ -28,7 +28,7 @@ import {
 import { CONFIG_PATH, STORE_COMMAND, loadAppConfig } from "../src/contract/config";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { recoveryCases } from "./fixtures/recovery-cases";
-import { listItems, readIndexExport, recordMetadata } from "./store";
+import { listItems, readIndexExport, readOrganization, recordMetadata, unfiled, writeOrganization } from "./store";
 
 setDefaultTimeout(30_000);
 
@@ -436,6 +436,92 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
   expect(readFileSync(join(root, "legacy-original", "preferred-notes.txt"), "utf8")).toBe("# Reviewed extraction\n");
   expect(existsSync(join(root, "legacy-preferred"))).toBe(false);
 });
+
+test.each(["BEFORE", "AFTER"] as const)(
+  "interrupted legacy linked replacement %s keeps filing and recovers its active papers",
+  async (phase) => {
+    served.set("/pdf/1234.5678v1", problemSet);
+    const config = loadAppConfig(CONFIG_PATH);
+    const localArxiv = {
+      ...config,
+      arxiv: {
+        api_url: at("/api/query"),
+        abs_url: at("/abs/"),
+        pdf_url: at("/pdf/"),
+        e_print_url: at("/e-print/"),
+      },
+    };
+    const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-legacy-gate-")), phase.toLowerCase());
+    const exportFile = join(mkdtempSync(join(tmpdir(), "pdf-bucket-legacy-export-")), "index.json");
+    const { root, app, request, capture, item } = await bucket(
+      exportFile, localArxiv, EXTRACTIONS_MANIFEST,
+      { [`PDF_BUCKET_TEST_PROMOTION_${phase}`]: gate },
+    );
+    await capture(lectureNotes, "linked-original", at("/notes/linked.pdf"));
+    const candidate = await discoveredCandidate(root, "linked-original", request);
+    await capture(problemSet, "linked-preferred", candidate.pdfUrl);
+    const original = (await listItems(root, ["linked-original"]))[0];
+    if (original === undefined) throw new Error("the original PDF is missing");
+    const preferredPath = join(root, "linked-preferred", "linked-preferred.pdf");
+    const embeddedPath = `${preferredPath}.lineage`;
+    const embed = Bun.spawn([
+      ...STORE_COMMAND,
+      "embed-lineage",
+      "--original-key=linked-original",
+      `--original-provenance=${JSON.stringify(original.provenance)}`,
+      "--preferred-key=linked-preferred",
+      `--discovered-source-url=${candidate.pdfUrl}`,
+      `--promoted-at=${new Date().toISOString()}`,
+      "--", preferredPath, embeddedPath,
+    ], { stdout: "pipe", stderr: "pipe" });
+    const [exit, stderr] = await Promise.all([embed.exited, new Response(embed.stderr).text()]);
+    if (exit !== 0) throw new Error(`legacy lineage fixture failed: ${stderr}`);
+    renameSync(embeddedPath, preferredPath);
+    expect((await request("POST", "/api/items/linked-original/mirrors", {
+      url: at("/notes/linked.pdf"),
+    })).status).toBe(200);
+    const preferred = await item("linked-preferred");
+    const organization = readOrganization(root);
+    organization.items["linked-preferred"] = {
+      ...unfiled(preferred.provenance),
+      sourceLineage: preferred.sourceLineage,
+    };
+    writeOrganization(root, organization);
+    const deadline = Date.now() + 10_000;
+    while (!readIndexExport(exportFile)?.items.some((entry) => entry.key === "linked-preferred")) {
+      if (Date.now() > deadline) throw new Error("the old preferred item was not exported");
+      await Bun.sleep(50);
+    }
+    const originalBytes = readFileSync(join(root, "linked-original", "linked-original.pdf"));
+    const promotion = request("POST", "/api/items/linked-original/arxiv/promote", candidate).catch(() => undefined);
+    await waitForFile(`${gate}.ready`);
+    await app.stop();
+    await promotion;
+    const restarted = await serveBucket({
+      root, zoteroUrl: closedPortUrl(), extractionsManifest: EXTRACTIONS_MANIFEST,
+      config: localArxiv, indexExport: exportFile,
+    });
+    try {
+      const recovered = LibraryPayloadSchema.parse(await (await restarted.request("/api/library")).json());
+      const active = recovered.items.map((entry) => entry.id).sort();
+      expect(active).toEqual(phase === "BEFORE" ? ["linked-original", "linked-preferred"].sort() : ["linked-original"]);
+      const currentBytes = readFileSync(join(root, "linked-original", "linked-original.pdf"));
+      if (phase === "BEFORE") expect(currentBytes).toEqual(originalBytes);
+      else expect(currentBytes).not.toEqual(originalBytes);
+      if (phase === "AFTER") {
+        expect(recovered.items[0]?.provenance.pdf_url).toBe(candidate.pdfUrl);
+        expect(recovered.missing.map((entry) => entry.key)).not.toContain("linked-preferred");
+        expect(readOrganization(root).items["linked-preferred"]).toBeUndefined();
+      } else {
+        expect(existsSync(preferredPath)).toBe(true);
+        expect(readOrganization(root).items["linked-preferred"]).toBeDefined();
+      }
+    } finally {
+      await restarted.stop();
+    }
+  },
+  60_000,
+);
 
 test("simultaneous promotions from separate server processes reuse one preferred item", async () => {
   served.set("/pdf/1234.5678v1", problemSet);
