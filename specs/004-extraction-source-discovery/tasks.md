@@ -86,10 +86,10 @@ durable historical lineage, arXiv eligibility, and retained filing and reading s
 - [X] T023 [US2] Implement server-side candidate validation and source fetch verification for `POST /api/items/{key}/arxiv/promote` in `server/src/arxiv.rs` and `server/src/imports.rs`
 - [ ] T024 [US2] Implement atomic same-key replacement in `server/src/store.rs` and `server/src/organization.rs`: stage the arXiv PDF with its own provenance and historical capture lineage, exchange the paper directory, retire the old PDF and extraction, and preserve the captured paper on failure
 - [X] T025 [US2] Expose promotion response and lineage state through `server/src/app.rs`, `server/src/state.rs`, and `src/contract/library.ts`
-- [ ] T025a [US2] Expose historical lineage on the one current paper and keep it selected under its existing key
+- [X] T025a [US2] Expose historical lineage on the one current paper and keep it selected under its existing key
 - [X] T026 [US2] Add browser actions for candidate search and explicit promotion/replacement in `src/web/libraryActions.ts`
-- [ ] T027 [US2] Add candidate replacement controls, progress, failure, and success messaging in `src/web/components/InspectorPanel.tsx`
-- [ ] T028 [US2] Refresh library state and keep the same paper selected after successful replacement in `src/web/Workspace.tsx`
+- [X] T027 [US2] Add candidate replacement controls, progress, failure, and success messaging in `src/web/components/InspectorPanel.tsx`
+- [X] T028 [US2] Refresh library state and keep the same paper selected after successful replacement in `src/web/Workspace.tsx`
 - [ ] T028a [US2] Make repeated promotion return/select the existing key without creating another paper
 - [X] T028b [US2] Add visible progress, completion, and failure timing assertions for the 10-second readiness criterion
 
@@ -225,6 +225,6 @@ and repository QC.
 - [ ] T069 Make the SC-002 corpus test in `tests/server-sources.test.ts` use captured-style metadata (abbreviated, reordered or missing authors, TeX in titles, changed subtitles) and an Atom feed that also holds distractor entries. The test now searches with each paper's exact title and authors against a feed that holds only the 20 corpus entries. Per SC-002 (partial).
 - [ ] T070 Report an arXiv API refusal (HTTP 429 or 503, with its `Retry-After`) or an unreachable API as a distinct upstream error that names arXiv and when to retry, and keep requests to the arXiv API at least 3 seconds apart, in `server/src/arxiv.rs` and the discovery controls in `src/web/components/InspectorPanel.tsx`. A refusal now shows as an `internal` error that contains the query URL. Per FR-017 (missing).
 - [ ] T071 Replace `webkit2gtk-driver` with `webkitgtk-webdriver` in the `ci-setup` recipe in `justfile`. The CI image has no install candidate for the old package, so Push QC fails in setup and no QC gate runs. Per T039 and the constitution Development Workflow (partial).
-- [ ] T072 Show the promoted paper's arXiv URL and historical capture URL in `src/web/components/InspectorPanel.tsx` on the one current item, per FR-019, FR-007 and FR-013 (missing).
+- [X] T072 Show the promoted paper's arXiv URL and historical capture URL in `src/web/components/InspectorPanel.tsx` on the one current item, per FR-019, FR-007 and FR-013 (missing).
 - [ ] T073 Refuse discovery for a placeholder title with an explicit error that tells the user to set the title, in `search_candidates` in `server/src/arxiv.rs` and the discovery controls in `src/web/components/InspectorPanel.tsx`, per FR-018 (missing). The running library holds items titled "View PDF", "None" and bare file names.
 - [ ] T074 Apply the answer to the spec's open question on title-only matches in `score` in `server/src/arxiv.rs`, with a test in `tests/server-sources.test.ts`, per FR-006 (partial; blocked on the open question).
