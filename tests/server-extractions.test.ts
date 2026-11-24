@@ -390,7 +390,7 @@ test.each(["keep", "delete", "replace"] as const)("retirement failure followed b
   await app.stop();
 
   const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-retire-gate-")), "publication");
-  const options = { root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath };
+  const options = { root, indexExport: app.indexExport, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath };
   const publishing = await serveBucket({ ...options, env: { PDF_BUCKET_TEST_EXTRACTION_PUBLISH: gate } });
   const originalMode = statSync(root).mode & 0o777;
   const request = publishing.request("/api/items/lattices/extractions/markdown", { method: "POST" });

@@ -920,6 +920,8 @@ impl Store {
             .promotion_anchors(key.as_str(), expected.as_ref())
             .await?;
         paths.extend(anchors);
+        let recovery_root = root.to_path_buf();
+        blocking(move || crate::extraction_publication::recover(&recovery_root)).await?;
         trash_all(paths).await?;
         for directory in directories {
             remove_empty_directory(&directory)?;

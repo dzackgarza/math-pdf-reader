@@ -127,4 +127,4 @@ through direct discovery, then provision the installed app and verify real user 
 
 ## Phase 8: Convergence
 
-- [ ] T022 Make deletion and key reuse safe while extraction journal cleanup is pending in `server/src/store.rs` and `server/src/extraction_publication.rs`. Extend the retirement-failure HTTP regression: restore write access, delete the paper before stopping the server, then restart and verify the library opens with the paper absent. Also verify that cleanup cannot change a replacement paper's artifacts when it reuses the key. Trace to FR-009, SC-005 and T019 (partial).
+- [X] T022 Make deletion and key reuse safe while extraction journal cleanup is pending in `server/src/store.rs` and `server/src/extraction_publication.rs`. Extend the retirement-failure HTTP regression: restore write access, delete the paper before stopping the server, then restart and verify the library opens with the paper absent. Also verify that cleanup cannot change a replacement paper's artifacts when it reuses the key. Trace to FR-009, SC-005 and T019 (partial).

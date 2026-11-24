@@ -24,6 +24,11 @@ fn retire(journal: &Path) -> io::Result<()> {
 }
 
 fn restore(root: &Path, journal: &Path) -> io::Result<()> {
+    // Retirement can fail on a read-only store root even when restoration inside
+    // the paper and journal directories succeeds. Such a journal owns no paper files.
+    if journal.join("restored").try_exists()? {
+        return Ok(());
+    }
     let key = Key::parse(&fs::read_to_string(journal.join("key"))?).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "invalid extraction journal key")
     })?;
@@ -46,7 +51,8 @@ fn restore(root: &Path, journal: &Path) -> io::Result<()> {
         }
     }
     File::open(layout::document_dir(root, &key))?.sync_all()?;
-    Ok(())
+    fs::rename(journal.join("key"), journal.join("restored"))?;
+    File::open(journal)?.sync_all()
 }
 
 fn rollback(root: &Path, journal: &Path) -> io::Result<()> {
