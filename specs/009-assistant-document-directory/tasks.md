@@ -32,13 +32,15 @@ implementation. The real-provider check runs separately from tier 1.
   reads and whole-directory deletion, through the shared layout in
   `server/src/send.rs`, `server/src/store.rs` and their direct consumers
 
-## Phase 3: Open the paper directory
+## Phase 3: User Story 1 — Open the paper directory (P1, MVP)
 
-- [X] T006 Verify the session location and preservation of the session ID on move.
-- [X] T007 Verify a real shell read of a paper artifact through the live provider.
-- [X] T008 Grant the reader shell access and direct it to its working directory.
-- [X] T009 Supply the exact displayed page and optional correlation hint and retire
-  the full-page text route and its instructions.
+Open a PDF-only paper and check an answer against its visible content. Open an enriched paper and verify a shell read from its directory.
+
+- [X] T006 [US1] Verify the session location and preservation of the session ID on move in `tests/server-ai.test.ts`.
+- [X] T007 [US1] Verify a real shell read of a paper artifact through the live provider in `tests/server-ai-live.ts`.
+- [X] T008 [US1] Grant the reader shell access and direct it to its working directory in `server/src/ai.rs`.
+- [X] T009 [US1] Supply the exact displayed page and optional correlation hint and retire
+  the full-page text route and its instructions in `server/src/ai.rs`.
 
 ## Phase 4: User Story 2 - Enrich an already-open paper (P1)
 
@@ -67,10 +69,10 @@ file read.
   `.specify/memory/constitution.md`, `specs/005-assistant-page-context/`,
   `specs/009-assistant-document-directory/`, `README.md` and `docs/m4.md`
 - [X] T013 Record the document-directory decision in the `PLAN-PDF-BUCKET-ROADMAP` card's
-  Decision Log without changing completed issue claims
+  Decision Log using the design in `specs/009-assistant-document-directory/plan.md`
 - [X] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
   `just provision`, and verify migration, PDF-only access, shell reads and same-session unknown
-  artifact discovery against the provisioned app on port 8770
+  artifact discovery against the provisioned app on port 8770 per `specs/009-assistant-document-directory/quickstart.md`
 
 ## Acceptance coverage
 
@@ -96,7 +98,7 @@ file read.
   consumers of the new layout.
 - User Story 1 depends on T004 and T005. T006 and T007 precede T008 and T009.
 - User Story 2 uses User Story 1's directory session. T010 precedes T011.
-- T012 and T013 follow the accepted implementation behavior; T014 is last.
+- T012 and T013 follow the accepted implementation behavior; T014 verifies the initial directory workflow. T025 verifies the final installed revision.
 
 ## Parallel Opportunities
 
@@ -114,17 +116,31 @@ through direct discovery, then provision the installed app and verify real user 
 
 ## Phase 6: Convergence
 
-- [X] T015 CRITICAL: Preserve the last complete extraction across replacement failures in `server/src/store.rs`. Exercise a failure during publication through the extraction path and verify that the previous Markdown and its matching artifacts remain available after restart per Constitution IV and FR-008 (contradicts).
+- [X] T015 [US2] CRITICAL: Preserve the last complete extraction across replacement failures in `server/src/store.rs`. Exercise a failure during publication through the extraction path and verify that the previous Markdown and its matching artifacts remain available after restart per Constitution IV and FR-008 (contradicts).
 - [X] T016 Preserve other papers' directories when moving legacy artifacts in `server/src/layout.rs`. Cover a legacy `notes.pdf` beside a current `notes.md/` paper, and the corresponding PDF and extraction suffix collisions. Preserve both identities and their contents, or stop before moving an ambiguous entry and report the conflict per FR-009 and FR-010 (contradicts).
-- [X] T017 Bind chat reuse in `server/src/ai.rs` to paper identity across deletion and recapture. Open a chat, delete the paper, capture a different PDF under the same key, and verify it gets a fresh conversation while a location move for the original paper retains its conversation per US1/AC3 (partial).
-- [X] T018 Verify the identity of the extraction input when publishing in `server/src/extractions.rs` and `server/src/store.rs`. Exercise a plugin that finishes after its paper is deleted and the key reused. Report the stale result and preserve the replacement paper and its artifacts per FR-001 and FR-006 (partial).
+- [X] T017 [US1] Bind chat reuse in `server/src/ai.rs` to paper identity across deletion and recapture. Open a chat, delete the paper, capture a different PDF under the same key, and verify it gets a fresh conversation while a location move for the original paper retains its conversation per US1/AC3 (partial).
+- [X] T018 [US2] Verify the identity of the extraction input when publishing in `server/src/extractions.rs` and `server/src/store.rs`. Exercise a plugin that finishes after its paper is deleted and the key reused. Report the stale result and preserve the replacement paper and its artifacts per FR-001 and FR-006 (partial).
 
 ## Phase 7: Convergence
 
-- [X] T019 CRITICAL: Define the publication commit point in `server/src/extraction_publication.rs`. Exercise a failure retiring the journal after both new paths are installed. Verify the HTTP outcome and the visible Markdown and artifacts agree immediately and after restart per Constitution IV, FR-008 and T015 (contradicts).
+- [X] T019 [US2] CRITICAL: Define the publication commit point in `server/src/extraction_publication.rs`. Exercise a failure retiring the journal after both new paths are installed. Verify the HTTP outcome and the visible Markdown and artifacts agree immediately and after restart per Constitution IV, FR-008 and T015 (contradicts).
 - [X] T020 Use a no-overwrite filesystem operation for legacy moves in `server/src/layout.rs`. Treat existing directory entries, including dangling symlinks, as collisions. Verify a conflict preserves both the source file and the destination entry per FR-010 and T004 (partial).
-- [X] T021 Handle a legacy chat mapping left by a key reused before upgrade in `server/src/ai.rs`. Verify identity before reusing a conversation or sending a page update. Exercise first open and first page update for an ambiguous mapping, and preserve the existing chat when continuity can be established per US1/AC3 and T017 (partial).
+- [X] T021 [US1] Handle a legacy chat mapping left by a key reused before upgrade in `server/src/ai.rs`. Verify identity before reusing a conversation or sending a page update. Exercise first open and first page update for an ambiguous mapping, and preserve the existing chat when continuity can be established per US1/AC3 and T017 (partial).
 
 ## Phase 8: Convergence
 
 - [X] T022 Make deletion and key reuse safe while extraction journal cleanup is pending in `server/src/store.rs` and `server/src/extraction_publication.rs`. Extend the retirement-failure HTTP regression: restore write access, delete the paper before stopping the server, then restart and verify the library opens with the paper absent. Also verify that cleanup cannot change a replacement paper's artifacts when it reuses the key. Trace to FR-009, SC-005 and T019 (partial).
+
+## Phase 9: User Story 2 — Read an extraction completed during chat (P1)
+
+- [ ] T023 [P] [US2] Extend `tests/server-ai-live.ts`: open the PDF-only chat, invoke an eligible extraction through the app’s extraction action, wait for publication, and ask the same session for a passage unique to the output. Compare the answer and observed file read with the published passage without supplying its path. Keep the existing unknown-file discovery case. If this exposes a failure, commit the failing case before correcting its owner in `server/src/extractions.rs` or `server/src/ai.rs`.
+
+## Phase 10: User Story 3 — Continue reading after edition replacement (P1)
+
+- [ ] T024 [P] [US3] In `tests/server-ai.test.ts`, exercise the public replacement, session-open and reader page-report actions with distinguishable editions, using the arXiv fixtures in `tests/server-sources.test.ts`. Verify that a failed download preserves the captured session and subsequent page delivery. After success at the same key, navigate before opening a new chat and verify the old transcript receives no update. Open the fresh session, navigate again, and check both transcripts. Repeat replacement with the same arXiv version and verify the new session ID persists. If a branch fails, commit its failing regression before correcting the edition check at session open or page delivery in `server/src/ai.rs`.
+
+## Phase 11: Installed acceptance
+
+- [ ] T025 After T023 and T024 and any resulting fixes, provision the final revision and execute the installed-reader scenarios in `specs/009-assistant-document-directory/quickstart.md` on port 8770. Verify a same-chat answer from an app-produced extraction and an arXiv-only answer after replacement. Compare sessions and page updates across failure, success and repeat selection.
+
+Both remaining story checks depend on the completed US1 directory session. T023 and T024 exercise separate paths and can run in parallel. T025 consumes both outcomes.
