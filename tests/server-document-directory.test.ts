@@ -190,3 +190,38 @@ test("migration refuses to overwrite a current paper artifact", async () => {
   );
   expect(readFileSync(join(root, "conflict.pdf"))).toEqual(legacy);
 });
+
+test("migration preserves paper directories whose keys look like legacy artifact names", async () => {
+  for (const suffix of ["pdf", "md", "extraction"]) {
+    const root = mkdtempSync(join(tmpdir(), `pdf-bucket-directory-suffix-${suffix}-`));
+    const currentKey = `notes.${suffix}`;
+    const current = await legacyPdf(root, currentKey, fixture);
+    mkdirSync(join(root, currentKey));
+    renameSync(
+      join(root, `${currentKey}.pdf`),
+      join(root, currentKey, `${currentKey}.pdf`),
+    );
+
+    let legacy: Buffer | undefined;
+    if (suffix === "pdf") {
+      writeFileSync(join(root, "notes.md"), "# Legacy notes\n");
+    } else {
+      legacy = await legacyPdf(root, "notes", otherFixture);
+    }
+    await expect(
+      serveBucket({
+        root,
+        zoteroUrl: closedPortUrl(),
+        extractionsManifest: EXTRACTIONS_MANIFEST,
+      }),
+    ).rejects.toThrow("pdf-bucket serve exited before printing its origin");
+
+    expect(readFileSync(join(root, currentKey, `${currentKey}.pdf`))).toEqual(current);
+    if (suffix === "pdf") {
+      expect(readFileSync(join(root, "notes.md"), "utf8")).toBe("# Legacy notes\n");
+    } else {
+      expect(readFileSync(join(root, "notes.pdf")).equals(legacy!)).toBe(true);
+    }
+    expect(existsSync(join(root, "notes", currentKey))).toBe(false);
+  }
+});
