@@ -72,7 +72,7 @@ a conversation whose recorded provenance matches the current paper.
 
 ## Source and hint failures
 
-Session open returns `404 unknown_item` for a missing original and
-`422 unreadable_pdf` with the file diagnostic for a damaged original. When only
+Session open returns `404 unknown_item` for a missing current PDF and
+`422 unreadable_pdf` with the file diagnostic for a damaged current PDF. When only
 the optional hint fails, the view and chat entry retain the exact recorded page
 and identify the hint failure. Opening the session still succeeds.

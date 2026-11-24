@@ -12,7 +12,7 @@
 
 Replace the flat paper layout and synthetic assistant workspaces with one directory per
 paper. Migrate existing files by rename, point new and existing OpenCode chats at that
-directory, and let the assistant inspect the original and its enrichment using its own tools.
+directory, and let the assistant inspect the current PDF and its enrichment using its own tools.
 
 ## Technical Context
 
@@ -59,7 +59,7 @@ specs/009-assistant-document-directory/
 server/src/
 ├── layout.rs       # Document paths and flat-layout migration
 ├── store.rs        # Capture, replacement, extraction and deletion writes
-├── index.rs        # Document-directory scanning and unreadable originals
+├── index.rs        # Document-directory scanning and unreadable PDFs
 ├── ai.rs           # Session location/move, tool permissions and page hints
 ├── extractions.rs  # No assistant source-catalog refresh
 ├── send.rs         # Zotero attachment reads through the shared layout
@@ -99,7 +99,7 @@ location and updates the displayed page number when the reader reports it. A sho
 text-layer snippet can help locate the passage in a complete extraction. The
 assistant checks the passage against a paper artifact. Hint generation can fail
 independently of source validation. Keep the recorded page and report the hint
-error when the original is valid. A missing or damaged original fails session open.
+error when the current PDF is valid. A missing or damaged PDF fails session open.
 
 ## Implementation owners
 

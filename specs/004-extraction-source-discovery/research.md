@@ -9,27 +9,27 @@ and lets eligibility be checked before a job starts.
 **Alternatives considered**: Importing MinerU/Mistral SDKs was rejected by the constitution
 and would couple the app to provider credentials and release cycles.
 
-## Decision: Treat arXiv LaTeX as a source-backed promotion target
+## Decision: Treat arXiv LaTeX as a source-backed replacement target
 
 **Rationale**: A confident arXiv match provides a stronger extraction path than a generic
-PDF text layer. Promotion must be an explicit state transition, not merely an external
-link: the arXiv item becomes the preferred working representation and its LaTeX source
-can become authoritative.
+PDF text layer. Promotion is an explicit replacement action: the arXiv PDF becomes
+the paper's current document and its LaTeX source can become authoritative.
 
 **Alternatives considered**: Adding the arXiv PDF as an ordinary mirror was rejected because
 ordinary recovery requires the original SHA-256 and would reject changed arXiv bytes.
-Overwriting the current PDF was rejected because it would corrupt immutable provenance.
+Replacing only the PDF bytes was rejected because it would leave the old extraction
+paired with a new source and lose the captured provenance.
 
-## Decision: Preserve the original as a linked alternate record
+## Decision: Replace the captured paper under its stable key
 
-**Rationale**: Capture provenance is immutable and the original bytes must remain recoverable.
-Promotion therefore creates or reuses a distinct arXiv-backed item and records the lineage
-between the original and promoted representations. The UI can select the promoted item while
-the original remains present.
+**Rationale**: The user chose to replace the captured paper. An atomic directory
+exchange installs the arXiv PDF under the same key, keeps filing and reading state,
+and removes the old PDF and extraction from the active store. The new PDF embeds
+its arXiv provenance and the captured provenance as historical lineage.
 
-**Alternatives considered**: Deleting the original or mutating its provenance would violate
-the provenance invariant. A UI-only selection without durable linkage would make the
-relationship impossible to recover after restart.
+**Alternatives considered**: A second active item would keep the superseded capture
+in the library. Replacing only the PDF would strand an extraction from the old source.
+The old PDF remains intact when validation, fetch, or publication fails.
 
 ## Decision: Require server-side validation of promotion candidates
 

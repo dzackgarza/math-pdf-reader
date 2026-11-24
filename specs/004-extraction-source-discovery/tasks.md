@@ -27,10 +27,10 @@ test must be written first, observed failing, then made green by the smallest im
 **Purpose**: Build the shared persistence and eligibility primitives that block all three
 stories.
 
-- [X] T005 Extend the organization document model in `server/src/organization.rs` to persist original-item, preferred-item, discovered-source, and promotion timestamp lineage without mutating embedded original provenance
+- [ ] T005 Persist the captured provenance, discovered arXiv source, and promotion time as historical lineage in the replacement PDF under the existing key; retain filing and reading state in `server/src/store.rs` and `server/src/organization.rs`
 - [X] T006 Add generated Rust contract registrations in `server/src/contract.rs` for source candidates, promotion requests/responses, lineage, and authoritative extraction state
 - [X] T007 Add explicit authoritative/source-kind state to extraction records in `server/src/extractions.rs` and `src/contract/extraction.ts`
-- [X] T008 Add fixture-backed helpers in `tests/store.ts` and `tests/capture-helpers.ts` for reading embedded provenance and asserting linked library items
+- [ ] T008 Add fixture-backed helpers in `tests/store.ts` and `tests/capture-helpers.ts` for reading embedded current and historical provenance and asserting one library item after replacement
 - [X] T009 [P] Add invalid-input error cases and source-host validation helpers in `server/src/error.rs` and `server/src/arxiv.rs`
 - [X] T009a [P] Add test-only configurable Atom/PDF endpoints and deterministic arXiv-shaped fixtures while keeping production host validation strict in `server/src/arxiv.rs` and `tests/fixtures/`
 
@@ -64,35 +64,33 @@ ineligible extraction is rejected/hidden, and failures cannot masquerade as auth
 
 ## Phase 4: User Story 2 - Discover and promote an arXiv version (Priority: P1)
 
-**Goal**: A confident arXiv match is not merely displayed; the user can explicitly promote
-the equivalent arXiv item, use it as the preferred working source, and retain the original
-capture and provenance.
+**Goal**: A confident arXiv match can be chosen as an explicit replacement. Its PDF
+becomes the paper under the same key. The captured PDF leaves the active store on
+success, while its provenance remains as historical lineage.
 
 **Independent Test**: Capture a non-arXiv fixture, discover a confident candidate, promote it,
-then verify the library contains the promoted preferred item, unchanged original item,
-durable lineage, arXiv eligibility, and preserved embedded provenance.
+then verify the library contains one paper at the existing key with the arXiv PDF,
+durable historical lineage, arXiv eligibility, and retained filing and reading state.
 
 ### Tests for User Story 2
 
 - [X] T018 [P] [US2] Add scoring tests for exact metadata, near matches, incomplete metadata, and no-match candidates in `server/src/arxiv.rs`
 - [X] T019 [P] [US2] Add API contract tests for ranked candidates, visible threshold, malformed candidates, low-confidence candidates, and non-ArXiv URLs in `tests/server-sources.test.ts`
-- [X] T020 [US2] Add an end-to-end promotion test using a real local source fixture that verifies the promoted item, original item, lineage, embedded provenance, and arXiv eligibility in `tests/server-sources.test.ts`
+- [ ] T020 [US2] Add an end-to-end promotion test using a real local source fixture that verifies same-key PDF replacement, old PDF and extraction retirement, historical lineage, filing and reading state, and arXiv eligibility in `tests/server-sources.test.ts`
 - [X] T021 [US2] Add a failure-path integration test proving failed fetch, invalid PDF, or persistence failure leaves the original item usable and reports an explicit error in `tests/server-sources.test.ts`
-- [X] T021a [US2] Add idempotency and atomicity tests proving repeated promotion reuses the preferred item and failed metadata/lineage persistence leaves no unlinked item
-  - Evidence (source): `tests/server-sources.test.ts` covers repeat promotion (`confident arXiv promotion preserves the original and is idempotent`, `simultaneous promotions from separate server processes reuse one preferred item`, `repeating promotion of a missing preferred item does not create a duplicate`) and failed persistence (`metadata recording failure rolls back a newly captured preferred PDF`, `lineage persistence failure never publishes a preferred PDF`).
+- [ ] T021a [US2] Add idempotency and atomicity tests proving repeated promotion returns the current key and failed publication leaves the captured paper and its state intact
 
 ### Implementation for User Story 2
 
 - [X] T022 [P] [US2] Implement deterministic arXiv candidate search, confidence thresholding, and candidate contracts in `server/src/arxiv.rs`
 - [X] T023 [US2] Implement server-side candidate validation and source fetch verification for `POST /api/items/{key}/arxiv/promote` in `server/src/arxiv.rs` and `server/src/imports.rs`
-- [X] T024 [US2] Implement safe promoted-item capture/linkage in `server/src/store.rs` and `server/src/organization.rs` without changing the original item's embedded provenance or ordinary hash-safe recovery
-  - Evidence (source): `Store::capture_distinct` in `server/src/store.rs` places the preferred item with its lineage; `promote` in `server/src/arxiv.rs` checks the original's provenance again under the filing lock before placement.
+- [ ] T024 [US2] Implement atomic same-key replacement in `server/src/store.rs` and `server/src/organization.rs`: stage the arXiv PDF with its own provenance and historical capture lineage, exchange the paper directory, retire the old PDF and extraction, and preserve the captured paper on failure
 - [X] T025 [US2] Expose promotion response and lineage state through `server/src/app.rs`, `server/src/state.rs`, and `src/contract/library.ts`
-- [X] T025a [US2] Make both original and preferred items expose the same source lineage and make the preferred item the sole selected representation in library state
+- [ ] T025a [US2] Expose historical lineage on the one current paper and keep it selected under its existing key
 - [X] T026 [US2] Add browser actions for candidate search and explicit promotion/replacement in `src/web/libraryActions.ts`
-- [X] T027 [US2] Add candidate promotion controls, progress, failure, success, and original-preserved messaging in `src/web/components/InspectorPanel.tsx`
-- [X] T028 [US2] Refresh library state and select the promoted preferred item without deleting the original in `src/web/Workspace.tsx`
-- [X] T028a [US2] Make repeated promotion return/select the existing preferred item instead of creating a duplicate
+- [ ] T027 [US2] Add candidate replacement controls, progress, failure, and success messaging in `src/web/components/InspectorPanel.tsx`
+- [ ] T028 [US2] Refresh library state and keep the same paper selected after successful replacement in `src/web/Workspace.tsx`
+- [ ] T028a [US2] Make repeated promotion return/select the existing key without creating another paper
 - [X] T028b [US2] Add visible progress, completion, and failure timing assertions for the 10-second readiness criterion
 
 **Checkpoint**: User Story 2 is independently testable through the UI-facing API and proves
@@ -131,34 +129,33 @@ required by FR-008 through FR-010.
   - Discharged by T061.
 - [X] T039 Run `just test-commit` and the applicable Rust/QC recipes; record any repository-wide pre-existing failures without weakening this feature's checks
   - Discharged locally by T061. Push QC in CI fails in setup; see T071.
-- [X] T040 Verify user-visible behavior through the normal launcher; do not run manual provisioning
-  - Discharged by T062.
+- [ ] T040 Verify explicit replacement through the normal launcher; do not run manual provisioning
+  - Covered by T062.
 - [X] T041 Assert the 20-fixture discovery corpus meets the 95% known-match ranking criterion
 
 ## Phase 7: Convergence
 
-- [X] T042 Add failure-injection tests proving metadata and lineage persistence rollback removes any newly promoted item while preserving the original per FR-014 (partial)
+- [ ] T042 Add failure-injection tests proving a failed replacement leaves the captured PDF, extraction, filing, and reading state intact per FR-014 (partial)
 - [X] T043 Add a UI-facing timing test proving extraction readiness or failure is visible within 10 seconds after completion per SC-004 (missing)
 - [X] T044 Add a server extraction integration test that runs the arXiv provider against a deterministic source fixture and verifies the authoritative LaTeX artifact per FR-008 (missing)
 - [X] T045 Add a server extraction fixture test for a true OCR or document-structure provider on a non-arXiv item per FR-009 (missing)
 - [X] T046 Add server integration coverage proving malformed or missing arXiv source leaves no authoritative or PDF-text substitute result per FR-010 and T031 (partial)
 - [X] T047 Preserve the original downloaded arXiv e-print archive as the authoritative source artifact while retaining derived Markdown as convenience output per the plan Archive Contract (partial)
-- [X] T048 Verify user-visible behavior through the normal launcher and record the result without manual provisioning per T040 and the constitution Development Workflow (missing)
-  - Discharged by T062.
+- [ ] T048 Verify same-key arXiv replacement through the normal launcher per T040 and the constitution Development Workflow (missing)
+  - Covered by T062.
 - [X] T049 Add the deterministic 20-paper discovery corpus and assert at least 95% known-match ranking per SC-002 and T041 (missing)
 - [X] T050 Remove approximate page-to-extraction mapping from assistant context and expose only exact reader page context plus an authoritative-extraction pointer per Constitution III (contradicts)
 
 ## Phase 8: Convergence
 
-- [X] T051 Complete atomic promotion failure-injection coverage and prove rollback preserves the original item per T042, FR-014 (partial)
-  - Evidence (source): each FR-014 step has a failure test in `tests/server-sources.test.ts`: source fetch (`a failed preferred-source fetch leaves the original item usable`), PDF placement (`promotion does not overwrite or remove a PDF placed by another writer`), metadata (`metadata recording failure rolls back a newly captured preferred PDF`, `a metadata failure never publishes the preferred PDF`), and lineage (`lineage persistence failure never publishes a preferred PDF`).
+- [ ] T051 Complete atomic replacement failure coverage for source fetch, validation, staging, and directory exchange; prove the current paper remains intact on each failure per T042 and FR-014 (partial)
 - [X] T052 Complete the UI extraction readiness/failure timing assertion within 10 seconds per T043, SC-004 (missing)
 - [X] T053 Complete server-boundary arXiv extraction coverage with an authoritative source artifact per T044, FR-008 (missing)
 - [X] T054 Complete server-boundary true OCR/document-structure fixture coverage for non-arXiv items per T045, FR-009 (missing)
 - [X] T055 Complete malformed/missing-source integration coverage proving no authoritative PDF-text fallback per T046, FR-010 (partial)
 - [X] T056 Complete preservation of the original downloaded e-print archive as the authoritative artifact per T047 and the plan Archive Contract (partial)
-- [X] T057 Complete normal-launcher runtime verification without manual provisioning per T048 and the constitution Development Workflow (missing)
-  - Discharged by T062.
+- [ ] T057 Complete normal-launcher runtime verification of replacement per T048 and the constitution Development Workflow (missing)
+  - Covered by T062.
 - [X] T058 Complete the deterministic 20-paper corpus and 95% ranking assertion per T049, SC-002 (missing)
 - [X] T059 CRITICAL: Remove approximate page-to-extraction mapping from assistant context and expose only exact page context plus the authoritative-extraction pointer per T050 and Constitution III (contradicts)
 
@@ -170,7 +167,7 @@ required by FR-008 through FR-010.
 - Foundational (Phase 2) blocks all user stories.
 - User Stories 1 and 2 can proceed in parallel after Phase 2.
 - User Story 3 depends on User Story 2's promotion lineage and eligibility state.
-- Recovery work in T024/T025 also updates `server/src/sources.rs` and `server/src/export.rs` so preferred-source recovery is explicit; original recovery remains hash-safe.
+- Recovery work in T024/T025 also updates `server/src/sources.rs` and `server/src/export.rs` so arXiv recovery is explicit for a promoted paper; capture recovery remains hash-safe before promotion.
 - Polish (Phase 6) follows the desired user stories.
 
 ### User Story Dependencies
@@ -195,13 +192,13 @@ required by FR-008 through FR-010.
 
 1. Complete Setup and Foundational phases.
 2. Complete US1 so extraction eligibility and authority are trustworthy.
-3. Complete US2 so discovery has a real preferred-source promotion path.
+3. Complete US2 so discovery has a real arXiv replacement path.
 4. Validate US1 and US2 independently before starting US3.
 
 ### Incremental Delivery
 
 1. Source-aware extraction and failure semantics.
-2. Search plus explicit arXiv promotion with preserved original provenance.
+2. Search plus explicit arXiv replacement with historical capture provenance.
 3. Authoritative LaTeX/OCR artifact handling.
 4. Cross-cutting runtime and QC validation.
 
@@ -215,9 +212,7 @@ and repository QC.
 
 - [X] T060 Add the required `source_kind` and `authoritative` fields to the plugin fixture in `tests/extraction.test.ts` so the eligibility contract test passes per T010, FR-001, and SC-001 (partial)
 - [X] T061 Guard `null` from `readIndexExport` in `tests/server-sources.test.ts` so `tsc` and `just test-commit` pass, then rerun the focused checks and `just test-commit` per T038, T039, and the constitution Development Workflow (partial)
-- [X] T062 Start the app through `scripts/launch` (the normal launcher; no manual provisioning), verify on port 8770 that arXiv search shows the 0.80 threshold, promotion creates a distinct preferred item while preserving the original, and arXiv source extraction produces the authoritative source artifact, then record the result per T040, T048, T057, and the constitution Development Workflow (missing)
-  - Result (source fingerprint matched the checkout after `scripts/launch` rebuilt): search on `07410103` returned `threshold: 0.80` with one match `1212.1675` at score `1.0`; promotion created a distinct preferred item `1212.1675v3` holding `sourceLineage` to `07410103`, and the original stayed in the library; extraction on `1111.3209v4` (`POST /api/items/1111.3209v4/extractions/arxiv-source`) succeeded with `source_kind: arxiv_latex`, `authoritative: true`, and artifacts `source.eprint` and `source.tex`. Two defects surfaced and are recorded as T063 and T064.
-  - The installed library and its index export no longer hold `1212.1675v3`. The record of the verification cannot be checked against the library.
+- [ ] T062 Start the app through `scripts/launch`, verify on port 8770 that arXiv search shows the 0.80 threshold, explicit promotion replaces the PDF under its existing key, filing and reading state remain, and arXiv source extraction produces its authoritative artifact per T040, T048, T057, and the constitution Development Workflow (missing)
 - [X] T063 Notify the index exporter when an extraction is placed, so the export carries the extraction's `sourceKind` and `authoritative` instead of a stale record, proven by a test that fails before the fix and passes after per FR-008, FR-011, and the plan Archive Contract (missing; found by T062)
 - [ ] T064 Neutralize the `\input`/`\include` targets an arXiv source package does not ship before `latexpand` flattens it, so a paper whose source pulls in a system package (for example `\input{xy}` for xypic) converts instead of failing per the plan Archive Contract conversion-failure path (partial; found by T062)
 
@@ -230,6 +225,6 @@ and repository QC.
 - [ ] T069 Make the SC-002 corpus test in `tests/server-sources.test.ts` use captured-style metadata (abbreviated, reordered or missing authors, TeX in titles, changed subtitles) and an Atom feed that also holds distractor entries. The test now searches with each paper's exact title and authors against a feed that holds only the 20 corpus entries. Per SC-002 (partial).
 - [ ] T070 Report an arXiv API refusal (HTTP 429 or 503, with its `Retry-After`) or an unreachable API as a distinct upstream error that names arXiv and when to retry, and keep requests to the arXiv API at least 3 seconds apart, in `server/src/arxiv.rs` and the discovery controls in `src/web/components/InspectorPanel.tsx`. A refusal now shows as an `internal` error that contains the query URL. Per FR-017 (missing).
 - [ ] T071 Replace `webkit2gtk-driver` with `webkitgtk-webdriver` in the `ci-setup` recipe in `justfile`. The CI image has no install candidate for the old package, so Push QC fails in setup and no QC gate runs. Per T039 and the constitution Development Workflow (partial).
-- [ ] T072 Show the promotion lineage in `src/web/components/InspectorPanel.tsx` on both items, with a link from each item to the other, per FR-019, FR-007 and FR-013 (missing). The library payload carries `sourceLineage`, but no web component reads it. The only lineage text in the UI is the missing-preferred-PDF notice in `src/web/Workspace.tsx`.
+- [ ] T072 Show the promoted paper's arXiv URL and historical capture URL in `src/web/components/InspectorPanel.tsx` on the one current item, per FR-019, FR-007 and FR-013 (missing).
 - [ ] T073 Refuse discovery for a placeholder title with an explicit error that tells the user to set the title, in `search_candidates` in `server/src/arxiv.rs` and the discovery controls in `src/web/components/InspectorPanel.tsx`, per FR-018 (missing). The running library holds items titled "View PDF", "None" and bare file names.
 - [ ] T074 Apply the answer to the spec's open question on title-only matches in `score` in `server/src/arxiv.rs`, with a test in `tests/server-sources.test.ts`, per FR-006 (partial; blocked on the open question).

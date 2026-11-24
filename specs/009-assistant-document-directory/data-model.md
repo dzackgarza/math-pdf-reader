@@ -4,16 +4,18 @@
 
 - Identity: validated `Key`.
 - Path: `<root>/<key>/`.
-- Contains the original PDF and all current paper-specific artifacts.
+- Contains the current PDF and all current paper-specific artifacts.
 - Does not contain extraction staging, store-wide filing or OpenCode session data.
 - Creation: first PDF commit or legacy-layout migration.
 - Deletion: the complete directory moves to desktop trash when the item is removed.
 
-## Original Document
+## Current PDF
 
 - Path: `<root>/<key>/<key>.pdf`.
-- Required for a stored item. Missing or unreadable originals fail explicitly.
-- Contains the PDF URL, capture time and original SHA-256 internally.
+- Required for a stored item. Missing or unreadable PDFs fail explicitly.
+- Contains its PDF URL, capture time and original SHA-256 internally. An explicit
+  arXiv promotion replaces this PDF under the same key and embeds the captured
+  provenance as historical lineage.
 - Replacement keeps the same path and key, and retains annotation-save conflict checks.
 
 ## Complete Extraction
@@ -51,9 +53,9 @@ their paths. After a partial move, the next start moves only remaining sources.
 
 ## Invariants
 
-1. Every stored item has exactly one original path and document directory.
+1. Every stored item has exactly one current PDF path and document directory.
 2. Raw PDF reading has no extraction prerequisite.
-3. Complete artifacts enrich the original and do not replace it.
+3. Complete artifacts enrich the current PDF and do not replace it.
 4. Incomplete enrichment is not in the document directory.
-5. Item keys, reader/PDF URLs, embedded provenance and original bytes survive migration.
+5. Item keys, reader/PDF URLs, embedded provenance and PDF bytes survive flat-store migration.
 6. No synthetic workspace holds current copies or catalogs of paper artifacts.

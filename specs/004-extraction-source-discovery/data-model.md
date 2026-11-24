@@ -44,21 +44,21 @@ One ranked arXiv discovery result.
 
 ## Source Lineage
 
-Durable relationship between the original captured item and a promoted source item.
+Historical provenance of a captured paper whose PDF the user replaced with an arXiv PDF.
 
 | Field | Constraint |
 |---|---|
-| original item key | Required; original item remains present |
-| preferred item key | Required after promotion |
+| original item key | Required; the paper keeps this key after replacement |
+| preferred item key | Required; equals the original item key after replacement |
 | discovered source URL | Required arXiv URL |
 | promoted at | Required timestamp |
-| original provenance | Remains immutable on the original item |
+| original provenance | Historical captured URL, time, and hash embedded in the current arXiv PDF |
 
-Both linked items expose this lineage. The preferred item has arXiv provenance and may
-expose the original URL as an alternate mirror. The original item remains visible but is
-not preferred. Ordinary recovery of the original item remains hash-safe and unchanged.
-Lineage writes are atomic with promoted-item placement, and an existing identifier/version
-returns the existing preferred item rather than creating a duplicate.
+The one current item exposes this lineage. Its PDF has arXiv provenance and may
+expose the old capture URL as historical context. The captured PDF and its prior
+extraction leave the active store on success. Filing and reading state stay with
+the key. Lineage is committed with the replacement PDF, and a repeated request
+for its arXiv identifier/version returns the same item.
 
 ## State Transitions
 
@@ -68,13 +68,12 @@ captured non-arXiv item
   -> confident candidate selected
   -> promotion requested
   -> source fetched and verified as PDF
-  -> preferred arXiv item stored/linked
-  -> lineage committed atomically
+  -> arXiv PDF and lineage replace the current paper at the same key
   -> arXiv extraction eligible
 ```
 
-Any validation, fetch, PDF, metadata, or persistence failure leaves the original capture
-usable and reports an explicit failed promotion.
+Any validation, fetch, PDF, metadata, or persistence failure leaves the captured
+paper and its extraction usable and reports an explicit failed promotion.
 
 ## Authoritative Extraction
 

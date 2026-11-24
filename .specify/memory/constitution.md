@@ -1,6 +1,6 @@
-<!-- Sync Impact Report: 3.0.0 to 4.0.0. Principles II–V redefine paper sources,
-tool choice, page hints and acceptance evidence. Features 004, 005 and 009 own
-the extraction, reader context and session contracts respectively. -->
+<!-- Sync Impact Report: 4.0.0 to 5.0.0. Principle II now defines explicit
+arXiv promotion as replacement of the current paper under its key. Feature 004
+owns the promotion and recovery contract; Feature 009 owns the document directory. -->
 # Math PDF Reader Constitution
 
 ## Core Principles
@@ -12,10 +12,13 @@ MUST NOT be the sole source of provenance.
 
 ### II. Paper sources and extraction
 
-Every paper directory MUST contain its original PDF, including before enrichment and
-after a failed extraction. Prefer a confidently matched arXiv version. Preserve the
-captured original and its provenance as an alternate, and use the preferred arXiv
-source first when recovering the preferred item. For arXiv enrichment, preserve the
+Every paper directory MUST contain its current PDF, including before enrichment and
+after a failed extraction. The assistant can read that PDF without an extraction.
+When the user explicitly promotes a confident arXiv match, the arXiv PDF MUST replace
+the captured paper under the same key. The old PDF and its extraction leave the active
+store after success. Preserve the captured provenance as historical lineage in the
+replacement PDF. A failed promotion MUST leave the captured paper intact. Recover a
+promoted paper from its arXiv source first. For arXiv enrichment, preserve the
 authored LaTeX and convert its main document and included files into one readable
 Markdown file. The assistant can read the Markdown and consult the LaTeX for details.
 When usable arXiv source is unavailable, enrich the PDF with structured Markdown from
@@ -74,4 +77,4 @@ added or materially expanded guidance, and PATCH for non-semantic clarification.
 Reviews and implementation plans MUST check compliance with these principles;
 unresolved violations block completion rather than becoming future work.
 
-**Version**: 4.0.0 | **Ratified**: 2026-11-22 (original adoption date unavailable; first verified repository baseline) | **Last Amended**: 2026-11-24
+**Version**: 5.0.0 | **Ratified**: 2026-11-22 (original adoption date unavailable; first verified repository baseline) | **Last Amended**: 2026-11-24

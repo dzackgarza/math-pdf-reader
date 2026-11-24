@@ -29,8 +29,8 @@ The user can discover likely arXiv versions of papers whose captured URL is not
 arXiv, using paper metadata and a confidence-ranked result list.
 
 **Independent Test**: Match known papers, near matches, and papers with no match; then
-promote one confident match and verify the preferred representation, preserved original
-record, and recovery behavior.
+promote one confident match and verify that the arXiv PDF replaces the captured paper
+under its existing key, with the filing and reading state retained.
 
 **Acceptance Scenarios**:
 1. **Given** metadata with a strong arXiv match, **When** discovery runs, **Then**
@@ -71,8 +71,8 @@ with expected source-backed content.
 - The stored metadata may hold a title and no authors or abstract.
 - Repeating promotion for the same arXiv identifier is idempotent and does not create
   another preferred representation.
-- A promotion that downloads successfully but fails while recording metadata or lineage
-  is rolled back as one failed operation; the original item remains usable.
+- A promotion that downloads successfully but fails before publication leaves the
+  captured PDF, its extraction, filing, and reading state intact.
 - The promotion test environment must use a deterministic arXiv-shaped local fixture
   boundary; production validation still permits only HTTPS arXiv hosts.
 - Generic full-document text dumps produced by PDF text libraries are not extraction
@@ -106,18 +106,21 @@ with expected source-backed content.
 - **FR-012**: Extraction providers MUST be invoked through their declared command
   contracts, and the application MUST NOT import provider SDKs or hold provider
   credentials.
-- **FR-013**: A sufficiently confident discovered arXiv alternative MUST be
-  promoted into a distinct preferred item linked to the original item. The original
-  captured paper remains visible as an alternate record; it is never overwritten,
-  deleted, or made the preferred item by implication.
-- **FR-014**: Promotion MUST be atomic across source fetch, PDF placement, metadata
-  recording, and lineage persistence. A failure at any step MUST leave the original
-  item usable and MUST NOT leave an unlinked promoted item.
-- **FR-015**: Recovery of the promoted preferred item MUST try its promoted arXiv
-  source first. Recovery of the original alternate MUST remain hash-safe and use only
-  sources matching its original SHA-256.
+- **FR-013**: A sufficiently confident discovered arXiv alternative MUST replace
+  the captured paper only after the user explicitly chooses promotion. The arXiv
+  PDF becomes the current document under the same key. The old captured PDF and
+  its extraction MUST leave the active store after success. Filing and reading
+  state MUST remain attached to the key. The old provenance remains available
+  as historical lineage embedded in the replacement PDF.
+- **FR-014**: Promotion MUST commit the new PDF and its provenance as one paper
+  replacement after source fetch and validation. A failure before publication MUST
+  leave the captured PDF, extraction, filing, and reading state intact. The library
+  MUST NOT show a partial replacement.
+- **FR-015**: Recovery of the promoted paper MUST try its arXiv PDF URL first.
+  Recovery of a paper before promotion remains hash-safe against its captured
+  original SHA-256.
 - **FR-016**: Promotion of an already-promoted identifier/version MUST be idempotent
-  and MUST return the existing preferred item and lineage.
+  and MUST return the existing key and lineage.
 - **FR-017**: When the arXiv API refuses a discovery request or cannot be reached,
   discovery MUST fail with an explicit upstream error that names arXiv and, when the
   API supplies it, when to retry. It MUST NOT return an empty candidate list.
@@ -126,9 +129,8 @@ with expected source-backed content.
 - **FR-018**: Discovery MUST refuse to search when the stored title is a placeholder
   (the PDF's file name, a known page label such as "View PDF", the text "None", or
   empty). The refusal MUST tell the user to set the title first.
-- **FR-019**: The inspector MUST show the lineage on both items of a promotion: on the
-  preferred item, the original item and its captured PDF URL; on the original item,
-  the preferred item and its arXiv URL. Each MUST link to the other item.
+- **FR-019**: The inspector MUST show the promoted paper's arXiv URL and the
+  superseded capture URL from its historical lineage on the current item.
 
 ## Open Questions
 
@@ -155,8 +157,10 @@ with expected source-backed content.
   within 10 seconds of the request completing.
 - **SC-005**: 100% of provider acceptance tests reject generic PDF text dumps as the
   authoritative or structured extraction.
-- **SC-006**: 100% of confident arXiv-alternative tests offer preferred-source
-  replacement or re-fetch while preserving the original capture record.
+- **SC-006**: 100% of confident arXiv-alternative tests offer explicit replacement.
+  Success leaves one current paper under its existing key with the arXiv PDF,
+  historical capture provenance, and retained filing and reading state. A failed
+  promotion leaves the captured paper intact.
 
 ## Assumptions
 - The application may use paper title, authors, abstract, and provenance URL as

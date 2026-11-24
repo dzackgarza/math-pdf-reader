@@ -17,7 +17,7 @@
 | --- | --- | --- | --- |
 | `Key` | Validated identity of one stored paper | All four contexts | A file name or title alone |
 | Document directory | `<root>/<key>/`, the only current paper record | Storage and assistant | Synthetic OpenCode workspace |
-| Original document | `<root>/<key>/<key>.pdf`, with embedded provenance | Storage and assistant | Raw-page text or an extraction |
+| Current PDF | `<root>/<key>/<key>.pdf`, with embedded provenance | Storage and assistant | Raw-page text or an extraction |
 | Markdown extraction | `<root>/<key>/<key>.md`; its existence marks completion | Index and extraction | Raw PDF text |
 | Extraction artifacts | `<root>/<key>/<key>.extraction/` | Index and extraction | Staging output |
 | Paper artifact | Any current file in the document directory | Assistant and migration | Store-wide filing documents |
@@ -39,7 +39,7 @@ to the paper directory.
 ### Invariants and current violations
 
 - One directory holds each paper's complete current record. The flat layout violates it.
-- The original PDF exists independently of every extraction. Opening the session must preserve access to this file.
+- The current PDF exists independently of every extraction. Opening the session must preserve access to this file.
 - Only a completed extraction is visible as complete. Root staging satisfies this;
   the new placement MUST retain it.
 - A session reads current paper artifacts without instruction regeneration. The
@@ -53,9 +53,9 @@ to the paper directory.
 | State | Required fields | Legal next states | Forbidden states |
 | --- | --- | --- | --- |
 | Capturing | Staged PDF, original hash, provenance | Stored | PDF in the store before provenance succeeds |
-| Stored without extraction | Key, original PDF | Extracting, replaced, removed | Extraction prerequisite for assistant |
+| Stored without extraction | Key, current PDF | Extracting, replaced, removed | Extraction prerequisite for assistant |
 | Extracting | Stored PDF, hidden staging directory | Stored with extraction, unchanged stored state | Staging inside the paper directory; partial success |
-| Stored with extraction | Original PDF, Markdown completion marker, optional artifacts | Extracting, replaced, removed | New artifacts replacing the previous complete set before success |
+| Stored with extraction | Current PDF, Markdown completion marker, optional artifacts | Extracting, replaced, removed | New artifacts replacing the previous complete set before success |
 | Assistant open | Existing document directory, session ID | Same session after enrichment or page changes | Source catalog refresh or synthetic current copies |
 | Legacy flat record | One or more recognized legacy paths | Document directory | Overwriting a destination; duplicated current record |
 
@@ -64,7 +64,7 @@ and an unknown `notes.txt` added directly to the paper directory. Invalid exampl
 include a key with a separator, extraction output placed before validation, two
 current PDFs for one key, and migration over an existing destination. An orphan
 legacy Markdown or extraction directory still migrates under its key; it does not
-manufacture an original PDF or hide its absence.
+manufacture a current PDF or hide its absence.
 
 ## 3. Core typed model
 

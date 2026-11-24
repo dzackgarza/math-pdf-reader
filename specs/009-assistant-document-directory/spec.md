@@ -17,14 +17,14 @@ assistant unavailable.
 **Why this priority**: The assistant must use the whole paper record without a separate
 source-registration step or an extraction prerequisite.
 
-**Independent Test**: Open the assistant for a paper with only its original document,
+**Independent Test**: Open the assistant for a paper with only its current PDF,
 then repeat for a paper with an extraction and additional paper-specific metadata. In
 both cases, ask a question that requires reading the paper and inspect which available
 sources the assistant used.
 
 **Acceptance Scenarios**:
 1. **Given** a paper with no extraction, **When** its assistant opens, **Then** the
-   assistant answers from the original document in that directory when its tools can
+   assistant answers from the current PDF in that directory when its tools can
    read the requested content. If the content is illegible, it reports the limitation.
 2. **Given** a paper with an extraction and paper-specific metadata, **When** its
    assistant opens, **Then** the assistant can discover and read those resources without
@@ -53,17 +53,17 @@ content in the same chat.
    another question, **Then** the assistant can discover and read the extraction in the
    existing document directory.
 2. **Given** a failed or incomplete enrichment, **When** the user asks another question,
-   **Then** the original document remains available and no incomplete artifact is
+   **Then** the current PDF remains available and no incomplete artifact is
    presented as complete.
 
 ### Edge Cases
 
-- A paper has no enrichment beyond its original document.
+- A paper has no enrichment beyond its current PDF.
 - An enrichment arrives after the assistant session was created.
 - An enrichment command fails or is still running.
 - A paper-specific artifact has a type the application did not previously know.
 - Two papers have similar titles or source addresses but different document identities.
-- A document directory is missing its original document or that document is invalid.
+- A document directory is missing its current PDF or that PDF is invalid.
   Opening its chat reports which condition prevents reading.
 - If hint extraction fails for a valid PDF, the exact reader page and the session
   remain available. The page context identifies the hint failure separately.
@@ -73,7 +73,7 @@ content in the same chat.
 ### Functional Requirements
 
 - **FR-001**: Each stored paper MUST have one document directory that contains its
-  original document and all paper-specific enrichment artifacts.
+  current PDF and all paper-specific enrichment artifacts.
 - **FR-002**: Opening a paper's assistant MUST make that paper's document directory its
   working context. The assistant MUST NOT require a generated source catalog or a
   separate synthetic workspace.
@@ -82,7 +82,7 @@ content in the same chat.
 - **FR-004**: Adding a complete paper-specific artifact MUST make it discoverable to an
   existing assistant session on a later turn without restarting the session or sending
   a source-refresh notification.
-- **FR-005**: The original document MUST remain usable by the assistant when no
+- **FR-005**: The current PDF MUST remain usable by the assistant when no
   extraction exists or an extraction fails.
 - **FR-006**: Complete valid extractions and paper-specific metadata MUST remain
   available as additional context whenever they exist.
@@ -93,17 +93,19 @@ content in the same chat.
   complete paper record and MUST NOT replace the last complete extraction.
 - **FR-009**: The document-directory organization MUST hold throughout capture, import,
   reading, annotation saves, extraction, deletion, export and recovery.
-- **FR-010**: Reorganizing a paper's storage MUST preserve its identity, original
-  document bytes, embedded provenance, extraction artifacts and stable item addresses.
+- **FR-010**: Migrating a legacy flat paper record into its document directory MUST
+  preserve its identity, PDF bytes, embedded provenance, extraction artifacts and
+  stable item addresses.
 - **FR-011**: The application MUST maintain one authoritative location for each
   paper-specific artifact, without duplicate current copies in separate workspaces.
-- **FR-012**: Missing or invalid original documents MUST continue to fail explicitly.
+- **FR-012**: A missing or invalid current PDF MUST continue to fail explicitly.
 
 ### Key Entities
 
 - **Document Directory**: The complete paper-specific workspace for one stored item.
-- **Original Document**: The stored PDF with its embedded provenance; it is always the
-  baseline source and is not an extraction.
+- **Current PDF**: The stored PDF with its embedded provenance; it is always the
+  baseline source and is not an extraction. After explicit arXiv promotion,
+  this is the replacement arXiv PDF.
 - **Paper Artifact**: An extraction, source archive, metadata record or future resource
   that belongs to exactly one paper and lives in that paper's document directory.
 - **Assistant Session**: A persistent conversation whose working context is one paper's
@@ -113,10 +115,10 @@ content in the same chat.
 
 ### Measurable Outcomes
 
-- **SC-001**: For 100% of stored papers exercised in acceptance tests, the original
+- **SC-001**: For 100% of stored papers exercised in acceptance tests, the current
   document and every complete paper-specific artifact are in the same document
   directory and no current paper artifact resides only in a synthetic workspace.
-- **SC-002**: The assistant answers from the original document without an extraction in
+- **SC-002**: The assistant answers from the current PDF without an extraction in
   every extraction-free acceptance case where its tools can read the PDF. When they
   cannot, the assistant reports the reading limitation.
 - **SC-003**: The assistant discovers each available extraction and paper-specific
@@ -135,7 +137,7 @@ content in the same chat.
 
 - Store-wide collections, saved searches and application settings are not
   paper-specific artifacts and remain outside an individual document directory.
-- Provenance embedded in the original document remains authoritative; duplicating it
+- Provenance embedded in the current PDF remains authoritative; duplicating it
   into another metadata file is unnecessary.
 - Existing stored papers retain their contents and identities when their storage is
   reorganized.

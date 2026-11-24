@@ -22,12 +22,12 @@ The `ApiError` kind list has no upstream kind now. T070 adds one to the shared c
 
 `POST /api/items/{key}/arxiv/promote`
 
-The body is one returned candidate. The server validates the candidate again, fetches the
-arXiv PDF, preserves the original item, and returns:
+The body is one returned candidate. The server validates the candidate again,
+fetches the arXiv PDF, replaces the paper under its existing key, and returns:
 
 ```json
 {
-  "key": "1211.6367",
+  "key": "captured-item",
   "originalKey": "captured-item",
   "existing": false,
   "missing": false,
@@ -39,14 +39,14 @@ arXiv PDF, preserves the original item, and returns:
       "original_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       "title_hint": "Captured paper"
     },
-    "preferredKey": "1211.6367",
+    "preferredKey": "captured-item",
     "discoveredSourceUrl": "https://arxiv.org/pdf/1211.6367",
     "promotedAt": "2026-11-22T12:00:00.000Z"
   }
 }
 ```
 
-The resulting library state must show both items with the same `sourceLineage`:
+The resulting library state shows one current item with this `sourceLineage`:
 
 ```json
 {
@@ -57,18 +57,21 @@ The resulting library state must show both items with the same `sourceLineage`:
     "original_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "title_hint": "Captured paper"
   },
-  "preferredKey": "1211.6367",
+  "preferredKey": "captured-item",
   "discoveredSourceUrl": "https://arxiv.org/pdf/1211.6367",
   "promotedAt": "2026-11-22T12:00:00.000Z"
 }
 ```
 
-The promoted item is the only preferred working representation and its provenance URL is
-the arXiv PDF URL. The original item remains an alternate and retains its embedded URL,
-capture time, and original SHA-256. A repeated request for the same identifier/version
-returns the existing preferred item with `existing: true`. If its PDF is missing,
-`missing: true` directs the user to rebuild it. A failed request returns the
-repository error contract and must not claim promotion success or leave an unlinked item.
+The paper keeps its key, filing, and reading state. Its current PDF has the arXiv
+PDF URL as provenance. The captured URL, time, and original SHA-256 remain in
+historical lineage embedded in that PDF. The old PDF and extraction leave the
+active store after success. A repeated request for the same identifier/version
+returns the current key with `existing: true`. If its PDF is missing,
+`missing: true` directs the user to rebuild it from arXiv. A failed request
+returns the repository error contract and leaves the captured paper intact.
+If the arXiv PDF's original bytes already belong to another stored key, the
+request reports a conflict naming that key and leaves both papers intact.
 
 For deterministic integration tests, the server accepts test-only configured Atom/PDF
 endpoints that serve an arXiv-shaped fixture. Production requests still require HTTPS

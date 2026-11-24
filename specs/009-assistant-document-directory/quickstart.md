@@ -27,7 +27,7 @@ Run `just provision` and open the reader on port 8770.
 
 ## Acceptance scenarios
 
-1. Open a PDF-only paper. Inspect the session location and confirm that the original
+1. Open a PDF-only paper. Inspect the session location and confirm that the current
    PDF is present and readable. If the configured tools cannot read its content,
    the assistant reports that limitation.
 2. Open an enriched paper. Ask for a passage that requires searching the Markdown.
@@ -49,4 +49,4 @@ both the Markdown passage and the accession in a separate metadata file.
 
 Run `bun test tests/server-ai.test.ts -t 'failed text hint|damaged original'`.
 A failed hint still delivers the recorded page to the chat. Missing and damaged
-originals produce distinct session errors.
+PDF failures produce distinct session errors.

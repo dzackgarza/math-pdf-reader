@@ -8,11 +8,11 @@
 
 Make extraction source-aware and make arXiv discovery actionable. The server will
 enforce provider eligibility and authoritative-output rules, while a confident arXiv
-match will support an explicit promotion transition: the arXiv representation becomes
-the preferred working item, the original captured item and embedded provenance remain
-preserved as an alternate record, and recovery/extraction operate on the promoted
-source. Promotion is an atomic, idempotent state transition; the UI will expose the
-transition and show its outcome rather than stopping at external candidate links.
+match will support an explicit promotion transition: the arXiv PDF replaces the
+captured PDF under its existing key, captured provenance remains in historical
+lineage, and recovery/extraction operate on the arXiv source. Filing and reading
+state stay attached to the key. Promotion commits the replacement atomically.
+The UI shows progress and the result of that action.
 
 ## Technical Context
 
@@ -34,20 +34,21 @@ provider execution remains bounded by configured download/plugin timeouts; the f
 corpus must prove at least 95% known-match ranking and the UI must expose extraction
 readiness/failure within 10 seconds after request completion
 
-**Constraints**: Preserve immutable original provenance; never accept changed bytes through
-ordinary hash-safe recovery; no provider SDKs or credentials in the app; no generic PDF text
-dump as authoritative extraction; all failures are explicit
+**Constraints**: Keep captured provenance as historical lineage. Ordinary
+hash-safe recovery rejects changed bytes. The app uses no provider SDKs or
+credentials and accepts no generic PDF text dump as an authoritative extraction.
+Failures are explicit.
 
 **Scale/Scope**: One local library per desktop installation; at most a small ranked
-candidate set per discovery request; one promoted source lineage per captured item at a time;
+candidate set per discovery request; one historical source lineage per promoted paper;
 at least 20 deterministic known-match discovery fixtures
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-* **Provenance**: PASS. Promotion creates/links a source representation without modifying
-  the original embedded URL, capture time, or original SHA-256.
+* **Provenance**: PASS. The arXiv PDF carries its own embedded provenance. The captured
+  URL, capture time, and original SHA-256 remain in historical lineage.
 * **Authoritative extraction**: PASS. arXiv LaTeX remains authoritative for promoted arXiv
   items; non-arXiv items require a true OCR/document-structure provider.
 * **Fail loudly**: PASS. Invalid candidates, unavailable providers, malformed source, and
@@ -111,19 +112,21 @@ No new service or storage subsystem is introduced.
 Promotion has one durable lineage record:
 
 ```text
-original item (captured URL, original hash)
+captured paper (PDF, original URL and hash, filing, reading state)
   -> candidate selected (confidence >= 0.80)
   -> source fetched and verified as an arXiv PDF
-  -> preferred item placed
-  -> metadata and lineage committed atomically
+  -> replacement PDF and provenance staged under the existing key
+  -> document directory exchanged atomically
+  -> old PDF and extraction retired from the active store
 ```
 
-The lineage contains `originalKey`, `originalProvenance`, `preferredKey`, `discoveredSourceUrl`, and
-`promotedAt`. Both items expose the same lineage in the library contract. The original
-item remains an alternate; the preferred item is the only item selected after promotion.
-Repeated promotion for the same identifier/version returns the existing preferred item.
-The preferred item's recovery starts with its arXiv URL. The original item's recovery
-continues to require its original SHA-256.
+The lineage contains `originalKey`, `originalProvenance`, `preferredKey`,
+`discoveredSourceUrl`, and `promotedAt`. Both key fields name the same paper.
+The current arXiv PDF embeds that lineage. Repeated promotion for the same
+identifier/version returns the existing key. Recovery starts with the arXiv URL.
+A failed promotion leaves the captured PDF and its extraction in place. An arXiv
+PDF whose original bytes already belong to a different stored key causes a
+conflict; the app does not merge independent filing records.
 
 ## Fixture Boundary
 

@@ -24,9 +24,12 @@ cargo test -p pdf-bucket arxiv::tests
 ```
 
 The integration scenario must capture a non-arXiv fixture, discover a confident candidate,
-explicitly promote it, verify the promoted item is preferred and arXiv-eligible, verify the
-original item and embedded provenance remain present, and verify low-confidence, malformed,
+explicitly promote it, verify the same key now serves the arXiv PDF and is
+arXiv-eligible, verify the captured PDF has left the active store and its
+provenance survives in the new PDF's lineage, and verify low-confidence, malformed,
 and non-arXiv candidates fail explicitly. Repeat promotion and verify it is idempotent.
+Inject a publication failure and verify the captured PDF, extraction, filing,
+and reading state remain intact.
 Run the same scenario with the deterministic local Atom/PDF fixture boundary; no live
 network or production-host bypass is permitted in the test.
 

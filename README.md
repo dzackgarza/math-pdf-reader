@@ -20,7 +20,7 @@ Browser extensions intercept PDF navigations in Chrome and Firefox and hand the 
 ## Data
 
 Stored PDFs, the filing (`organization.json`), the reading sessions (`reading-sessions.json`) and the keys removed on purpose (`removed.json`) live in `$XDG_DATA_HOME/pdf-bucket` (`~/.local/share/pdf-bucket` when `XDG_DATA_HOME` is unset).
-Each paper occupies `<root>/<key>/`. Its original PDF is `<key>.pdf`; its Markdown extraction is `<key>.md`; its extraction artifacts are under `<key>.extraction/`. Other paper-specific files belong in the same directory. Startup moves legacy flat files into these directories by rename. A destination collision stops startup and preserves both paths.
+Each paper occupies `<root>/<key>/`. Its current PDF is `<key>.pdf`; its Markdown extraction is `<key>.md`; its extraction artifacts are under `<key>.extraction/`. Other paper-specific files belong in the same directory. An explicit arXiv promotion replaces the PDF under the same key and retires the old PDF and extraction after success. The new PDF carries its own provenance and the captured provenance as historical lineage. Startup moves legacy flat files into these directories by rename. A destination collision stops startup and preserves both paths.
 The index export lives beside it, in `$XDG_DATA_HOME/pdf-bucket-export/index.json`: every stored item's provenance, filing and a record of its extraction files, and the collections, saved searches and reading sessions, in key order with a fixed field order, so two exports diff line by line.
 The app rewrites it after every capture, filing change and reading session; `just export-index` writes it on demand, safely while the app runs.
 
@@ -47,7 +47,7 @@ On Hyprland, the session target starts it: `just provision` adds a drop-in to `h
 
 Every PDF tab has a collapsible right sidebar (collapsed by default, resizable by its left edge, both remembered) that shows OpenCode's own web UI in a frame, one chat per stored PDF.
 The app runs `opencode serve` privately for it: loopback port `ai.port`, its own data (sessions) under `$XDG_DATA_HOME/pdf-bucket-ai`, and a generated password in the file `password` there. It reads your own OpenCode config and model catalogue (providers, models), and your logins (`auth.json`) are linked in; the `reader` agent is layered over them. The server starts on the first expanded pane and ends with the app.
-The chat opens in the paper directory. The reader can inspect the original PDF, LaTeX, Markdown and other artifacts with OpenCode's file and shell tools. The app reports the exact displayed page and an optional low-fidelity search hint. The assistant checks the passage in a paper artifact before answering. Files added during a conversation are immediately available. See the [assistant contract](specs/009-assistant-document-directory/contracts/assistant-api.md).
+The chat opens in the paper directory. The reader can inspect the current PDF, LaTeX, Markdown and other artifacts with OpenCode's file and shell tools. The app reports the exact displayed page and an optional low-fidelity search hint. The assistant checks the passage in a paper artifact before answering. Files added during a conversation are immediately available. See the [assistant contract](specs/009-assistant-document-directory/contracts/assistant-api.md).
 If `ai.binary` is not on the app's PATH, or the server does not answer within `ai.startup_timeout_seconds`, the pane shows the reason (the server's log is `opencode.log` in the same directory) and **Try again**.
 
 ### Hyprland
