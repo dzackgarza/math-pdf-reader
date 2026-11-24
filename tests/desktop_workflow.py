@@ -666,7 +666,7 @@ def replace_text(field: WebElement, text: str) -> None:
 
 
 def stored_pdf(data_home: Path, key: str) -> pikepdf.Pdf:
-    return pikepdf.open(data_home / "pdf-bucket" / f"{key}.pdf")
+    return pikepdf.open(data_home / "pdf-bucket" / key / f"{key}.pdf")
 
 
 def highlighted_pixels_in(path: Path) -> tuple[int, int]:
@@ -813,7 +813,9 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     assert app.execute_script("return window.__errors") == []
 
     # Another PDF reader draws the saved highlights with the text showing through them too.
-    dark, yellow = highlighted_pixels_in(data_home / "pdf-bucket" / f"{notes}.pdf")
+    dark, yellow = highlighted_pixels_in(
+        data_home / "pdf-bucket" / notes / f"{notes}.pdf"
+    )
     assert dark > 0 and yellow > 0, (dark, yellow)
     with stored_pdf(data_home, notes) as pdf:
         assert highlights_in(pdf) == 2

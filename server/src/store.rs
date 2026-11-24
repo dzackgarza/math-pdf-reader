@@ -665,7 +665,9 @@ impl Store {
         }
         for key in candidate_keys(upload.filename.as_deref(), original_sha256) {
             let path = layout::pdf_path(self.root(), &key);
-            if held.contains(key.as_str()) || path.try_exists()? {
+            if held.contains(key.as_str())
+                || layout::document_dir(self.root(), &key).try_exists()?
+            {
                 continue;
             }
             blocking(move || commit(embedded, &path, Placement::New)).await?;

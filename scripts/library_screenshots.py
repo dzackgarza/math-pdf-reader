@@ -98,7 +98,9 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
             "--config",
             CONFIG,
             "--extensions",
-            stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-extensions-")),
+            stack.enter_context(
+                tempfile.TemporaryDirectory(prefix="pdf-bucket-extensions-")
+            ),
         ],
         cwd=REPO,
         stdin=subprocess.PIPE,
@@ -111,7 +113,9 @@ def serve(stack: ExitStack, root: Path, zotero_url: str, extractions: Path) -> s
     return process.stdout.readline().strip()
 
 
-def call(origin: str, method: str, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
+def call(
+    origin: str, method: str, path: str, body: dict[str, object] | None = None
+) -> dict[str, object]:
     data = None if body is None else json.dumps(body).encode()
     request = Request(
         f"{origin}{path}",
@@ -161,7 +165,9 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
     """File the most recent items into collections, topics and tags; return the ids used later."""
 
     def collection(name: str, parent: str | None = None) -> str:
-        body: dict[str, object] = {"name": name} if parent is None else {"name": name, "parentId": parent}
+        body: dict[str, object] = (
+            {"name": name} if parent is None else {"name": name, "parentId": parent}
+        )
         return str(call(origin, "POST", "/api/collections", body)["id"])
 
     birational = collection("Birational Geometry")
@@ -188,12 +194,16 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         ("Coxeter", [lattices], ["reflection groups", "topic:Lattices"]),
         ("Weyl", [lattices], ["reflection groups"]),
     ]
-    recent = sorted(items, key=lambda item: str(item["dateAdded"]), reverse=True)[:FILED_COUNT]
+    recent = sorted(items, key=lambda item: str(item["dateAdded"]), reverse=True)[
+        :FILED_COUNT
+    ]
     for index, item in enumerate(recent):
         title = str(item["title"])
         matched = [rule for rule in rules if rule[0] in title]
         tags = [tag for _, _, rule_tags in matched for tag in rule_tags]
-        collections = [cid for _, rule_collections, _ in matched for cid in rule_collections]
+        collections = [
+            cid for _, rule_collections, _ in matched for cid in rule_collections
+        ]
         if title.startswith(("A survey", "Lectures")):
             tags.append("survey")
         if index % 7 == 0:
@@ -220,7 +230,9 @@ def file_library(origin: str, items: list[dict[str, object]]) -> dict[str, str]:
         recent[:2],
         strict=True,
     ):
-        call(origin, "POST", f"/api/items/{quote(str(item['id']))}/notes", {"note": note})
+        call(
+            origin, "POST", f"/api/items/{quote(str(item['id']))}/notes", {"note": note}
+        )
 
     fields = {
         "title": True,
@@ -285,10 +297,12 @@ def place_extraction(root: Path, key: str) -> None:
     """Lay out the committed MinerU output as the extraction runner does: artifacts first,
     the Markdown last."""
     shipped = REPO / "tests/fixtures/mineru-ten-page-notes"
-    (root / f"{key}.extraction").mkdir()
+    document = root / key
+    artifacts = document / f"{key}.extraction"
+    artifacts.mkdir()
     for name in ("content_list.json", "layout.json"):
-        shutil.copy(shipped / name, root / f"{key}.extraction" / name)
-    shutil.copy(shipped / "full.md", root / f"{key}.md")
+        shutil.copy(shipped / name, artifacts / name)
+    shutil.copy(shipped / "full.md", document / f"{key}.md")
 
 
 def system_chromium() -> str:
@@ -302,7 +316,9 @@ def shoot(page: Page, out: Path, name: str) -> None:
     page.screenshot(path=out / f"{name}.png")
 
 
-def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) -> dict[str, float]:
+def chromium_screens(
+    out: Path, origins: dict[str, str], filed: dict[str, str]
+) -> dict[str, float]:
     timings: dict[str, float] = {}
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=system_chromium())
@@ -335,7 +351,9 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         shoot(page, out, "library-populated")
 
         page.get_by_role("row").nth(2).click()
-        page.get_by_role("complementary", name="Item details").get_by_text("content_list.json").wait_for()
+        page.get_by_role("complementary", name="Item details").get_by_text(
+            "content_list.json"
+        ).wait_for()
         shoot(page, out, "inspector-extraction")
         page.get_by_role("row").filter(has_text=filed["title"]).first.click()
 
@@ -381,10 +399,14 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         shoot(page, out, "palette-commands")
         page.keyboard.press("Escape")
 
-        page.goto(f"{origins['seeded']}/#/organization/collections/{filed['birational']}")
+        page.goto(
+            f"{origins['seeded']}/#/organization/collections/{filed['birational']}"
+        )
         page.get_by_role("row").nth(1).click()
         shoot(page, out, "organization-collections")
-        page.goto(f"{origins['seeded']}/#/organization/topics/{quote('topic:Birational Geometry', safe='')}")
+        page.goto(
+            f"{origins['seeded']}/#/organization/topics/{quote('topic:Birational Geometry', safe='')}"
+        )
         page.get_by_role("row").nth(1).wait_for()
         shoot(page, out, "organization-topics")
         page.goto(f"{origins['seeded']}/#/organization/tags")
@@ -403,7 +425,9 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         shoot(page, out, "timeline")
 
         page.goto(f"{origins['seeded']}/read/{quote(filed['reader'])}")
-        page.locator(f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}").first.wait_for()
+        page.locator(
+            f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}"
+        ).first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "reader")
 
@@ -415,7 +439,9 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
         page.locator(f"[data-reader-key='{first_key}'] {DRAWN_PAGE}").first.wait_for()
         page.get_by_role("tab", name="Library", exact=True).click()
         page.locator(f"tr[data-item-id='{filed['reader']}']").dblclick()
-        page.locator(f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}").first.wait_for()
+        page.locator(
+            f"[data-reader-key='{filed['reader']}'] {DRAWN_PAGE}"
+        ).first.wait_for()
         page.wait_for_timeout(500)
         shoot(page, out, "tabs")
         dark_screens(
@@ -428,7 +454,9 @@ def chromium_screens(out: Path, origins: dict[str, str], filed: dict[str, str]) 
     return timings
 
 
-def dark_screens(page: Page, out: Path, origins: dict[str, str], filed: dict[str, str]) -> None:
+def dark_screens(
+    page: Page, out: Path, origins: dict[str, str], filed: dict[str, str]
+) -> None:
     """The main screens under a dark system setting, with the theme preference at its default."""
     page.goto(origins["seeded"])
     page.get_by_role("row").filter(has_text=filed["title"]).first.click()
@@ -503,12 +531,16 @@ def headless_display(stack: ExitStack) -> str:
     socket_path = Path(os.environ["XDG_RUNTIME_DIR"]) / socket
     while not socket_path.exists():
         if weston.poll() is not None:
-            raise RuntimeError(f"weston exited with {weston.returncode} before creating {socket_path}")
+            raise RuntimeError(
+                f"weston exited with {weston.returncode} before creating {socket_path}"
+            )
         time.sleep(0.1)
     return socket
 
 
-def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: dict[str, str]) -> None:
+def webkit_screens(
+    stack: ExitStack, out: Path, origins: dict[str, str], filed: dict[str, str]
+) -> None:
     """The library and the reader in the system WebKitGTK, the engine of the desktop window.
     WebKitGTK takes prefers-color-scheme from GTK, which on Wayland reads the desktop's
     org.gnome.desktop.interface color-scheme; the in-memory GSettings backend holds the schema
@@ -523,14 +555,20 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     options = webdriver.WebKitGTKOptions()
     options.binary_location = "/usr/lib/webkit2gtk-4.1/MiniBrowser"
     options.add_argument("--automation")
-    service = webdriver.WebKitGTKService(executable_path="/usr/bin/WebKitWebDriver", env=env)
+    service = webdriver.WebKitGTKService(
+        executable_path="/usr/bin/WebKitWebDriver", env=env
+    )
     driver = webdriver.WebKitGTK(options=options, service=service)
     wait = WebDriverWait(driver, 30)
     driver.get(origins["seeded"])
     cell = f"//tbody/tr[contains(., {json.dumps(filed['title'])})]/td[@data-column='title']"
     row = wait.until(expected_conditions.element_to_be_clickable((By.XPATH, cell)))
     row.click()
-    wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
+    wait.until(
+        expected_conditions.presence_of_element_located(
+            (By.CSS_SELECTOR, "aside[aria-label='Item details']")
+        )
+    )
     driver.save_screenshot(str(out / "webkit-library-populated.png"))
     driver.get(f"{origins['seeded']}/read/{quote(filed['reader'])}")
     wait.until(lambda d: d.execute_script(drawn(filed["reader"])))
@@ -540,9 +578,15 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     # The same PDF opened from the library, in its tab.
     driver.get(origins["seeded"])
     reader_cell = f"//tbody/tr[@data-item-id={json.dumps(filed['reader'])}]/td[@data-column='title']"
-    wait.until(expected_conditions.element_to_be_clickable((By.XPATH, reader_cell))).click()
-    open_button = "//aside[@aria-label='Item details']//button[normalize-space()='Open']"
-    wait.until(expected_conditions.element_to_be_clickable((By.XPATH, open_button))).click()
+    wait.until(
+        expected_conditions.element_to_be_clickable((By.XPATH, reader_cell))
+    ).click()
+    open_button = (
+        "//aside[@aria-label='Item details']//button[normalize-space()='Open']"
+    )
+    wait.until(
+        expected_conditions.element_to_be_clickable((By.XPATH, open_button))
+    ).click()
     wait.until(lambda d: d.execute_script(drawn(filed["reader"])))
     time.sleep(0.5)
     driver.save_screenshot(str(out / "webkit-tabs.png"))
@@ -552,7 +596,11 @@ def webkit_screens(stack: ExitStack, out: Path, origins: dict[str, str], filed: 
     driver.get(origins["seeded"])
     row = wait.until(expected_conditions.element_to_be_clickable((By.XPATH, cell)))
     row.click()
-    wait.until(expected_conditions.presence_of_element_located((By.CSS_SELECTOR, "aside[aria-label='Item details']")))
+    wait.until(
+        expected_conditions.presence_of_element_located(
+            (By.CSS_SELECTOR, "aside[aria-label='Item details']")
+        )
+    )
     driver.save_screenshot(str(out / "webkit-dark-library-populated.png"))
     driver.get(f"{origins['seeded']}/read/{quote(filed['reader'])}")
     wait.until(lambda d: d.execute_script(drawn(filed["reader"])))
@@ -567,11 +615,17 @@ def main(out: Path) -> None:
     """Write the screenshots into OUT and print the timings."""
     out.mkdir(parents=True, exist_ok=True)
     with ExitStack() as stack:
-        scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-evidence-")))
+        scratch = Path(
+            stack.enter_context(
+                tempfile.TemporaryDirectory(prefix="pdf-bucket-evidence-")
+            )
+        )
         roots = {name: scratch / name for name in ("empty", "broken", "seeded")}
         for root in roots.values():
             root.mkdir()
-        shutil.copy(REPO / "tests/fixtures/problem-set.pdf", roots["broken"] / "hand-copied.pdf")
+        shutil.copy(
+            REPO / "tests/fixtures/problem-set.pdf", roots["broken"] / "hand-copied.pdf"
+        )
         started = time.perf_counter()
         subprocess.run(
             [
@@ -607,7 +661,10 @@ def main(out: Path) -> None:
         )
         list_seconds = time.perf_counter() - started
 
-        origins = {name: serve(stack, root, closed_port_url(), SHIPPED_EXTRACTIONS) for name, root in roots.items()}
+        origins = {
+            name: serve(stack, root, closed_port_url(), SHIPPED_EXTRACTIONS)
+            for name, root in roots.items()
+        }
         cold, payload = timed_library_load(origins["seeded"])
         warm, _ = timed_library_load(origins["seeded"])
         items = payload["items"]
@@ -628,10 +685,14 @@ def main(out: Path) -> None:
         }
         timings |= chromium_screens(out, origins, filed)
         webkit_screens(stack, out, origins, filed)
-    print(json.dumps({name: round(value, 3) for name, value in timings.items()}, indent=2))
+    print(
+        json.dumps({name: round(value, 3) for name, value in timings.items()}, indent=2)
+    )
 
 
-def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, title: str) -> None:
+def capture_fixture(
+    root: Path, fixture: str, key: str, pdf_url: str, title: str
+) -> None:
     """Store the fixture under KEY with its provenance embedded by the store's pikepdf command."""
     original = REPO / "tests/fixtures" / fixture
     provenance = [
@@ -651,7 +712,9 @@ def capture_fixture(root: Path, fixture: str, key: str, pdf_url: str, title: str
         str(original),
         str(root / f"{key}.pdf"),
     ]
-    subprocess.run(command, cwd=REPO, check=True, env=project_env(), stdin=subprocess.DEVNULL)
+    subprocess.run(
+        command, cwd=REPO, check=True, env=project_env(), stdin=subprocess.DEVNULL
+    )
 
 
 def record_sent(root: Path, key: str) -> None:
@@ -678,7 +741,11 @@ def record_sent(root: Path, key: str) -> None:
         "savedSearches": [],
         "items": {key: filing},
         "activity": [],
-        "preferences": {"outlineOnOpen": False, "theme": "system", "readerNightMode": False},
+        "preferences": {
+            "outlineOnOpen": False,
+            "theme": "system",
+            "readerNightMode": False,
+        },
     }
     (root / "organization.json").write_text(json.dumps(organization))
 
@@ -688,7 +755,9 @@ def send(out: Path) -> None:
     """Screenshot the send action's states into OUT against a bucket whose Zotero never answers."""
     out.mkdir(parents=True, exist_ok=True)
     with ExitStack() as stack:
-        root = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-send-")))
+        root = Path(
+            stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-send-"))
+        )
         capture_fixture(
             root,
             "lecture-notes.pdf",
@@ -712,14 +781,18 @@ def send(out: Path) -> None:
             page.goto(origin)
             details = page.get_by_role("complementary", name="Item details")
 
-            page.get_by_role("row").filter(has_text="Lattices and Quadratic Forms").click()
+            page.get_by_role("row").filter(
+                has_text="Lattices and Quadratic Forms"
+            ).click()
             details.get_by_role("button", name="Send to Zotero").wait_for()
             shoot(page, out, "send-idle")
 
             held: list[Route] = []
             page.route("**/api/items/*/zotero", lambda route: held.append(route))
             details.get_by_role("button", name="Send to Zotero").click()
-            details.get_by_role("button", name="Send to Zotero", disabled=True).wait_for()
+            details.get_by_role(
+                "button", name="Send to Zotero", disabled=True
+            ).wait_for()
             shoot(page, out, "send-sending")
             for route in held:
                 route.continue_()
@@ -772,7 +845,11 @@ def extract(out: Path) -> None:
     """Screenshot the inspector's extraction runs into OUT against the committed fixture extractor."""
     out.mkdir(parents=True, exist_ok=True)
     with ExitStack() as stack:
-        scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pdf-bucket-extract-")))
+        scratch = Path(
+            stack.enter_context(
+                tempfile.TemporaryDirectory(prefix="pdf-bucket-extract-")
+            )
+        )
         root = scratch / "bucket"
         root.mkdir()
         homepage = "https://www.math.example.edu/~author/"
@@ -799,22 +876,30 @@ def extract(out: Path) -> None:
             details = page.get_by_role("complementary", name="Item details")
             plugin = details.get_by_label("Extraction plugin")
 
-            page.get_by_role("row").filter(has_text="Lattices and Quadratic Forms").click()
+            page.get_by_role("row").filter(
+                has_text="Lattices and Quadratic Forms"
+            ).click()
             details.get_by_role("button", name="Run extraction").wait_for()
             shoot(page, out, "extract-idle")
 
             held: list[Route] = []
             page.route("**/api/items/*/extractions/*", lambda route: held.append(route))
             details.get_by_role("button", name="Run extraction").click()
-            details.get_by_role("button", name="Run extraction", disabled=True).wait_for()
+            details.get_by_role(
+                "button", name="Run extraction", disabled=True
+            ).wait_for()
             shoot(page, out, "extract-running")
             for route in held:
                 route.continue_()
             page.unroute("**/api/items/*/extractions/*")
-            details.get_by_text("artifacts/source.pdf").or_(details.get_by_text("source.pdf")).first.wait_for()
+            details.get_by_text("artifacts/source.pdf").or_(
+                details.get_by_text("source.pdf")
+            ).first.wait_for()
             shoot(page, out, "extract-succeeded")
 
-            page.get_by_role("row").filter(has_text="Ten Lectures on Integral Lattices").click()
+            page.get_by_role("row").filter(
+                has_text="Ten Lectures on Integral Lattices"
+            ).click()
             plugin.select_option("fail")
             details.get_by_role("button", name="Run extraction").click()
             details.get_by_role("alert").wait_for()
