@@ -110,33 +110,20 @@ test("the extraction-text endpoint is gone; enrichment lives in the paper direct
   await app.stop();
 });
 
-test("the raw-PDF text endpoint serves exactly one selected non-first page without an extraction", async () => {
+test("page context exposes a bounded search hint and leaves paper reading to the assistant", async () => {
   const app = await storedBucket("true");
-
-  const response = await app.request("/api/ai/pdf-text/long-notes?page=2");
-
-  expect(response.status).toBe(200);
-  const text = await response.text();
-  expect(text).toContain("--- page 2 of 210 ---");
-  expect(text).toContain("Lecture 2");
-  expect(text).toContain(
-    "The lattice Z2 has determinant 1 and 2 · 2 vectors of norm 1.",
-  );
-  expect(text.match(/^--- page \d+ of \d+ ---$/gm)).toHaveLength(1);
-  expect(text).not.toContain("Lecture 1");
-  await app.stop();
-});
-
-test("a page outside the raw PDF is refused as a bad request that names the page count", async () => {
-  const app = await storedBucket("true");
-
-  const response = await app.request("/api/ai/pdf-text/long-notes?page=9999");
-
-  expect(response.status).toBe(400);
-  const error = ApiErrorSchema.parse(await response.json()).error;
-  expect(error.kind).toBe("invalid_request");
-  expect(error.message).toContain("has 210 pages");
-  await app.stop();
+  try {
+    expect((await readPage(app, 2)).status).toBe(200);
+    const context = await view(app);
+    expect(context).toContain("page 2");
+    expect(context).not.toContain("/pdf-text/");
+    const hint = context.split("search hint only (not authoritative source text): ")[1];
+    expect(hint?.trim()).toContain("Lecture 2");
+    expect([...hint!.trim()].length).toBeLessThanOrEqual(500);
+    expect((await app.request("/api/ai/pdf-text/long-notes?page=2")).status).toBe(404);
+  } finally {
+    await app.stop();
+  }
 });
 
 test("an assistant that cannot start is reported as unavailable, with its own output", async () => {
@@ -157,7 +144,7 @@ test("an assistant that cannot start is reported as unavailable, with its own ou
   await app.stop();
 });
 
-test("the assistant can discover every current and future paper artifact read-only", async () => {
+test("the assistant can discover paper artifacts with file and shell tools", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
   const app = await storedBucket("false", root);
   const response = await app.request("/api/ai/session", {
@@ -187,6 +174,11 @@ test("the assistant can discover every current and future paper artifact read-on
   });
   expect(config.agents.reader.permissions).toContainEqual({
     action: "read",
+    resource: "*",
+    effect: "allow",
+  });
+  expect(config.agents.reader.permissions).toContainEqual({
+    action: "bash",
     resource: "*",
     effect: "allow",
   });
@@ -225,7 +217,7 @@ test("the view reports the exact shown page even without structured extraction",
   expect(response.status).toBe(200);
   const shown = await response.text();
   expect(shown).toContain("page 3 of 200");
-  expect(shown).toContain("/api/ai/pdf-text/long-notes?page=3");
+  expect(shown).toContain("search hint");
   await app.stop();
 });
 
@@ -403,8 +395,8 @@ test("an assistant session starts in the document directory without a source cat
   expect(assistant.locations.ses_fake).toBe(document);
   expect(existsSync(join(document, "AGENTS.md"))).toBe(false);
   const entry = String(assistant.entries["ses_fake/reader-view"]);
-  expect(entry).toContain(join(document, "long-notes.pdf"));
-  expect(entry).toContain("/api/ai/pdf-text/long-notes?page=N");
+  expect(existsSync(join(document, "long-notes.pdf"))).toBe(true);
+  expect(entry).not.toContain("/pdf-text/");
   await app.stop();
   assistant.stop();
 });
@@ -428,7 +420,7 @@ test("the assistant's chat is told the reader's page as soon as the reader repor
 
   const entry = String(assistant.entries["ses_fake/reader-view"]);
   expect(entry).toContain("The reader shows page 7 of 200");
-  expect(entry).toContain("/api/ai/pdf-text/long-notes?page=7");
+  expect(entry).toContain("search hint");
   expect(entry).toContain("/api/ai/view/long-notes");
   expect(entry).not.toContain("--- page 7 of ");
   await app.stop();
