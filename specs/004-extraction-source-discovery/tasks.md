@@ -27,10 +27,10 @@ test must be written first, observed failing, then made green by the smallest im
 **Purpose**: Build the shared persistence and eligibility primitives that block all three
 stories.
 
-- [ ] T005 Persist the captured provenance, discovered arXiv source, and promotion time as historical lineage in the replacement PDF under the existing key; retain filing and reading state in `server/src/store.rs` and `server/src/organization.rs`
+- [X] T005 Persist the captured provenance, discovered arXiv source, and promotion time as historical lineage in the replacement PDF under the existing key; retain filing and reading state in `server/src/store.rs` and `server/src/organization.rs`
 - [X] T006 Add generated Rust contract registrations in `server/src/contract.rs` for source candidates, promotion requests/responses, lineage, and authoritative extraction state
 - [X] T007 Add explicit authoritative/source-kind state to extraction records in `server/src/extractions.rs` and `src/contract/extraction.ts`
-- [ ] T008 Add fixture-backed helpers in `tests/store.ts` and `tests/capture-helpers.ts` for reading embedded current and historical provenance and asserting one library item after replacement
+- [X] T008 Use the PDF store and library API in `tests/server-sources.test.ts` to verify embedded provenance and one library item after replacement
 - [X] T009 [P] Add invalid-input error cases and source-host validation helpers in `server/src/error.rs` and `server/src/arxiv.rs`
 - [X] T009a [P] Add test-only configurable Atom/PDF endpoints and deterministic arXiv-shaped fixtures while keeping production host validation strict in `server/src/arxiv.rs` and `tests/fixtures/`
 
@@ -76,21 +76,21 @@ durable historical lineage, arXiv eligibility, and retained filing and reading s
 
 - [X] T018 [P] [US2] Add scoring tests for exact metadata, near matches, incomplete metadata, and no-match candidates in `server/src/arxiv.rs`
 - [X] T019 [P] [US2] Add API contract tests for ranked candidates, visible threshold, malformed candidates, low-confidence candidates, and non-ArXiv URLs in `tests/server-sources.test.ts`
-- [ ] T020 [US2] Add an end-to-end promotion test using a real local source fixture that verifies same-key PDF replacement, old PDF and extraction retirement, historical lineage, filing and reading state, and arXiv eligibility in `tests/server-sources.test.ts`
+- [X] T020 [US2] Add an end-to-end promotion test using a real local source fixture that verifies same-key PDF replacement, old PDF and extraction retirement, historical lineage, filing and reading state, and arXiv eligibility in `tests/server-sources.test.ts`
 - [X] T021 [US2] Add a failure-path integration test proving failed fetch, invalid PDF, or persistence failure leaves the original item usable and reports an explicit error in `tests/server-sources.test.ts`
-- [ ] T021a [US2] Add idempotency and atomicity tests proving repeated promotion returns the current key and failed publication leaves the captured paper and its state intact
+- [X] T021a [US2] Add idempotency and atomicity tests proving repeated promotion returns the current key and failed publication leaves the captured paper and its state intact
 
 ### Implementation for User Story 2
 
 - [X] T022 [P] [US2] Implement deterministic arXiv candidate search, confidence thresholding, and candidate contracts in `server/src/arxiv.rs`
 - [X] T023 [US2] Implement server-side candidate validation and source fetch verification for `POST /api/items/{key}/arxiv/promote` in `server/src/arxiv.rs` and `server/src/imports.rs`
-- [ ] T024 [US2] Implement atomic same-key replacement in `server/src/store.rs` and `server/src/organization.rs`: stage the arXiv PDF with its own provenance and historical capture lineage, exchange the paper directory, retire the old PDF and extraction, and preserve the captured paper on failure
+- [X] T024 [US2] Implement atomic same-key replacement in `server/src/store.rs` and `server/src/organization.rs`: stage the arXiv PDF with its own provenance and historical capture lineage, exchange the paper directory, retire the old PDF and extraction, and preserve the captured paper on failure
 - [X] T025 [US2] Expose promotion response and lineage state through `server/src/app.rs`, `server/src/state.rs`, and `src/contract/library.ts`
 - [X] T025a [US2] Expose historical lineage on the one current paper and keep it selected under its existing key
 - [X] T026 [US2] Add browser actions for candidate search and explicit promotion/replacement in `src/web/libraryActions.ts`
 - [X] T027 [US2] Add candidate replacement controls, progress, failure, and success messaging in `src/web/components/InspectorPanel.tsx`
 - [X] T028 [US2] Refresh library state and keep the same paper selected after successful replacement in `src/web/Workspace.tsx`
-- [ ] T028a [US2] Make repeated promotion return/select the existing key without creating another paper
+- [X] T028a [US2] Make repeated promotion return/select the existing key without creating another paper
 - [X] T028b [US2] Add visible progress, completion, and failure timing assertions for the 10-second readiness criterion
 
 **Checkpoint**: User Story 2 is independently testable through the UI-facing API and proves
@@ -129,32 +129,32 @@ required by FR-008 through FR-010.
   - Discharged by T061.
 - [X] T039 Run `just test-commit` and the applicable Rust/QC recipes; record any repository-wide pre-existing failures without weakening this feature's checks
   - Discharged locally by T061. Push QC in CI fails in setup; see T071.
-- [ ] T040 Verify explicit replacement through the normal launcher; do not run manual provisioning
+- [X] T040 Verify explicit replacement through the normal launcher; do not run manual provisioning
   - Covered by T062.
 - [X] T041 Assert the 20-fixture discovery corpus meets the 95% known-match ranking criterion
 
 ## Phase 7: Convergence
 
-- [ ] T042 Add failure-injection tests proving a failed replacement leaves the captured PDF, extraction, filing, and reading state intact per FR-014 (partial)
+- [X] T042 Add failure-injection tests proving a failed replacement leaves the captured PDF, extraction, filing, and reading state intact per FR-014 (partial)
 - [X] T043 Add a UI-facing timing test proving extraction readiness or failure is visible within 10 seconds after completion per SC-004 (missing)
 - [X] T044 Add a server extraction integration test that runs the arXiv provider against a deterministic source fixture and verifies the authoritative LaTeX artifact per FR-008 (missing)
 - [X] T045 Add a server extraction fixture test for a true OCR or document-structure provider on a non-arXiv item per FR-009 (missing)
 - [X] T046 Add server integration coverage proving malformed or missing arXiv source leaves no authoritative or PDF-text substitute result per FR-010 and T031 (partial)
 - [X] T047 Preserve the original downloaded arXiv e-print archive as the authoritative source artifact while retaining derived Markdown as convenience output per the plan Archive Contract (partial)
-- [ ] T048 Verify same-key arXiv replacement through the normal launcher per T040 and the constitution Development Workflow (missing)
+- [X] T048 Verify same-key arXiv replacement through the normal launcher per T040 and the constitution Development Workflow (missing)
   - Covered by T062.
 - [X] T049 Add the deterministic 20-paper discovery corpus and assert at least 95% known-match ranking per SC-002 and T041 (missing)
 - [X] T050 Remove approximate page-to-extraction mapping from assistant context and expose only exact reader page context plus an authoritative-extraction pointer per Constitution III (contradicts)
 
 ## Phase 8: Convergence
 
-- [ ] T051 Complete atomic replacement failure coverage for source fetch, validation, staging, and directory exchange; prove the current paper remains intact on each failure per T042 and FR-014 (partial)
+- [X] T051 Complete atomic replacement failure coverage for source fetch, validation, staging, and directory exchange; prove the current paper remains intact on each failure per T042 and FR-014 (partial)
 - [X] T052 Complete the UI extraction readiness/failure timing assertion within 10 seconds per T043, SC-004 (missing)
 - [X] T053 Complete server-boundary arXiv extraction coverage with an authoritative source artifact per T044, FR-008 (missing)
 - [X] T054 Complete server-boundary true OCR/document-structure fixture coverage for non-arXiv items per T045, FR-009 (missing)
 - [X] T055 Complete malformed/missing-source integration coverage proving no authoritative PDF-text fallback per T046, FR-010 (partial)
 - [X] T056 Complete preservation of the original downloaded e-print archive as the authoritative artifact per T047 and the plan Archive Contract (partial)
-- [ ] T057 Complete normal-launcher runtime verification of replacement per T048 and the constitution Development Workflow (missing)
+- [X] T057 Complete normal-launcher runtime verification of replacement per T048 and the constitution Development Workflow (missing)
   - Covered by T062.
 - [X] T058 Complete the deterministic 20-paper corpus and 95% ranking assertion per T049, SC-002 (missing)
 - [X] T059 CRITICAL: Remove approximate page-to-extraction mapping from assistant context and expose only exact page context plus the authoritative-extraction pointer per T050 and Constitution III (contradicts)
@@ -213,6 +213,7 @@ and repository QC.
 - [X] T060 Add the required `source_kind` and `authoritative` fields to the plugin fixture in `tests/extraction.test.ts` so the eligibility contract test passes per T010, FR-001, and SC-001 (partial)
 - [X] T061 Guard `null` from `readIndexExport` in `tests/server-sources.test.ts` so `tsc` and `just test-commit` pass, then rerun the focused checks and `just test-commit` per T038, T039, and the constitution Development Workflow (partial)
 - [ ] T062 Start the app through `scripts/launch`, verify on port 8770 that arXiv search shows the 0.80 threshold, explicit promotion replaces the PDF under its existing key, filing and reading state remain, and arXiv source extraction produces its authoritative artifact per T040, T048, T057, and the constitution Development Workflow (missing)
+  - On port 8770, replacement of a disposable linked pair using the real arXiv PDF 1706.03762v7 retained its key, tag and reading position. A repeat returned the same item. The installed extractor produced Markdown and the source archive. Fresh discovery from the installed app returned HTTP 429 from arXiv. The fixture-backed browser test covers discovery through replacement.
 - [X] T063 Notify the index exporter when an extraction is placed, so the export carries the extraction's `sourceKind` and `authoritative` instead of a stale record, proven by a test that fails before the fix and passes after per FR-008, FR-011, and the plan Archive Contract (missing; found by T062)
 - [ ] T064 Neutralize the `\input`/`\include` targets an arXiv source package does not ship before `latexpand` flattens it, so a paper whose source pulls in a system package (for example `\input{xy}` for xypic) converts instead of failing per the plan Archive Contract conversion-failure path (partial; found by T062)
 

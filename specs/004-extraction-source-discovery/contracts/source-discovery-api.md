@@ -67,11 +67,14 @@ The paper keeps its key, filing, and reading state. Its current PDF has the arXi
 PDF URL as provenance. The captured URL, time, and original SHA-256 remain in
 historical lineage embedded in that PDF. The old PDF and extraction leave the
 active store after success. A repeated request for the same identifier/version
-returns the current key with `existing: true`. If its PDF is missing,
-`missing: true` directs the user to rebuild it from arXiv. A failed request
-returns the repository error contract and leaves the captured paper intact.
-If the arXiv PDF's original bytes already belong to another stored key, the
-request reports a conflict naming that key and leaves both papers intact.
+returns the current key with `existing: true`. A missing PDF requires recovery
+through Needs Re-fetch. A failure before replacement leaves the captured paper intact.
+
+If an earlier version created a linked pair, an explicit replacement can reuse
+the linked arXiv PDF. Its embedded provenance identifies the captured paper.
+The request reports a conflict if a separate arXiv copy has its own filing or
+extraction that requires reconciliation. An independently captured PDF with the
+same arXiv bytes also causes a conflict. In either case both papers stay available.
 
 For deterministic integration tests, the server accepts test-only configured Atom/PDF
 endpoints that serve an arXiv-shaped fixture. Production requests still require HTTPS
