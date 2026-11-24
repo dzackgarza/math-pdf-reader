@@ -10,7 +10,7 @@
 ### User Story 1 - Ask with every available paper source (Priority: P1)
 
 The user opens a paper's assistant and asks a question. The assistant works in the
-paper's own document directory, discovers the original and any enrichment that exists,
+paper's own document directory, discovers the current PDF and any enrichment that exists,
 and chooses the sources that answer the question. A missing extraction never makes the
 assistant unavailable.
 
@@ -44,9 +44,9 @@ the same directory without restarting the chat or receiving a rebuilt source cat
 **Why this priority**: Enrichment is an ordinary change to the paper record, not a new
 assistant session or a synchronization workflow.
 
-**Independent Test**: Open a chat for a paper without an extraction, place a valid
-extraction in that paper's directory, and ask a question whose answer requires the new
-content in the same chat.
+**Independent Test**: Open a chat for a paper without an extraction. Run extraction
+from the app. When it completes, ask the same chat for a passage unique to the
+extraction and compare its answer with the saved passage.
 
 **Acceptance Scenarios**:
 1. **Given** an open chat and a newly completed extraction, **When** the user asks
@@ -55,6 +55,26 @@ content in the same chat.
 2. **Given** a failed or incomplete enrichment, **When** the user asks another question,
    **Then** the current PDF remains available and no incomplete artifact is
    presented as complete.
+
+### User Story 3 - Continue reading after arXiv replacement (Priority: P1)
+
+A reader who chooses a different edition needs answers and page references grounded
+in the edition now on screen.
+
+**Independent Test**: Use two editions whose corresponding pages differ. Start a
+chat about the captured edition, then choose its arXiv replacement. Exercise both
+a successful replacement and a failed download.
+
+**Acceptance Scenarios**:
+
+1. After success, opening the assistant from the same library item starts a fresh
+   conversation. Ask about a passage unique to the arXiv edition and verify the
+   answer against that PDF. A later page change reaches only this conversation.
+2. After a failed replacement, reopening the assistant resumes the captured
+   edition's conversation with its earlier messages. Page changes and questions
+   still refer to the captured PDF.
+3. Repeating an already successful replacement with the same arXiv version
+   preserves the conversation for that version.
 
 ### Edge Cases
 
@@ -99,6 +119,10 @@ content in the same chat.
 - **FR-011**: The application MUST maintain one authoritative location for each
   paper-specific artifact, without duplicate current copies in separate workspaces.
 - **FR-012**: A missing or invalid current PDF MUST continue to fail explicitly.
+- **FR-013**: Conversations and reader page updates MUST follow the current PDF
+  edition. A successful change of edition starts a fresh chat on next open.
+  A failed replacement or a repeat selection of the current edition preserves
+  that edition's chat.
 
 ### Key Entities
 
@@ -132,6 +156,9 @@ content in the same chat.
   Export retains the identity and provenance needed for recovery. Rebuild restores
   the PDF to the same key. After deletion the paper and its artifacts leave the
   active store together and its entry disappears from the next export.
+- **SC-006**: At the same library address, the reader can verify the current chat
+  and its reported page against the displayed edition in all three replacement
+  scenarios in User Story 3.
 
 ## Assumptions
 

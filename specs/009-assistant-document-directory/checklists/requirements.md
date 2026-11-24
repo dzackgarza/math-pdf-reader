@@ -31,6 +31,6 @@
 
 ## Notes
 
-- The specification resolves the relationship between original-document access and
-  enrichment: the original is always available, while every complete artifact in the
-  same document directory is additional context.
+- User Story 2 checks an extraction started from the app in an open conversation.
+- User Story 3, FR-013 and SC-006 cover the conversation and page context after
+  replacement, failed download and repeat selection of the current edition.
