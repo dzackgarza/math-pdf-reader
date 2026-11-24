@@ -23,7 +23,14 @@ The session's location is the paper directory. The assistant chooses its own fil
 and shell tools to inspect the PDF, Markdown, LaTeX or other files there. A file
 added later is available on the next turn without an instruction update.
 
-The reader supplies the displayed page number through `GET /api/ai/view/{key}`.
+The reader gets `X-Pdf-Edition` with the bytes from `GET /pdf/{key}.pdf`. It
+decodes that base64url header as a JSON provenance object. To record a page,
+it sends `{ "page": N, "pages": M, "edition": provenance }` to
+`PUT /api/items/{key}/reading`. The edition belongs to the PDF on screen when
+the page changed. If that edition has since been replaced, the server returns
+`409 stale_pdf` and preserves the reading position and both chats.
+
+`GET /api/ai/view/{key}` returns the recorded page for the assistant.
 Its optional text-layer snippet is a labeled search hint. The assistant uses the
 hint to locate a passage and reads the paper artifact before answering.
 
