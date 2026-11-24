@@ -548,6 +548,7 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
     const failedView = String(assistant.entries["ses_fake/reader-view"]);
     expect(failedView).toContain("page 3 of 200");
     expect(failedView).not.toBe(capturedView);
+    const delayedCapturedPage = () => readPage(app, 4);
 
     servePreferred = true;
     const replaced = await promote(candidate);
@@ -565,6 +566,16 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
     const firstPreferredView = String(assistant.entries["ses_fake_2/reader-view"]);
     expect(firstPreferredView).toContain("page 1 of 200");
     expect(firstPreferredView).not.toBe(failedView);
+    const readingBeforeDelay = LibraryPayloadSchema.parse(
+      await (await app.request("/api/library")).json(),
+    ).items.find((item) => item.id === "long-notes")?.reading;
+    const delayed = await delayedCapturedPage();
+    expect(delayed.status).toBe(409);
+    expect(LibraryPayloadSchema.parse(
+      await (await app.request("/api/library")).json(),
+    ).items.find((item) => item.id === "long-notes")?.reading).toEqual(readingBeforeDelay);
+    expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
+    expect(assistant.entries["ses_fake_2/reader-view"]).toBe(firstPreferredView);
     const hint = (entry: string) => entry.split("search hint only (not authoritative source text): ")[1]?.trim();
     expect(hint(capturedFirstPageView)).toBeTruthy();
     expect(hint(firstPreferredView)).toBeTruthy();
