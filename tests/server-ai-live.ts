@@ -1,10 +1,10 @@
-// The real provider inspects the stored PDF, then reads a newly placed paper artifact.
+// The real provider inspects the stored PDF, then reads a new app-produced extraction.
 // This uses a private bucket and assistant server; it does not open or change a chat in the
 // provisioned app. The configured provider must be reachable.
 import { expect, test } from "bun:test";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import {
-  mkdirSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -16,7 +16,8 @@ import { z } from "zod";
 import { LibraryPayloadSchema } from "../src/contract/library";
 import { AiSessionSchema } from "../src/contract/ai";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
-import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
+import { ExtractionOutcomeSchema } from "../src/contract/extraction";
+import { closedPortUrl, serveBucket } from "./bucket";
 
 const MessagesSchema = z.object({
   data: z.array(
@@ -55,10 +56,22 @@ test("the assistant inspects the original PDF with the shell and discovers a new
   const config = loadAppConfig(CONFIG_PATH);
   const aiPort = freePort();
   config.ai.port = aiPort;
+  const marker = `pdf-bucket-live-discovery-${randomUUID()}`;
+  const passage = `The lattice $Z^2$ has determinant 1. Source verification: ${marker}`;
+  const manifestPath = join(root, "extractions.json");
+  writeFileSync(manifestPath, JSON.stringify({ plugins: [{
+    id: "live-passage",
+    name: "Live passage fixture",
+    source_kind: "document_structure",
+    authoritative: true,
+    command: ["sh", join(import.meta.dir, "fixtures/plugins/extractor.sh"),
+      "record", "$pdf", "$output", "# Lecture 2", passage],
+    accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+  }] }));
   const app = await serveBucket({
     root,
     zoteroUrl: closedPortUrl(),
-    extractionsManifest: EXTRACTIONS_MANIFEST,
+    extractionsManifest: manifestPath,
     config,
     // The private assistant links the user's provider logins. Its own data remains under the
     // scratch bucket's index-export directory.
@@ -166,13 +179,22 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     expect(context).toContain("lattice Z2");
     const accession = randomUUID();
     writeFileSync(join(root, "long-notes", "catalog.json"), JSON.stringify({ accession }));
-    const marker = `pdf-bucket-live-discovery-${randomUUID()}`;
     const paper = join(root, "long-notes");
-    const extracted = join(paper, "long-notes.extraction");
-    mkdirSync(extracted);
-    writeFileSync(join(extracted, "metadata.json"),
-      JSON.stringify({ sourceKind: "document_structure", authoritative: true }));
-    writeFileSync(join(paper, "long-notes.md"), `# Lecture 2\n\nThe lattice $Z^2$ has determinant 1.\n\nSource verification: ${marker}\n`);
+    const markdownPath = join(paper, "long-notes.md");
+    expect(existsSync(markdownPath)).toBe(false);
+    const extraction = await app.request("/api/items/long-notes/extractions/live-passage", {
+      method: "POST",
+    });
+    expect(extraction.status).toBe(200);
+    const outcome = ExtractionOutcomeSchema.parse(await extraction.json());
+    expect(outcome).toMatchObject({ status: "succeeded", key: "long-notes",
+      plugin_id: "live-passage", markdown: { path: "long-notes.md" } });
+    const published = readFileSync(markdownPath, "utf8");
+    expect(published).toContain(passage);
+    expect(outcome.status).toBe("succeeded");
+    if (outcome.status === "succeeded") {
+      expect(outcome.markdown.sha256).toBe(createHash("sha256").update(published).digest("hex"));
+    }
     const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
     expect(library.items.find((item) => item.id === "long-notes")?.extraction).toMatchObject({
       status: "extracted", sourceKind: "document_structure", authoritative: true,
@@ -193,7 +215,7 @@ test("the assistant inspects the original PDF with the shell and discovers a new
       .filter((part) => part.type === "tool");
     const shellReads = toolCalls.filter((part) =>
       part.name === "shell" && part.state?.status === "completed" &&
-      part.state.content?.some((block) => block.text?.includes(marker))
+      part.state.content?.some((block) => block.text?.includes(passage))
     );
     expect(discoveryAnswer).toContain("Z^2");
     expect(discoveryAnswer).toContain(marker);
