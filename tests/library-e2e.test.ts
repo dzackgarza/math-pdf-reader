@@ -152,7 +152,8 @@ const shot = async (name: string) => {
   await page.screenshot({ path: join(screenshots, `${name}.png`) });
 };
 
-test("arXiv promotion selects the preferred item and reports when it needs rebuilding", async () => {
+test("arXiv replacement keeps the current PDF on failure and shows the new PDF on success", async () => {
+  let downloadFails = true;
   const arxiv = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -162,6 +163,9 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
           "<feed><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><author><name>An Author</name></author></entry></feed>",
           { headers: { "Content-Type": "application/atom+xml" } },
         );
+      }
+      if (downloadFails) {
+        return new Response("source unavailable", { status: 503 });
       }
       return new Response(fixture("problem-set.pdf"), {
         headers: { "Content-Type": "application/pdf" },
@@ -205,27 +209,29 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
     await page.waitForSelector(row("original"));
     await page.click(row("original"));
     await (await byRole("button", "Find on arXiv")).click();
-    await (await byRole("button", "Use this version")).click();
-    await page.waitForSelector(row("1234.5678v1"));
-    await shows('aside[aria-label="Item details"]', "Promotion Notes");
-    await shot("arxiv-promotion");
-
-    const away = mkdtempSync(join(tmpdir(), "pdf-bucket-arxiv-ui-away-"));
-    renameSync(
-      join(root, "1234.5678v1", "1234.5678v1.pdf"),
-      join(away, "preferred.pdf"),
-    );
-    await page.goto(`${app.origin}/`);
-    await page.waitForSelector(row("original"));
-    await page.click(row("original"));
-    await (await byRole("button", "Find on arXiv")).click();
-    await (await byRole("button", "Use this version")).click();
+    await shows('aside[aria-label="Item details"]', "arXiv:1234.5678v1");
+    const panel = await page.$eval('aside[aria-label="Item details"]', (element) => element.textContent);
+    expect(panel).toContain("A failed download keeps the current PDF.");
+    expect(panel).toContain("Replace with arXiv PDF");
+    await (await byRole("button", "Replace with arXiv PDF")).click();
     await shows(
-      "body",
-      "The preferred arXiv PDF is missing; use Needs Re-fetch to rebuild it.",
+      'aside[aria-label="Item details"] [role="alert"]',
+      "The current PDF remains available.",
     );
-    await shows('button[aria-label="Needs Re-fetch"] span:last-child', "1");
-    await shot("arxiv-promotion-missing");
+    expect(await rowKeys()).toEqual(["original"]);
+    const failedSourceLinks = await page.$$eval('aside[aria-label="Item details"] a',
+      (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
+    expect(failedSourceLinks).toContain(published("/~author/lattices.pdf"));
+    await shot("arxiv-replacement-failed");
+
+    downloadFails = false;
+    await (await byRole("button", "Replace with arXiv PDF")).click();
+    await shows("body", "Replaced the PDF with the arXiv version.");
+    const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+    expect(library.items).toHaveLength(1);
+    expect(library.items[0]?.provenance.pdf_url).toBe("https://arxiv.org/pdf/1234.5678v1");
+    await shows('aside[aria-label="Item details"]', "https://arxiv.org/pdf/1234.5678v1");
+    await shot("arxiv-replacement");
   } finally {
     await app.stop();
     arxiv.stop(true);
