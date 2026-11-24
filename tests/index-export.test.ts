@@ -159,7 +159,7 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
     throw new Error("export-index wrote no export");
   }
   for (const key of ["lecture-notes", "2401.00001", "long-notes", "revised"]) {
-    unlinkSync(join(root, `${key}.pdf`));
+    unlinkSync(join(root, key, `${key}.pdf`));
   }
 
   const { exitCode, outcomes } = await rebuildCache(home, exportFile);
@@ -176,14 +176,18 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
       key: "2401.00001",
       status: "restored",
       from: at("/pdf/2401.00001"),
-      stored_sha256: sha256(readFileSync(join(root, "2401.00001.pdf"))),
+      stored_sha256: sha256(
+        readFileSync(join(root, "2401.00001", "2401.00001.pdf")),
+      ),
       metadata: { status: "from_pdf" },
     },
     {
       key: "lecture-notes",
       status: "restored",
       from: at("/notes/lecture-notes.pdf"),
-      stored_sha256: sha256(readFileSync(join(root, "lecture-notes.pdf"))),
+      stored_sha256: sha256(
+        readFileSync(join(root, "lecture-notes", "lecture-notes.pdf")),
+      ),
       metadata: { status: "from_pdf" },
     },
     {
@@ -219,8 +223,8 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
     sha256(lectureNotes),
     sha256(tenPageNotes),
   ]);
-  expect(existsSync(join(root, "long-notes.pdf"))).toBe(false);
-  expect(existsSync(join(root, "revised.pdf"))).toBe(false);
+  expect(existsSync(join(root, "long-notes", "long-notes.pdf"))).toBe(false);
+  expect(existsSync(join(root, "revised", "revised.pdf"))).toBe(false);
   // A present PDF is never downloaded again.
   expect(requested).not.toContain("/teaching/ten-page-notes.pdf");
 });
@@ -370,7 +374,7 @@ test("an export never drops an item whose PDF is missing, and import never overw
   writeOrganization(root, filing);
   await exportIndex(home, exportFile);
   const before = readFileSync(exportFile, "utf8");
-  unlinkSync(join(root, "lecture-notes.pdf"));
+  unlinkSync(join(root, "lecture-notes", "lecture-notes.pdf"));
 
   const reexport = await bucketCommand(home, ["export-index", exportFile]);
   const reimport = await bucketCommand(home, ["import-index", exportFile]);
@@ -555,7 +559,7 @@ test("a refused export shows in /status until the missing item is rebuilt or for
   await captureOver(app, lectureNotes, "lattices.pdf");
   await captureOver(app, problemSet, "packing.pdf");
   await exportedWhen(exportFile, (index) => index.items.length === 2);
-  unlinkSync(join(root, "packing.pdf"));
+  unlinkSync(join(root, "packing", "packing.pdf"));
   const before = readFileSync(exportFile, "utf8");
 
   await app.request("/api/bulk/tags", {
@@ -662,7 +666,7 @@ test("a stored PDF whose check fails is neither forgotten nor not found: the ope
   const app = await serve(root, exportFile);
   await captureOver(app, lectureNotes, "lattices.pdf");
   await exportedWhen(exportFile, (index) => index.items.length === 1);
-  const stored = join(root, "lattices.pdf");
+  const stored = join(root, "lattices", "lattices.pdf");
   unlinkSync(stored);
   symlinkSync(stored, stored);
   // ELOOP is errno 40 on Linux: the message carries the operating system's own answer.
@@ -700,7 +704,7 @@ test("`pdf-bucket forget` drops a missing item and writes the export without it"
   );
   await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
   await exportIndex(home, exportFile);
-  unlinkSync(join(root, "2401.00001.pdf"));
+  unlinkSync(join(root, "2401.00001", "2401.00001.pdf"));
   expect(
     (await bucketCommand(home, ["export-index", exportFile])).exitCode,
   ).toBe(1);
@@ -859,7 +863,7 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
       RemovedKeysSchema.parse({ version: 1, keys: [lattices.key] }),
     ),
   );
-  unlinkSync(join(root, "lattices.pdf"));
+  unlinkSync(join(root, "lattices", "lattices.pdf"));
   const app = await serve(
     root,
     join(temporaryDirectory("export"), "index.json"),
@@ -891,7 +895,7 @@ async function lostLattices(root: string, exportFile: string) {
     (index) => index.items[0]?.filing.tags.length === 1,
   );
   await first.stop();
-  unlinkSync(join(root, "lattices.pdf"));
+  unlinkSync(join(root, "lattices", "lattices.pdf"));
 }
 
 // The key a different PDF offered as lattices.pdf takes while "lattices" is held.

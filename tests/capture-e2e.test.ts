@@ -1,9 +1,22 @@
 // Browser end-to-end proof of capture (#6): both built extensions, driven by Puppeteer
 // (Chromium through --load-extension, Firefox through WebDriver BiDi webExtension.install),
 // against the fixture site and the bucket server over a temporary store.
-import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  setDefaultTimeout,
+  test,
+} from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import puppeteer, {
@@ -37,7 +50,9 @@ const SETTLE_MS = 1_500;
 function executable(name: string): string {
   const path = Bun.which(name);
   if (path === null) {
-    throw new Error(`${name} is not on PATH; the capture suite drives the real browser`);
+    throw new Error(
+      `${name} is not on PATH; the capture suite drives the real browser`,
+    );
   }
   return path;
 }
@@ -57,12 +72,18 @@ async function startBucket() {
     root,
     port: Number(new URL(app.origin).port),
     origin: app.origin,
-    files: () => readdirSync(root).sort(),
+    files: () =>
+      readdirSync(root, { recursive: true, encoding: "utf8" })
+        .filter((name) => name.endsWith(".pdf"))
+        .sort(),
     stop: app.stop,
   };
 }
 
-async function buildExtension(engine: Engine, bucketPort: number): Promise<string> {
+async function buildExtension(
+  engine: Engine,
+  bucketPort: number,
+): Promise<string> {
   const outDir = mkdtempSync(join(tmpdir(), `pdf-bucket-e2e-${engine}-`));
   const server = { host: "127.0.0.1", port: bucketPort };
   await build({
@@ -82,7 +103,11 @@ const FIREFOX_EXTENSION_UUID = "5d1c2a8e-3f47-4b6e-9a0d-7c41e2b9f613";
 // Only launches: the suite holds the browser before anything else can fail, so its teardown
 // closes it and Puppeteer removes the temporary profile. Firefox saves downloads to DOWNLOADS
 // without asking.
-function launch(engine: Engine, extension: string, downloads: string): Promise<Browser> {
+function launch(
+  engine: Engine,
+  extension: string,
+  downloads: string,
+): Promise<Browser> {
   if (engine === "chrome") {
     return puppeteer.launch({
       browser: "chrome",
@@ -173,10 +198,14 @@ async function subscribeToCaptures(bucketOrigin: string) {
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) {
-          throw new Error("the bucket's event stream ended before a capture was announced");
+          throw new Error(
+            "the bucket's event stream ended before a capture was announced",
+          );
         }
         received += chunk.value;
-        const announced = /event: open-reader\ndata: (.+)\n/.exec(received)?.[1];
+        const announced = /event: open-reader\ndata: (.+)\n/.exec(
+          received,
+        )?.[1];
         if (announced !== undefined) {
           await reader.cancel();
           return OpenReaderSchema.parse(JSON.parse(announced)).reader_url;
@@ -186,7 +215,10 @@ async function subscribeToCaptures(bucketOrigin: string) {
   };
 }
 
-async function captureState(frame: Frame | Page, state: "stored" | "failed"): Promise<void> {
+async function captureState(
+  frame: Frame | Page,
+  state: "stored" | "failed",
+): Promise<void> {
   await frame.waitForSelector(`main#capture[data-state="${state}"]`);
 }
 
@@ -227,7 +259,10 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       .string()
       .startsWith("data:image/png;base64,")
       .parse(await page.evaluate("browser.tabs.captureVisibleTab()"));
-    const png = Buffer.from(dataUrl.slice("data:image/png;base64,".length), "base64");
+    const png = Buffer.from(
+      dataUrl.slice("data:image/png;base64,".length),
+      "base64",
+    );
     await Bun.write(join(screenshots, `${engine}-${name}.png`), png);
   };
 
@@ -275,7 +310,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const captures = await subscribeToCaptures(bucket.origin);
     await followLink(pagePath);
     const readerUrl = await captures.next();
-    await page.waitForFunction(`location.href === ${JSON.stringify(`${site.origin}${pagePath}`)}`);
+    await page.waitForFunction(
+      `location.href === ${JSON.stringify(`${site.origin}${pagePath}`)}`,
+    );
     return readerUrl;
   };
   // The tab a target=_blank link opens.
@@ -321,7 +358,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   // Firefox a page script goes to the web-accessible capture page (given no PDF URL, it
   // captures nothing), then within the extension's origin, and the document's own
   // location is polled.
-  const documentUrl = async () => z.string().parse(await page.evaluate("location.href"));
+  const documentUrl = async () =>
+    z.string().parse(await page.evaluate("location.href"));
   const scriptNavigate = async (url: string) => {
     await page.evaluate(`location.assign(${JSON.stringify(url)})`);
     while ((await documentUrl()) !== url) {
@@ -367,8 +405,10 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     }
   };
 
-  const provenance = async (key: string) => (await listItems(bucket.root, [key]))[0]?.provenance;
-  const served = () => site.requests.map((request) => `${request.method} ${request.path}`);
+  const provenance = async (key: string) =>
+    (await listItems(bucket.root, [key]))[0]?.provenance;
+  const served = () =>
+    site.requests.map((request) => `${request.method} ${request.path}`);
 
   beforeAll(async () => {
     mkdirSync(screenshots, { recursive: true });
@@ -377,7 +417,12 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     extension = await buildExtension(engine, bucket.port);
     downloads = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-downloads-"));
     browser = await launch(engine, extension, downloads);
-    extensionOrigin = await extensionReady(engine, browser, extension, downloads);
+    extensionOrigin = await extensionReady(
+      engine,
+      browser,
+      extension,
+      downloads,
+    );
     page = await browser.newPage();
   }, 60_000);
 
@@ -396,7 +441,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const readerUrl = await captureInPlace("/abs/2401.00001");
 
     expect(readerUrl).toBe(`${bucket.origin}/read/2401.00001`);
-    expect(bucket.files()).toEqual(["2401.00001.pdf"]);
+    expect(bucket.files()).toEqual(["2401.00001/2401.00001.pdf"]);
     const stored = await provenance("2401.00001");
     expect(stored.pdf_url).toBe(`${site.origin}/pdf/2401.00001`);
     expect(stored.title_hint).toBe("Sphere packing in dimension 8 (PDF)");
@@ -410,10 +455,12 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(await text("#bucket-origin")).toBe(bucket.origin);
     expect(await text("#bucket-version")).toBe("1.0.0");
     expect(await text("#bucket-root")).toBe(bucket.root);
-    expect(await text("#last-capture a")).toBe("Sphere packing in dimension 8 (PDF)");
-    expect(await page.$eval("#last-capture a", (link) => link.getAttribute("href"))).toBe(
-      `${bucket.origin}/read/2401.00001`,
+    expect(await text("#last-capture a")).toBe(
+      "Sphere packing in dimension 8 (PDF)",
     );
+    expect(
+      await page.$eval("#last-capture a", (link) => link.getAttribute("href")),
+    ).toBe(`${bucket.origin}/read/2401.00001`);
     expect(await badge()).toBe("ON");
   });
 
@@ -436,14 +483,16 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const stored = await provenance("2402.00002");
     expect(stored.pdf_url).toBe(`${site.origin}/open/pdf/2402.00002`);
     expect(stored.title_hint).toBe("Even unimodular lattices");
-    expect(stored.original_sha256).toBe(sha256(pdfBytes("/open/pdf/2402.00002")));
+    expect(stored.original_sha256).toBe(
+      sha256(pdfBytes("/open/pdf/2402.00002")),
+    );
     while (!(await tabGone(abstract))) {
       await Bun.sleep(50);
     }
     expect(await tabGone(noPdf)).toBe(false);
-    expect(await text(`#not-sent li[data-url="${site.origin}/teaching.html"]`)).toContain(
-      "names no PDF",
-    );
+    expect(
+      await text(`#not-sent li[data-url="${site.origin}/teaching.html"]`),
+    ).toContain("names no PDF");
     // WebDriver BiDi cannot activate a moz-extension tab; the extension API can, in both browsers.
     const tabs = engine === "chrome" ? "chrome.tabs" : "browser.tabs";
     await page.evaluate(
@@ -461,7 +510,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     // An intercepted navigation would end on the capture page, not on the PDF's own URL.
     const pdfUrl = `${site.origin}/pdf/2401.00001`;
-    const fetches = () => site.requests.filter((request) => request.path === "/pdf/2401.00001");
+    const fetches = () =>
+      site.requests.filter((request) => request.path === "/pdf/2401.00001");
     const before = fetches().length;
     await followLink("/abs/2401.00001");
     await Bun.sleep(SETTLE_MS);
@@ -475,7 +525,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     expect(checked).toBe(false);
     await flipCaptureSwitch();
     await badgeBecomes("ON");
-    expect(await captureInPlace("/abs/2401.00001")).toBe(`${bucket.origin}/read/2401.00001`);
+    expect(await captureInPlace("/abs/2401.00001")).toBe(
+      `${bucket.origin}/read/2401.00001`,
+    );
   });
 
   test("a PDF link that opens a new tab is captured, and that tab closes", async () => {
@@ -504,25 +556,39 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   });
 
   test("a .pdf URL is captured once; navigating to it again opens the existing item", async () => {
-    expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
+    expect(await captureInPlace("/teaching.html")).toBe(
+      `${bucket.origin}/read/lecture-notes`,
+    );
     const stored = await provenance("lecture-notes");
     expect(stored.title_hint).toBe("Lecture notes on lattices");
-    expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/lecture-notes.pdf")));
-    const storedBytes = sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")));
+    expect(stored.original_sha256).toBe(
+      sha256(pdfBytes("/notes/lecture-notes.pdf")),
+    );
+    const storedBytes = sha256(
+      readFileSync(join(bucket.root, "lecture-notes", "lecture-notes.pdf")),
+    );
 
-    expect(await captureInPlace("/teaching.html")).toBe(`${bucket.origin}/read/lecture-notes`);
+    expect(await captureInPlace("/teaching.html")).toBe(
+      `${bucket.origin}/read/lecture-notes`,
+    );
     expect(bucket.files()).toEqual([
-      "2401.00001.pdf",
-      "2402.00002.pdf",
-      "lecture-notes.pdf",
-      "survey.pdf",
+      "2401.00001/2401.00001.pdf",
+      "2402.00002/2402.00002.pdf",
+      "lecture-notes/lecture-notes.pdf",
+      "survey/survey.pdf",
     ]);
-    expect(sha256(readFileSync(join(bucket.root, "lecture-notes.pdf")))).toBe(storedBytes);
+    expect(
+      sha256(
+        readFileSync(join(bucket.root, "lecture-notes", "lecture-notes.pdf")),
+      ),
+    ).toBe(storedBytes);
   });
 
   test("a Content-Disposition download is captured under its declared filename", async () => {
-    expect(await captureInPlace("/downloads.html")).toBe(`${bucket.origin}/read/problem-set`);
-    expect(bucket.files()).toContain("problem-set.pdf");
+    expect(await captureInPlace("/downloads.html")).toBe(
+      `${bucket.origin}/read/problem-set`,
+    );
+    expect(bucket.files()).toContain("problem-set/problem-set.pdf");
     const stored = await provenance("problem-set");
     expect(stored.pdf_url).toBe(`${site.origin}/download?id=problem-set`);
     expect(stored.title_hint).toBe("Problem set 3");
@@ -535,8 +601,12 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await followLink("/article.html");
     expect(await captures.next()).toBe(`${bucket.origin}/read/offprint`);
     const stored = await provenance("offprint");
-    expect(stored.pdf_url).toBe(`${site.origin}/content/pdf/10.5555/offprint.pdf`);
-    expect(stored.original_sha256).toBe(sha256(pdfBytes("/content/pdf/10.5555/offprint.pdf")));
+    expect(stored.pdf_url).toBe(
+      `${site.origin}/content/pdf/10.5555/offprint.pdf`,
+    );
+    expect(stored.original_sha256).toBe(
+      sha256(pdfBytes("/content/pdf/10.5555/offprint.pdf")),
+    );
     while (readdirSync(downloads).length > 0) {
       await Bun.sleep(50);
     }
@@ -557,7 +627,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     const stored = await provenance("chapter");
     expect(stored.pdf_url).toBe(`${site.origin}/frames/chapter.pdf`);
-    expect(stored.original_sha256).toBe(sha256(pdfBytes("/frames/chapter.pdf")));
+    expect(stored.original_sha256).toBe(
+      sha256(pdfBytes("/frames/chapter.pdf")),
+    );
   });
 
   // Firefox keeps the frame's own response; Chrome saves it as a download, which the bucket reads
@@ -575,7 +647,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     const stored = await provenance("framed-ticket");
     expect(stored.pdf_url).toBe(`${site.origin}${pdfPath}`);
     expect(stored.original_sha256).toBe(sha256(pdfBytes(pdfPath)));
-    expect(site.requests.filter((request) => request.path === pdfPath).length).toBe(1);
+    expect(
+      site.requests.filter((request) => request.path === pdfPath).length,
+    ).toBe(1);
     while (readdirSync(downloads).length > 0) {
       await Bun.sleep(50);
     }
@@ -649,21 +723,27 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   });
 
   test("a DOI link that redirects to the PDF is captured at its final PDF URL with its link text", async () => {
-    expect(await captureInPlace("/citation.html")).toBe(`${bucket.origin}/read/redirected`);
+    expect(await captureInPlace("/citation.html")).toBe(
+      `${bucket.origin}/read/redirected`,
+    );
     const stored = await provenance("redirected");
     expect(stored.pdf_url).toBe(`${site.origin}/articles/redirected.pdf`);
     expect(stored.title_hint).toBe("Full text via DOI");
   });
 
   test("a PDF link with a fragment is captured at its final PDF URL with its link text", async () => {
-    expect(await captureInPlace("/fragment.html")).toBe(`${bucket.origin}/read/fragment`);
+    expect(await captureInPlace("/fragment.html")).toBe(
+      `${bucket.origin}/read/fragment`,
+    );
     const stored = await provenance("fragment");
     expect(stored.pdf_url).toBe(`${site.origin}/notes/fragment.pdf`);
     expect(stored.title_hint).toBe("Chapter two, page 2");
   });
 
   test("a PDF cited in a ChatGPT answer is captured with its file name, not the citation's site label or the chat's title", async () => {
-    expect(await captureInPlace("/answer.html")).toBe(`${bucket.origin}/read/cited`);
+    expect(await captureInPlace("/answer.html")).toBe(
+      `${bucket.origin}/read/cited`,
+    );
     const stored = await provenance("cited");
     expect(stored.pdf_url).toBe(`${site.origin}/notes/cited.pdf`);
     expect(stored.title_hint).toBe("cited.pdf");
@@ -671,23 +751,30 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
   test("a PDF URL whose file name holds a Latin-1 escape is captured under that name", async () => {
     await captureInPlace("/latin1.html");
-    expect(bucket.files()).toContain("caf%E9.pdf");
+    expect(bucket.files()).toContain("caf%E9/caf%E9.pdf");
     const stored = await provenance("caf%E9");
     expect(stored.pdf_url).toBe(`${site.origin}/notes/caf%E9.pdf`);
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/caf%E9.pdf")));
   });
 
   test("a gzip-encoded PDF is stored as the decoded PDF", async () => {
-    expect(await captureInPlace("/compressed.html")).toBe(`${bucket.origin}/read/compressed`);
+    expect(await captureInPlace("/compressed.html")).toBe(
+      `${bucket.origin}/read/compressed`,
+    );
     const stored = await provenance("compressed");
-    expect(stored.original_sha256).toBe(sha256(pdfBytes("/notes/compressed.pdf")));
+    expect(stored.original_sha256).toBe(
+      sha256(pdfBytes("/notes/compressed.pdf")),
+    );
   });
 
   // Firefox keeps the navigation's own response; Chrome saves it as a download, which the
   // bucket reads and the extension then removes.
   test("a single-use PDF URL is captured from the browser's one request", async () => {
-    const fetches = () => site.requests.filter((request) => request.path === "/once/ticket.pdf");
-    expect(await captureInPlace("/ticket.html")).toBe(`${bucket.origin}/read/ticket`);
+    const fetches = () =>
+      site.requests.filter((request) => request.path === "/once/ticket.pdf");
+    expect(await captureInPlace("/ticket.html")).toBe(
+      `${bucket.origin}/read/ticket`,
+    );
     const stored = await provenance("ticket");
     expect(stored.original_sha256).toBe(sha256(pdfBytes("/once/ticket.pdf")));
     expect(fetches().length).toBe(1);
@@ -716,7 +803,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
         worker.client.once("Fetch.requestPaused", () => resolve());
       });
       await worker.client.send("Fetch.enable", {
-        patterns: [{ urlPattern: "*/capture-download", requestStage: "Request" }],
+        patterns: [
+          { urlPattern: "*/capture-download", requestStage: "Request" },
+        ],
       });
       await page.click("a#pdf");
       await posted;
@@ -724,7 +813,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
       // A followed PDF link starts the next worker.
       await followLink("/teaching.html");
-      while (!bucket.files().includes("held.pdf")) {
+      while (!bucket.files().includes("held/held.pdf")) {
         await Bun.sleep(50);
       }
       while (readdirSync(downloads).length > 0) {
@@ -739,17 +828,42 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   // Every GET response invariant 4 counts as a PDF, beyond `application/pdf`: a generic or
   // missing type on a `.pdf` path, the legacy PDF type, and whitespace before the parameters.
   test.each([
-    ["binary/octet-stream on a .pdf path", "/scan.html", "scan", "/objects/scan.pdf"],
-    ["application/force-download on a .pdf path", "/handout.html", "handout", "/files/handout.pdf"],
-    ["no Content-Type on a .pdf path", "/untyped.html", "untyped", "/files/untyped.pdf"],
+    [
+      "binary/octet-stream on a .pdf path",
+      "/scan.html",
+      "scan",
+      "/objects/scan.pdf",
+    ],
+    [
+      "application/force-download on a .pdf path",
+      "/handout.html",
+      "handout",
+      "/files/handout.pdf",
+    ],
+    [
+      "no Content-Type on a .pdf path",
+      "/untyped.html",
+      "untyped",
+      "/files/untyped.pdf",
+    ],
     ["application/x-pdf", "/legacy.html", "legacy", "/papers/legacy"],
-    ["application/pdf ;version=1.7", "/spaced.html", "spaced", "/papers/spaced"],
-  ])("a PDF served as %s is captured", async (_served, pagePath, key, pdfPath) => {
-    expect(await captureInPlace(pagePath)).toBe(`${bucket.origin}/read/${key}`);
-    const stored = await provenance(key);
-    expect(stored.pdf_url).toBe(`${site.origin}${pdfPath}`);
-    expect(stored.original_sha256).toBe(sha256(pdfBytes(pdfPath)));
-  });
+    [
+      "application/pdf ;version=1.7",
+      "/spaced.html",
+      "spaced",
+      "/papers/spaced",
+    ],
+  ])(
+    "a PDF served as %s is captured",
+    async (_served, pagePath, key, pdfPath) => {
+      expect(await captureInPlace(pagePath)).toBe(
+        `${bucket.origin}/read/${key}`,
+      );
+      const stored = await provenance(key);
+      expect(stored.pdf_url).toBe(`${site.origin}${pdfPath}`);
+      expect(stored.original_sha256).toBe(sha256(pdfBytes(pdfPath)));
+    },
+  );
 
   // Firefox keeps its start page in the tab's session history, so the tab holds an entry
   // before the PDF's; the tab was still opened for the PDF alone. In Chrome a top-level PDF
@@ -794,7 +908,8 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   test("with the bucket stopped, the capture page shows the failure and opens the PDF natively on request", async () => {
     const before = bucket.files();
     const pdfPath = "/notes/lecture-notes.pdf";
-    const fetches = () => site.requests.filter((request) => request.path === pdfPath).length;
+    const fetches = () =>
+      site.requests.filter((request) => request.path === pdfPath).length;
     await bucket.stop();
 
     await followLinkToFailure("/teaching.html");
@@ -847,7 +962,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     });
     try {
       await openStatus("unreachable");
-      expect(await text("#connection-details")).toContain("not a Math PDF Reader status report");
+      expect(await text("#connection-details")).toContain(
+        "not a Math PDF Reader status report",
+      );
       expect(await badge()).toBe("!");
 
       // The lecture notes are exempted in this tab since the native open above.

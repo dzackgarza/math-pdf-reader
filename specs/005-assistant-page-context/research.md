@@ -18,13 +18,14 @@ agent must not execute commands.
 
 ## Reader page context
 
-**Decision**: Put the exact reported page and the corresponding raw-page address in
-the `reader-view` instruction entry. Add the authoritative-extraction address when one
-exists. Do not infer extraction line ranges.
+**Decision**: Put the exact reported page, original PDF path and corresponding raw-page
+address in the `reader-view` instruction entry. Do not enumerate extraction files or
+infer extraction line ranges.
 
 **Rationale**: Page identity comes from the reader. Page text comes from the same page
-of the original PDF. Extraction navigation remains a search operation by the assistant,
-not an approximate mapping owned by the bucket.
+of the original PDF. Extraction discovery and navigation remain operations by the
+assistant in the paper's document directory, not an approximate mapping or catalog owned
+by the bucket.
 
 **Alternatives considered**: Reintroducing `pdfbucket locate` would infer a line range
 from text similarity and violate the explicit-context requirement. Supplying a raw
@@ -32,27 +33,28 @@ snippet without the page route would not let the assistant read beyond the snipp
 
 ## Extraction after session creation
 
-**Decision**: After successful extraction placement, refresh an existing assistant
-workspace and its `reader-view` instruction from the backend. Do not start OpenCode for
-a PDF whose assistant has never opened.
+**Decision**: Place successful extraction output in the paper's document directory and
+change no assistant instruction. New and existing sessions use that real directory. Do
+not start OpenCode for a PDF whose assistant has never opened.
 
-**Rationale**: Extraction can finish after the assistant starts. The open session must
-receive the new optional context, while an unused assistant must remain dormant. The
-backend is the common boundary for inspector and assistant-pane extraction runs.
+**Rationale**: Extraction can finish after the assistant starts. Generic directory tools
+observe the new file on a later turn, so no catalog or source refresh is needed. The
+backend is the common placement boundary for inspector and assistant-pane extraction
+runs.
 
-**Alternatives considered**: Reopening the pane manually leaves stale instructions and
-makes the status text inaccurate. Refreshing only from React misses other extraction
-callers and splits the state transition across layers.
+**Alternatives considered**: A synthetic workspace duplicates path authority and needs
+refresh logic. Reopening the pane would make enrichment a session lifecycle operation.
 
 ## Verification
 
 **Decision**: Prove non-first-page content at the real bucket HTTP boundary and use a
 real-provider test that observes the raw-page request as well as the visible answer.
-Prove the post-extraction context transition with the real fixture extractor.
+Place an unregistered artifact after chat creation and require a direct read in the
+same chat. Prove extraction placement with the real fixture extractor.
 
 **Rationale**: Page-1-only tests do not discriminate page selection, and an answer alone
-does not prove which source supplied it. A real extraction run covers the state
-transition users trigger.
+does not prove which source supplied it. The new-artifact read proves discovery without
+a source-specific instruction or endpoint.
 
 **Alternatives considered**: A fake language model or extraction output written directly
 into the root would bypass the behavior under test. Assertions about configuration alone

@@ -24,6 +24,7 @@ use crate::contract::{
 use crate::error::{AppError, AppResult};
 use crate::extractions::extract_by_chain;
 use crate::index::IndexedItem;
+use crate::layout;
 use crate::organization::{filing_of, kept_offline, non_empty, set_zotero_record};
 use crate::reader::pdf_url_path;
 use crate::state::Shared;
@@ -234,7 +235,9 @@ async fn perform(
         // Named as the extraction loop names a Markdown child, which marks an item extracted.
         Step::Markdown => {
             let name = format!("{item_key}_extracted.md");
-            let bytes = tokio::fs::read(state.config.root.join(format!("{key}.md"))).await?;
+            let parsed = layout::Key::parse(key).expect("an indexed key is a key");
+            let bytes =
+                tokio::fs::read(layout::markdown_path(&state.config.root, &parsed)).await?;
             let attachment = state
                 .zotero
                 .attach_bytes(item_key, &name, &name, &bytes)

@@ -12,12 +12,13 @@ cargo check --manifest-path server/Cargo.toml
 
 Expected results:
 
-- A session opens with no extraction and names the stored PDF and raw-page route.
+- A session opens in the paper's document directory with no extraction.
+- An existing session moves there without changing its session ID.
 - Raw page 2 contains page 2's known lecture sentence and exactly one page marker.
 - Missing and out-of-range pages are explicit client errors.
-- `/api/ai/text/{key}` remains extraction-only.
-- An extraction run updates an already-open session's workspace and reader-view entry.
-- An extraction run does not start an unused assistant.
+- The generic permissions permit direct reads of newly discovered paper artifacts.
+- An extraction run places files in the same directory without changing the chat's
+  source instructions or starting an unused assistant.
 
 ## Real-provider regression
 
@@ -29,25 +30,16 @@ server, and captures the existing no-extraction PDF fixture.
 just test-assistant-live
 ```
 
-Expected results:
+The check asks for a sentence on raw page 2 and verifies the assistant's answer and its
+request to `GET /api/ai/pdf-text/{key}?page=2`. It then writes a unique, unregistered
+artifact into the same paper directory, asks for its marker in the same chat, and
+requires a completed direct read of that artifact. No request to a removed
+extraction-text endpoint is valid evidence.
 
-- The bucket has no structured extraction for the fixture.
-- The assistant requests `/api/ai/pdf-text/long-notes?page=2` through the real bucket
-  HTTP boundary.
-- The visible assistant answer quotes: "The lattice Z2 has determinant 1 and 2 · 2
-  vectors of norm 1."
-- The answer contains no inability or extraction refusal.
+## Provisioned verification
 
-## Provisioned application
-
-After focused checks pass:
-
-```bash
-just provision
-```
-
-In the app on port 8770, open a PDF without an extraction and open its assistant. Ask
-for text from a non-first page. The answer must identify the requested page's content.
-`GET /api/ai/text/{key}` must continue to report no structured extraction for that
-item. Run an extraction with the assistant open and verify that subsequent questions
-can use the new extraction context without closing and reopening the pane.
+Run `just provision`, then use the assistant on port 8770. Ask `0002066v1` for the
+page-2 sentence beginning `E =`. The answer must identify the Eisenstein integers from
+the raw original PDF. Add a unique text artifact to an enriched paper's document
+directory and ask for its marker in the existing chat. The same chat must read the new
+file and answer with its marker.

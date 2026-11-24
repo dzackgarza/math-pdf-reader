@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-assistant-page-context`
 **Created**: 2026-11-22
-**Status**: Draft
+**Status**: Amended by `009-assistant-document-directory`
 **Input**: Existing assistant behavior and the raw-PDF and page-context contract
 
 ## User Scenarios & Testing *(mandatory)*
@@ -18,7 +18,8 @@ invalid extractions.
 
 **Acceptance Scenarios**:
 1. **Given** a valid structured extraction, **When** a session starts, **Then** the
-   assistant is directed to both the original PDF and the extraction.
+   assistant can discover both the original PDF and the extraction in the paper's
+   document directory.
 2. **Given** no valid extraction, **When** the user asks about a PDF page, **Then** the
    assistant answers from that page of the original PDF.
 3. **Given** a garbled PDF text snippet, **When** a session starts, **Then** the
@@ -37,8 +38,8 @@ page-specific request.
 1. **Given** the reader displays page 16, **When** the user asks a question, **Then**
    context states page 16 exactly.
 2. **Given** an authoritative extraction file exists, **When** context is built,
-   **Then** it provides a pointer to that file and directs the assistant to search and
-   read it using its own tools.
+   **Then** the assistant works in its document directory and can search and read the
+   file using its own tools without a source-specific pointer.
 3. **Given** a small PDF text snippet, **When** context is built, **Then** the
    snippet is labeled only as a search hint and is not the paper text.
 4. **Given** a page-specific request, **When** context is built, **Then** the
@@ -55,8 +56,8 @@ extraction.
 **Acceptance Scenarios**:
 1. **Given** missing extraction, **When** a session starts, **Then** the session
    succeeds with the original PDF as its paper source.
-2. **Given** the structured-text endpoint is queried for a missing extraction,
-   **When** the response arrives, **Then** it identifies the absent extraction.
+2. **Given** a paper has no structured extraction, **When** its session opens,
+   **Then** no extraction-specific error or placeholder source is created.
 3. **Given** unavailable paper context or an assistant execution failure, **When**
    the request is made, **Then** no success-shaped answer is returned.
 
@@ -75,8 +76,9 @@ extraction.
   page-text address. The assistant MUST be able to read a selected page without a
   structured extraction.
 - **FR-003**: Page context MUST include the exact page number supplied by the reader.
-- **FR-004**: When an authoritative extraction exists, page context MUST identify it
-  and direct the assistant to search and read it with its own tools.
+- **FR-004**: When an authoritative extraction exists, the assistant MUST be able to
+  discover, search and read it in the paper's document directory without a
+  source-specific context entry.
 - **FR-005**: Page context MAY include only a small naively extracted PDF snippet as
   a clearly labeled search hint.
 - **FR-006**: The hint MUST NOT be presented as source text or used in place of
@@ -95,7 +97,7 @@ extraction.
 ### Key Entities
 - **Assistant Session**: User question, original PDF, optional extraction, and
   context state.
-- **Page Context**: Exact page, optional extraction location, and bounded hint.
+- **Page Context**: Exact page, original PDF path, raw-page address and bounded hint.
 - **Authoritative Extraction**: Structured paper text that supplements the original
   PDF when a valid extraction exists.
 
@@ -109,8 +111,8 @@ extraction.
 - **SC-004**: 0% of tests use naively extracted PDF text as authoritative structured
   content.
 - **SC-005**: 100% of assistant execution failures produce a distinct explicit error.
-- **SC-006**: 100% of page-context tests provide the extraction pointer when an
-  authoritative extraction exists.
+- **SC-006**: 100% of enrichment tests leave the extraction discoverable in the same
+  document directory without adding an extraction pointer to page context.
 
 ## Assumptions
 - The reader already knows the exact displayed page number.

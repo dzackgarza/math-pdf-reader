@@ -136,6 +136,39 @@ test("startup migrates flat and partly migrated paper records without changing t
   }
 });
 
+test("a restart does not mistake document-directory names for legacy files", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-directory-restart-"));
+  const keys = ["archive.pdf", "notes.md", "source.extraction"];
+  for (const key of keys) {
+    await legacyPdf(root, key, fixture);
+  }
+  const first = await serveBucket({
+    root,
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
+  expect(
+    LibraryPayloadSchema.parse(
+      await (await first.request("/api/library")).json(),
+    ).items.map((item) => item.id),
+  ).toEqual(keys);
+  await first.stop();
+
+  const restarted = await serveBucket({
+    root,
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+  });
+  const library = LibraryPayloadSchema.parse(
+    await (await restarted.request("/api/library")).json(),
+  );
+  expect(library.items.map((item) => item.id)).toEqual(keys);
+  expect(library.items.map((item) => item.file.path)).toEqual(
+    keys.map((key) => join(root, key, `${key}.pdf`)),
+  );
+  await restarted.stop();
+});
+
 test("migration refuses to overwrite a current paper artifact", async () => {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-directory-conflict-"));
   const legacy = await legacyPdf(root, "conflict", fixture);

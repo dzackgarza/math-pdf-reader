@@ -29,12 +29,12 @@ source directory.
 
 ## 2. Behavior research
 
-The current code stores `<root>/<key>.pdf` and adjacent extraction names, indexes
-PDFs directly under the root, and creates a hashed OpenCode workspace containing a
-generated `AGENTS.md` source catalog. Extraction success rewrites that catalog and
+Before this feature, the code stored `<root>/<key>.pdf` and adjacent extraction names,
+indexed PDFs directly under the root, and created a hashed OpenCode workspace containing
+a generated `AGENTS.md` source catalog. Extraction success rewrote that catalog and
 `reader-view`. OpenCode's documented session API accepts `location.directory` and
-provides `POST /api/session/{id}/move`, which preserves an existing chat while
-moving it to the paper directory.
+provides `POST /api/session/{id}/move`, which preserves an existing chat while moving it
+to the paper directory.
 
 ### Invariants and current violations
 

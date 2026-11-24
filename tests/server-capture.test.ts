@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
@@ -22,11 +29,16 @@ async function bucket() {
   return { root, app };
 }
 
-const captureForm = (bytes: Uint8Array<ArrayBuffer>, filename: string, titleHint: string) =>
-  makeCaptureForm(bytes, pdfSource, filename, titleHint);
+const captureForm = (
+  bytes: Uint8Array<ArrayBuffer>,
+  filename: string,
+  titleHint: string,
+) => makeCaptureForm(bytes, pdfSource, filename, titleHint);
 
 // The Highwire `citation_*` tags the Zotero Connector reads.
-async function citationTags(response: Response): Promise<Record<string, string>> {
+async function citationTags(
+  response: Response,
+): Promise<Record<string, string>> {
   const { document } = parseHTML(await response.text());
   return Object.fromEntries(
     Array.from(document.querySelectorAll("meta[name^=citation_]"), (meta) => [
@@ -55,13 +67,15 @@ test("a captured PDF is served at its PDF URL and read back into a reader page w
   expect(result.existing).toBe(false);
   expect(result.reader_url).toBe(`${app.origin}/read/lattices`);
   expect(result.provenance.original_sha256).toBe(sha256(original));
-  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  expect(readdirSync(root)).toEqual(["lattices"]);
 
   const pdf = await app.request(`/pdf/lattices.pdf`);
   expect(pdf.headers.get("content-type")).toBe("application/pdf");
   const served = new Uint8Array(await pdf.arrayBuffer());
   expect(sha256(served)).toBe(result.stored_sha256);
-  expect(sha256(served)).toBe(sha256(readFileSync(join(root, "lattices.pdf"))));
+  expect(sha256(served)).toBe(
+    sha256(readFileSync(join(root, "lattices", "lattices.pdf"))),
+  );
   expect(sha256(served)).not.toBe(sha256(original));
 
   const reader = await app.request(result.reader_url);
@@ -74,7 +88,9 @@ test("a captured PDF is served at its PDF URL and read back into a reader page w
 
 test("an upload that is not a PDF is refused and nothing is stored", async () => {
   const { root, app } = await bucket();
-  const html = new TextEncoder().encode("<!doctype html><title>Access denied</title>");
+  const html = new TextEncoder().encode(
+    "<!doctype html><title>Access denied</title>",
+  );
 
   const response = await app.request(`/capture-bytes`, {
     method: "POST",
@@ -82,7 +98,9 @@ test("an upload that is not a PDF is refused and nothing is stored", async () =>
   });
 
   expect(response.status).toBe(400);
-  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("not_a_pdf");
+  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe(
+    "not_a_pdf",
+  );
   expect(readdirSync(root)).toEqual([]);
 });
 
@@ -96,15 +114,19 @@ test("keys that name no stored PDF are not found, including encoded traversal", 
 
   expect((await app.request(`/read/missing`)).status).toBe(404);
   expect((await app.request(`/pdf/missing.pdf`)).status).toBe(404);
-  expect((await app.request(`/pdf/..%2F..%2Fetc%2Fpasswd.pdf`)).status).toBe(404);
+  expect((await app.request(`/pdf/..%2F..%2Fetc%2Fpasswd.pdf`)).status).toBe(
+    404,
+  );
   expect((await app.request(`/read/..%2Foutside`)).status).toBe(404);
 });
 
 test("PDFs captured at once under one file name all land, each under its own key", async () => {
   const { root, app } = await bucket();
-  const pdfs = ["lecture-notes.pdf", "problem-set.pdf", "ten-page-notes.pdf"].map((name) =>
-    readFileSync(join(import.meta.dir, "fixtures", name)),
-  );
+  const pdfs = [
+    "lecture-notes.pdf",
+    "problem-set.pdf",
+    "ten-page-notes.pdf",
+  ].map((name) => readFileSync(join(import.meta.dir, "fixtures", name)));
 
   const responses = await Promise.all(
     pdfs.map((bytes) =>
@@ -116,7 +138,9 @@ test("PDFs captured at once under one file name all land, each under its own key
   );
 
   const results = await Promise.all(
-    responses.map(async (response) => CaptureResponseSchema.parse(await response.json())),
+    responses.map(async (response) =>
+      CaptureResponseSchema.parse(await response.json()),
+    ),
   );
   const keys = results.map((result) => result.key);
   expect(new Set(keys).size).toBe(3);
@@ -126,9 +150,11 @@ test("PDFs captured at once under one file name all land, each under its own key
     pdfs.map((bytes) => sha256(bytes)),
   );
   for (const result of results) {
-    expect(sha256(readFileSync(join(root, `${result.key}.pdf`)))).toBe(result.stored_sha256);
+    expect(
+      sha256(readFileSync(join(root, result.key, `${result.key}.pdf`))),
+    ).toBe(result.stored_sha256);
   }
-  expect(readdirSync(root).sort()).toEqual(keys.map((key) => `${key}.pdf`).sort());
+  expect(readdirSync(root).sort()).toEqual(keys.toSorted());
 });
 
 test("the same PDF captured from another URL under another name is the item already stored", async () => {
@@ -146,7 +172,9 @@ test("the same PDF captured from another URL under another name is the item alre
   const form = captureForm(bytes, "fulltext.pdf", "Full text");
   form.set("pdf_url", "https://mirror.example.org/fulltext.pdf");
   const again = CaptureResponseSchema.parse(
-    await (await app.request(`/capture-bytes`, { method: "POST", body: form })).json(),
+    await (
+      await app.request(`/capture-bytes`, { method: "POST", body: form })
+    ).json(),
   );
 
   expect([again.existing, again.key, again.provenance]).toEqual([
@@ -154,7 +182,7 @@ test("the same PDF captured from another URL under another name is the item alre
     first.key,
     first.provenance,
   ]);
-  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  expect(readdirSync(root)).toEqual(["lattices"]);
 });
 
 test("a file name with no usable stem keys the PDF by its hash, and the library still lists it", async () => {
@@ -168,25 +196,38 @@ test("a file name with no usable stem keys the PDF by its hash, and the library 
 
   const result = CaptureResponseSchema.parse(await response.json());
   expect(result.key).toBe(sha256(bytes).slice(0, 12));
-  const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+  const library = LibraryPayloadSchema.parse(
+    await (await app.request("/api/library")).json(),
+  );
   expect(library.items.map((item) => item.id)).toEqual([result.key]);
 });
 
-test("a foreign or torn PDF in the root is named in the library beside the items it can read", async () => {
+test("a foreign or torn PDF in a document directory is named beside the readable items", async () => {
   const { root, app } = await bucket();
   await app.request(`/capture-bytes`, {
     method: "POST",
     body: captureForm(readFileSync(fixture), "lattices.pdf", "Lattices"),
   });
-  copyFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"), join(root, "foreign.pdf"));
-  writeFileSync(join(root, "torn.pdf"), readFileSync(join(root, "lattices.pdf")).subarray(0, 300));
+  mkdirSync(join(root, "foreign"));
+  mkdirSync(join(root, "torn"));
+  copyFileSync(
+    join(import.meta.dir, "fixtures/problem-set.pdf"),
+    join(root, "foreign", "foreign.pdf"),
+  );
+  writeFileSync(
+    join(root, "torn", "torn.pdf"),
+    readFileSync(join(root, "lattices", "lattices.pdf")).subarray(0, 300),
+  );
 
   const response = await app.request("/api/library");
 
   expect(response.status).toBe(200);
   const library = LibraryPayloadSchema.parse(await response.json());
   expect(library.items.map((item) => item.id)).toEqual(["lattices"]);
-  expect(library.unreadable.map((file) => file.file)).toEqual(["foreign.pdf", "torn.pdf"]);
+  expect(library.unreadable.map((file) => file.file)).toEqual([
+    "foreign/foreign.pdf",
+    "torn/torn.pdf",
+  ]);
 });
 
 test("a captured PDF URL is recorded without its tracking parameters", async () => {
@@ -197,7 +238,10 @@ test("a captured PDF URL is recorded without its tracking parameters", async () 
     "https://www.math.ias.edu/~lurie/papers/DAG-V.pdf?utm_source=chatgpt.com&version=2",
   );
 
-  const response = await app.request(`/capture-bytes`, { method: "POST", body: form });
+  const response = await app.request(`/capture-bytes`, {
+    method: "POST",
+    body: form,
+  });
 
   const result = CaptureResponseSchema.parse(await response.json());
   expect(result.provenance.pdf_url).toBe(

@@ -3,7 +3,13 @@
 ## Stored Paper
 
 - **Key**: The existing bucket item key; identifies the PDF in every assistant route.
-- **PDF path**: `<root>/<key>.pdf`; the original stored paper with embedded provenance.
+- **Document directory**: `<root>/<key>/`; the paper's only current artifact directory.
+- **PDF path**: `<root>/<key>/<key>.pdf`; the original stored paper with embedded
+  provenance.
+- **Markdown path**: `<root>/<key>/<key>.md` when a complete Markdown extraction exists.
+- **Extraction artifacts**: `<root>/<key>/<key>.extraction/` when the plugin wrote
+  artifacts. Other paper-specific files can occur anywhere beneath the document
+  directory.
 - **Reader page**: The first visible page reported by EmbedPDF; 1-based.
 - **Reader page count**: The count reported by the reader for display context.
 
@@ -21,31 +27,18 @@ No raw-page response is saved as an extraction or included in the extraction ind
 
 - **Source kind**: `document_structure`, `ocr` or `arxiv_latex` as declared by the
   plugin contract.
-- **Authoritative**: Must be true for the assistant to receive the extraction pointer.
-- **Text path**: `<key>.md` for document-structure and OCR extractions;
-  `<key>.extraction/source.tex` for arXiv LaTeX.
-- **Availability**: Missing metadata or a missing selected artifact means the extraction
-  endpoint reports that no usable structured extraction exists.
+- **Authoritative**: Records the plugin's source contract. It does not control
+  directory access or assistant availability.
+- **Completeness**: The extraction directory moves first and the Markdown moves last.
+  The Markdown's presence marks a complete extraction. Failed or running plugin output
+  stays outside the paper's current record.
 
 ## Assistant Session
 
-- **Paper key**: One OpenCode chat per stored paper.
-- **Workspace**: A paper-specific generated directory containing `AGENTS.md` and a link
-  to the stored PDF.
-- **Permissions**: No shell, edits or sub-agents; webfetch restricted to bucket paper
-  routes; configured read permission for stored PDFs.
-- **Source instructions**: Raw-page address always; authoritative-extraction address
-  when available.
-- **Reader-view entry**: Exact page, raw-page address and extraction search hint;
-  refreshed on reader reports and extraction placement.
-
-## State Transitions
-
-1. **No extraction, no session**: Raw-PDF routes work; OpenCode is not started.
-2. **Open session**: Create or reuse the chat and generate instructions from current
-   extraction state. Extraction absence is valid.
-3. **Reader changes page**: Update the existing chat's `reader-view` entry.
-4. **Extraction succeeds**: Place the extraction, update the index, then refresh the
-   workspace and `reader-view` only if that paper has an assistant workspace.
-5. **Extraction requested but unavailable**: Return the extraction-specific error; keep
-   raw-PDF routes and assistant sessions available.
+- **Session ID**: OpenCode's stable identifier for the paper's chat.
+- **Location**: The stored paper's document directory for both new and moved sessions.
+- **Reader-view instruction**: Original PDF path, exact reader page, raw-page address
+  and an optional bounded raw-text search hint. An extraction adds no source-specific
+  entry.
+- **Discovery**: Generic read-only file and directory tools observe the current
+  directory contents. A new artifact needs no session restart or source refresh.

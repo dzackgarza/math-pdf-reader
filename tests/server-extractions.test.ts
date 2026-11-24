@@ -1,10 +1,20 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { type AppConfig, CONFIG_PATH, loadAppConfig } from "../src/contract/config";
+import {
+  type AppConfig,
+  CONFIG_PATH,
+  loadAppConfig,
+} from "../src/contract/config";
 import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
@@ -46,7 +56,9 @@ async function bucketWithExtractors(
           label: "PDF",
           limits: [
             { kind: "max_pages", value: maxPages },
-            ...(source === undefined ? [] : [{ kind: "source", value: source }]),
+            ...(source === undefined
+              ? []
+              : [{ kind: "source", value: source }]),
           ],
         },
       ],
@@ -60,10 +72,18 @@ async function bucketWithExtractors(
     config: appConfig,
   });
   const form = new FormData();
-  form.set("pdf", new File([readFileSync(fixture)], "lattices.pdf", { type: "application/pdf" }));
+  form.set(
+    "pdf",
+    new File([readFileSync(fixture)], "lattices.pdf", {
+      type: "application/pdf",
+    }),
+  );
   form.set("pdf_url", "https://www.math.example.edu/~author/lattices.pdf");
   form.set("title_hint", "Ten Lectures on Integral Lattices");
-  const captured = await app.request("/capture-bytes", { method: "POST", body: form });
+  const captured = await app.request("/capture-bytes", {
+    method: "POST",
+    body: form,
+  });
   expect(captured.status).toBe(200);
   return { root, app };
 }
@@ -79,7 +99,9 @@ test("the shipped extraction plugins are listed with their accepted inputs", asy
   const response = await app.request(`/api/plugins/extractions`);
 
   expect(response.status).toBe(200);
-  const { plugins } = ExtractionPluginsResponseSchema.parse(await response.json());
+  const { plugins } = ExtractionPluginsResponseSchema.parse(
+    await response.json(),
+  );
   expect(plugins.map((plugin) => plugin.id)).toEqual([
     "arxiv-source",
     "mineru-flash",
@@ -100,7 +122,9 @@ test("the shipped extraction plugins are listed with their accepted inputs", asy
 });
 
 test("a successful run answers with the placed artifacts and their hashes", async () => {
-  const { root, app } = await bucketWithExtractors([{ mode: "record", maxPages: 20 }]);
+  const { root, app } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20 },
+  ]);
 
   const response = await app.request(`/api/items/lattices/extractions/record`, {
     method: "POST",
@@ -108,17 +132,27 @@ test("a successful run answers with the placed artifacts and their hashes", asyn
 
   expect(response.status).toBe(200);
   const outcome = ExtractionOutcomeSchema.parse(await response.json());
-  expect(readdirSync(root).sort()).toEqual(["lattices.extraction", "lattices.md", "lattices.pdf"]);
-  const markdown = readFileSync(join(root, "lattices.md"));
-  const pdf = readFileSync(join(root, "lattices.pdf"));
+  expect(readdirSync(root).sort()).toEqual(["lattices"]);
+  const markdown = readFileSync(join(root, "lattices", "lattices.md"));
+  const pdf = readFileSync(join(root, "lattices", "lattices.pdf"));
   expect(outcome).toEqual({
     status: "succeeded",
     key: "lattices",
     plugin_id: "record",
     source_kind: "document_structure",
     authoritative: true,
-    markdown: { path: "lattices.md", sha256: sha256(markdown), size: markdown.length },
-    artifacts: [{ path: "lattices.extraction/source.pdf", sha256: sha256(pdf), size: pdf.length }],
+    markdown: {
+      path: "lattices.md",
+      sha256: sha256(markdown),
+      size: markdown.length,
+    },
+    artifacts: [
+      {
+        path: "lattices.extraction/source.pdf",
+        sha256: sha256(pdf),
+        size: pdf.length,
+      },
+    ],
   });
 });
 
@@ -140,9 +174,12 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
     stderr: "provider quota exhausted for this token\n",
   });
 
-  const rejected = await app.request(`/api/items/lattices/extractions/markdown`, {
-    method: "POST",
-  });
+  const rejected = await app.request(
+    `/api/items/lattices/extractions/markdown`,
+    {
+      method: "POST",
+    },
+  );
   expect(rejected.status).toBe(422);
   expect(ExtractionOutcomeSchema.parse(await rejected.json())).toEqual({
     status: "rejected",
@@ -151,7 +188,7 @@ test("a failing plugin answers 502 with its stderr and a rejected PDF answers 42
     violations: [{ limit: { kind: "max_pages", value: 5 }, observed: 10 }],
   });
 
-  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  expect(readdirSync(root)).toEqual(["lattices"]);
 });
 
 test("a plugin restricted to arXiv is rejected before its command runs for another source", async () => {
@@ -175,17 +212,22 @@ test("a plugin restricted to arXiv is rejected before its command runs for anoth
       },
     ],
   });
-  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  expect(readdirSync(root)).toEqual(["lattices"]);
 });
 
 test("a plugin past its time limit is killed with its children and answers 504 timed_out, placing nothing", async () => {
-  const { root, app } = await bucketWithExtractors([{ mode: "hang", maxPages: 20 }], {
-    ...config,
-    plugins: { ...config.plugins, extraction_timeout_seconds: 1 },
-  });
+  const { root, app } = await bucketWithExtractors(
+    [{ mode: "hang", maxPages: 20 }],
+    {
+      ...config,
+      plugins: { ...config.plugins, extraction_timeout_seconds: 1 },
+    },
+  );
   const started = performance.now();
 
-  const response = await app.request(`/api/items/lattices/extractions/hang`, { method: "POST" });
+  const response = await app.request(`/api/items/lattices/extractions/hang`, {
+    method: "POST",
+  });
   const answeredAfter = performance.now() - started;
 
   expect(response.status).toBe(504);
@@ -199,24 +241,33 @@ test("a plugin past its time limit is killed with its children and answers 504 t
   expect(answeredAfter).toBeLessThan(3000);
   // Past the end of that sleep: a surviving plugin would have written beside the PDF by now.
   await Bun.sleep(3500 - answeredAfter);
-  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  expect(readdirSync(root)).toEqual(["lattices"]);
 }, 15_000);
 
 test("unknown items and unknown plugins are not found", async () => {
-  const { app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
+  const { app } = await bucketWithExtractors([
+    { mode: "markdown", maxPages: 20 },
+  ]);
 
-  const missingItem = await app.request(`/api/items/missing/extractions/markdown`, {
-    method: "POST",
-  });
-  const missingPlugin = await app.request(`/api/items/lattices/extractions/mistral`, {
-    method: "POST",
-  });
+  const missingItem = await app.request(
+    `/api/items/missing/extractions/markdown`,
+    {
+      method: "POST",
+    },
+  );
+  const missingPlugin = await app.request(
+    `/api/items/lattices/extractions/mistral`,
+    {
+      method: "POST",
+    },
+  );
 
   expect([missingItem.status, missingPlugin.status]).toEqual([404, 404]);
   // The library API's error shape, which the inspector reports.
   const kinds = await Promise.all(
     [missingItem, missingPlugin].map(
-      async (response) => ApiErrorSchema.parse(await response.json()).error.kind,
+      async (response) =>
+        ApiErrorSchema.parse(await response.json()).error.kind,
     ),
   );
   expect(kinds).toEqual(["unknown_item", "unknown_plugin"]);
@@ -227,7 +278,10 @@ function trashed(path: string): string {
   const trash = join(SCRATCH_DATA_HOME, "Trash");
   for (const info of readdirSync(join(trash, "info"))) {
     const lines = readFileSync(join(trash, "info", info), "utf8").split("\n");
-    if (lines.includes(`Path=${encodeURI(path)}`) || lines.includes(`Path=${path}`)) {
+    if (
+      lines.includes(`Path=${encodeURI(path)}`) ||
+      lines.includes(`Path=${path}`)
+    ) {
       return join(trash, "files", info.slice(0, -".trashinfo".length));
     }
   }
@@ -235,15 +289,27 @@ function trashed(path: string): string {
 }
 
 test("a run gets the stored PDF and an empty output directory staged in the root, removed after", async () => {
-  const { root, app } = await bucketWithExtractors([{ mode: "record", maxPages: 20 }]);
+  const { root, app } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20 },
+  ]);
 
-  await app.request(`/api/items/lattices/extractions/record`, { method: "POST" });
+  await app.request(`/api/items/lattices/extractions/record`, {
+    method: "POST",
+  });
 
-  const [mode, pdf, output] = readFileSync(join(root, "lattices.md"), "utf8").trim().split("\n");
+  const [mode, pdf, output] = readFileSync(
+    join(root, "lattices", "lattices.md"),
+    "utf8",
+  )
+    .trim()
+    .split("\n");
   if (output === undefined) {
     throw new Error("the plugin recorded no output directory");
   }
-  expect([mode, pdf]).toEqual(["record", join(root, "lattices.pdf")]);
+  expect([mode, pdf]).toEqual([
+    "record",
+    join(root, "lattices", "lattices.pdf"),
+  ]);
   expect(dirname(dirname(output))).toBe(root);
   expect(basename(dirname(output))).toStartWith(".extracting-");
   expect(existsSync(dirname(output))).toBe(false);
@@ -255,65 +321,85 @@ test("a later run moves the whole previous extraction to the trash; a failed run
     { mode: "markdown", maxPages: 20 },
     { mode: "fail", maxPages: 20 },
   ]);
-  await app.request(`/api/items/lattices/extractions/record`, { method: "POST" });
-  const recorded = readFileSync(join(root, "lattices.md"), "utf8");
+  await app.request(`/api/items/lattices/extractions/record`, {
+    method: "POST",
+  });
+  const recorded = readFileSync(join(root, "lattices", "lattices.md"), "utf8");
 
-  const later = await app.request(`/api/items/lattices/extractions/markdown`, { method: "POST" });
+  const later = await app.request(`/api/items/lattices/extractions/markdown`, {
+    method: "POST",
+  });
 
   expect(later.status).toBe(200);
-  expect(readdirSync(root).sort()).toEqual(["lattices.extraction", "lattices.md", "lattices.pdf"]);
-  expect(readFileSync(join(root, "lattices.md"), "utf8")).toBe(
+  expect(readdirSync(root).sort()).toEqual(["lattices"]);
+  expect(readFileSync(join(root, "lattices", "lattices.md"), "utf8")).toBe(
     "# Extracted by the markdown mode\n",
   );
-  expect(readFileSync(trashed(join(root, "lattices.md")), "utf8")).toBe(recorded);
-  expect(sha256(readFileSync(join(trashed(join(root, "lattices.extraction")), "source.pdf")))).toBe(
-    sha256(readFileSync(join(root, "lattices.pdf"))),
-  );
+  expect(
+    readFileSync(trashed(join(root, "lattices", "lattices.md")), "utf8"),
+  ).toBe(recorded);
+  expect(
+    sha256(
+      readFileSync(
+        join(
+          trashed(join(root, "lattices", "lattices.extraction")),
+          "source.pdf",
+        ),
+      ),
+    ),
+  ).toBe(sha256(readFileSync(join(root, "lattices", "lattices.pdf"))));
 
-  const failed = await app.request(`/api/items/lattices/extractions/fail`, { method: "POST" });
+  const failed = await app.request(`/api/items/lattices/extractions/fail`, {
+    method: "POST",
+  });
   expect(failed.status).toBe(502);
-  expect(readFileSync(join(root, "lattices.md"), "utf8")).toBe(
+  expect(readFileSync(join(root, "lattices", "lattices.md"), "utf8")).toBe(
     "# Extracted by the markdown mode\n",
   );
 });
 
 test("a plugin that exits 0 without writing extraction.md answers 502 plugin_contract_broken", async () => {
-  const { root, app } = await bucketWithExtractors([{ mode: "misnamed", maxPages: 20 }]);
+  const { root, app } = await bucketWithExtractors([
+    { mode: "misnamed", maxPages: 20 },
+  ]);
 
-  const response = await app.request(`/api/items/lattices/extractions/misnamed`, {
-    method: "POST",
-  });
+  const response = await app.request(
+    `/api/items/lattices/extractions/misnamed`,
+    {
+      method: "POST",
+    },
+  );
 
   expect(response.status).toBe(502);
-  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("plugin_contract_broken");
-  expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+  expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe(
+    "plugin_contract_broken",
+  );
+  expect(readdirSync(root)).toEqual(["lattices"]);
 });
 
-test("the assistant reads only a stored extraction", async () => {
-  const { app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
-  const before = await app.request("/api/ai/text/lattices");
-  expect(before.status).toBe(400);
-  expect(ApiErrorSchema.parse(await before.json()).error.message).toContain(
-    "no structured extraction",
-  );
+test("a stored extraction is a paper-directory file, not an extraction endpoint", async () => {
+  const { root, app } = await bucketWithExtractors([
+    { mode: "markdown", maxPages: 20 },
+  ]);
+  expect((await app.request("/api/ai/text/lattices")).status).toBe(404);
 
-  const run = await app.request("/api/items/lattices/extractions/markdown", { method: "POST" });
+  const run = await app.request("/api/items/lattices/extractions/markdown", {
+    method: "POST",
+  });
   expect(run.status).toBe(200);
 
-  expect(await (await app.request("/api/ai/text/lattices")).text()).toBe(
+  expect((await app.request("/api/ai/text/lattices")).status).toBe(404);
+  expect(readFileSync(join(root, "lattices", "lattices.md"), "utf8")).toBe(
     "# Extracted by the markdown mode\n",
-  );
-  const page = await app.request("/api/ai/text/lattices?page=1");
-  expect(page.status).toBe(400);
-  expect(ApiErrorSchema.parse(await page.json()).error.message).toContain(
-    "page-specific PDF text is unavailable",
   );
   await app.stop();
 });
 
 test("the server stores the arXiv provider's source archive as authoritative", async () => {
   const source = gzipSync(
-    Buffer.from("\\documentclass{article}\\begin{document}Source fixture.\\end{document}"),
+    Buffer.from(
+      "\\documentclass{article}\\begin{document}Source fixture.\\end{document}",
+    ),
   );
   let published: Buffer | null = null;
   const publisher = Bun.serve({
@@ -321,51 +407,100 @@ test("the server stores the arXiv provider's source archive as authoritative", a
     port: 0,
     fetch(request) {
       return new URL(request.url).pathname === "/e-print/2301.01234"
-        ? published === null ? new Response("not found", { status: 404 }) : new Response(new Uint8Array(published))
+        ? published === null
+          ? new Response("not found", { status: 404 })
+          : new Response(new Uint8Array(published))
         : new Response("not found", { status: 404 });
     },
   });
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-source-extract-"));
-  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-source-manifest-")), "extractions.json");
-  writeFileSync(manifestPath, JSON.stringify({
-    plugins: [{
-      id: "arxiv-source",
-      name: "arXiv LaTeX source",
-      source_kind: "arxiv_latex",
-      authoritative: true,
-      command: ["pdfbucket-arxiv-source", "$pdf", "$output", publisher.url.origin],
-      accepted_inputs: [{
-        kind: "pdf",
-        id: "pdf",
-        label: "arXiv PDF",
-        limits: [{ kind: "source", value: "arxiv" }],
-      }],
-    }],
-  }));
-  const app = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+  const manifestPath = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-source-manifest-")),
+    "extractions.json",
+  );
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "arxiv-source",
+          name: "arXiv LaTeX source",
+          source_kind: "arxiv_latex",
+          authoritative: true,
+          command: [
+            "pdfbucket-arxiv-source",
+            "$pdf",
+            "$output",
+            publisher.url.origin,
+          ],
+          accepted_inputs: [
+            {
+              kind: "pdf",
+              id: "pdf",
+              label: "arXiv PDF",
+              limits: [{ kind: "source", value: "arxiv" }],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const app = await serveBucket({
+    root,
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: manifestPath,
+  });
   try {
     const form = new FormData();
-    form.set("pdf", new File([readFileSync(fixture)], "source.pdf", { type: "application/pdf" }));
+    form.set(
+      "pdf",
+      new File([readFileSync(fixture)], "source.pdf", {
+        type: "application/pdf",
+      }),
+    );
     form.set("pdf_url", "https://arxiv.org/pdf/2301.01234");
     form.set("title_hint", "Source fixture");
-    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
-    for (const invalid of [null, Buffer.from("%PDF-1.4 no source"), Buffer.from("malformed archive")]) {
+    expect(
+      (await app.request("/capture-bytes", { method: "POST", body: form }))
+        .status,
+    ).toBe(200);
+    for (const invalid of [
+      null,
+      Buffer.from("%PDF-1.4 no source"),
+      Buffer.from("malformed archive"),
+    ]) {
       published = invalid;
-      const failed = await app.request("/api/items/source/extractions/arxiv-source", { method: "POST" });
+      const failed = await app.request(
+        "/api/items/source/extractions/arxiv-source",
+        { method: "POST" },
+      );
       expect(failed.status).toBe(502);
-      expect(readdirSync(root)).toEqual(["source.pdf"]);
-      expect((await app.request("/api/ai/text/source")).status).toBe(400);
+      expect(readdirSync(root)).toEqual(["source"]);
+      expect((await app.request("/api/ai/text/source")).status).toBe(404);
+      expect(existsSync(join(root, "source", "source.md"))).toBe(false);
     }
     published = source;
-    const response = await app.request("/api/items/source/extractions/arxiv-source", { method: "POST" });
+    const response = await app.request(
+      "/api/items/source/extractions/arxiv-source",
+      { method: "POST" },
+    );
     expect(response.status).toBe(200);
     const outcome = ExtractionOutcomeSchema.parse(await response.json());
-    expect(outcome).toMatchObject({ status: "succeeded", source_kind: "arxiv_latex", authoritative: true });
-    expect(readFileSync(join(root, "source.extraction/source.eprint"))).toEqual(source);
-    expect(readFileSync(join(root, "source.extraction/source.tex"), "utf8")).toContain("Source fixture.");
-    const assistantText = await app.request("/api/ai/text/source");
-    expect(assistantText.status).toBe(200);
-    expect(await assistantText.text()).toContain("\\documentclass");
+    expect(outcome).toMatchObject({
+      status: "succeeded",
+      source_kind: "arxiv_latex",
+      authoritative: true,
+    });
+    expect(
+      readFileSync(join(root, "source", "source.extraction/source.eprint")),
+    ).toEqual(source);
+    expect(
+      readFileSync(
+        join(root, "source", "source.extraction/source.tex"),
+        "utf8",
+      ),
+    ).toContain("Source fixture.");
+    expect((await app.request("/api/ai/text/source")).status).toBe(404);
     const library = await (await app.request("/api/library")).json();
     expect(library.items[0].extraction).toMatchObject({
       status: "extracted",
@@ -379,24 +514,45 @@ test("the server stores the arXiv provider's source archive as authoritative", a
 }, 30_000);
 
 test("an arXiv provider without source artifacts cannot create an authoritative result", async () => {
-  const { root, app } = await bucketWithExtractors([{ mode: "markdown", maxPages: 20 }]);
-  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-contract-")), "extractions.json");
-  writeFileSync(manifestPath, JSON.stringify({
-    plugins: [{
-      id: "markdown",
-      name: "Missing source",
-      source_kind: "arxiv_latex",
-      authoritative: true,
-      command: ["sh", extractor, "markdown", "$pdf", "$output"],
-      accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
-    }],
-  }));
-  const checked = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+  const { root, app } = await bucketWithExtractors([
+    { mode: "markdown", maxPages: 20 },
+  ]);
+  const manifestPath = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-contract-")),
+    "extractions.json",
+  );
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "markdown",
+          name: "Missing source",
+          source_kind: "arxiv_latex",
+          authoritative: true,
+          command: ["sh", extractor, "markdown", "$pdf", "$output"],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
+        },
+      ],
+    }),
+  );
+  const checked = await serveBucket({
+    root,
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: manifestPath,
+  });
   try {
-    const response = await checked.request("/api/items/lattices/extractions/markdown", { method: "POST" });
+    const response = await checked.request(
+      "/api/items/lattices/extractions/markdown",
+      { method: "POST" },
+    );
     expect(response.status).toBe(502);
-    expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe("plugin_contract_broken");
-    expect(readdirSync(root)).toEqual(["lattices.pdf"]);
+    expect(ApiErrorSchema.parse(await response.json()).error.kind).toBe(
+      "plugin_contract_broken",
+    );
+    expect(readdirSync(root)).toEqual(["lattices"]);
   } finally {
     await checked.stop();
     await app.stop();
@@ -416,58 +572,116 @@ test("the server runs the Mistral OCR provider against a local OCR service", asy
       }
       if (request.method === "POST" && path === "/v1/files") {
         const body = await request.arrayBuffer();
-        return Response.json({ id: "file-1", object: "file", bytes: body.byteLength, created_at: 0, filename: "fixture.pdf", purpose: "ocr", sample_type: "pretrain", source: "upload" });
+        return Response.json({
+          id: "file-1",
+          object: "file",
+          bytes: body.byteLength,
+          created_at: 0,
+          filename: "fixture.pdf",
+          purpose: "ocr",
+          sample_type: "pretrain",
+          source: "upload",
+        });
       }
       if (request.method === "GET" && path === "/v1/files/file-1/url") {
-        return Response.json({ url: new URL("/signed/file-1", request.url).href });
+        return Response.json({
+          url: new URL("/signed/file-1", request.url).href,
+        });
       }
       if (request.method === "POST" && path === "/v1/ocr") {
         return Response.json({
           model: "mistral-ocr-latest",
-          pages: [{ index: 0, markdown: "# OCR fixture\n\nStructured mathematics.", images: [], dimensions: null }],
+          pages: [
+            {
+              index: 0,
+              markdown: "# OCR fixture\n\nStructured mathematics.",
+              images: [],
+              dimensions: null,
+            },
+          ],
           usage_info: { pages_processed: 1 },
         });
       }
       if (request.method === "DELETE" && path === "/v1/files/file-1") {
         return Response.json({ id: "file-1", object: "file", deleted: true });
       }
-      return Response.json({ error: `unexpected ${request.method} ${path}` }, { status: 404 });
+      return Response.json(
+        { error: `unexpected ${request.method} ${path}` },
+        { status: 404 },
+      );
     },
   });
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ocr-"));
-  const manifestPath = join(mkdtempSync(join(tmpdir(), "pdf-bucket-ocr-manifest-")), "extractions.json");
-  writeFileSync(manifestPath, JSON.stringify({
-    plugins: [{
-      id: "mistral-ocr",
-      name: "Mistral OCR",
-      source_kind: "ocr",
-      authoritative: true,
-      command: ["pdfbucket-mistral-ocr", "$pdf", "$output", service.url.origin],
-      accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
-    }],
-  }));
+  const manifestPath = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-ocr-manifest-")),
+    "extractions.json",
+  );
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "mistral-ocr",
+          name: "Mistral OCR",
+          source_kind: "ocr",
+          authoritative: true,
+          command: [
+            "pdfbucket-mistral-ocr",
+            "$pdf",
+            "$output",
+            service.url.origin,
+          ],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
+        },
+      ],
+    }),
+  );
   const previous = process.env.MISTRAL_API_KEY;
   process.env.MISTRAL_API_KEY = "fixture-key";
   let app: Awaited<ReturnType<typeof serveBucket>>;
   try {
-    app = await serveBucket({ root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath });
+    app = await serveBucket({
+      root,
+      zoteroUrl: closedPortUrl(),
+      extractionsManifest: manifestPath,
+    });
   } finally {
     if (previous === undefined) delete process.env.MISTRAL_API_KEY;
     else process.env.MISTRAL_API_KEY = previous;
   }
   try {
     const form = new FormData();
-    form.set("pdf", new File([readFileSync(fixture)], "ocr.pdf", { type: "application/pdf" }));
+    form.set(
+      "pdf",
+      new File([readFileSync(fixture)], "ocr.pdf", { type: "application/pdf" }),
+    );
     form.set("pdf_url", "https://example.org/ocr.pdf");
     form.set("title_hint", "OCR fixture");
-    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
-    const response = await app.request("/api/items/ocr/extractions/mistral-ocr", { method: "POST" });
+    expect(
+      (await app.request("/capture-bytes", { method: "POST", body: form }))
+        .status,
+    ).toBe(200);
+    const response = await app.request(
+      "/api/items/ocr/extractions/mistral-ocr",
+      { method: "POST" },
+    );
     expect(response.status).toBe(200);
     expect(ExtractionOutcomeSchema.parse(await response.json())).toMatchObject({
-      status: "succeeded", source_kind: "ocr", authoritative: true,
+      status: "succeeded",
+      source_kind: "ocr",
+      authoritative: true,
     });
-    expect(await (await app.request("/api/ai/text/ocr")).text()).toContain("Structured mathematics.");
-    expect(calls).toEqual(["POST /v1/files", "GET /v1/files/file-1/url", "POST /v1/ocr", "DELETE /v1/files/file-1"]);
+    expect(readFileSync(join(root, "ocr", "ocr.md"), "utf8")).toContain(
+      "Structured mathematics.",
+    );
+    expect(calls).toEqual([
+      "POST /v1/files",
+      "GET /v1/files/file-1/url",
+      "POST /v1/ocr",
+      "DELETE /v1/files/file-1",
+    ]);
   } finally {
     await app.stop();
     service.stop(true);

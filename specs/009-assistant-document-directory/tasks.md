@@ -22,13 +22,13 @@ implementation. The real-provider check runs separately from tier 1.
 
 ## Phase 2: Foundational document storage
 
-- [ ] T003 Add failing real-HTTP proofs for capture layout, extraction placement and
+- [X] T003 Add failing real-HTTP proofs for capture layout, extraction placement and
   byte/provenance-preserving flat-store migration in
   `tests/server-document-directory.test.ts` and `tests/server-extractions.test.ts`
-- [ ] T004 Implement `<root>/<key>/` paths and resumable non-overwriting legacy migration in
+- [X] T004 Implement `<root>/<key>/` paths and resumable non-overwriting legacy migration in
   `server/src/layout.rs`, `server/src/store.rs`, `server/src/index.rs`, `server/src/lib.rs`
   and `server/src/main.rs`
-- [ ] T005 Route every remaining production reader and writer, including Zotero attachment
+- [X] T005 Route every remaining production reader and writer, including Zotero attachment
   reads and whole-directory deletion, through the shared layout in
   `server/src/send.rs`, `server/src/store.rs` and their direct consumers
 
@@ -43,20 +43,20 @@ raw page 2 and a directory artifact.
 
 ### Tests for User Story 1
 
-- [ ] T006 [US1] Add failing HTTP proofs for document-directory session creation,
+- [X] T006 [US1] Add failing HTTP proofs for document-directory session creation,
   preservation of an existing session ID through OpenCode move, generic read/glob/grep
   permissions and absence of generated paper-source catalogs in
   `tests/server-ai.test.ts`
-- [ ] T007 [P] [US1] Extend the real-provider regression so raw-only page access and
+- [X] T007 [P] [US1] Extend the real-provider regression so raw-only page access and
   direct discovery of enriched paper artifacts both require observable tool use in
   `tests/server-ai-live.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Create new sessions in and move existing sessions to the paper directory;
+- [X] T008 [US1] Create new sessions in and move existing sessions to the paper directory;
   replace source-catalog instructions with generic discovery and raw-page guidance in
   `server/src/ai.rs`
-- [ ] T009 [US1] Remove `/api/ai/text/{key}` and update exact-page context without
+- [X] T009 [US1] Remove `/api/ai/text/{key}` and update exact-page context without
   enumerating extraction or metadata artifacts in `server/src/ai.rs` and affected tests
 
 ## Phase 4: User Story 2 - Enrich an already-open paper (P1)
@@ -70,24 +70,24 @@ file read.
 
 ### Tests for User Story 2
 
-- [ ] T010 [US2] Add a failing same-session regression for an unregistered artifact added
+- [X] T010 [US2] Add a failing same-session regression for an unregistered artifact added
   after chat creation, with no OpenCode instruction update or extraction-text request, in
   `tests/server-ai.test.ts` and `tests/server-ai-live.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] Remove extraction-driven workspace and `reader-view` refreshes while
+- [X] T011 [US2] Remove extraction-driven workspace and `reader-view` refreshes while
   retaining complete-extraction placement and existing page announcements in
   `server/src/extractions.rs` and `server/src/ai.rs`
 
 ## Phase 5: Cross-cutting verification
 
-- [ ] T012 [P] Align the amended constitution and current behavior contracts in
+- [X] T012 [P] Align the amended constitution and current behavior contracts in
   `.specify/memory/constitution.md`, `specs/005-assistant-page-context/`,
   `specs/009-assistant-document-directory/`, `README.md` and `docs/m4.md`
-- [ ] T013 Record the document-directory decision in the `PLAN-PDF-BUCKET-ROADMAP` card's
+- [X] T013 Record the document-directory decision in the `PLAN-PDF-BUCKET-ROADMAP` card's
   Decision Log without changing completed issue claims
-- [ ] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
+- [X] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
   `just provision`, and verify migration, raw-only page answers and same-session unknown
   artifact discovery against the provisioned app on port 8770
 

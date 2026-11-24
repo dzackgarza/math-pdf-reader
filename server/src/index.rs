@@ -1,8 +1,8 @@
-//! The library index: every stored PDF under the root with what it says about itself, its size
-//! and the extraction beside it, derived from the files. A PDF is read again (by `pdfbucket
-//! read`) only when its file is new or has changed; the store, the library, the reader and the
-//! index export share this one cache. A `<key>.pdf` the store cannot read is reported by file
-//! name beside the items, never in their place.
+//! The library index: every stored document directory with what its PDF says about itself, its
+//! size and its extraction, derived from the files. A PDF is read again (by `pdfbucket read`)
+//! only when its file is new or has changed; the store, the library, the reader and the index
+//! export share this one cache. A `<key>/<key>.pdf` the store cannot read is reported by its
+//! root-relative file name beside the items, never in their place.
 use std::collections::{BTreeMap, BTreeSet};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ pub struct IndexedItem {
     pub extraction: Extraction,
 }
 
-/// A `<key>.pdf` in the root the store cannot read, and why.
+/// A `<key>/<key>.pdf` in the store the index cannot read, and why.
 #[derive(Clone, Debug)]
 pub struct UnreadableFile {
     pub file: String,
@@ -170,17 +170,18 @@ pub(crate) fn stored_item(key: &Key, record: PdfRecord) -> StoredItem {
     }
 }
 
-// A `<key>.pdf` file in the root as listed.
+// A `<key>/<key>.pdf` file as listed.
 struct StoredFile {
     name: String,
-    key: Option<Key>,
+    key: Key,
     path: PathBuf,
     size_bytes: u64,
     signature: Signature,
 }
 
-fn stored_file(root: &Path, name: String) -> AppResult<Option<StoredFile>> {
-    let path = root.join(&name);
+fn stored_file(root: &Path, key: Key) -> AppResult<Option<StoredFile>> {
+    let name = format!("{key}/{key}.pdf");
+    let path = layout::pdf_path(root, &key);
     let metadata = match std::fs::metadata(&path) {
         Ok(metadata) => metadata,
         // Removed or replaced between the listing and this look: the next read sees it again.
@@ -191,7 +192,7 @@ fn stored_file(root: &Path, name: String) -> AppResult<Option<StoredFile>> {
         return Ok(None);
     }
     Ok(Some(StoredFile {
-        key: pdf_key(&name),
+        key,
         size_bytes: metadata.size(),
         signature: Signature::of(&metadata),
         name,
@@ -305,7 +306,7 @@ impl Store {
         let mut reads = self.inner.reads.lock().await;
         let changed: Vec<&StoredFile> = files
             .iter()
-            .filter(|file| file.key.is_some())
+            // Every listed file has a validated key and is read below.
             .filter(|file| {
                 reads
                     .get(&file.name)
@@ -331,29 +332,25 @@ impl Store {
         }
         Ok(files
             .iter()
-            .map(|file| match &file.key {
-                None => {
-                    FileRead::Unreadable(format!("{} is not named after a store key", file.name))
-                }
-                Some(_) => reads
+            .map(|file| {
+                reads
                     .get(&file.name)
-                    .expect("every keyed file was read above")
+                    .expect("every listed file was read above")
                     .read
-                    .clone(),
+                    .clone()
             })
             .collect())
     }
 
     fn indexed(&self, file: StoredFile, read: FileRead) -> AppResult<Indexed> {
         let (key, record) = match (file.key, read) {
-            (Some(key), FileRead::Read(record)) => (key, record),
+            (key, FileRead::Read(record)) => (key, record),
             (_, FileRead::Unreadable(message)) => {
                 return Ok(Indexed::Unreadable(UnreadableFile {
                     file: file.name,
                     message,
                 }));
             }
-            (None, FileRead::Read(_)) => unreachable!("a file named after no key is never read"),
         };
         let lineage = record.source_lineage.clone();
         if let Some(lineage) = &lineage {
@@ -376,19 +373,22 @@ impl Store {
         })))
     }
 
-    /// Every stored item in key order, and every `<key>.pdf` that cannot be read.
+    /// Every stored item in key order, and every `<key>/<key>.pdf` that cannot be read.
     pub async fn library(&self) -> AppResult<Library> {
-        let mut names = Vec::new();
+        let mut keys = Vec::new();
         for entry in std::fs::read_dir(self.root())? {
-            let name = entry?.file_name().to_string_lossy().into_owned();
-            if name.ends_with(".pdf") && !name.starts_with('.') {
-                names.push(name);
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if entry.file_type()?.is_dir() && !name.starts_with('.') {
+                if let Some(key) = Key::parse(&name) {
+                    keys.push(key);
+                }
             }
         }
-        names.sort();
+        keys.sort();
         let mut files = Vec::new();
-        for name in names {
-            if let Some(file) = stored_file(self.root(), name)? {
+        for key in keys {
+            if let Some(file) = stored_file(self.root(), key)? {
                 files.push(file);
             }
         }
@@ -411,7 +411,10 @@ impl Store {
                 library
                     .unreadable
                     .iter()
-                    .filter_map(|file| pdf_key(&file.file).map(|key| key.to_string())),
+                    .filter_map(|file| {
+                        pdf_key(file.file.rsplit('/').next().unwrap_or(&file.file))
+                            .map(|key| key.to_string())
+                    }),
             )
             .collect();
         let missing = self.missing_promotions(&present).await?;

@@ -218,7 +218,8 @@ fn placed(
 ) -> AppResult<ExtractionOutcome> {
     let root = &state.config.root;
     let parsed = Key::parse(key).expect("an indexed key is a key");
-    let (path, sha256, size) = artifact(root, &layout::markdown_path(root, &parsed))?;
+    let document = layout::document_dir(root, &parsed);
+    let (path, sha256, size) = artifact(&document, &layout::markdown_path(root, &parsed))?;
     let mut artifacts = Vec::new();
     let directory = layout::extraction_dir(root, &parsed);
     if directory.is_dir() {
@@ -227,7 +228,7 @@ fn placed(
             if entry.file_type().is_file()
                 && entry.file_name().to_string_lossy() != EXTRACTION_METADATA
             {
-                let (path, sha256, size) = artifact(root, entry.path())?;
+                let (path, sha256, size) = artifact(&document, entry.path())?;
                 artifacts.push(ExtractionOutcomeSucceededArtifactsItem { path, sha256, size });
             }
         }
@@ -324,7 +325,6 @@ async fn run(
         .await?;
     state.stored();
     let outcome = placed(state, &key, plugin)?;
-    crate::ai::announce_extraction(state, &key).await?;
     Ok(outcome)
 }
 

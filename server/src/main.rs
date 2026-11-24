@@ -96,6 +96,7 @@ impl Documents {
     async fn configured() -> Result<Self, Failure> {
         let store = configured_store();
         tokio::fs::create_dir_all(store.root()).await?;
+        pdf_bucket::layout::migrate(store.root())?;
         let unheard = Arc::new(Notify::new());
         Ok(Self {
             sessions: SessionStore::new(store.root(), Arc::clone(&unheard)),
@@ -234,6 +235,8 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
         }
         Command::RebuildCache { file } => {
             let settings = config::app_config().rebuild;
+            tokio::fs::create_dir_all(config::data_root()).await?;
+            pdf_bucket::layout::migrate(&config::data_root())?;
             let outcomes =
                 rebuild_cache(&configured_store(), &export_file(file), &settings).await?;
             println!(

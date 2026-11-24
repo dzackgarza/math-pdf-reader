@@ -181,8 +181,13 @@ test("the assistant can discover every current and future paper artifact read-on
     };
   };
   expect(config.agents.reader.permissions).toContainEqual({
-    action: "read",
+    action: "external_directory",
     resource: `${root}/*`,
+    effect: "allow",
+  });
+  expect(config.agents.reader.permissions).toContainEqual({
+    action: "read",
+    resource: "*",
     effect: "allow",
   });
   expect(config.agents.reader.permissions).toContainEqual({
@@ -407,17 +412,14 @@ test("an assistant session starts in the document directory without a source cat
 test("the assistant's chat is told the reader's page as soon as the reader reports it", async () => {
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
-  extraction(root, "# Extracted notes\n");
   const app = await storedBucket("true", root, assistant.port);
-  expect(
-    (
-      await app.request("/api/ai/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: "long-notes" }),
-      })
-    ).status,
-  ).toBe(200);
+  extraction(root, "# Extracted notes\n");
+  const opened = await app.request("/api/ai/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "long-notes" }),
+  });
+  expect(opened.status).toBe(200);
   expect(assistant.entries["ses_fake/reader-view"]).toContain(
     "has not recorded a page",
   );

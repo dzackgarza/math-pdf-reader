@@ -63,12 +63,20 @@ function sha256(path: string): string {
 // Print a command and its output; answer its exit code.
 async function run(command: string): Promise<number> {
   process.stdout.write(`$ ${command}\n`);
-  const result = await $`bash -c ${command}`.cwd(REPO_ROOT).env(env).nothrow().quiet();
-  process.stdout.write(`${result.stdout}${result.stderr}(exit ${result.exitCode})\n\n`);
+  const result = await $`bash -c ${command}`
+    .cwd(REPO_ROOT)
+    .env(env)
+    .nothrow()
+    .quiet();
+  process.stdout.write(
+    `${result.stdout}${result.stderr}(exit ${result.exitCode})\n\n`,
+  );
   return result.exitCode;
 }
 
-process.stdout.write(`XDG_DATA_HOME=${xdg}\npublisher ${publisher.url.origin}\n\n`);
+process.stdout.write(
+  `XDG_DATA_HOME=${xdg}\npublisher ${publisher.url.origin}\n\n`,
+);
 
 for (const [path, name] of Object.entries(papers)) {
   const form = new FormData();
@@ -79,7 +87,9 @@ for (const [path, name] of Object.entries(papers)) {
   const captured = CaptureResponseSchema.parse(
     await (await api("/capture-bytes", { method: "POST", body: form })).json(),
   );
-  process.stdout.write(`captured ${captured.key} from ${captured.provenance.pdf_url}\n`);
+  process.stdout.write(
+    `captured ${captured.key} from ${captured.provenance.pdf_url}\n`,
+  );
 }
 const forms = CollectionSchema.parse(
   await (
@@ -105,9 +115,13 @@ for (const [key, tags] of [
     headers: { "Content-Type": "application/json" },
   });
 }
-process.stdout.write("filed lecture-notes and 2401.00001 into Quadratic forms, with tags\n\n");
+process.stdout.write(
+  "filed lecture-notes and 2401.00001 into Quadratic forms, with tags\n\n",
+);
 
-process.stdout.write("## Export, wipe, import, rebuild, export again, diff\n\n");
+process.stdout.write(
+  "## Export, wipe, import, rebuild, export again, diff\n\n",
+);
 await run("just export-index");
 const firstExport = join(xdg, "export-1.json");
 const organizationBefore = join(xdg, "organization-before.json");
@@ -123,11 +137,15 @@ await run("just rebuild-cache");
 await run("just export-index");
 await run(`diff ${firstExport} ${exportFile} && echo exports identical`);
 
-process.stdout.write("## Delete three PDFs, one of them now at a dead URL; rebuild\n\n");
+process.stdout.write(
+  "## Delete three PDFs, one of them now at a dead URL; rebuild\n\n",
+);
 online.delete("/papers/long-notes.pdf");
-process.stdout.write(`the publisher now answers 404 at ${at("/papers/long-notes.pdf")}\n`);
+process.stdout.write(
+  `the publisher now answers 404 at ${at("/papers/long-notes.pdf")}\n`,
+);
 for (const key of ["lecture-notes", "2401.00001", "long-notes"]) {
-  unlinkSync(join(root, `${key}.pdf`));
+  unlinkSync(join(root, key, `${key}.pdf`));
   process.stdout.write(`deleted ${key}.pdf\n`);
 }
 process.stdout.write("\n");
@@ -138,13 +156,14 @@ process.stdout.write(
   "## Recorded original hash of each stored PDF against the fixture it came from\n\n",
 );
 for (const [path, name] of Object.entries(papers)) {
-  const key = path === "/pdf/2401.00001" ? "2401.00001" : name.slice(0, -".pdf".length);
-  if (!existsSync(join(root, `${key}.pdf`))) {
+  const key =
+    path === "/pdf/2401.00001" ? "2401.00001" : name.slice(0, -".pdf".length);
+  if (!existsSync(join(root, key, `${key}.pdf`))) {
     process.stdout.write(`${key}: no stored PDF\n\n`);
     continue;
   }
   await run(
-    `printf '%s ' ${key} && uv run --locked pdfbucket read -- ${join(root, `${key}.pdf`)} | jq -r '.[0].record.provenance.original_sha256'`,
+    `printf '%s ' ${key} && uv run --locked pdfbucket read -- ${join(root, key, `${key}.pdf`)} | jq -r '.[0].record.provenance.original_sha256'`,
   );
   process.stdout.write(`fixture ${name} ${sha256(join(fixtures, name))}\n\n`);
 }

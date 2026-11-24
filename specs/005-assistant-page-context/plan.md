@@ -8,10 +8,11 @@
 
 Every stored PDF has an assistant session, regardless of extraction state. The bucket
 serves bounded text from one requested raw-PDF page and gives the private OpenCode
-agent that address, the exact reader page and an optional authoritative-extraction
-address. An extraction placed after a session opens refreshes that session's workspace
-and instruction entry. The assistant has bucket-only fetch access and no shell,
-filesystem-edit or sub-agent capability.
+agent that address and the exact reader page. New and existing sessions use the paper's
+document directory. The agent discovers the original PDF, extractions and other paper
+artifacts there with read-only generic tools. An extraction placed after a session
+opens needs no refresh. The assistant has no shell, filesystem-edit or sub-agent
+capability.
 
 ## Technical Context
 
@@ -47,9 +48,10 @@ stored for raw PDF text
 - **II. Raw PDF Access and Authoritative Extractions**: PASS. Raw text is always
   available; an authoritative extraction is additional context, never synthesized from
   generic PDF text.
-- **III. Reader Context**: PASS. The instruction entry carries the exact page and
-  explicit raw-page and extraction addresses, without line-range inference.
-- **IV. Fail Loudly**: PASS. Extraction-specific requests retain their explicit errors;
+- **III. One Document Directory and Page Context**: PASS. The instruction entry
+  carries the exact page and raw-page address. All paper artifacts share the session's
+  document directory without a generated catalog.
+- **IV. Fail Loudly**: PASS. Invalid raw-page requests retain explicit errors;
   extraction failure does not disable raw-PDF answers.
 - **V. Real-Boundary Tests**: PASS. Tests use real bucket and extraction boundaries,
   select a non-first page, and exercise the configured provider in the live test.
@@ -78,8 +80,8 @@ specs/005-assistant-page-context/
 
 ```text
 server/src/
-├── ai.rs                 # Sessions, permissions, workspace and paper-source routes
-└── extractions.rs        # Placement and open-session context refresh
+├── ai.rs                 # Directory sessions, permissions and raw-page routes
+└── extractions.rs        # Placement in the paper's document directory
 src/pdfbucket/text.py     # One-page text from the stored PDF
 src/web/AiPane.tsx        # Assistant pane and extraction status
 src/contract/             # API and extraction schemas
@@ -90,8 +92,9 @@ tests/
 ```
 
 **Structure Decision**: Extend the existing assistant and extraction modules. The
-bucket owns context generation and refresh so all extraction callers update an open
-session in the same way. The UI remains a consumer of the existing session API.
+bucket owns page-context generation and stable session location. The document directory
+owns artifact discovery, so extraction callers need no assistant refresh. The UI remains
+a consumer of the existing session API.
 
 ## Complexity Tracking
 

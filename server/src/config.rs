@@ -123,9 +123,9 @@ pub fn cache_root() -> PathBuf {
         .join("pdf-bucket")
 }
 
-/// The assistant pane's private OpenCode server keeps its data, config and state here, with the
-/// chats of the PDFs and one workspace per PDF, beside the data root: the chats are the user's
-/// work, but no PDF of the store.
+/// The assistant pane's private OpenCode server keeps its data, config and state here, beside
+/// the data root. Each chat's location is its paper's document directory in the store; this
+/// root holds chats and application state, not paper artifacts.
 pub fn ai_root() -> PathBuf {
     xdg_data_home().join("pdf-bucket-ai")
 }

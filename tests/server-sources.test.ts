@@ -487,7 +487,7 @@ test("saving a preferred PDF preserves its source lineage when the editor omits 
       "python",
       "-c",
       "import pikepdf,sys; p=pikepdf.open(sys.argv[1]); del p.docinfo['/PDFBucketSourceLineage']; p.save(sys.argv[2])",
-      join(root, `${promoted.key}.pdf`),
+      join(root, promoted.key, `${promoted.key}.pdf`),
       saved,
     ],
     { stderr: "pipe" },
@@ -564,7 +564,7 @@ test("rebuilding a lost preferred PDF restores its lineage", async () => {
   }
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-rebuild-away-"));
   renameSync(
-    join(root, `${promoted.key}.pdf`),
+    join(root, promoted.key, `${promoted.key}.pdf`),
     join(away, `${promoted.key}.pdf`),
   );
   const rebuild = RebuildOutcomeSchema.parse(
@@ -660,7 +660,7 @@ test("forgetting a missing preferred item removes its retained promotion record"
   }
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-forget-away-"));
   renameSync(
-    join(root, `${promoted.key}.pdf`),
+    join(root, promoted.key, `${promoted.key}.pdf`),
     join(away, `${promoted.key}.pdf`),
   );
   expect((await request("DELETE", `/api/missing/${promoted.key}`)).status).toBe(
@@ -735,11 +735,18 @@ test("a preferred PDF with inconsistent lineage is reported without hiding other
       )
     ).json(),
   );
-  renameSync(join(root, `${promoted.key}.pdf`), join(root, "wrong-key.pdf"));
+  mkdirSync(join(root, "wrong-key"));
+  renameSync(
+    join(root, promoted.key, `${promoted.key}.pdf`),
+    join(root, "wrong-key", "wrong-key.pdf"),
+  );
   const result = await library();
   expect(result.items.map((item) => item.id)).toEqual(["readable-original"]);
   expect(result.unreadable).toEqual([
-    { file: "wrong-key.pdf", message: "inconsistent embedded source lineage" },
+    {
+      file: "wrong-key/wrong-key.pdf",
+      message: "inconsistent embedded source lineage",
+    },
   ]);
 });
 
@@ -781,7 +788,7 @@ test("a damaged promotion recovery record does not hide other papers", async () 
     throw new Error("promotion record was not created");
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-damaged-anchor-"));
   renameSync(
-    join(root, `${promoted.key}.pdf`),
+    join(root, promoted.key, `${promoted.key}.pdf`),
     join(away, `${promoted.key}.pdf`),
   );
   renameSync(join(root, directory, "source.pdf"), join(away, "anchor.pdf"));
@@ -877,7 +884,10 @@ test("repeating promotion of a missing preferred item does not create a duplicat
   );
   const originalLineage = (await item("missing-preferred")).sourceLineage;
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-preferred-away-"));
-  renameSync(join(root, `${first.key}.pdf`), join(away, `${first.key}.pdf`));
+  renameSync(
+    join(root, first.key, `${first.key}.pdf`),
+    join(away, `${first.key}.pdf`),
+  );
 
   const response = await request(
     "POST",
@@ -1002,8 +1012,10 @@ test("promotion preserves unrelated sidecars at the candidate key", async () => 
     "sidecar-original",
     request,
   );
-  const markdown = join(root, "1234.5678v1.md");
-  const extraction = join(root, "1234.5678v1.extraction");
+  const document = join(root, "1234.5678v1");
+  const markdown = join(document, "1234.5678v1.md");
+  const extraction = join(document, "1234.5678v1.extraction");
+  mkdirSync(document);
   writeFileSync(markdown, "preserve this markdown");
   mkdirSync(extraction);
   writeFileSync(join(extraction, "artifact"), "preserve this artifact");
@@ -1057,7 +1069,9 @@ test("promotion refuses a key whose sidecar appears before publication", async (
     candidate,
   );
   await waitForFile(`${gate}.ready`);
-  const sidecar = join(root, "1234.5678v1.md");
+  const document = join(root, "1234.5678v1");
+  mkdirSync(document);
+  const sidecar = join(document, "1234.5678v1.md");
   writeFileSync(sidecar, "new sidecar");
   writeFileSync(`${gate}.release`, "release");
   expect((await promotion).status).toBeGreaterThanOrEqual(500);
@@ -1096,14 +1110,17 @@ test("promotion does not overwrite or remove a PDF placed by another writer", as
     "replacement-original",
     request,
   );
-  const replacement = readFileSync(join(root, "replacement-original.pdf"));
+  const replacement = readFileSync(
+    join(root, "replacement-original", "replacement-original.pdf"),
+  );
   const promotion = request(
     "POST",
     "/api/items/replacement-original/arxiv/promote",
     candidate,
   );
   await waitForFile(`${gate}.ready`);
-  const target = join(root, "1234.5678v1.pdf");
+  mkdirSync(join(root, "1234.5678v1"));
+  const target = join(root, "1234.5678v1", "1234.5678v1.pdf");
   writeFileSync(target, replacement);
   writeFileSync(`${gate}.release`, "release");
   expect((await promotion).status).toBeGreaterThanOrEqual(500);
@@ -1345,7 +1362,10 @@ test("a preferred PDF lost before its first export remains rebuildable after res
     readIndexExport(exportFile)?.items.some((entry) => entry.key === preferred),
   ).toBe(false);
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-early-loss-"));
-  renameSync(join(root, `${preferred}.pdf`), join(away, `${preferred}.pdf`));
+  renameSync(
+    join(root, preferred, `${preferred}.pdf`),
+    join(away, `${preferred}.pdf`),
+  );
   const restarted = await serveBucket({
     root,
     indexExport: exportFile,
@@ -1442,7 +1462,10 @@ test("a missing promotion reserves its key even before the export can record it"
   exported.items = exported.items.filter((entry) => entry.key !== promoted.key);
   writeFileSync(exportFile, JSON.stringify(exported));
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-reserved-away-"));
-  renameSync(join(root, `${promoted.key}.pdf`), join(away, "preferred.pdf"));
+  renameSync(
+    join(root, promoted.key, `${promoted.key}.pdf`),
+    join(away, "preferred.pdf"),
+  );
   chmodSync(exportDir, 0o555);
   const restarted = await serveBucket({
     root,
@@ -1747,10 +1770,15 @@ test("a promoted item is eligible for version-matched arXiv source extraction", 
   );
   expect(extraction.status).toBe(200);
   expect(
-    readFileSync(join(root, `${promoted.key}.extraction/source.eprint`)),
+    readFileSync(
+      join(root, promoted.key, `${promoted.key}.extraction/source.eprint`),
+    ),
   ).toEqual(source);
   expect(
-    readFileSync(join(root, `${promoted.key}.extraction/source.tex`), "utf8"),
+    readFileSync(
+      join(root, promoted.key, `${promoted.key}.extraction/source.tex`),
+      "utf8",
+    ),
   ).toContain("Promoted source.");
   expect((await item("extraction-original")).provenance).toEqual(original);
 });
@@ -1821,7 +1849,7 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
 
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-sources-away-"));
   for (const key of ["kept-url", "moved", "lost"]) {
-    renameSync(join(root, `${key}.pdf`), join(away, `${key}.pdf`));
+    renameSync(join(root, key, `${key}.pdf`), join(away, `${key}.pdf`));
   }
   const missing = (await library()).missing;
   expect(missing.map((entry) => [entry.key, entry.title]).sort()).toEqual([

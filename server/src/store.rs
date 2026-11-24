@@ -261,12 +261,13 @@ pub async fn stage_file(
 
 /// Renames a staged file to PATH and syncs the directory, so the new name survives a crash.
 fn commit(staged: TempPath, path: &Path, placement: Placement) -> std::io::Result<()> {
+    let directory = path.parent().expect("a written file lies in a directory");
+    std::fs::create_dir_all(directory)?;
     match placement {
         Placement::New => staged.persist_noclobber(path),
         Placement::Over => staged.persist(path),
     }
     .map_err(|failed| failed.error)?;
-    let directory = path.parent().expect("a written file lies in a directory");
     std::fs::File::open(directory)?.sync_all()
 }
 
@@ -534,9 +535,7 @@ impl Store {
         for key in candidate_keys(upload.filename.as_deref(), &upload.pdf.sha256) {
             let path = layout::pdf_path(self.root(), &key);
             if held.contains(key.as_str())
-                || path.try_exists()?
-                || layout::markdown_path(self.root(), &key).try_exists()?
-                || layout::extraction_dir(self.root(), &key).try_exists()?
+                || layout::document_dir(self.root(), &key).try_exists()?
             {
                 continue;
             }
@@ -564,6 +563,7 @@ impl Store {
             };
             let item = stored_item(&key, *record);
             let root = self.root().to_path_buf();
+            let document = layout::document_dir(&root, &key);
             let markdown = layout::markdown_path(&root, &key);
             let extraction = layout::extraction_dir(&root, &key);
             let directory = root.join(format!(
@@ -592,6 +592,7 @@ impl Store {
                         "promotion key gained existing extraction files",
                     ));
                 }
+                std::fs::create_dir(&document)?;
                 let source_dir = std::fs::File::open(&directory)?;
                 let root_dir = std::fs::File::open(&root)?;
                 renameat2(
@@ -664,7 +665,7 @@ impl Store {
         }
         for key in candidate_keys(upload.filename.as_deref(), original_sha256) {
             let path = layout::pdf_path(self.root(), &key);
-            if held.contains(key.as_str()) || path.exists() {
+            if held.contains(key.as_str()) || path.try_exists()? {
                 continue;
             }
             blocking(move || commit(embedded, &path, Placement::New)).await?;
@@ -902,19 +903,12 @@ impl Store {
         Ok(Restoration::Restored { stored_sha256 })
     }
 
-    /// Moves KEY's extraction and then its PDF to the desktop trash; answers the names moved.
+    /// Moves KEY's complete document directory to the desktop trash; answers the names moved.
     pub async fn remove(&self, key: &str) -> AppResult<Vec<String>> {
         let key = self.existing_key(key)?;
         let _key = self.lock(&key).await;
         let root = self.root();
-        let mut paths: Vec<PathBuf> = [
-            layout::markdown_path(root, &key),
-            layout::extraction_dir(root, &key),
-            layout::pdf_path(root, &key),
-        ]
-        .into_iter()
-        .filter(|path| path.exists())
-        .collect();
+        let mut paths = vec![layout::document_dir(root, &key)];
         let names = paths.iter().map(|path| file_name(path)).collect();
         let expected = self.item(key.as_str()).await?.and_then(|item| {
             item.source_lineage
@@ -1068,7 +1062,8 @@ impl Store {
     /// Places a finished extraction beside KEY's PDF: the previous `<key>.md` and
     /// `<key>.extraction/` go to the desktop trash, then ARTIFACTS (if any) becomes
     /// `<key>.extraction/` and MARKDOWN becomes `<key>.md`, last, since the Markdown marks a
-    /// complete extraction. Both lie in the root, so each move is a rename.
+    /// complete extraction. Staging and destination share one filesystem, so each move is a
+    /// rename.
     pub async fn place_extraction(
         &self,
         key: &str,
@@ -1078,6 +1073,7 @@ impl Store {
         let key = self.existing_key(key)?;
         let _key = self.lock(&key).await;
         let root = self.root().to_path_buf();
+        let document = layout::document_dir(&root, &key);
         let markdown_path = layout::markdown_path(&root, &key);
         let extraction_dir = layout::extraction_dir(&root, &key);
         let previous: Vec<PathBuf> = [&markdown_path, &extraction_dir]
@@ -1093,7 +1089,7 @@ impl Store {
                 std::fs::rename(artifacts, &extraction_dir)?;
             }
             std::fs::rename(markdown, &markdown_path)?;
-            std::fs::File::open(&root)?.sync_all()
+            std::fs::File::open(&document)?.sync_all()
         })
         .await
     }

@@ -151,9 +151,9 @@ assistant abstraction is added.
 
 ## Progress
 
-- [ ] Store regressions and implementation -- real lifecycle evidence required.
-- [ ] Assistant regressions and implementation -- session and live discovery evidence.
-- [ ] Documents, roadmap, provisioned verification -- current behavior on port 8770.
+- [X] Store regressions and implementation -- real lifecycle evidence required.
+- [X] Assistant regressions and implementation -- session and live discovery evidence.
+- [X] Documents, roadmap, provisioned verification -- current behavior on port 8770.
 
 ## Surprises & Discoveries
 

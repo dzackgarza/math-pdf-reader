@@ -1,7 +1,9 @@
-//! The store's file layout, owned here alone: `<root>/<key>.pdf` holds a stored PDF with its
-//! provenance inside, `<key>.md` and `<key>.extraction/` beside it hold its extraction, and a
-//! name starting with `.` is a write in progress (a temporary file or staging directory). Keys
-//! are derived from a PDF's file name and validated in one place, `Key::parse`.
+//! The store's file layout, owned here alone: `<root>/<key>/<key>.pdf` holds a stored PDF with
+//! its provenance inside, and `<key>.md`, `<key>.extraction/` and every other paper artifact
+//! share its document directory. A name starting with `.` in the root is a write in progress
+//! (a temporary file or staging directory). Keys are derived from a PDF's file name and
+//! validated in one place, `Key::parse`.
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::config::{EXTRACTION_SUFFIX, KEY_HASH_PREFIX, MAX_KEY_BYTES, PDF_HEADER_WINDOW};
@@ -101,16 +103,87 @@ pub fn candidate_keys(filename: Option<&str>, original_sha256: &str) -> [Key; 2]
     [own, suffixed]
 }
 
+/// The one directory that holds KEY's original PDF and every current paper artifact.
+pub fn document_dir(root: &Path, key: &Key) -> PathBuf {
+    root.join(key.as_str())
+}
+
 pub fn pdf_path(root: &Path, key: &Key) -> PathBuf {
-    root.join(format!("{key}.pdf"))
+    document_dir(root, key).join(format!("{key}.pdf"))
 }
 
 pub fn markdown_path(root: &Path, key: &Key) -> PathBuf {
-    root.join(format!("{key}.md"))
+    document_dir(root, key).join(format!("{key}.md"))
 }
 
 pub fn extraction_dir(root: &Path, key: &Key) -> PathBuf {
-    root.join(format!("{key}{EXTRACTION_SUFFIX}"))
+    document_dir(root, key).join(format!("{key}{EXTRACTION_SUFFIX}"))
+}
+
+/// Moves the previous flat layout into each paper's document directory. A partly moved record is
+/// completed on the next call. Two current copies of one artifact are never merged or overwritten.
+pub fn migrate(root: &Path) -> std::io::Result<()> {
+    let mut keys = BTreeSet::new();
+    for entry in std::fs::read_dir(root)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let key = if entry.file_type()?.is_file() {
+            pdf_key(&name).or_else(|| name.strip_suffix(".md").and_then(Key::parse))
+        } else if entry.file_type()?.is_dir() {
+            let current_document =
+                Key::parse(&name).is_some_and(|key| pdf_path(root, &key).is_file());
+            if current_document {
+                None
+            } else {
+                name.strip_suffix(EXTRACTION_SUFFIX).and_then(Key::parse)
+            }
+        } else {
+            None
+        };
+        if let Some(key) = key {
+            keys.insert(key);
+        }
+    }
+    for key in keys {
+        let directory = document_dir(root, &key);
+        let moves = [
+            (root.join(format!("{key}.pdf")), pdf_path(root, &key)),
+            (
+                root.join(format!("{key}{EXTRACTION_SUFFIX}")),
+                extraction_dir(root, &key),
+            ),
+            (root.join(format!("{key}.md")), markdown_path(root, &key)),
+        ];
+        let mut pending = false;
+        for (source, _) in &moves {
+            if source.try_exists()? {
+                pending = true;
+                break;
+            }
+        }
+        if !pending {
+            continue;
+        }
+        std::fs::create_dir_all(&directory)?;
+        for (source, destination) in moves {
+            if !source.try_exists()? {
+                continue;
+            }
+            if destination.try_exists()? {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "cannot migrate {}: {} already exists",
+                        source.display(),
+                        destination.display()
+                    ),
+                ));
+            }
+            std::fs::rename(source, destination)?;
+        }
+        std::fs::File::open(directory)?.sync_all()?;
+    }
+    std::fs::File::open(root)?.sync_all()
 }
 
 /// The key of a stored PDF's file name, or None for a name that is no `<key>.pdf`.

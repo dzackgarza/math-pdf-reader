@@ -33,20 +33,28 @@ async function emptyBucket(): Promise<Bucket> {
     zoteroUrl,
     extractionsManifest: EXTRACTIONS_MANIFEST,
   });
-  return { root, origin: app.origin, request: (path, init) => app.request(path, init) };
+  return {
+    root,
+    origin: app.origin,
+    request: (path, init) => app.request(path, init),
+  };
 }
 
 async function capture(bucket: Bucket, key: string): Promise<void> {
   const form = new FormData();
   form.set(
     "pdf",
-    new File([readFileSync(lectureNotes)], `${key}.pdf`, { type: "application/pdf" }),
+    new File([readFileSync(lectureNotes)], `${key}.pdf`, {
+      type: "application/pdf",
+    }),
   );
   form.set("pdf_url", `https://www.math.example.edu/~author/${key}.pdf`);
   form.set("title_hint", "Lattices and Quadratic Forms");
   expect(
     CaptureResponseSchema.parse(
-      await (await bucket.request("/capture-bytes", { method: "POST", body: form })).json(),
+      await (
+        await bucket.request("/capture-bytes", { method: "POST", body: form })
+      ).json(),
     ),
   ).toMatchObject({ key, existing: false });
 }
@@ -64,14 +72,25 @@ function recordSent(bucket: Bucket, key: string): void {
     version: 2,
     collections: [],
     savedSearches: [],
-    items: { [key]: { ...unfiled({ captured_at: SENT.sentAt }), zotero: SENT } },
+    items: {
+      [key]: { ...unfiled({ captured_at: SENT.sentAt }), zotero: SENT },
+    },
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
+    preferences: {
+      outlineOnOpen: false,
+      theme: "system",
+      readerNightMode: false,
+    },
   });
 }
 
-async function item(bucket: Bucket, key: string): Promise<BucketItem | undefined> {
-  const payload = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
+async function item(
+  bucket: Bucket,
+  key: string,
+): Promise<BucketItem | undefined> {
+  const payload = LibraryPayloadSchema.parse(
+    await (await bucket.request("/api/library")).json(),
+  );
   return payload.items.find((candidate) => candidate.id === key);
 }
 
@@ -83,13 +102,17 @@ test("a send while Zotero is not running says to start Zotero and records no Zot
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
 
-  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero", {
+    method: "POST",
+  });
 
   expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
     kind: "zotero_unavailable",
     message: "Zotero is not running: start Zotero",
   });
-  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "unsent",
+  });
 });
 
 test("a second send of an item already in Zotero is refused without contacting Zotero", async () => {
@@ -97,7 +120,9 @@ test("a second send of an item already in Zotero is refused without contacting Z
   await capture(bucket, "lattices");
   recordSent(bucket, "lattices");
 
-  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero", {
+    method: "POST",
+  });
 
   // A send that reached for the closed Zotero port would answer 503.
   expect(await errorKind(response)).toBe("already_sent");
@@ -112,14 +137,19 @@ test("an extraction made after the send is owed to Zotero, and a later send goes
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
   recordSent(bucket, "lattices");
-  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Quadratic Forms\n");
+  writeFileSync(
+    join(bucket.root, "lattices", "lattices.md"),
+    "# Lattices and Quadratic Forms\n",
+  );
 
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
     record: SENT,
     pending: ["markdown"],
   });
-  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero", {
+    method: "POST",
+  });
 
   // Not refused: the send went to attach the Markdown to ABCD2345, and Zotero was down.
   expect(await errorKind(response)).toBe("zotero_unavailable");
@@ -138,14 +168,18 @@ test("a note added after the send is owed to Zotero, and a later send goes to ad
   await bucket.request("/api/items/lattices/notes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note: "Lemma 2 needs the sign convention of section 1." }),
+    body: JSON.stringify({
+      note: "Lemma 2 needs the sign convention of section 1.",
+    }),
   });
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
     record: SENT,
     pending: ["notes"],
   });
-  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero", {
+    method: "POST",
+  });
 
   // Not refused: the send went to add the note to ABCD2345, and Zotero was down.
   expect(await errorKind(response)).toBe("zotero_unavailable");
@@ -180,19 +214,26 @@ test("a send to a Zotero without the write API says the addon is missing", async
   const bucket = { root, origin: app.origin, request: app.request };
   await capture(bucket, "lattices");
 
-  const response = await bucket.request("/api/items/lattices/zotero", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero", {
+    method: "POST",
+  });
 
   expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
     kind: "zotero_unavailable",
     message: "Zotero lacks the local write API addon",
   });
-  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "unsent",
+  });
 });
 
 test("a web page on another site cannot send an item or delete it", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
-  const fromAnotherSite = { Origin: "https://pages.example.com", "Sec-Fetch-Site": "cross-site" };
+  const fromAnotherSite = {
+    Origin: "https://pages.example.com",
+    "Sec-Fetch-Site": "cross-site",
+  };
 
   const send = await bucket.request("/api/items/lattices/zotero", {
     method: "POST",
@@ -205,7 +246,9 @@ test("a web page on another site cannot send an item or delete it", async () => 
 
   expect(await errorKind(send)).toBe("cross_origin_request");
   expect(await errorKind(removal)).toBe("cross_origin_request");
-  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "unsent",
+  });
 });
 
 // A request to the bucket's socket under another host name, as a page on a domain that
@@ -234,7 +277,9 @@ function requestAs(
         response.on("data", (chunk: string) => {
           body += chunk;
         });
-        response.on("end", () => resolve({ status: response.statusCode ?? 0, body }));
+        response.on("end", () =>
+          resolve({ status: response.statusCode ?? 0, body }),
+        );
       },
     );
     sent.on("error", reject);
@@ -250,15 +295,33 @@ test("a page on another host name bound to the bucket's address can neither read
 
   const read = await requestAs(bucket, rebound, "GET", "/api/library");
   const pdf = await requestAs(bucket, rebound, "GET", "/pdf/lattices.pdf");
-  const removal = await requestAs(bucket, rebound, "DELETE", "/api/items/lattices");
-  const own = await requestAs(bucket, `127.0.0.1:${port}`, "GET", "/api/library");
-
-  expect(ApiErrorSchema.parse(JSON.parse(read.body)).error.kind).toBe("cross_origin_request");
-  expect(ApiErrorSchema.parse(JSON.parse(pdf.body)).error.kind).toBe("cross_origin_request");
-  expect(ApiErrorSchema.parse(JSON.parse(removal.body)).error.kind).toBe("cross_origin_request");
-  expect(LibraryPayloadSchema.parse(JSON.parse(own.body)).items.map((entry) => entry.id)).toContain(
-    "lattices",
+  const removal = await requestAs(
+    bucket,
+    rebound,
+    "DELETE",
+    "/api/items/lattices",
   );
+  const own = await requestAs(
+    bucket,
+    `127.0.0.1:${port}`,
+    "GET",
+    "/api/library",
+  );
+
+  expect(ApiErrorSchema.parse(JSON.parse(read.body)).error.kind).toBe(
+    "cross_origin_request",
+  );
+  expect(ApiErrorSchema.parse(JSON.parse(pdf.body)).error.kind).toBe(
+    "cross_origin_request",
+  );
+  expect(ApiErrorSchema.parse(JSON.parse(removal.body)).error.kind).toBe(
+    "cross_origin_request",
+  );
+  expect(
+    LibraryPayloadSchema.parse(JSON.parse(own.body)).items.map(
+      (entry) => entry.id,
+    ),
+  ).toContain("lattices");
 });
 
 test("a JSON route refuses a body a form on another site can send", async () => {
@@ -281,11 +344,18 @@ test("Send PDF Only refuses an item with notes or Markdown, which a standalone P
   await bucket.request("/api/items/lattices/notes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note: "Lemma 2 needs the sign convention of section 1." }),
+    body: JSON.stringify({
+      note: "Lemma 2 needs the sign convention of section 1.",
+    }),
   });
-  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Quadratic Forms\n");
+  writeFileSync(
+    join(bucket.root, "lattices", "lattices.md"),
+    "# Lattices and Quadratic Forms\n",
+  );
 
-  const response = await bucket.request("/api/items/lattices/zotero/pdf-only", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero/pdf-only", {
+    method: "POST",
+  });
 
   // Refused before the health check: a request that reached for the closed port would answer 503.
   expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
@@ -293,17 +363,23 @@ test("Send PDF Only refuses an item with notes or Markdown, which a standalone P
     message:
       "lattices has a note and an extraction's Markdown, which a standalone PDF in Zotero cannot hold: send it to a Zotero item",
   });
-  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "unsent",
+  });
 });
 
 test("Send PDF Only while Zotero is not running says to start Zotero and records nothing", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
 
-  const response = await bucket.request("/api/items/lattices/zotero/pdf-only", { method: "POST" });
+  const response = await bucket.request("/api/items/lattices/zotero/pdf-only", {
+    method: "POST",
+  });
 
   expect(await errorKind(response)).toBe("zotero_unavailable");
-  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({
+    status: "unsent",
+  });
 });
 
 // A Send PDF Only that stored the PDF as the standalone attachment QRST2345.
@@ -322,12 +398,22 @@ test("a standalone PDF in Zotero owes nothing more, and every send of it is refu
     collections: [],
     savedSearches: [],
     items: {
-      lattices: { ...unfiled({ captured_at: STANDALONE.sentAt }), zotero: STANDALONE },
+      lattices: {
+        ...unfiled({ captured_at: STANDALONE.sentAt }),
+        zotero: STANDALONE,
+      },
     },
     activity: [],
-    preferences: { outlineOnOpen: false, theme: "system", readerNightMode: false },
+    preferences: {
+      outlineOnOpen: false,
+      theme: "system",
+      readerNightMode: false,
+    },
   });
-  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Quadratic Forms\n");
+  writeFileSync(
+    join(bucket.root, "lattices", "lattices.md"),
+    "# Lattices and Quadratic Forms\n",
+  );
 
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",

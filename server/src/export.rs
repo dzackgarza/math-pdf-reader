@@ -125,7 +125,8 @@ pub async fn export_index(
                 .iter()
                 .map(|item| item.stored.key.to_string())
                 .chain(library.unreadable.iter().filter_map(|item| {
-                    crate::layout::pdf_key(&item.file).map(|key| key.to_string())
+                    crate::layout::pdf_key(item.file.rsplit('/').next().unwrap_or(&item.file))
+                        .map(|key| key.to_string())
                 }))
                 .collect();
         let missing = documents.index.missing_promotions(&present).await?;

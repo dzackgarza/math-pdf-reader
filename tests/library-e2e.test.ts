@@ -211,7 +211,10 @@ test("arXiv promotion selects the preferred item and reports when it needs rebui
     await shot("arxiv-promotion");
 
     const away = mkdtempSync(join(tmpdir(), "pdf-bucket-arxiv-ui-away-"));
-    renameSync(join(root, "1234.5678v1.pdf"), join(away, "preferred.pdf"));
+    renameSync(
+      join(root, "1234.5678v1", "1234.5678v1.pdf"),
+      join(away, "preferred.pdf"),
+    );
     await page.goto(`${app.origin}/`);
     await page.waitForSelector(row("original"));
     await page.click(row("original"));
@@ -887,7 +890,7 @@ test("a PDF tab's context menu holds its item's menu: Add Tag… there tags the 
 
 test("Delete in the row context menu moves the PDF to the trash and drops the item", async () => {
   await openLibrary();
-  const pdf = join(bucket.root, "notes.pdf");
+  const pdf = join(bucket.root, "notes", "notes.pdf");
   const bytes = sha256(readFileSync(pdf));
   await page.click(row("notes"), { button: "right" });
   await (await menuItem("Delete…")).click();
@@ -902,9 +905,9 @@ test("Delete in the row context menu moves the PDF to the trash and drops the it
   expect(await rowKeys()).not.toContain("notes");
   expect(existsSync(pdf)).toBe(false);
   const trash = join(SCRATCH_DATA_HOME, "Trash", "files");
-  const trashed = readdirSync(trash)
-    .filter((name) => name.startsWith("notes"))
-    .map((name) => sha256(readFileSync(join(trash, name))));
+  const trashed = readdirSync(trash, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("notes"))
+    .map((entry) => sha256(readFileSync(join(trash, entry.name, "notes.pdf"))));
   expect(trashed).toContain(bytes);
   expect((await organization()).items.notes).toBeUndefined();
 });
@@ -1590,7 +1593,7 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
 test("a failed annotation save still warns before leaving the reader page", async () => {
   await page.goto(`${bucket.origin}/read/lattices`);
   await readerLoaded("lattices");
-  const path = join(bucket.root, "lattices.pdf");
+  const path = join(bucket.root, "lattices", "lattices.pdf");
   const original = sha256(readFileSync(path));
   const mode = statSync(bucket.root).mode;
   await page.tracing.start({
@@ -2860,7 +2863,10 @@ test("a lost PDF the export holds is listed under Needs Re-fetch until Rebuild r
     await Bun.sleep(50);
   }
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-away-"));
-  renameSync(join(bucket.root, "lattices.pdf"), join(away, "lattices.pdf"));
+  renameSync(
+    join(bucket.root, "lattices", "lattices.pdf"),
+    join(away, "lattices.pdf"),
+  );
 
   await openRoot();
   await page.waitForSelector('button[aria-label="Needs Re-fetch"]');
@@ -2877,7 +2883,7 @@ test("a lost PDF the export holds is listed under Needs Re-fetch until Rebuild r
 
   await openLibrary();
   expect(await rowKeys()).toContain("lattices");
-  expect(existsSync(join(bucket.root, "lattices.pdf"))).toBe(true);
+  expect(existsSync(join(bucket.root, "lattices", "lattices.pdf"))).toBe(true);
 });
 
 test("the Library entry counts the PDFs; each quick filter narrows the library and a second click clears it", async () => {

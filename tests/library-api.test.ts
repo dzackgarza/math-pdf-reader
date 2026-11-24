@@ -12,7 +12,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CaptureResponse, CaptureResponseSchema } from "../src/contract/capture";
+import {
+  type CaptureResponse,
+  CaptureResponseSchema,
+} from "../src/contract/capture";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -56,7 +59,10 @@ async function capture(
   title: string,
 ): Promise<CaptureResponse> {
   const form = new FormData();
-  form.set("pdf", new File([readFileSync(fixture)], filename, { type: "application/pdf" }));
+  form.set(
+    "pdf",
+    new File([readFileSync(fixture)], filename, { type: "application/pdf" }),
+  );
   form.set("pdf_url", `https://www.math.example.edu/~author/${filename}`);
   form.set("title_hint", title);
   const response = await bucket.request("/capture-bytes", {
@@ -72,7 +78,12 @@ async function library(bucket: Bucket) {
   return LibraryPayloadSchema.parse(await response.json());
 }
 
-async function send(bucket: Bucket, method: string, path: string, body: object) {
+async function send(
+  bucket: Bucket,
+  method: string,
+  path: string,
+  body: object,
+) {
   return bucket.request(path, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -94,8 +105,18 @@ function sha256(path: string): string {
 
 test("the library lists every stored PDF with the provenance read back from the file", async () => {
   const bucket = await emptyBucket();
-  const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
-  const problems = await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
+  const lattices = await capture(
+    bucket,
+    lectureNotes,
+    "lattices.pdf",
+    "Lattices and Codes",
+  );
+  const problems = await capture(
+    bucket,
+    problemSet,
+    "problems.pdf",
+    "Problem Set 3",
+  );
 
   const items = byId((await library(bucket)).items);
 
@@ -105,22 +126,36 @@ test("the library lists every stored PDF with the provenance read back from the 
   expect(listed?.title).toBe("Lattices and Codes");
   expect(listed?.dateAdded).toBe(lattices.provenance.captured_at);
   expect(listed?.file).toEqual({
-    path: join(bucket.root, "lattices.pdf"),
-    sizeBytes: statSync(join(bucket.root, "lattices.pdf")).size,
+    path: join(bucket.root, "lattices", "lattices.pdf"),
+    sizeBytes: statSync(join(bucket.root, "lattices", "lattices.pdf")).size,
   });
   expect(items.get("problems")?.provenance).toEqual(problems.provenance);
 
   const copied = await emptyBucket();
-  copyFileSync(join(bucket.root, "lattices.pdf"), join(copied.root, "lattices.pdf"));
-  copyFileSync(join(bucket.root, "problems.pdf"), join(copied.root, "problems.pdf"));
+  for (const key of ["lattices", "problems"]) {
+    mkdirSync(join(copied.root, key));
+    copyFileSync(
+      join(bucket.root, key, `${key}.pdf`),
+      join(copied.root, key, `${key}.pdf`),
+    );
+  }
   const fromFilesAlone = byId((await library(copied)).items);
-  expect(fromFilesAlone.get("lattices")?.provenance).toEqual(lattices.provenance);
-  expect(fromFilesAlone.get("problems")?.provenance).toEqual(problems.provenance);
+  expect(fromFilesAlone.get("lattices")?.provenance).toEqual(
+    lattices.provenance,
+  );
+  expect(fromFilesAlone.get("problems")?.provenance).toEqual(
+    problems.provenance,
+  );
 });
 
 test("manual metadata edits replace the PDF's bibliographic fields and survive a new library read", async () => {
   const bucket = await emptyBucket();
-  const captured = await capture(bucket, lectureNotes, "manual-notes.pdf", "Download PDF");
+  const captured = await capture(
+    bucket,
+    lectureNotes,
+    "manual-notes.pdf",
+    "Download PDF",
+  );
   const path = `/api/items/${captured.key}/metadata`;
 
   const edited = await bucket.request(path, {
@@ -135,7 +170,13 @@ test("manual metadata edits replace the PDF's bibliographic fields and survive a
   });
   expect(edited.status).toBe(200);
   const item = BucketItemSchema.parse(await edited.json());
-  expect([item.title, item.titleSource, item.authors, item.year, item.abstract]).toEqual([
+  expect([
+    item.title,
+    item.titleSource,
+    item.authors,
+    item.year,
+    item.abstract,
+  ]).toEqual([
     "Corrected lecture title",
     "manual",
     ["Ada Researcher", "Benoit Scholar"],
@@ -163,7 +204,9 @@ test("manual metadata edits replace the PDF's bibliographic fields and survive a
     }),
   });
   expect(cleared.status).toBe(200);
-  const current = (await library(bucket)).items.find((candidate) => candidate.id === captured.key);
+  const current = (await library(bucket)).items.find(
+    (candidate) => candidate.id === captured.key,
+  );
   expect(current).toMatchObject({
     title: "Corrected lecture title",
     titleSource: "manual",
@@ -199,60 +242,92 @@ test("a PDF captured after the library was first read appears on the next read",
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   expect([...byId((await library(bucket)).items).keys()]).toEqual(["lattices"]);
 
-  const later = await capture(bucket, problemSet, "-draft.pdf", "A later capture");
+  const later = await capture(
+    bucket,
+    problemSet,
+    "-draft.pdf",
+    "A later capture",
+  );
 
   expect(later.key).toBe("-draft");
-  expect(byId((await library(bucket)).items).get("-draft")?.provenance).toEqual(later.provenance);
+  expect(byId((await library(bucket)).items).get("-draft")?.provenance).toEqual(
+    later.provenance,
+  );
 });
 
 test("an item's extraction is derived from the Markdown and the artifact directory beside its PDF", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
-  const extraction = async () => byId((await library(bucket)).items).get("lattices")?.extraction;
+  const extraction = async () =>
+    byId((await library(bucket)).items).get("lattices")?.extraction;
 
   expect(await extraction()).toEqual({ status: "none" });
 
   // The runner moves artifacts first and the Markdown last; artifacts alone are no extraction.
-  mkdirSync(join(bucket.root, "lattices.extraction/pages"), {
+  mkdirSync(join(bucket.root, "lattices", "lattices.extraction/pages"), {
     recursive: true,
   });
-  writeFileSync(join(bucket.root, "lattices.extraction/content_list.json"), "[]");
-  writeFileSync(join(bucket.root, "lattices.extraction/pages/page-1.png"), "png bytes");
+  writeFileSync(
+    join(bucket.root, "lattices", "lattices.extraction/content_list.json"),
+    "[]",
+  );
+  writeFileSync(
+    join(bucket.root, "lattices", "lattices.extraction/pages/page-1.png"),
+    "png bytes",
+  );
   expect(await extraction()).toEqual({ status: "none" });
 
-  writeFileSync(join(bucket.root, "lattices.md"), "# Lattices and Codes\n");
+  writeFileSync(
+    join(bucket.root, "lattices", "lattices.md"),
+    "# Lattices and Codes\n",
+  );
   expect(await extraction()).toEqual({
     status: "extracted",
     sourceKind: "document_structure",
     authoritative: false,
     markdown: {
       name: "lattices.md",
-      path: join(bucket.root, "lattices.md"),
+      path: join(bucket.root, "lattices", "lattices.md"),
       sizeBytes: 21,
     },
     files: [
       {
         name: "content_list.json",
-        path: join(bucket.root, "lattices.extraction/content_list.json"),
+        path: join(
+          bucket.root,
+          "lattices",
+          "lattices.extraction/content_list.json",
+        ),
         sizeBytes: 2,
       },
       {
         name: "pages/page-1.png",
-        path: join(bucket.root, "lattices.extraction/pages/page-1.png"),
+        path: join(
+          bucket.root,
+          "lattices",
+          "lattices.extraction/pages/page-1.png",
+        ),
         sizeBytes: 9,
       },
     ],
   });
-  expect(readdirSync(bucket.root).filter((name) => name.endsWith(".json"))).toEqual([]);
+  expect(
+    readdirSync(bucket.root).filter((name) => name.endsWith(".json")),
+  ).toEqual([]);
 });
 
 test("filing survives a server restart, and deleting the filing leaves every item intact", async () => {
   const bucket = await emptyBucket();
-  const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const lattices = await capture(
+    bucket,
+    lectureNotes,
+    "lattices.pdf",
+    "Lattices and Codes",
+  );
   await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
   const pdfHashes = [
-    sha256(join(bucket.root, "lattices.pdf")),
-    sha256(join(bucket.root, "problems.pdf")),
+    sha256(join(bucket.root, "lattices", "lattices.pdf")),
+    sha256(join(bucket.root, "problems", "problems.pdf")),
   ];
 
   const birational = CollectionSchema.parse(
@@ -310,7 +385,9 @@ test("filing survives a server restart, and deleting the filing leaves every ite
   const filed = byId(restarted.items).get("lattices");
   expect(filed?.tags).toEqual(["topic:Lattices", "MMP"]);
   expect(filed?.collections).toEqual([flips.id]);
-  expect(filed?.notes.map((note) => note.note)).toEqual(["Section 3 proves the bound."]);
+  expect(filed?.notes.map((note) => note.note)).toEqual([
+    "Section 3 proves the bound.",
+  ]);
   expect(filed?.provenance).toEqual(lattices.provenance);
   expect(byId(restarted.items).get("problems")?.tags).toEqual([]);
   expect(restarted.collections).toEqual([birational, flips]);
@@ -338,8 +415,8 @@ test("filing survives a server restart, and deleting the filing leaves every ite
   expect(unfiled.get("lattices")?.tags).toEqual([]);
   expect(unfiled.get("lattices")?.notes).toEqual([]);
   expect([
-    sha256(join(bucket.root, "lattices.pdf")),
-    sha256(join(bucket.root, "problems.pdf")),
+    sha256(join(bucket.root, "lattices", "lattices.pdf")),
+    sha256(join(bucket.root, "problems", "problems.pdf")),
   ]).toEqual(pdfHashes);
 });
 
@@ -361,11 +438,16 @@ test("filing refuses unknown items, unknown collections, and blank or untrimmed 
   expect(missingItem.status).toBe(404);
   expect(await errorKind(missingItem)).toBe("unknown_item");
 
-  const missingCollection = await send(bucket, "POST", "/api/bulk/collections", {
-    keys: ["lattices"],
-    add: ["no-such-collection"],
-    remove: [],
-  });
+  const missingCollection = await send(
+    bucket,
+    "POST",
+    "/api/bulk/collections",
+    {
+      keys: ["lattices"],
+      add: ["no-such-collection"],
+      remove: [],
+    },
+  );
   expect(missingCollection.status).toBe(400);
   expect(await errorKind(missingCollection)).toBe("unknown_collection");
 
@@ -405,7 +487,9 @@ test("tag and collection edits are deltas, so two edits made from the same stale
     ).json(),
   );
   const codes = CollectionSchema.parse(
-    await (await send(bucket, "POST", "/api/collections", { name: "Codes" })).json(),
+    await (
+      await send(bucket, "POST", "/api/collections", { name: "Codes" })
+    ).json(),
   );
   await send(bucket, "POST", "/api/bulk/tags", {
     keys: ["lattices"],
@@ -438,7 +522,9 @@ test("tag and collection edits are deltas, so two edits made from the same stale
   ]);
   expect([read.status, tagged.status, moved.status]).toEqual([200, 200, 200]);
 
-  const item = byId((await library(await open(bucket.root))).items).get("lattices");
+  const item = byId((await library(await open(bucket.root))).items).get(
+    "lattices",
+  );
   expect(new Set(item?.tags)).toEqual(new Set(["survey", "read", "E8"]));
   expect(item?.tags[0]).toBe("survey");
   expect(item?.collections).toEqual([codes.id]);
@@ -462,25 +548,34 @@ test("preferences are changed one field at a time", async () => {
   const outlined = await send(bucket, "PATCH", "/api/preferences", {
     outlineOnOpen: true,
   });
-  expect(LibraryPayloadSchema.parse(await outlined.json()).preferences).toEqual({
-    outlineOnOpen: true,
-    theme: "dark",
-    readerNightMode: false,
-  });
+  expect(LibraryPayloadSchema.parse(await outlined.json()).preferences).toEqual(
+    {
+      outlineOnOpen: true,
+      theme: "dark",
+      readerNightMode: false,
+    },
+  );
   expect((await library(await open(bucket.root))).preferences).toEqual({
     outlineOnOpen: true,
     theme: "dark",
     readerNightMode: false,
   });
-  expect((await send(bucket, "PATCH", "/api/preferences", {})).status).toBe(400);
-  expect((await send(bucket, "PATCH", "/api/preferences", { theme: "sepia" })).status).toBe(400);
+  expect((await send(bucket, "PATCH", "/api/preferences", {})).status).toBe(
+    400,
+  );
+  expect(
+    (await send(bucket, "PATCH", "/api/preferences", { theme: "sepia" }))
+      .status,
+  ).toBe(400);
 });
 
 test("renames, note deletions and saved-search deletions persist, and unknown ids are refused", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   const collection = CollectionSchema.parse(
-    await (await send(bucket, "POST", "/api/collections", { name: "Lattice" })).json(),
+    await (
+      await send(bucket, "POST", "/api/collections", { name: "Lattice" })
+    ).json(),
   );
   const noted = LibraryPayloadSchema.parse(
     await (
@@ -489,7 +584,9 @@ test("renames, note deletions and saved-search deletions persist, and unknown id
       })
     ).json(),
   );
-  const note = ItemNoteSchema.parse(byId(noted.items).get("lattices")?.notes[0]);
+  const note = ItemNoteSchema.parse(
+    byId(noted.items).get("lattices")?.notes[0],
+  );
   const saved = SavedSearchSchema.parse(
     await (
       await send(bucket, "POST", "/api/saved-searches", {
@@ -535,20 +632,28 @@ test("renames, note deletions and saved-search deletions persist, and unknown id
     name: "X",
   });
   expect(await errorKind(renameUnknown)).toBe("unknown_collection");
-  const deleteUnknownNote = await bucket.request(`/api/items/lattices/notes/${note.id}`, {
-    method: "DELETE",
-  });
+  const deleteUnknownNote = await bucket.request(
+    `/api/items/lattices/notes/${note.id}`,
+    {
+      method: "DELETE",
+    },
+  );
   expect(await errorKind(deleteUnknownNote)).toBe("unknown_note");
-  const deleteUnknownSearch = await bucket.request(`/api/saved-searches/${saved.id}`, {
-    method: "DELETE",
-  });
+  const deleteUnknownSearch = await bucket.request(
+    `/api/saved-searches/${saved.id}`,
+    {
+      method: "DELETE",
+    },
+  );
   expect(await errorKind(deleteUnknownSearch)).toBe("unknown_saved_search");
 });
 
 test("settings report the served root and its filing file", async () => {
   const bucket = await emptyBucket();
 
-  const settings = SettingsSchema.parse(await (await bucket.request("/api/settings")).json());
+  const settings = SettingsSchema.parse(
+    await (await bucket.request("/api/settings")).json(),
+  );
 
   expect(settings).toEqual({
     root: bucket.root,
@@ -558,11 +663,20 @@ test("settings report the served root and its filing file", async () => {
 
 test("a reader save replaces the stored PDF only when made from the stored bytes and keeping the item's provenance", async () => {
   const bucket = await emptyBucket();
-  const lattices = await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
+  const lattices = await capture(
+    bucket,
+    lectureNotes,
+    "lattices.pdf",
+    "Lattices and Codes",
+  );
   await capture(bucket, problemSet, "problems.pdf", "Problem Set 3");
-  const stored = join(bucket.root, "lattices.pdf");
+  const stored = join(bucket.root, "lattices", "lattices.pdf");
   const before = readFileSync(stored);
-  const put = (key: string, body: Uint8Array<ArrayBuffer>, ifMatch: string | null) =>
+  const put = (
+    key: string,
+    body: Uint8Array<ArrayBuffer>,
+    ifMatch: string | null,
+  ) =>
     bucket.request(`/api/items/${key}/pdf`, {
       method: "PUT",
       headers: {
@@ -571,7 +685,8 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
       },
       body,
     });
-  const tag = (bytes: Uint8Array) => `"${createHash("sha256").update(bytes).digest("hex")}"`;
+  const tag = (bytes: Uint8Array) =>
+    `"${createHash("sha256").update(bytes).digest("hex")}"`;
 
   // The PDF's URL names what it serves: the entity tag is the stored bytes' SHA-256.
   const served = await bucket.request("/pdf/lattices.pdf");
@@ -586,9 +701,9 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
   expect(saved.status).toBe(200);
   expect(saved.headers.get("ETag")).toBe(tag(annotated));
   expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
-  expect(byId((await library(bucket)).items).get("lattices")?.provenance).toEqual(
-    lattices.provenance,
-  );
+  expect(
+    byId((await library(bucket)).items).get("lattices")?.provenance,
+  ).toEqual(lattices.provenance);
 
   // A second view still holding the first bytes: its save is refused, and the answer names
   // the stored bytes it would have to be made from.
@@ -608,12 +723,16 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
   // Another item's PDF carries another provenance; bytes that are no PDF carry none.
   const foreign = await put(
     "lattices",
-    new Uint8Array(readFileSync(join(bucket.root, "problems.pdf"))),
+    new Uint8Array(readFileSync(join(bucket.root, "problems", "problems.pdf"))),
     tag(annotated),
   );
   expect(foreign.status).toBe(409);
   expect(await errorKind(foreign)).toBe("provenance_mismatch");
-  const junk = await put("lattices", new TextEncoder().encode("not a pdf"), tag(annotated));
+  const junk = await put(
+    "lattices",
+    new TextEncoder().encode("not a pdf"),
+    tag(annotated),
+  );
   expect(junk.status).toBe(400);
   expect(await errorKind(junk)).toBe("not_a_pdf");
   expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
@@ -631,7 +750,9 @@ test("the reader's last viewed page is recorded per item without counting as a f
     pages: 2,
   });
   expect(viewed.status).toBe(200);
-  const after = byId((await library(await open(bucket.root))).items).get("lattices");
+  const after = byId((await library(await open(bucket.root))).items).get(
+    "lattices",
+  );
   expect(after?.reading).toMatchObject({ status: "viewed", page: 2, pages: 2 });
   expect(after?.dateModified).toBe(before?.dateModified ?? "");
 
@@ -651,7 +772,9 @@ test("an item's first page is served as a PNG of the requested width", async () 
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   const thumbnail = async (width: number) => {
-    const response = await bucket.request(`/api/items/lattices/thumbnail?width=${width}`);
+    const response = await bucket.request(
+      `/api/items/lattices/thumbnail?width=${width}`,
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("image/png");
     return new Uint8Array(await response.arrayBuffer());
@@ -660,12 +783,18 @@ test("an item's first page is served as a PNG of the requested width", async () 
   const pngWidth = (png: Uint8Array) => new DataView(png.buffer).getUint32(16);
 
   const small = await thumbnail(160);
-  expect([...small.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  expect([...small.slice(0, 8)]).toEqual([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
   expect(pngWidth(small)).toBe(160);
   expect(pngWidth(await thumbnail(320))).toBe(320);
 
-  expect((await bucket.request("/api/items/missing/thumbnail?width=160")).status).toBe(404);
-  expect((await bucket.request("/api/items/lattices/thumbnail?width=0")).status).toBe(400);
+  expect(
+    (await bucket.request("/api/items/missing/thumbnail?width=160")).status,
+  ).toBe(404);
+  expect(
+    (await bucket.request("/api/items/lattices/thumbnail?width=0")).status,
+  ).toBe(400);
 });
 
 test("a thumbnail asked for while its item is deleted is served or is unknown, never a failure", async () => {
@@ -679,8 +808,12 @@ test("a thumbnail asked for while its item is deleted is served or is unknown, n
     method: "DELETE",
   });
   expect(deleted.status).toBe(200);
-  const statuses = (await Promise.all(thumbnails)).map((response) => response.status);
-  expect(statuses.filter((status) => status !== 200 && status !== 404)).toEqual([]);
+  const statuses = (await Promise.all(thumbnails)).map(
+    (response) => response.status,
+  );
+  expect(statuses.filter((status) => status !== 200 && status !== 404)).toEqual(
+    [],
+  );
 });
 
 test("bulk filing adds tags and collections to every chosen item, keeping what each already had", async () => {
@@ -713,7 +846,11 @@ test("bulk filing adds tags and collections to every chosen item, keeping what e
   });
   expect(filed.status).toBe(200);
   const items = byId((await library(await open(bucket.root))).items);
-  expect(items.get("lattices")?.tags).toEqual(["codes", "survey", "topic:lattices"]);
+  expect(items.get("lattices")?.tags).toEqual([
+    "codes",
+    "survey",
+    "topic:lattices",
+  ]);
   expect(items.get("problems")?.tags).toEqual(["survey", "topic:lattices"]);
   expect(items.get("lattices")?.collections).toEqual([forms.id]);
   expect(items.get("problems")?.collections).toEqual([forms.id]);
@@ -724,13 +861,20 @@ test("bulk filing adds tags and collections to every chosen item, keeping what e
     remove: [],
   });
   expect(unknownItem.status).toBe(404);
-  const unknownCollection = await send(bucket, "POST", "/api/bulk/collections", {
-    keys: ["lattices"],
-    add: ["no-such-collection"],
-    remove: [],
-  });
+  const unknownCollection = await send(
+    bucket,
+    "POST",
+    "/api/bulk/collections",
+    {
+      keys: ["lattices"],
+      add: ["no-such-collection"],
+      remove: [],
+    },
+  );
   expect(unknownCollection.status).toBe(400);
-  expect(byId((await library(bucket)).items).get("lattices")?.tags).not.toContain("x");
+  expect(
+    byId((await library(bucket)).items).get("lattices")?.tags,
+  ).not.toContain("x");
 });
 
 test("a collection's description, pin and Keep offline persist, and its activity records what happened to it", async () => {
@@ -744,7 +888,11 @@ test("a collection's description, pin and Keep offline persist, and its activity
       })
     ).json(),
   );
-  expect([forms.description, forms.pinned, forms.keepOffline]).toEqual(["", false, false]);
+  expect([forms.description, forms.pinned, forms.keepOffline]).toEqual([
+    "",
+    false,
+    false,
+  ]);
 
   await send(bucket, "POST", "/api/bulk/collections", {
     keys: ["lattices"],
@@ -767,7 +915,9 @@ test("a collection's description, pin and Keep offline persist, and its activity
     keepOffline: true,
   });
   expect(updated.status).toBe(200);
-  expect((await send(bucket, "PATCH", `/api/collections/${forms.id}`, {})).status).toBe(400);
+  expect(
+    (await send(bucket, "PATCH", `/api/collections/${forms.id}`, {})).status,
+  ).toBe(400);
 
   const restarted = await library(await open(bucket.root));
   expect(restarted.collections).toEqual([
@@ -813,7 +963,10 @@ test("a smart collection's rules are stored, edited and checked against the fili
   const edited = await send(bucket, "PUT", `/api/saved-searches/${smart.id}`, {
     name: "Forms, any",
     match: "any",
-    rules: [...rules, { field: "author", operator: "contains", value: "Viazovska" }],
+    rules: [
+      ...rules,
+      { field: "author", operator: "contains", value: "Viazovska" },
+    ],
   });
   expect(edited.status).toBe(200);
   const restarted = await library(await open(bucket.root));
@@ -822,14 +975,19 @@ test("a smart collection's rules are stored, edited and checked against the fili
       id: smart.id,
       name: "Forms, any",
       match: "any",
-      rules: [...rules, { field: "author", operator: "contains", value: "Viazovska" }],
+      rules: [
+        ...rules,
+        { field: "author", operator: "contains", value: "Viazovska" },
+      ],
     },
   ] satisfies SavedSearch[]);
 
   const unknownCollection = await send(bucket, "POST", "/api/saved-searches", {
     name: "Nowhere",
     match: "all",
-    rules: [{ field: "collection", operator: "is", value: "no-such-collection" }],
+    rules: [
+      { field: "collection", operator: "is", value: "no-such-collection" },
+    ],
   });
   expect(await errorKind(unknownCollection)).toBe("unknown_collection");
   const noRules = await send(bucket, "POST", "/api/saved-searches", {
@@ -850,7 +1008,9 @@ test("deleting a collection repairs every saved search naming it or a subcollect
   const bucket = await emptyBucket();
   const collection = async (name: string, parentId?: string) =>
     CollectionSchema.parse(
-      await (await send(bucket, "POST", "/api/collections", { name, parentId })).json(),
+      await (
+        await send(bucket, "POST", "/api/collections", { name, parentId })
+      ).json(),
     );
   const forms = await collection("Quadratic forms");
   const even = await collection("Even lattices", forms.id);
@@ -883,7 +1043,9 @@ test("deleting a collection repairs every saved search naming it or a subcollect
     unread,
     { field: "collection", operator: "is not", value: forms.id },
   ]);
-  await search("Only forms", "all", [{ field: "collection", operator: "is not", value: forms.id }]);
+  await search("Only forms", "all", [
+    { field: "collection", operator: "is not", value: forms.id },
+  ]);
 
   const deleted = await bucket.request(`/api/collections/${forms.id}`, {
     method: "DELETE",
