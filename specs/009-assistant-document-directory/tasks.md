@@ -68,7 +68,7 @@ file read.
   `specs/009-assistant-document-directory/`, `README.md` and `docs/m4.md`
 - [X] T013 Record the document-directory decision in the `PLAN-PDF-BUCKET-ROADMAP` card's
   Decision Log without changing completed issue claims
-- [ ] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
+- [X] T014 Run the focused real-HTTP, Rust and TypeScript checks, execute
   `just provision`, and verify migration, PDF-only access, shell reads and same-session unknown
   artifact discovery against the provisioned app on port 8770
 
