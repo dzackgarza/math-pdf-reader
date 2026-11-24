@@ -369,6 +369,28 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
   expect((await library()).items.map((entry) => entry.id)).toEqual(["000-original"]);
 });
 
+test("a long paper key can be replaced without exceeding filesystem name limits", async () => {
+  served.set("/pdf/1234.5678v1", problemSet);
+  const config = loadAppConfig(CONFIG_PATH);
+  const localArxiv = {
+    ...config,
+    arxiv: {
+      api_url: at("/api/query"),
+      abs_url: at("/abs/"),
+      pdf_url: at("/pdf/"),
+      e_print_url: at("/e-print/"),
+    },
+  };
+  const { root, request, capture, library } = await bucket(null, localArxiv);
+  const key = `long-${"x".repeat(115)}`;
+  await capture(lectureNotes, key, at("/notes/long.pdf"));
+  const candidate = await discoveredCandidate(root, key, request);
+  const response = await request("POST", `/api/items/${key}/arxiv/promote`, candidate);
+  expect(response.status).toBe(200);
+  expect(ArxivPromotionResponseSchema.parse(await response.json()).key).toBe(key);
+  expect((await library()).items.map((paper) => paper.id)).toEqual([key]);
+});
+
 test("explicit retry consolidates a linked legacy arXiv pair", async () => {
   const originalKey = "replacement-check-c03a9c1f4a234cfcb02a619efbe743d0";
   const preferredKey = `${originalKey}-arxiv`;
