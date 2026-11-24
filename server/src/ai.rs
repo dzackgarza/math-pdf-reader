@@ -42,6 +42,23 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// The user of the server's HTTP Basic credentials; OpenCode checks only the password.
 const USER: &str = "opencode";
 
+#[cfg(feature = "arxiv-fixtures")]
+async fn selected_edition_gate(variable: &'static str) -> AppResult<()> {
+    crate::store::blocking(move || {
+        let Some(base) = std::env::var_os(variable) else {
+            return Ok(());
+        };
+        let base = PathBuf::from(base);
+        let armed = base.with_extension("arm");
+        if !armed.try_exists()? {
+            return Ok(());
+        }
+        std::fs::rename(armed, base.with_extension("claimed"))?;
+        crate::store::test_gate(variable)
+    })
+    .await
+}
+
 /// What the assistant is told, in every session.
 const SYSTEM: &str = "Your working directory contains the original PDF and the available paper \
 artifacts. Choose your own tools, including shell commands, to inspect them. Prefer the single \
@@ -506,6 +523,8 @@ async fn open_session(
     let key = request.key.to_string();
     let _one = state.ai.chats.lock().await;
     let indexed = state.require(&key).await?;
+    #[cfg(feature = "arxiv-fixtures")]
+    selected_edition_gate("PDF_BUCKET_TEST_AI_SESSION_SELECTED").await?;
     let ai = &state.ai;
     let bucket_origin = origin(&headers)?;
     let password = ai.running(&bucket_origin).await?;
@@ -608,6 +627,8 @@ pub async fn announce_view(state: &Shared, key: &str, bucket_origin: &str) -> Ap
     if !record.belongs_to(&indexed.stored.provenance) {
         return Ok(());
     }
+    #[cfg(feature = "arxiv-fixtures")]
+    selected_edition_gate("PDF_BUCKET_TEST_AI_PAGE_SELECTED").await?;
     ai.put_view(state, &password, record.id(), key, bucket_origin)
         .await
 }

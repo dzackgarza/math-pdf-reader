@@ -584,6 +584,105 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
   }
 }, 60_000);
 
+test.each(["session", "page"] as const)(
+  "an overlapping %s request cannot deliver the new arXiv edition to the captured chat",
+  async (action) => {
+    const assistant = fakeAssistant();
+    const preferredBytes = readFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"));
+    const publisher = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === "/api/query") {
+          return new Response(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><published>2024-01-01T00:00:00Z</published><author><name>An Author</name></author></entry></feed>`, {
+            headers: { "Content-Type": "application/atom+xml" },
+          });
+        }
+        return path === "/pdf/1234.5678v1"
+          ? new Response(preferredBytes, { headers: { "Content-Type": "application/pdf" } })
+          : new Response("not found", { status: 404 });
+      },
+    });
+    const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-overlap-"));
+    const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-ai-gate-")), action);
+    const config = loadAppConfig(CONFIG_PATH);
+    const at = (path: string) => new URL(path, publisher.url).href;
+    config.arxiv = {
+      api_url: at("/api/query"),
+      abs_url: at("/abs/"),
+      pdf_url: at("/pdf/"),
+      e_print_url: at("/e-print/"),
+    };
+    const gateName = action === "session"
+      ? "PDF_BUCKET_TEST_AI_SESSION_SELECTED"
+      : "PDF_BUCKET_TEST_AI_PAGE_SELECTED";
+    const app = await storedBucket("true", root, assistant.port, EXTRACTIONS_MANIFEST, {
+      [gateName]: gate,
+    }, config);
+    const open = () => app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+    const hint = (entry: string) => entry.split("search hint only (not authoritative source text): ")[1]?.trim();
+    try {
+      await recordMetadata(root, "long-notes", "resolver", {
+        title: "Promotion Notes", authors: ["An Author"], year: 2024,
+      });
+      const search = ArxivSearchResponseSchema.parse(
+        await (await app.request("/api/items/long-notes/arxiv", { method: "POST" })).json(),
+      );
+      const candidate = search.matches[0];
+      if (candidate === undefined) throw new Error("the arXiv edition was not discovered");
+      const first = await open();
+      expect(first.status).toBe(200);
+      const firstUrl = (await first.json() as { sessionUrl: string }).sessionUrl;
+      expect((await readPage(app, 1)).status).toBe(200);
+      const capturedView = String(assistant.entries["ses_fake/reader-view"]);
+      expect(hint(capturedView)).toBeTruthy();
+
+      writeFileSync(`${gate}.arm`, "armed");
+      const pending = action === "session" ? open() : readPage(app, 2);
+      const deadline = Date.now() + 20_000;
+      while (!existsSync(`${gate}.ready`)) {
+        if (Date.now() > deadline) throw new Error("the edition request did not reach its gate");
+        await Bun.sleep(10);
+      }
+      const replaced = await app.request("/api/items/long-notes/arxiv/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(candidate),
+      });
+      expect(replaced.status).toBe(200);
+      expect(ArxivPromotionResponseSchema.parse(await replaced.json()).key).toBe("long-notes");
+      writeFileSync(`${gate}.release`, "release");
+      const resumed = await pending;
+      expect(resumed.status).toBe(200);
+      if (action === "session") {
+        expect((await resumed.json() as { sessionUrl: string }).sessionUrl).not.toBe(firstUrl);
+      }
+      expect(assistant.entries["ses_fake/reader-view"]).toBe(capturedView);
+
+      const fresh = await open();
+      expect(fresh.status).toBe(200);
+      const freshUrl = (await fresh.json() as { sessionUrl: string }).sessionUrl;
+      expect(freshUrl).toContain("/session/ses_fake_2");
+      expect(freshUrl).not.toBe(firstUrl);
+      expect((await readPage(app, 1)).status).toBe(200);
+      const preferredView = String(assistant.entries["ses_fake_2/reader-view"]);
+      expect(hint(preferredView)).toBeTruthy();
+      expect(hint(preferredView)).not.toBe(hint(capturedView));
+      expect(assistant.entries["ses_fake/reader-view"]).toBe(capturedView);
+    } finally {
+      await app.stop();
+      assistant.stop();
+      publisher.stop(true);
+    }
+  },
+  60_000,
+);
+
 test("an extraction placed after a chat opens changes no workspace or source instruction", async () => {
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-"));
