@@ -124,3 +124,7 @@ through direct discovery, then provision the installed app and verify real user 
 - [X] T019 CRITICAL: Define the publication commit point in `server/src/extraction_publication.rs`. Exercise a failure retiring the journal after both new paths are installed. Verify the HTTP outcome and the visible Markdown and artifacts agree immediately and after restart per Constitution IV, FR-008 and T015 (contradicts).
 - [X] T020 Use a no-overwrite filesystem operation for legacy moves in `server/src/layout.rs`. Treat existing directory entries, including dangling symlinks, as collisions. Verify a conflict preserves both the source file and the destination entry per FR-010 and T004 (partial).
 - [X] T021 Handle a legacy chat mapping left by a key reused before upgrade in `server/src/ai.rs`. Verify identity before reusing a conversation or sending a page update. Exercise first open and first page update for an ambiguous mapping, and preserve the existing chat when continuity can be established per US1/AC3 and T017 (partial).
+
+## Phase 8: Convergence
+
+- [ ] T022 Make deletion and key reuse safe while extraction journal cleanup is pending in `server/src/store.rs` and `server/src/extraction_publication.rs`. Extend the retirement-failure HTTP regression: restore write access, delete the paper before stopping the server, then restart and verify the library opens with the paper absent. Also verify that cleanup cannot change a replacement paper's artifacts when it reuses the key. Trace to FR-009, SC-005 and T019 (partial).

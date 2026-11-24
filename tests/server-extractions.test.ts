@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -21,7 +22,7 @@ import {
   ExtractionOutcomeSchema,
   ExtractionPluginsResponseSchema,
 } from "../src/contract/extraction";
-import { ApiErrorSchema } from "../src/contract/library";
+import { ApiErrorSchema, LibraryPayloadSchema } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
 
@@ -373,16 +374,19 @@ test("restart restores the previous extraction when publication stops between th
   }
 }, 30000);
 
-test("retirement failure restores the previous extraction before the HTTP error", async () => {
+test.each(["keep", "delete", "replace"] as const)("retirement failure followed by %s before restart", async (action) => {
   const { app, root, manifestPath } = await bucketWithExtractors([
     { mode: "record", maxPages: 20 },
     { mode: "markdown", maxPages: 20 },
   ]);
-  expect((await app.request("/api/items/lattices/extractions/record", { method: "POST" })).status).toBe(200);
+  if (action !== "replace") {
+    expect((await app.request("/api/items/lattices/extractions/record", { method: "POST" })).status).toBe(200);
+  }
   const document = join(root, "lattices");
   const markdown = join(document, "lattices.md");
-  const previous = readFileSync(markdown, "utf8");
-  const source = readFileSync(join(document, "lattices.extraction", "source.pdf"));
+  const previous = action === "replace" ? undefined : readFileSync(markdown, "utf8");
+  const artifact = join(document, "lattices.extraction", "source.pdf");
+  const source = readFileSync(join(document, "lattices.pdf"));
   await app.stop();
 
   const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-retire-gate-")), "publication");
@@ -401,8 +405,27 @@ test("retirement failure restores the previous extraction before the HTTP error"
     expect(ApiErrorSchema.parse(await failed.json()).error.message).toContain(
       "previous extraction restored; journal cleanup pending",
     );
-    expect(readFileSync(markdown, "utf8")).toBe(previous);
-    expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(source);
+    if (action !== "replace") {
+      expect(readFileSync(markdown, "utf8")).toBe(previous!);
+      expect(readFileSync(artifact)).toEqual(source);
+    }
+    chmodSync(root, originalMode);
+    if (action !== "keep") {
+      expect((await publishing.request("/api/items/lattices", { method: "DELETE" })).status).toBe(200);
+    }
+    if (action === "replace") {
+      const form = new FormData();
+      const replacement = readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"));
+      form.set("pdf", new File([replacement], "lattices.pdf", { type: "application/pdf" }));
+      form.set("pdf_url", "https://example.org/replacement.pdf");
+      form.set("title_hint", "Replacement");
+      const capture = await publishing.request("/capture-bytes", { method: "POST", body: form });
+      expect(capture.status).toBe(200);
+      expect((await capture.json()).key).toBe("lattices");
+      writeFileSync(markdown, "# Replacement");
+      mkdirSync(dirname(artifact));
+      writeFileSync(artifact, replacement);
+    }
   } finally {
     chmodSync(root, originalMode);
     await publishing.stop();
@@ -410,8 +433,17 @@ test("retirement failure restores the previous extraction before the HTTP error"
 
   const restarted = await serveBucket(options);
   try {
-    expect(readFileSync(markdown, "utf8")).toBe(previous);
-    expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(source);
+    const response = await restarted.request("/api/library");
+    expect(response.status).toBe(200);
+    const library = LibraryPayloadSchema.parse(await response.json());
+    expect(library.items.map(item => item.id)).toEqual(action === "delete" ? [] : ["lattices"]);
+    if (action === "keep") {
+      expect(readFileSync(markdown, "utf8")).toBe(previous!);
+      expect(readFileSync(artifact)).toEqual(source);
+    } else if (action === "replace") {
+      expect(readFileSync(markdown, "utf8")).toBe("# Replacement");
+      expect(readFileSync(artifact)).toEqual(readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf")));
+    }
   } finally {
     await restarted.stop();
   }
