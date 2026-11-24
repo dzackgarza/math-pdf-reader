@@ -584,9 +584,12 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
   }
 }, 60_000);
 
-test.each(["session", "page"] as const)(
-  "an overlapping %s request cannot deliver the new arXiv edition to the captured chat",
-  async (action) => {
+test.each([
+  ["session", "same"], ["page", "same"],
+  ["session", "other"], ["page", "other"],
+] as const)(
+  "an overlapping %s request cannot deliver the new arXiv edition to the captured chat from the %s server process",
+  async (action, process) => {
     const assistant = fakeAssistant();
     const preferredBytes = readFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"));
     const publisher = Bun.serve({
@@ -620,6 +623,9 @@ test.each(["session", "page"] as const)(
     const app = await storedBucket("true", root, assistant.port, EXTRACTIONS_MANIFEST, {
       [gateName]: gate,
     }, config);
+    const other = process === "other" ? await serveBucket({
+      root, zoteroUrl: closedPortUrl(), extractionsManifest: EXTRACTIONS_MANIFEST, config,
+    }) : undefined;
     const open = () => app.request("/api/ai/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -649,7 +655,7 @@ test.each(["session", "page"] as const)(
         if (Date.now() > deadline) throw new Error("the edition request did not reach its gate");
         await Bun.sleep(10);
       }
-      const replaced = await app.request("/api/items/long-notes/arxiv/promote", {
+      const replaced = await (other ?? app).request("/api/items/long-notes/arxiv/promote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(candidate),
@@ -675,6 +681,7 @@ test.each(["session", "page"] as const)(
       expect(hint(preferredView)).not.toBe(hint(capturedView));
       expect(assistant.entries["ses_fake/reader-view"]).toBe(capturedView);
     } finally {
+      await other?.stop();
       await app.stop();
       assistant.stop();
       publisher.stop(true);

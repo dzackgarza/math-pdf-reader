@@ -521,13 +521,17 @@ async fn open_session(
 ) -> AppResult<Json<AiSession>> {
     let request: AiSessionRequest = parse_body(&body)?;
     let key = request.key.to_string();
-    let _one = state.ai.chats.lock().await;
-    let indexed = state.require(&key).await?;
+    // Check the requested paper before starting the private server. Replacement may commit
+    // while that server starts, so select the edition again under the chat lock below.
+    state.require(&key).await?;
     #[cfg(feature = "arxiv-fixtures")]
     selected_edition_gate("PDF_BUCKET_TEST_AI_SESSION_SELECTED").await?;
     let ai = &state.ai;
     let bucket_origin = origin(&headers)?;
     let password = ai.running(&bucket_origin).await?;
+    let _one = ai.chats.lock().await;
+    let _paper = state.organizations.lock().await?;
+    let indexed = state.require(&key).await?;
     let title = indexed.stored.title.text.to_string();
     let parsed = Key::parse(&key).expect("an indexed key is a key");
     let directory = ai.document_directory(&parsed);
@@ -542,6 +546,7 @@ async fn open_session(
         .await?;
     ai.put_view(&state, &password, &id, &key, &bucket_origin)
         .await?;
+    drop(_paper);
     let code = ai.pair(&password).await?;
     let server = ai.server_origin();
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&server);
@@ -616,7 +621,13 @@ pub async fn announce_view(state: &Shared, key: &str, bucket_origin: &str) -> Ap
     if !ai.answers(&password).await {
         return Ok(());
     }
+    let Some(selected) = state.indexed(key).await? else {
+        return Ok(());
+    };
+    #[cfg(feature = "arxiv-fixtures")]
+    selected_edition_gate("PDF_BUCKET_TEST_AI_PAGE_SELECTED").await?;
     let _one = ai.chats.lock().await;
+    let _paper = state.organizations.lock().await?;
     let (_, chats) = ai.chat_file().await?;
     let Some(record) = chats.get(key) else {
         return Ok(());
@@ -624,11 +635,11 @@ pub async fn announce_view(state: &Shared, key: &str, bucket_origin: &str) -> Ap
     let Some(indexed) = state.indexed(key).await? else {
         return Ok(());
     };
-    if !record.belongs_to(&indexed.stored.provenance) {
+    if selected.stored.provenance != indexed.stored.provenance
+        || !record.belongs_to(&indexed.stored.provenance)
+    {
         return Ok(());
     }
-    #[cfg(feature = "arxiv-fixtures")]
-    selected_edition_gate("PDF_BUCKET_TEST_AI_PAGE_SELECTED").await?;
     ai.put_view(state, &password, record.id(), key, bucket_origin)
         .await
 }

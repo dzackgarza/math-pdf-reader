@@ -404,6 +404,7 @@ async fn promote(
     body: Bytes,
 ) -> AppResult<Json<ArxivPromotionResponse>> {
     let _one_at_a_time = state.sends.async_lock(key.clone()).await;
+    let _chat = state.ai.chats.lock().await;
     let _locked = state.organizations.lock().await?;
     let requested: ArxivMatch = crate::state::parse_body(&body)?;
     validate_promotion(&requested, &state.config.app)?;
@@ -510,6 +511,7 @@ async fn promote(
         }));
     }
     drop(_locked);
+    drop(_chat);
     let original_sha256 = state
         .store
         .open(&key)
@@ -555,6 +557,7 @@ async fn promote(
         .clone()
         .try_into()
         .map_err(|_| AppError::internal("the original item key is empty"))?;
+    let _chat = state.ai.chats.lock().await;
     let _locked = state.organizations.lock().await?;
     state.store.clean_pending_promotions().await?;
     if let Some(existing) = existing_promotion(&state, &key, &requested).await? {
