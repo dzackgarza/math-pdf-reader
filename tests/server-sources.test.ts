@@ -370,6 +370,8 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
 });
 
 test("explicit retry consolidates a linked legacy arXiv pair", async () => {
+  const originalKey = "replacement-check-c03a9c1f4a234cfcb02a619efbe743d0";
+  const preferredKey = `${originalKey}-arxiv`;
   served.set("/pdf/1234.5678v1", problemSet);
   const config = loadAppConfig(CONFIG_PATH);
   const localArxiv = {
@@ -382,21 +384,21 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
     },
   };
   const { root, request, capture, library, item } = await bucket(null, localArxiv);
-  await capture(lectureNotes, "legacy-original", at("/notes/legacy.pdf"));
-  const candidate = await discoveredCandidate(root, "legacy-original", request);
-  await capture(problemSet, "legacy-preferred", candidate.pdfUrl);
-  const preferredBefore = (await listItems(root, ["legacy-preferred"]))[0]?.provenance;
+  await capture(lectureNotes, originalKey, at("/notes/legacy.pdf"));
+  const candidate = await discoveredCandidate(root, originalKey, request);
+  await capture(problemSet, preferredKey, candidate.pdfUrl);
+  const preferredBefore = (await listItems(root, [preferredKey]))[0]?.provenance;
   expect(preferredBefore).toBeDefined();
-  const original = (await listItems(root, ["legacy-original"]))[0];
+  const original = (await listItems(root, [originalKey]))[0];
   if (original === undefined) throw new Error("the original PDF is missing");
-  const preferredPath = join(root, "legacy-preferred", "legacy-preferred.pdf");
+  const preferredPath = join(root, preferredKey, `${preferredKey}.pdf`);
   const embeddedPath = `${preferredPath}.lineage`;
   const embed = Bun.spawn([
     ...STORE_COMMAND,
     "embed-lineage",
-    "--original-key=legacy-original",
+    `--original-key=${originalKey}`,
     `--original-provenance=${JSON.stringify(original.provenance)}`,
-    "--preferred-key=legacy-preferred",
+    `--preferred-key=${preferredKey}`,
     `--discovered-source-url=${candidate.pdfUrl}`,
     `--promoted-at=${new Date().toISOString()}`,
     "--",
@@ -406,35 +408,35 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
   const [exit, stderr] = await Promise.all([embed.exited, new Response(embed.stderr).text()]);
   if (exit !== 0) throw new Error(`legacy lineage fixture failed: ${stderr}`);
   renameSync(embeddedPath, preferredPath);
-  writeFileSync(join(root, "legacy-original", "notes.txt"), "original attachment");
-  const obsoleteExtraction = join(root, "legacy-preferred", "legacy-preferred.md");
+  writeFileSync(join(root, originalKey, "notes.txt"), "original attachment");
+  const obsoleteExtraction = join(root, preferredKey, `${preferredKey}.md`);
   writeFileSync(obsoleteExtraction, "# Reviewed extraction\n");
-  const originalBytes = readFileSync(join(root, "legacy-original", "legacy-original.pdf"));
-  const refused = await request("POST", "/api/items/legacy-original/arxiv/promote", candidate);
+  const originalBytes = readFileSync(join(root, originalKey, `${originalKey}.pdf`));
+  const refused = await request("POST", `/api/items/${originalKey}/arxiv/promote`, candidate);
   expect(refused.status).toBe(400);
-  expect(readFileSync(join(root, "legacy-original", "legacy-original.pdf"))).toEqual(originalBytes);
+  expect(readFileSync(join(root, originalKey, `${originalKey}.pdf`))).toEqual(originalBytes);
   expect(existsSync(preferredPath)).toBe(true);
-  renameSync(obsoleteExtraction, join(root, "legacy-preferred", "preferred-notes.txt"));
+  renameSync(obsoleteExtraction, join(root, preferredKey, "preferred-notes.txt"));
   expect((await request("POST", "/api/bulk/tags", {
-    keys: ["legacy-preferred"], add: ["keep"], remove: [],
+    keys: [preferredKey], add: ["keep"], remove: [],
   })).status).toBe(200);
-  const filedRefusal = await request("POST", "/api/items/legacy-original/arxiv/promote", candidate);
+  const filedRefusal = await request("POST", `/api/items/${originalKey}/arxiv/promote`, candidate);
   expect(filedRefusal.status).toBe(400);
-  expect(readFileSync(join(root, "legacy-original", "legacy-original.pdf"))).toEqual(originalBytes);
-  expect((await item("legacy-preferred")).tags).toContain("keep");
+  expect(readFileSync(join(root, originalKey, `${originalKey}.pdf`))).toEqual(originalBytes);
+  expect((await item(preferredKey)).tags).toContain("keep");
   expect((await request("POST", "/api/bulk/tags", {
-    keys: ["legacy-preferred"], add: [], remove: ["keep"],
+    keys: [preferredKey], add: [], remove: ["keep"],
   })).status).toBe(200);
-  const response = await request("POST", "/api/items/legacy-original/arxiv/promote", candidate);
+  const response = await request("POST", `/api/items/${originalKey}/arxiv/promote`, candidate);
   expect(response.status).toBe(200);
   const result = ArxivPromotionResponseSchema.parse(await response.json());
-  expect(result).toMatchObject({ key: "legacy-original", originalKey: "legacy-original" });
-  expect((await library()).items.map((paper) => paper.id)).toEqual(["legacy-original"]);
-  expect((await item("legacy-original")).provenance.pdf_url).toBe(candidate.pdfUrl);
-  expect((await item("legacy-original")).provenance).toEqual(preferredBefore);
-  expect(readFileSync(join(root, "legacy-original", "notes.txt"), "utf8")).toBe("original attachment");
-  expect(readFileSync(join(root, "legacy-original", "preferred-notes.txt"), "utf8")).toBe("# Reviewed extraction\n");
-  expect(existsSync(join(root, "legacy-preferred"))).toBe(false);
+  expect(result).toMatchObject({ key: originalKey, originalKey });
+  expect((await library()).items.map((paper) => paper.id)).toEqual([originalKey]);
+  expect((await item(originalKey)).provenance.pdf_url).toBe(candidate.pdfUrl);
+  expect((await item(originalKey)).provenance).toEqual(preferredBefore);
+  expect(readFileSync(join(root, originalKey, "notes.txt"), "utf8")).toBe("original attachment");
+  expect(readFileSync(join(root, originalKey, "preferred-notes.txt"), "utf8")).toBe("# Reviewed extraction\n");
+  expect(existsSync(join(root, preferredKey))).toBe(false);
 });
 
 test.each(["BEFORE", "AFTER"] as const)(
