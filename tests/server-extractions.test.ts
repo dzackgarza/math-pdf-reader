@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -366,6 +368,47 @@ test("restart restores the previous extraction when publication stops between th
     expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(
       readFileSync(join(document, "lattices.pdf")),
     );
+  } finally {
+    await restarted.stop();
+  }
+}, 30000);
+
+test("retirement failure restores the previous extraction before the HTTP error", async () => {
+  const { app, root, manifestPath } = await bucketWithExtractors([
+    { mode: "record", maxPages: 20 },
+    { mode: "markdown", maxPages: 20 },
+  ]);
+  expect((await app.request("/api/items/lattices/extractions/record", { method: "POST" })).status).toBe(200);
+  const document = join(root, "lattices");
+  const markdown = join(document, "lattices.md");
+  const previous = readFileSync(markdown, "utf8");
+  const source = readFileSync(join(document, "lattices.extraction", "source.pdf"));
+  await app.stop();
+
+  const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-retire-gate-")), "publication");
+  const options = { root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath };
+  const publishing = await serveBucket({ ...options, env: { PDF_BUCKET_TEST_EXTRACTION_PUBLISH: gate } });
+  const originalMode = statSync(root).mode & 0o777;
+  const request = publishing.request("/api/items/lattices/extractions/markdown", { method: "POST" });
+  try {
+    const deadline = performance.now() + 15000;
+    while (!existsSync(`${gate}.ready`) && performance.now() < deadline) await Bun.sleep(20);
+    expect(existsSync(`${gate}.ready`)).toBe(true);
+    chmodSync(root, 0o500);
+    writeFileSync(`${gate}.release`, "go");
+    const failed = await request;
+    expect(failed.status).toBe(500);
+    expect(readFileSync(markdown, "utf8")).toBe(previous);
+    expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(source);
+  } finally {
+    chmodSync(root, originalMode);
+    await publishing.stop();
+  }
+
+  const restarted = await serveBucket(options);
+  try {
+    expect(readFileSync(markdown, "utf8")).toBe(previous);
+    expect(readFileSync(join(document, "lattices.extraction", "source.pdf"))).toEqual(source);
   } finally {
     await restarted.stop();
   }
