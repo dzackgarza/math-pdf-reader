@@ -569,19 +569,29 @@ impl OrganizationStore {
         items: &[&str],
         change: impl FnOnce(Organization) -> AppResult<Organization>,
     ) -> AppResult<Organization> {
-        self.try_update(|org| {
-            let mut unstored: Vec<&str> = Vec::new();
-            for key in items {
-                if self.store.pdf_path(key)?.is_none() {
-                    unstored.push(key);
-                }
+        let locked = self.lock().await?;
+        self.update_items_locked(&locked, items, change).await
+    }
+
+    /// Updates item filing while the caller holds the filing lock through an edition check.
+    pub async fn update_items_locked(
+        &self,
+        _locked: &FilingLock<'_>,
+        items: &[&str],
+        change: impl FnOnce(Organization) -> AppResult<Organization>,
+    ) -> AppResult<Organization> {
+        let mut unstored: Vec<&str> = Vec::new();
+        for key in items {
+            if self.store.pdf_path(key)?.is_none() {
+                unstored.push(key);
             }
-            if !unstored.is_empty() {
-                return Err(AppError::unknown_item(&unstored.join(", ")));
-            }
-            change(org)
-        })
-        .await
+        }
+        if !unstored.is_empty() {
+            return Err(AppError::unknown_item(&unstored.join(", ")));
+        }
+        let next = change(self.read().await?)?;
+        self.write(&next).await?;
+        Ok(next)
     }
 
     /// Records KEYS as removed on purpose, before their PDFs go.

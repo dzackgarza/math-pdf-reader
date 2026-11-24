@@ -10,9 +10,15 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AiSessionRequestSchema } from "../src/contract/ai";
+import { ProvenanceSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import { ExtractionOutcomeSchema } from "../src/contract/extraction";
-import { ApiErrorSchema, ArxivPromotionResponseSchema, ArxivSearchResponseSchema, LibraryPayloadSchema } from "../src/contract/library";
+import {
+  ApiErrorSchema,
+  ArxivPromotionResponseSchema,
+  ArxivSearchResponseSchema,
+  LibraryPayloadSchema,
+} from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { recordMetadata } from "./store";
 
@@ -121,10 +127,14 @@ test("page context exposes a bounded search hint and leaves paper reading to the
     const context = await view(app);
     expect(context).toContain("page 2");
     expect(context).not.toContain("/pdf-text/");
-    const hint = context.split("search hint only (not authoritative source text): ")[1];
+    const hint = context.split(
+      "search hint only (not authoritative source text): ",
+    )[1];
     expect(hint?.trim()).toContain("Lecture 2");
     expect([...hint!.trim()].length).toBeLessThanOrEqual(500);
-    expect((await app.request("/api/ai/pdf-text/long-notes?page=2")).status).toBe(404);
+    expect(
+      (await app.request("/api/ai/pdf-text/long-notes?page=2")).status,
+    ).toBe(404);
   } finally {
     await app.stop();
   }
@@ -201,22 +211,40 @@ test("the assistant can discover paper artifacts with file and shell tools", asy
 
 const view = (app: Awaited<ReturnType<typeof storedBucket>>) =>
   app.request("/api/ai/view/long-notes").then((response) => response.text());
-const readPage = (
+const editionOf = async (app: Awaited<ReturnType<typeof storedBucket>>) => {
+  const response = await app.request("/pdf/long-notes.pdf");
+  expect(response.status).toBe(200);
+  const header = response.headers.get("X-Pdf-Edition");
+  if (header === null) throw new Error("the PDF response has no edition");
+  return ProvenanceSchema.parse(
+    JSON.parse(Buffer.from(header, "base64url").toString("utf8")),
+  );
+};
+const readPage = async (
   app: Awaited<ReturnType<typeof storedBucket>>,
   page: number,
-) =>
-  app.request("/api/items/long-notes/reading", {
+  edition?: Awaited<ReturnType<typeof editionOf>>,
+) => {
+  const displayed = edition ?? (await editionOf(app));
+  return app.request("/api/items/long-notes/reading", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page, pages: 200 }),
+    body: JSON.stringify({ page, pages: 200, edition: displayed }),
   });
+};
 
 test("a failed text hint preserves the page report and permits opening the chat", async () => {
   const assistant = fakeAssistant();
   // The PDF page contains a multiplication sign. An ASCII-only subprocess cannot print it.
-  const app = await storedBucket("true", undefined, assistant.port, EXTRACTIONS_MANIFEST, {
-    PYTHONIOENCODING: "ascii:strict",
-  });
+  const app = await storedBucket(
+    "true",
+    undefined,
+    assistant.port,
+    EXTRACTIONS_MANIFEST,
+    {
+      PYTHONIOENCODING: "ascii:strict",
+    },
+  );
   try {
     expect((await readPage(app, 2)).status).toBe(200);
     const context = await view(app);
@@ -224,7 +252,8 @@ test("a failed text hint preserves the page report and permits opening the chat"
     expect(context).toContain("Page search hint unavailable");
     expect(context).toContain("ascii");
     const opened = await app.request("/api/ai/session", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: "long-notes" }),
     });
     expect(opened.status).toBe(200);
@@ -239,19 +268,25 @@ test("opening a chat distinguishes a missing original from a damaged original", 
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-original-"));
   const app = await storedBucket("false", root);
   const pdf = join(root, "long-notes", "long-notes.pdf");
-  const open = () => app.request("/api/ai/session", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: "long-notes" }),
-  });
+  const open = () =>
+    app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
   try {
     renameSync(pdf, join(root, "held-original"));
     const missing = await open();
     expect(missing.status).toBe(404);
-    expect(ApiErrorSchema.parse(await missing.json()).error.kind).toBe("unknown_item");
+    expect(ApiErrorSchema.parse(await missing.json()).error.kind).toBe(
+      "unknown_item",
+    );
     writeFileSync(pdf, "truncated PDF");
     const damaged = await open();
     expect(damaged.status).toBe(422);
-    expect(ApiErrorSchema.parse(await damaged.json()).error.kind).toBe("unreadable_pdf");
+    expect(ApiErrorSchema.parse(await damaged.json()).error.kind).toBe(
+      "unreadable_pdf",
+    );
   } finally {
     await app.stop();
   }
@@ -348,29 +383,43 @@ test("a different PDF captured under a deleted key gets a new chat", async () =>
   const assistant = fakeAssistant();
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-recapture-"));
   const app = await storedBucket("true", root, assistant.port);
-  const open = () => app.request("/api/ai/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: "long-notes" }),
-  });
+  const open = () =>
+    app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
   try {
     const first = await open();
     expect(first.status).toBe(200);
-    const firstSession = (await first.json() as { sessionUrl: string }).sessionUrl;
-    expect((await app.request("/api/items/long-notes", { method: "DELETE" })).status).toBe(200);
+    const firstSession = ((await first.json()) as { sessionUrl: string })
+      .sessionUrl;
+    expect(
+      (await app.request("/api/items/long-notes", { method: "DELETE" })).status,
+    ).toBe(200);
 
     const form = new FormData();
-    form.set("pdf", new File([readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
-      "long-notes.pdf", { type: "application/pdf" }));
+    form.set(
+      "pdf",
+      new File(
+        [readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
+        "long-notes.pdf",
+        { type: "application/pdf" },
+      ),
+    );
     form.set("pdf_url", "https://www.math.example.edu/~author/replacement.pdf");
     form.set("title_hint", "Replacement Notes");
-    const captured = await app.request("/capture-bytes", { method: "POST", body: form });
+    const captured = await app.request("/capture-bytes", {
+      method: "POST",
+      body: form,
+    });
     expect(captured.status).toBe(200);
-    expect((await captured.json() as { key: string }).key).toBe("long-notes");
+    expect(((await captured.json()) as { key: string }).key).toBe("long-notes");
 
     const second = await open();
     expect(second.status).toBe(200);
-    const secondSession = (await second.json() as { sessionUrl: string }).sessionUrl;
+    const secondSession = ((await second.json()) as { sessionUrl: string })
+      .sessionUrl;
     expect(secondSession).not.toBe(firstSession);
     expect(assistant.locations.ses_fake_2).toBe(join(root, "long-notes"));
   } finally {
@@ -385,23 +434,38 @@ test("deleting an unopened legacy chat clears its key before recapture", async (
   const app = await storedBucket("true", root, assistant.port);
   assistant.locations.ses_legacy = join(root, "long-notes");
   mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
-  writeFileSync(join(dirname(app.indexExport), "ai/chats.json"),
-    JSON.stringify({ "long-notes": "ses_legacy" }));
+  writeFileSync(
+    join(dirname(app.indexExport), "ai/chats.json"),
+    JSON.stringify({ "long-notes": "ses_legacy" }),
+  );
   try {
-    expect((await app.request("/api/items/long-notes", { method: "DELETE" })).status).toBe(200);
+    expect(
+      (await app.request("/api/items/long-notes", { method: "DELETE" })).status,
+    ).toBe(200);
     const form = new FormData();
-    form.set("pdf", new File([readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
-      "long-notes.pdf", { type: "application/pdf" }));
+    form.set(
+      "pdf",
+      new File(
+        [readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
+        "long-notes.pdf",
+        { type: "application/pdf" },
+      ),
+    );
     form.set("pdf_url", "https://www.math.example.edu/~author/replacement.pdf");
     form.set("title_hint", "Replacement Notes");
-    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+    expect(
+      (await app.request("/capture-bytes", { method: "POST", body: form }))
+        .status,
+    ).toBe(200);
     const opened = await app.request("/api/ai/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: "long-notes" }),
     });
     expect(opened.status).toBe(200);
-    expect((await opened.json() as { sessionUrl: string }).sessionUrl).toContain("/session/ses_fake");
+    expect(
+      ((await opened.json()) as { sessionUrl: string }).sessionUrl,
+    ).toContain("/session/ses_fake");
     expect(assistant.moves).toEqual([]);
   } finally {
     await app.stop();
@@ -415,8 +479,10 @@ test("first page update does not send a replacement paper to an unverified legac
   const app = await storedBucket("true", root, assistant.port);
   assistant.locations.ses_legacy = join(root, "long-notes");
   mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
-  writeFileSync(join(dirname(app.indexExport), "ai/chats.json"),
-    JSON.stringify({ "long-notes": "ses_legacy" }));
+  writeFileSync(
+    join(dirname(app.indexExport), "ai/chats.json"),
+    JSON.stringify({ "long-notes": "ses_legacy" }),
+  );
   try {
     expect((await readPage(app, 2)).status).toBe(200);
     expect(assistant.entries["ses_legacy/reader-view"]).toBeUndefined();
@@ -433,8 +499,10 @@ test("first open starts a new chat for an unverified legacy mapping", async () =
   const app = await storedBucket("true", root, assistant.port);
   assistant.locations.ses_legacy = join(root, "long-notes");
   mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
-  writeFileSync(join(dirname(app.indexExport), "ai/chats.json"),
-    JSON.stringify({ "long-notes": "ses_legacy" }));
+  writeFileSync(
+    join(dirname(app.indexExport), "ai/chats.json"),
+    JSON.stringify({ "long-notes": "ses_legacy" }),
+  );
   try {
     const opened = await app.request("/api/ai/session", {
       method: "POST",
@@ -442,7 +510,9 @@ test("first open starts a new chat for an unverified legacy mapping", async () =
       body: JSON.stringify({ key: "long-notes" }),
     });
     expect(opened.status).toBe(200);
-    expect((await opened.json() as { sessionUrl: string }).sessionUrl).toContain("/session/ses_fake");
+    expect(
+      ((await opened.json()) as { sessionUrl: string }).sessionUrl,
+    ).toContain("/session/ses_fake");
     expect(assistant.locations.ses_legacy).toBe(join(root, "long-notes"));
     expect(assistant.moves).toEqual([]);
   } finally {
@@ -465,13 +535,24 @@ test("a stale chat record cannot receive page context from a replacement paper",
     expect(opened.status).toBe(200);
     const oldRecord = readFileSync(chatFile);
     const oldView = assistant.entries["ses_fake/reader-view"];
-    expect((await app.request("/api/items/long-notes", { method: "DELETE" })).status).toBe(200);
+    expect(
+      (await app.request("/api/items/long-notes", { method: "DELETE" })).status,
+    ).toBe(200);
     const form = new FormData();
-    form.set("pdf", new File([readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
-      "long-notes.pdf", { type: "application/pdf" }));
+    form.set(
+      "pdf",
+      new File(
+        [readFileSync(join(import.meta.dir, "fixtures/lecture-notes.pdf"))],
+        "long-notes.pdf",
+        { type: "application/pdf" },
+      ),
+    );
     form.set("pdf_url", "https://www.math.example.edu/~author/replacement.pdf");
     form.set("title_hint", "Replacement Notes");
-    expect((await app.request("/capture-bytes", { method: "POST", body: form })).status).toBe(200);
+    expect(
+      (await app.request("/capture-bytes", { method: "POST", body: form }))
+        .status,
+    ).toBe(200);
     writeFileSync(chatFile, oldRecord);
     expect((await readPage(app, 2)).status).toBe(200);
     expect(assistant.entries["ses_fake/reader-view"]).toBe(oldView);
@@ -484,19 +565,26 @@ test("a stale chat record cannot receive page context from a replacement paper",
 test("arXiv replacement routes each reader page to the current edition's chat", async () => {
   const assistant = fakeAssistant();
   let servePreferred = false;
-  const preferredBytes = readFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"));
+  const preferredBytes = readFileSync(
+    join(import.meta.dir, "fixtures/problem-set.pdf"),
+  );
   const publisher = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch(request) {
       const path = new URL(request.url).pathname;
       if (path === "/api/query") {
-        return new Response(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><published>2024-01-01T00:00:00Z</published><author><name>An Author</name></author></entry></feed>`, {
-          headers: { "Content-Type": "application/atom+xml" },
-        });
+        return new Response(
+          `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><published>2024-01-01T00:00:00Z</published><author><name>An Author</name></author></entry></feed>`,
+          {
+            headers: { "Content-Type": "application/atom+xml" },
+          },
+        );
       }
       if (path === "/pdf/1234.5678v1" && servePreferred) {
-        return new Response(preferredBytes, { headers: { "Content-Type": "application/pdf" } });
+        return new Response(preferredBytes, {
+          headers: { "Content-Type": "application/pdf" },
+        });
       }
       return new Response("not found", { status: 404 });
     },
@@ -510,60 +598,86 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
     pdf_url: at("/pdf/"),
     e_print_url: at("/e-print/"),
   };
-  const app = await storedBucket("true", root, assistant.port, EXTRACTIONS_MANIFEST, undefined, config);
-  const open = () => app.request("/api/ai/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: "long-notes" }),
-  });
-  const promote = (candidate: object) => app.request("/api/items/long-notes/arxiv/promote", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(candidate),
-  });
+  const app = await storedBucket(
+    "true",
+    root,
+    assistant.port,
+    EXTRACTIONS_MANIFEST,
+    undefined,
+    config,
+  );
+  const open = () =>
+    app.request("/api/ai/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "long-notes" }),
+    });
+  const promote = (candidate: object) =>
+    app.request("/api/items/long-notes/arxiv/promote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(candidate),
+    });
   try {
     await recordMetadata(root, "long-notes", "resolver", {
-      title: "Promotion Notes", authors: ["An Author"], year: 2024,
+      title: "Promotion Notes",
+      authors: ["An Author"],
+      year: 2024,
     });
     const search = ArxivSearchResponseSchema.parse(
-      await (await app.request("/api/items/long-notes/arxiv", { method: "POST" })).json(),
+      await (
+        await app.request("/api/items/long-notes/arxiv", { method: "POST" })
+      ).json(),
     );
     const candidate = search.matches[0];
-    if (candidate === undefined) throw new Error("the arXiv edition was not discovered");
+    if (candidate === undefined)
+      throw new Error("the arXiv edition was not discovered");
 
     const first = await open();
     expect(first.status).toBe(200);
-    const firstUrl = (await first.json() as { sessionUrl: string }).sessionUrl;
+    const firstUrl = ((await first.json()) as { sessionUrl: string })
+      .sessionUrl;
     expect(firstUrl).toContain("/session/ses_fake");
     expect((await readPage(app, 1)).status).toBe(200);
-    const capturedFirstPageView = String(assistant.entries["ses_fake/reader-view"]);
+    const capturedFirstPageView = String(
+      assistant.entries["ses_fake/reader-view"],
+    );
     expect((await readPage(app, 2)).status).toBe(200);
     const capturedView = String(assistant.entries["ses_fake/reader-view"]);
     expect(capturedView).toContain("page 2 of 200");
+    const capturedEdition = await editionOf(app);
 
     const failed = await promote(candidate);
     expect(failed.status).toBe(422);
-    expect((await (await open()).json() as { sessionUrl: string }).sessionUrl).toBe(firstUrl);
+    expect(await editionOf(app)).toEqual(capturedEdition);
+    expect(
+      ((await (await open()).json()) as { sessionUrl: string }).sessionUrl,
+    ).toBe(firstUrl);
     expect((await readPage(app, 3)).status).toBe(200);
     const failedView = String(assistant.entries["ses_fake/reader-view"]);
     expect(failedView).toContain("page 3 of 200");
     expect(failedView).not.toBe(capturedView);
-    const delayedCapturedPage = () => readPage(app, 4);
+    const delayedCapturedPage = () => readPage(app, 4, capturedEdition);
 
     servePreferred = true;
     const replaced = await promote(candidate);
     expect(replaced.status).toBe(200);
-    expect(ArxivPromotionResponseSchema.parse(await replaced.json()).key).toBe("long-notes");
+    expect(ArxivPromotionResponseSchema.parse(await replaced.json()).key).toBe(
+      "long-notes",
+    );
     expect((await readPage(app, 1)).status).toBe(200);
     expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
     expect(assistant.entries["ses_fake_2/reader-view"]).toBeUndefined();
 
     const fresh = await open();
     expect(fresh.status).toBe(200);
-    const freshUrl = (await fresh.json() as { sessionUrl: string }).sessionUrl;
+    const freshUrl = ((await fresh.json()) as { sessionUrl: string })
+      .sessionUrl;
     expect(freshUrl).not.toBe(firstUrl);
     expect(freshUrl).toContain("/session/ses_fake_2");
-    const firstPreferredView = String(assistant.entries["ses_fake_2/reader-view"]);
+    const firstPreferredView = String(
+      assistant.entries["ses_fake_2/reader-view"],
+    );
     expect(firstPreferredView).toContain("page 1 of 200");
     expect(firstPreferredView).not.toBe(failedView);
     const readingBeforeDelay = LibraryPayloadSchema.parse(
@@ -571,22 +685,41 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
     ).items.find((item) => item.id === "long-notes")?.reading;
     const delayed = await delayedCapturedPage();
     expect(delayed.status).toBe(409);
-    expect(LibraryPayloadSchema.parse(
-      await (await app.request("/api/library")).json(),
-    ).items.find((item) => item.id === "long-notes")?.reading).toEqual(readingBeforeDelay);
+    expect(
+      LibraryPayloadSchema.parse(
+        await (await app.request("/api/library")).json(),
+      ).items.find((item) => item.id === "long-notes")?.reading,
+    ).toEqual(readingBeforeDelay);
     expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
-    expect(assistant.entries["ses_fake_2/reader-view"]).toBe(firstPreferredView);
-    const hint = (entry: string) => entry.split("search hint only (not authoritative source text): ")[1]?.trim();
+    expect(assistant.entries["ses_fake_2/reader-view"]).toBe(
+      firstPreferredView,
+    );
+    const hint = (entry: string) =>
+      entry
+        .split("search hint only (not authoritative source text): ")[1]
+        ?.trim();
     expect(hint(capturedFirstPageView)).toBeTruthy();
     expect(hint(firstPreferredView)).toBeTruthy();
     expect(hint(firstPreferredView)).not.toBe(hint(capturedFirstPageView));
     expect((await readPage(app, 2)).status).toBe(200);
-    expect(String(assistant.entries["ses_fake_2/reader-view"])).toContain("page 2 of 200");
+    expect(String(assistant.entries["ses_fake_2/reader-view"])).toContain(
+      "page 2 of 200",
+    );
     expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
 
-    const repeated = ArxivPromotionResponseSchema.parse(await (await promote(candidate)).json());
+    const preferredEdition = await editionOf(app);
+    const repeated = ArxivPromotionResponseSchema.parse(
+      await (await promote(candidate)).json(),
+    );
     expect(repeated).toMatchObject({ key: "long-notes", existing: true });
-    expect((await (await open()).json() as { sessionUrl: string }).sessionUrl).toBe(freshUrl);
+    expect(await editionOf(app)).toEqual(preferredEdition);
+    expect((await readPage(app, 3, preferredEdition)).status).toBe(200);
+    expect(String(assistant.entries["ses_fake_2/reader-view"])).toContain(
+      "page 3 of 200",
+    );
+    expect(
+      ((await (await open()).json()) as { sessionUrl: string }).sessionUrl,
+    ).toBe(freshUrl);
     expect(assistant.entries["ses_fake/reader-view"]).toBe(failedView);
   } finally {
     await app.stop();
@@ -596,30 +729,42 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
 }, 60_000);
 
 test.each([
-  ["session", "same"], ["page", "same"],
-  ["session", "other"], ["page", "other"],
+  ["session", "same"],
+  ["page", "same"],
+  ["session", "other"],
+  ["page", "other"],
 ] as const)(
   "an overlapping %s request cannot deliver the new arXiv edition to the captured chat from the %s server process",
   async (action, process) => {
     const assistant = fakeAssistant();
-    const preferredBytes = readFileSync(join(import.meta.dir, "fixtures/problem-set.pdf"));
+    const preferredBytes = readFileSync(
+      join(import.meta.dir, "fixtures/problem-set.pdf"),
+    );
     const publisher = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
       fetch(request) {
         const path = new URL(request.url).pathname;
         if (path === "/api/query") {
-          return new Response(`<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><published>2024-01-01T00:00:00Z</published><author><name>An Author</name></author></entry></feed>`, {
-            headers: { "Content-Type": "application/atom+xml" },
-          });
+          return new Response(
+            `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/1234.5678v1</id><title>Promotion Notes</title><published>2024-01-01T00:00:00Z</published><author><name>An Author</name></author></entry></feed>`,
+            {
+              headers: { "Content-Type": "application/atom+xml" },
+            },
+          );
         }
         return path === "/pdf/1234.5678v1"
-          ? new Response(preferredBytes, { headers: { "Content-Type": "application/pdf" } })
+          ? new Response(preferredBytes, {
+              headers: { "Content-Type": "application/pdf" },
+            })
           : new Response("not found", { status: 404 });
       },
     });
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-ai-overlap-"));
-    const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-ai-gate-")), action);
+    const gate = join(
+      mkdtempSync(join(tmpdir(), "pdf-bucket-ai-gate-")),
+      action,
+    );
     const config = loadAppConfig(CONFIG_PATH);
     const at = (path: string) => new URL(path, publisher.url).href;
     config.arxiv = {
@@ -628,33 +773,57 @@ test.each([
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
     };
-    const gateName = action === "session"
-      ? "PDF_BUCKET_TEST_AI_SESSION_SELECTED"
-      : "PDF_BUCKET_TEST_AI_PAGE_SELECTED";
-    const app = await storedBucket("true", root, assistant.port, EXTRACTIONS_MANIFEST, {
-      [gateName]: gate,
-    }, config);
-    const other = process === "other" ? await serveBucket({
-      root, zoteroUrl: closedPortUrl(), extractionsManifest: EXTRACTIONS_MANIFEST, config,
-    }) : undefined;
-    const open = () => app.request("/api/ai/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: "long-notes" }),
-    });
-    const hint = (entry: string) => entry.split("search hint only (not authoritative source text): ")[1]?.trim();
+    const gateName =
+      action === "session"
+        ? "PDF_BUCKET_TEST_AI_SESSION_SELECTED"
+        : "PDF_BUCKET_TEST_AI_PAGE_SELECTED";
+    const app = await storedBucket(
+      "true",
+      root,
+      assistant.port,
+      EXTRACTIONS_MANIFEST,
+      {
+        [gateName]: gate,
+      },
+      config,
+    );
+    const other =
+      process === "other"
+        ? await serveBucket({
+            root,
+            zoteroUrl: closedPortUrl(),
+            extractionsManifest: EXTRACTIONS_MANIFEST,
+            config,
+          })
+        : undefined;
+    const open = () =>
+      app.request("/api/ai/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "long-notes" }),
+      });
+    const hint = (entry: string) =>
+      entry
+        .split("search hint only (not authoritative source text): ")[1]
+        ?.trim();
     try {
       await recordMetadata(root, "long-notes", "resolver", {
-        title: "Promotion Notes", authors: ["An Author"], year: 2024,
+        title: "Promotion Notes",
+        authors: ["An Author"],
+        year: 2024,
       });
       const search = ArxivSearchResponseSchema.parse(
-        await (await app.request("/api/items/long-notes/arxiv", { method: "POST" })).json(),
+        await (
+          await app.request("/api/items/long-notes/arxiv", { method: "POST" })
+        ).json(),
       );
       const candidate = search.matches[0];
-      if (candidate === undefined) throw new Error("the arXiv edition was not discovered");
+      if (candidate === undefined)
+        throw new Error("the arXiv edition was not discovered");
       const first = await open();
       expect(first.status).toBe(200);
-      const firstUrl = (await first.json() as { sessionUrl: string }).sessionUrl;
+      const firstUrl = ((await first.json()) as { sessionUrl: string })
+        .sessionUrl;
       expect((await readPage(app, 1)).status).toBe(200);
       const capturedView = String(assistant.entries["ses_fake/reader-view"]);
       expect(hint(capturedView)).toBeTruthy();
@@ -663,27 +832,36 @@ test.each([
       const pending = action === "session" ? open() : readPage(app, 2);
       const deadline = Date.now() + 20_000;
       while (!existsSync(`${gate}.ready`)) {
-        if (Date.now() > deadline) throw new Error("the edition request did not reach its gate");
+        if (Date.now() > deadline)
+          throw new Error("the edition request did not reach its gate");
         await Bun.sleep(10);
       }
-      const replaced = await (other ?? app).request("/api/items/long-notes/arxiv/promote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(candidate),
-      });
+      const replaced = await (other ?? app).request(
+        "/api/items/long-notes/arxiv/promote",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(candidate),
+        },
+      );
       expect(replaced.status).toBe(200);
-      expect(ArxivPromotionResponseSchema.parse(await replaced.json()).key).toBe("long-notes");
+      expect(
+        ArxivPromotionResponseSchema.parse(await replaced.json()).key,
+      ).toBe("long-notes");
       writeFileSync(`${gate}.release`, "release");
       const resumed = await pending;
       expect(resumed.status).toBe(200);
       if (action === "session") {
-        expect((await resumed.json() as { sessionUrl: string }).sessionUrl).not.toBe(firstUrl);
+        expect(
+          ((await resumed.json()) as { sessionUrl: string }).sessionUrl,
+        ).not.toBe(firstUrl);
       }
       expect(assistant.entries["ses_fake/reader-view"]).toBe(capturedView);
 
       const fresh = await open();
       expect(fresh.status).toBe(200);
-      const freshUrl = (await fresh.json() as { sessionUrl: string }).sessionUrl;
+      const freshUrl = ((await fresh.json()) as { sessionUrl: string })
+        .sessionUrl;
       expect(freshUrl).toContain("/session/ses_fake_2");
       expect(freshUrl).not.toBe(firstUrl);
       expect((await readPage(app, 1)).status).toBe(200);
@@ -777,7 +955,9 @@ test("a provenance-bound assistant chat moves to the paper directory without cha
   mkdirSync(join(dirname(app.indexExport), "ai"), { recursive: true });
   writeFileSync(
     join(dirname(app.indexExport), "ai/chats.json"),
-    JSON.stringify({ "long-notes": { id: "ses_fake", provenance: paper!.provenance } }),
+    JSON.stringify({
+      "long-notes": { id: "ses_fake", provenance: paper!.provenance },
+    }),
   );
 
   const response = await app.request("/api/ai/session", {

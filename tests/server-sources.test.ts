@@ -25,10 +25,21 @@ import {
   LibraryPayloadSchema,
   RebuildOutcomeSchema,
 } from "../src/contract/library";
-import { CONFIG_PATH, STORE_COMMAND, loadAppConfig } from "../src/contract/config";
+import {
+  CONFIG_PATH,
+  STORE_COMMAND,
+  loadAppConfig,
+} from "../src/contract/config";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { recoveryCases } from "./fixtures/recovery-cases";
-import { listItems, readIndexExport, readOrganization, recordMetadata, unfiled, writeOrganization } from "./store";
+import {
+  listItems,
+  readIndexExport,
+  readOrganization,
+  recordMetadata,
+  unfiled,
+  writeOrganization,
+} from "./store";
 
 setDefaultTimeout(30_000);
 
@@ -315,18 +326,40 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
     ?.provenance;
   expect(originalBefore).toBeDefined();
   const document = join(root, "000-original");
-  writeFileSync(join(document, "000-original.md"), "# Superseded PDF extraction\n");
+  writeFileSync(
+    join(document, "000-original.md"),
+    "# Superseded PDF extraction\n",
+  );
   mkdirSync(join(document, "research"));
-  writeFileSync(join(document, "research", "catalog.json"), '{"subject":"lattice"}');
-  expect((await request("POST", "/api/items/000-original/mirrors", {
-    url: at("/mirror/promotion.pdf"),
-  })).status).toBe(200);
-  expect((await request("POST", "/api/bulk/tags", {
-    keys: ["000-original"], add: ["research"], remove: [],
-  })).status).toBe(200);
-  expect((await request("PUT", "/api/items/000-original/reading", {
-    page: 1, pages: 2,
-  })).status).toBe(200);
+  writeFileSync(
+    join(document, "research", "catalog.json"),
+    '{"subject":"lattice"}',
+  );
+  expect(
+    (
+      await request("POST", "/api/items/000-original/mirrors", {
+        url: at("/mirror/promotion.pdf"),
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request("POST", "/api/bulk/tags", {
+        keys: ["000-original"],
+        add: ["research"],
+        remove: [],
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request("PUT", "/api/items/000-original/reading", {
+        page: 1,
+        pages: 2,
+        edition: originalBefore,
+      })
+    ).status,
+  ).toBe(200);
 
   const search = ArxivSearchResponseSchema.parse(
     await (await request("POST", "/api/items/000-original/arxiv")).json(),
@@ -357,16 +390,30 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
   expect(preferred.provenance.pdf_url).toBe(
     "https://arxiv.org/pdf/1234.5678v1",
   );
-  expect(preferred.mirrors.map((mirror) => mirror.url)).toContain(at("/mirror/promotion.pdf"));
+  expect(preferred.mirrors.map((mirror) => mirror.url)).toContain(
+    at("/mirror/promotion.pdf"),
+  );
   expect(preferred.tags).toContain("research");
-  expect(preferred.reading).toMatchObject({ status: "viewed", page: 1, pages: 2 });
-  expect((await library()).items.map((entry) => entry.id)).toEqual(["000-original"]);
-  expect(readFileSync(join(root, "000-original", "000-original.pdf"))).not.toEqual(lectureNotes);
+  expect(preferred.reading).toMatchObject({
+    status: "viewed",
+    page: 1,
+    pages: 2,
+  });
+  expect((await library()).items.map((entry) => entry.id)).toEqual([
+    "000-original",
+  ]);
+  expect(
+    readFileSync(join(root, "000-original", "000-original.pdf")),
+  ).not.toEqual(lectureNotes);
   expect(existsSync(join(document, "000-original.md"))).toBe(false);
-  expect(readFileSync(join(document, "research", "catalog.json"), "utf8")).toBe('{"subject":"lattice"}');
+  expect(readFileSync(join(document, "research", "catalog.json"), "utf8")).toBe(
+    '{"subject":"lattice"}',
+  );
 
   expect(second).toMatchObject({ existing: true, key: first.key });
-  expect((await library()).items.map((entry) => entry.id)).toEqual(["000-original"]);
+  expect((await library()).items.map((entry) => entry.id)).toEqual([
+    "000-original",
+  ]);
 });
 
 test("a long paper key can be replaced without exceeding filesystem name limits", async () => {
@@ -385,9 +432,15 @@ test("a long paper key can be replaced without exceeding filesystem name limits"
   const key = `long-${"x".repeat(115)}`;
   await capture(lectureNotes, key, at("/notes/long.pdf"));
   const candidate = await discoveredCandidate(root, key, request);
-  const response = await request("POST", `/api/items/${key}/arxiv/promote`, candidate);
+  const response = await request(
+    "POST",
+    `/api/items/${key}/arxiv/promote`,
+    candidate,
+  );
   expect(response.status).toBe(200);
-  expect(ArxivPromotionResponseSchema.parse(await response.json()).key).toBe(key);
+  expect(ArxivPromotionResponseSchema.parse(await response.json()).key).toBe(
+    key,
+  );
   expect((await library()).items.map((paper) => paper.id)).toEqual([key]);
 });
 
@@ -405,59 +458,108 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
       e_print_url: at("/e-print/"),
     },
   };
-  const { root, request, capture, library, item } = await bucket(null, localArxiv);
+  const { root, request, capture, library, item } = await bucket(
+    null,
+    localArxiv,
+  );
   await capture(lectureNotes, originalKey, at("/notes/legacy.pdf"));
   const candidate = await discoveredCandidate(root, originalKey, request);
   await capture(problemSet, preferredKey, candidate.pdfUrl);
-  const preferredBefore = (await listItems(root, [preferredKey]))[0]?.provenance;
+  const preferredBefore = (await listItems(root, [preferredKey]))[0]
+    ?.provenance;
   expect(preferredBefore).toBeDefined();
   const original = (await listItems(root, [originalKey]))[0];
   if (original === undefined) throw new Error("the original PDF is missing");
   const preferredPath = join(root, preferredKey, `${preferredKey}.pdf`);
   const embeddedPath = `${preferredPath}.lineage`;
-  const embed = Bun.spawn([
-    ...STORE_COMMAND,
-    "embed-lineage",
-    `--original-key=${originalKey}`,
-    `--original-provenance=${JSON.stringify(original.provenance)}`,
-    `--preferred-key=${preferredKey}`,
-    `--discovered-source-url=${candidate.pdfUrl}`,
-    `--promoted-at=${new Date().toISOString()}`,
-    "--",
-    preferredPath,
-    embeddedPath,
-  ], { stdout: "pipe", stderr: "pipe" });
-  const [exit, stderr] = await Promise.all([embed.exited, new Response(embed.stderr).text()]);
+  const embed = Bun.spawn(
+    [
+      ...STORE_COMMAND,
+      "embed-lineage",
+      `--original-key=${originalKey}`,
+      `--original-provenance=${JSON.stringify(original.provenance)}`,
+      `--preferred-key=${preferredKey}`,
+      `--discovered-source-url=${candidate.pdfUrl}`,
+      `--promoted-at=${new Date().toISOString()}`,
+      "--",
+      preferredPath,
+      embeddedPath,
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const [exit, stderr] = await Promise.all([
+    embed.exited,
+    new Response(embed.stderr).text(),
+  ]);
   if (exit !== 0) throw new Error(`legacy lineage fixture failed: ${stderr}`);
   renameSync(embeddedPath, preferredPath);
   writeFileSync(join(root, originalKey, "notes.txt"), "original attachment");
   const obsoleteExtraction = join(root, preferredKey, `${preferredKey}.md`);
   writeFileSync(obsoleteExtraction, "# Reviewed extraction\n");
-  const originalBytes = readFileSync(join(root, originalKey, `${originalKey}.pdf`));
-  const refused = await request("POST", `/api/items/${originalKey}/arxiv/promote`, candidate);
+  const originalBytes = readFileSync(
+    join(root, originalKey, `${originalKey}.pdf`),
+  );
+  const refused = await request(
+    "POST",
+    `/api/items/${originalKey}/arxiv/promote`,
+    candidate,
+  );
   expect(refused.status).toBe(400);
-  expect(readFileSync(join(root, originalKey, `${originalKey}.pdf`))).toEqual(originalBytes);
+  expect(readFileSync(join(root, originalKey, `${originalKey}.pdf`))).toEqual(
+    originalBytes,
+  );
   expect(existsSync(preferredPath)).toBe(true);
-  renameSync(obsoleteExtraction, join(root, preferredKey, "preferred-notes.txt"));
-  expect((await request("POST", "/api/bulk/tags", {
-    keys: [preferredKey], add: ["keep"], remove: [],
-  })).status).toBe(200);
-  const filedRefusal = await request("POST", `/api/items/${originalKey}/arxiv/promote`, candidate);
+  renameSync(
+    obsoleteExtraction,
+    join(root, preferredKey, "preferred-notes.txt"),
+  );
+  expect(
+    (
+      await request("POST", "/api/bulk/tags", {
+        keys: [preferredKey],
+        add: ["keep"],
+        remove: [],
+      })
+    ).status,
+  ).toBe(200);
+  const filedRefusal = await request(
+    "POST",
+    `/api/items/${originalKey}/arxiv/promote`,
+    candidate,
+  );
   expect(filedRefusal.status).toBe(400);
-  expect(readFileSync(join(root, originalKey, `${originalKey}.pdf`))).toEqual(originalBytes);
+  expect(readFileSync(join(root, originalKey, `${originalKey}.pdf`))).toEqual(
+    originalBytes,
+  );
   expect((await item(preferredKey)).tags).toContain("keep");
-  expect((await request("POST", "/api/bulk/tags", {
-    keys: [preferredKey], add: [], remove: ["keep"],
-  })).status).toBe(200);
-  const response = await request("POST", `/api/items/${originalKey}/arxiv/promote`, candidate);
+  expect(
+    (
+      await request("POST", "/api/bulk/tags", {
+        keys: [preferredKey],
+        add: [],
+        remove: ["keep"],
+      })
+    ).status,
+  ).toBe(200);
+  const response = await request(
+    "POST",
+    `/api/items/${originalKey}/arxiv/promote`,
+    candidate,
+  );
   expect(response.status).toBe(200);
   const result = ArxivPromotionResponseSchema.parse(await response.json());
   expect(result).toMatchObject({ key: originalKey, originalKey });
-  expect((await library()).items.map((paper) => paper.id)).toEqual([originalKey]);
+  expect((await library()).items.map((paper) => paper.id)).toEqual([
+    originalKey,
+  ]);
   expect((await item(originalKey)).provenance.pdf_url).toBe(candidate.pdfUrl);
   expect((await item(originalKey)).provenance).toEqual(preferredBefore);
-  expect(readFileSync(join(root, originalKey, "notes.txt"), "utf8")).toBe("original attachment");
-  expect(readFileSync(join(root, originalKey, "preferred-notes.txt"), "utf8")).toBe("# Reviewed extraction\n");
+  expect(readFileSync(join(root, originalKey, "notes.txt"), "utf8")).toBe(
+    "original attachment",
+  );
+  expect(
+    readFileSync(join(root, originalKey, "preferred-notes.txt"), "utf8"),
+  ).toBe("# Reviewed extraction\n");
   expect(existsSync(join(root, preferredKey))).toBe(false);
 });
 
@@ -475,35 +577,63 @@ test.each(["BEFORE", "AFTER"] as const)(
         e_print_url: at("/e-print/"),
       },
     };
-    const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-legacy-gate-")), phase.toLowerCase());
-    const exportFile = join(mkdtempSync(join(tmpdir(), "pdf-bucket-legacy-export-")), "index.json");
+    const gate = join(
+      mkdtempSync(join(tmpdir(), "pdf-bucket-legacy-gate-")),
+      phase.toLowerCase(),
+    );
+    const exportFile = join(
+      mkdtempSync(join(tmpdir(), "pdf-bucket-legacy-export-")),
+      "index.json",
+    );
     const { root, app, request, capture, item } = await bucket(
-      exportFile, localArxiv, EXTRACTIONS_MANIFEST,
+      exportFile,
+      localArxiv,
+      EXTRACTIONS_MANIFEST,
       { [`PDF_BUCKET_TEST_PROMOTION_${phase}`]: gate },
     );
     await capture(lectureNotes, "linked-original", at("/notes/linked.pdf"));
-    const candidate = await discoveredCandidate(root, "linked-original", request);
+    const candidate = await discoveredCandidate(
+      root,
+      "linked-original",
+      request,
+    );
     await capture(problemSet, "linked-preferred", candidate.pdfUrl);
     const original = (await listItems(root, ["linked-original"]))[0];
     if (original === undefined) throw new Error("the original PDF is missing");
-    const preferredPath = join(root, "linked-preferred", "linked-preferred.pdf");
+    const preferredPath = join(
+      root,
+      "linked-preferred",
+      "linked-preferred.pdf",
+    );
     const embeddedPath = `${preferredPath}.lineage`;
-    const embed = Bun.spawn([
-      ...STORE_COMMAND,
-      "embed-lineage",
-      "--original-key=linked-original",
-      `--original-provenance=${JSON.stringify(original.provenance)}`,
-      "--preferred-key=linked-preferred",
-      `--discovered-source-url=${candidate.pdfUrl}`,
-      `--promoted-at=${new Date().toISOString()}`,
-      "--", preferredPath, embeddedPath,
-    ], { stdout: "pipe", stderr: "pipe" });
-    const [exit, stderr] = await Promise.all([embed.exited, new Response(embed.stderr).text()]);
+    const embed = Bun.spawn(
+      [
+        ...STORE_COMMAND,
+        "embed-lineage",
+        "--original-key=linked-original",
+        `--original-provenance=${JSON.stringify(original.provenance)}`,
+        "--preferred-key=linked-preferred",
+        `--discovered-source-url=${candidate.pdfUrl}`,
+        `--promoted-at=${new Date().toISOString()}`,
+        "--",
+        preferredPath,
+        embeddedPath,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const [exit, stderr] = await Promise.all([
+      embed.exited,
+      new Response(embed.stderr).text(),
+    ]);
     if (exit !== 0) throw new Error(`legacy lineage fixture failed: ${stderr}`);
     renameSync(embeddedPath, preferredPath);
-    expect((await request("POST", "/api/items/linked-original/mirrors", {
-      url: at("/notes/linked.pdf"),
-    })).status).toBe(200);
+    expect(
+      (
+        await request("POST", "/api/items/linked-original/mirrors", {
+          url: at("/notes/linked.pdf"),
+        })
+      ).status,
+    ).toBe(200);
     const preferred = await item("linked-preferred");
     const organization = readOrganization(root);
     organization.items["linked-preferred"] = {
@@ -512,30 +642,56 @@ test.each(["BEFORE", "AFTER"] as const)(
     };
     writeOrganization(root, organization);
     const deadline = Date.now() + 10_000;
-    while (!readIndexExport(exportFile)?.items.some((entry) => entry.key === "linked-preferred")) {
-      if (Date.now() > deadline) throw new Error("the old preferred item was not exported");
+    while (
+      !readIndexExport(exportFile)?.items.some(
+        (entry) => entry.key === "linked-preferred",
+      )
+    ) {
+      if (Date.now() > deadline)
+        throw new Error("the old preferred item was not exported");
       await Bun.sleep(50);
     }
-    const originalBytes = readFileSync(join(root, "linked-original", "linked-original.pdf"));
-    const promotion = request("POST", "/api/items/linked-original/arxiv/promote", candidate).catch(() => undefined);
+    const originalBytes = readFileSync(
+      join(root, "linked-original", "linked-original.pdf"),
+    );
+    const promotion = request(
+      "POST",
+      "/api/items/linked-original/arxiv/promote",
+      candidate,
+    ).catch(() => undefined);
     await waitForFile(`${gate}.ready`);
     await app.stop();
     await promotion;
     const restarted = await serveBucket({
-      root, zoteroUrl: closedPortUrl(), extractionsManifest: EXTRACTIONS_MANIFEST,
-      config: localArxiv, indexExport: exportFile,
+      root,
+      zoteroUrl: closedPortUrl(),
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+      config: localArxiv,
+      indexExport: exportFile,
     });
     try {
-      const recovered = LibraryPayloadSchema.parse(await (await restarted.request("/api/library")).json());
+      const recovered = LibraryPayloadSchema.parse(
+        await (await restarted.request("/api/library")).json(),
+      );
       const active = recovered.items.map((entry) => entry.id).sort();
-      expect(active).toEqual(phase === "BEFORE" ? ["linked-original", "linked-preferred"].sort() : ["linked-original"]);
-      const currentBytes = readFileSync(join(root, "linked-original", "linked-original.pdf"));
+      expect(active).toEqual(
+        phase === "BEFORE"
+          ? ["linked-original", "linked-preferred"].sort()
+          : ["linked-original"],
+      );
+      const currentBytes = readFileSync(
+        join(root, "linked-original", "linked-original.pdf"),
+      );
       if (phase === "BEFORE") expect(currentBytes).toEqual(originalBytes);
       else expect(currentBytes).not.toEqual(originalBytes);
       if (phase === "AFTER") {
         expect(recovered.items[0]?.provenance.pdf_url).toBe(candidate.pdfUrl);
-        expect(recovered.missing.map((entry) => entry.key)).not.toContain("linked-preferred");
-        expect(readOrganization(root).items["linked-preferred"]).toBeUndefined();
+        expect(recovered.missing.map((entry) => entry.key)).not.toContain(
+          "linked-preferred",
+        );
+        expect(
+          readOrganization(root).items["linked-preferred"],
+        ).toBeUndefined();
       } else {
         expect(existsSync(preferredPath)).toBe(true);
         expect(readOrganization(root).items["linked-preferred"]).toBeDefined();
@@ -828,7 +984,10 @@ test("forgetting a missing preferred item removes its retained promotion record"
     mkdtempSync(join(tmpdir(), "pdf-bucket-promotion-export-")),
     "index.json",
   );
-  const { root, request, capture, library } = await bucket(exportFile, localArxiv);
+  const { root, request, capture, library } = await bucket(
+    exportFile,
+    localArxiv,
+  );
   await capture(
     lectureNotes,
     "forget-original",
@@ -847,7 +1006,9 @@ test("forgetting a missing preferred item removes its retained promotion record"
   const deadline = Date.now() + 10_000;
   while (
     !readIndexExport(exportFile)?.items.some(
-      (entry) => entry.key === promoted.key && entry.provenance.pdf_url === "https://arxiv.org/pdf/1234.5678v1",
+      (entry) =>
+        entry.key === promoted.key &&
+        entry.provenance.pdf_url === "https://arxiv.org/pdf/1234.5678v1",
     )
   ) {
     if (Date.now() > deadline)
@@ -1026,13 +1187,28 @@ test("a failed preferred-source fetch leaves the original item usable", async ()
   const pdfPath = join(root, "original-failure", "original-failure.pdf");
   const extractionPath = join(root, "original-failure", "original-failure.md");
   const originalBytes = readFileSync(pdfPath);
+  const originalEdition = (await listItems(root, ["original-failure"]))[0]
+    ?.provenance;
+  expect(originalEdition).toBeDefined();
   writeFileSync(extractionPath, "# Captured extraction\n");
-  expect((await request("POST", "/api/bulk/tags", {
-    keys: ["original-failure"], add: ["saved"], remove: [],
-  })).status).toBe(200);
-  expect((await request("PUT", "/api/items/original-failure/reading", {
-    page: 1, pages: 2,
-  })).status).toBe(200);
+  expect(
+    (
+      await request("POST", "/api/bulk/tags", {
+        keys: ["original-failure"],
+        add: ["saved"],
+        remove: [],
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request("PUT", "/api/items/original-failure/reading", {
+        page: 1,
+        pages: 2,
+        edition: originalEdition,
+      })
+    ).status,
+  ).toBe(200);
   const response = await request(
     "POST",
     "/api/items/original-failure/arxiv/promote",
@@ -1048,7 +1224,11 @@ test("a failed preferred-source fetch leaves the original item usable", async ()
     at("/notes/promotion-failure.pdf"),
   );
   expect((await item("original-failure")).tags).toContain("saved");
-  expect((await item("original-failure")).reading).toMatchObject({ status: "viewed", page: 1, pages: 2 });
+  expect((await item("original-failure")).reading).toMatchObject({
+    status: "viewed",
+    page: 1,
+    pages: 2,
+  });
   expect(readFileSync(pdfPath)).toEqual(originalBytes);
   expect(readFileSync(extractionPath, "utf8")).toBe("# Captured extraction\n");
 });
@@ -1065,10 +1245,7 @@ test("a missing replaced PDF requires recovery and cannot be promoted again", as
       e_print_url: at("/e-print/"),
     },
   };
-  const { root, request, capture, library } = await bucket(
-    null,
-    localArxiv,
-  );
+  const { root, request, capture, library } = await bucket(null, localArxiv);
   await capture(
     lectureNotes,
     "missing-preferred",
@@ -1217,9 +1394,9 @@ test("replacement does not touch a different paper directory named after the arX
     candidate,
   );
   expect(response.status).toBe(200);
-  expect(
-    ArxivPromotionResponseSchema.parse(await response.json()).key,
-  ).toBe("sidecar-original");
+  expect(ArxivPromotionResponseSchema.parse(await response.json()).key).toBe(
+    "sidecar-original",
+  );
   expect(readFileSync(markdown, "utf8")).toBe("preserve this markdown");
   expect(readFileSync(join(extraction, "artifact"), "utf8")).toBe(
     "preserve this artifact",
@@ -1311,7 +1488,10 @@ test("replacement does not overwrite a PDF changed by another writer", async () 
   );
   await waitForFile(`${gate}.ready`);
   const target = join(root, "replacement-original", "replacement-original.pdf");
-  const changed = Buffer.concat([original, Buffer.from("\n% external writer\n")]);
+  const changed = Buffer.concat([
+    original,
+    Buffer.from("\n% external writer\n"),
+  ]);
   writeFileSync(target, changed);
   writeFileSync(`${gate}.release`, "release");
   expect((await promotion).status).toBeGreaterThanOrEqual(500);
@@ -1419,11 +1599,15 @@ test.each(["BEFORE", "AFTER"] as const)(
       if (phase === "AFTER") {
         expect(current?.sourceLineage?.preferredKey).toBe("interrupted");
         expect(current?.provenance.pdf_url).toBe(candidate.pdfUrl);
-        expect(readFileSync(join(document, "interrupted.pdf"))).not.toEqual(originalPdf);
+        expect(readFileSync(join(document, "interrupted.pdf"))).not.toEqual(
+          originalPdf,
+        );
       } else {
         expect(current?.sourceLineage).toBeUndefined();
         expect(current?.provenance.pdf_url).toBe(at("/notes/interrupted.pdf"));
-        expect(readFileSync(join(document, "interrupted.pdf"))).toEqual(originalPdf);
+        expect(readFileSync(join(document, "interrupted.pdf"))).toEqual(
+          originalPdf,
+        );
       }
     } finally {
       await restarted.stop();
@@ -1511,10 +1695,14 @@ test.each(["CREATED", "PENDING", "BEFORE", "AFTER"] as const)(
       );
       if (phase === "AFTER") {
         expect(library.items[0]?.provenance.pdf_url).toBe(candidate.pdfUrl);
-        expect(readFileSync(join(document, "cleanup-original.pdf"))).not.toEqual(originalPdf);
+        expect(
+          readFileSync(join(document, "cleanup-original.pdf")),
+        ).not.toEqual(originalPdf);
       } else {
         expect(library.items[0]?.sourceLineage).toBeUndefined();
-        expect(readFileSync(join(document, "cleanup-original.pdf"))).toEqual(originalPdf);
+        expect(readFileSync(join(document, "cleanup-original.pdf"))).toEqual(
+          originalPdf,
+        );
       }
       expect(readFileSync(join(unrelated, "pending.pdf"), "utf8")).toBe(
         "user data",
@@ -1562,8 +1750,10 @@ test("a preferred PDF lost before its first export remains rebuildable after res
   await pending;
   const preferred = "early-loss";
   expect(
-    readIndexExport(exportFile)?.items.some((entry) =>
-      entry.key === preferred && entry.provenance.pdf_url === "https://arxiv.org/pdf/1234.5678v1"
+    readIndexExport(exportFile)?.items.some(
+      (entry) =>
+        entry.key === preferred &&
+        entry.provenance.pdf_url === "https://arxiv.org/pdf/1234.5678v1",
     ),
   ).toBe(false);
   const away = mkdtempSync(join(tmpdir(), "pdf-bucket-early-loss-"));
@@ -1582,7 +1772,9 @@ test("a preferred PDF lost before its first export remains rebuildable after res
     const deadline = Date.now() + 10_000;
     while (
       !readIndexExport(exportFile)?.items.some(
-        (entry) => entry.key === preferred && entry.provenance.pdf_url === "https://arxiv.org/pdf/1234.5678v1",
+        (entry) =>
+          entry.key === preferred &&
+          entry.provenance.pdf_url === "https://arxiv.org/pdf/1234.5678v1",
       )
     ) {
       if (Date.now() > deadline)
@@ -1890,7 +2082,9 @@ test("promotion preserves a distinct arXiv item even when its original bytes mat
   expect(response.status).toBe(200);
   const promoted = ArxivPromotionResponseSchema.parse(await response.json());
   expect(promoted.key).toBe("same-bytes");
-  expect((await item("same-bytes")).sourceLineage?.originalProvenance).toEqual(original);
+  expect((await item("same-bytes")).sourceLineage?.originalProvenance).toEqual(
+    original,
+  );
   expect((await item(promoted.key)).provenance.pdf_url).toBe(
     "https://arxiv.org/pdf/1234.5678v1",
   );
@@ -1985,7 +2179,9 @@ test("a promoted item is eligible for version-matched arXiv source extraction", 
       "utf8",
     ),
   ).toContain("Promoted source.");
-  expect((await item("extraction-original")).sourceLineage?.originalProvenance).toEqual(original);
+  expect(
+    (await item("extraction-original")).sourceLineage?.originalProvenance,
+  ).toEqual(original);
 });
 
 test("known arXiv papers rank in the accepted results on the 20-paper corpus", async () => {

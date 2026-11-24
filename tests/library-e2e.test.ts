@@ -45,7 +45,11 @@ import puppeteer, {
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
 import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
-import { type BucketItem, LibraryPayloadSchema } from "../src/contract/library";
+import {
+  type BucketItem,
+  LibraryPayloadSchema,
+  ReadingRequestSchema,
+} from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
 import { readOrganization, recordMetadata } from "./store";
@@ -208,11 +212,16 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
     await page.goto(`${app.origin}/`);
     await page.waitForSelector(row("original"));
     await page.click(row("original"));
-    const originalThumbnail = await page.$eval('aside[aria-label="Item details"] img[alt="First page"]',
-      (image) => (image as HTMLImageElement).src);
+    const originalThumbnail = await page.$eval(
+      'aside[aria-label="Item details"] img[alt="First page"]',
+      (image) => (image as HTMLImageElement).src,
+    );
     await (await byRole("button", "Find on arXiv")).click();
     await shows('aside[aria-label="Item details"]', "arXiv:1234.5678v1");
-    const panel = await page.$eval('aside[aria-label="Item details"]', (element) => element.textContent);
+    const panel = await page.$eval(
+      'aside[aria-label="Item details"]',
+      (element) => element.textContent,
+    );
     expect(panel).toContain("A failed download keeps the current PDF.");
     expect(panel).toContain("Replace with arXiv PDF");
     await (await byRole("button", "Replace with arXiv PDF")).click();
@@ -221,12 +230,14 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
       "The current PDF remains available.",
     );
     expect(await rowKeys()).toEqual(["original"]);
-    const failedSourceLinks = await page.$$eval('aside[aria-label="Item details"] a',
-      (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
-    expect(failedSourceLinks).toContain(published("/~author/lattices.pdf"));
-    await (await byRole("button", "Replace with arXiv PDF")).evaluate(
-      (button) => button.scrollIntoView({ block: "center" }),
+    const failedSourceLinks = await page.$$eval(
+      'aside[aria-label="Item details"] a',
+      (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href),
     );
+    expect(failedSourceLinks).toContain(published("/~author/lattices.pdf"));
+    await (
+      await byRole("button", "Replace with arXiv PDF")
+    ).evaluate((button) => button.scrollIntoView({ block: "center" }));
     await shot("arxiv-replacement-failed");
 
     await (await byRole("button", "Open")).click();
@@ -237,19 +248,32 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
     await (await byRole("button", "Replace with arXiv PDF")).click();
     await shows("body", "Replaced the PDF with the arXiv version.");
     expect(await readerKeys()).toEqual([]);
-    const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
+    const library = LibraryPayloadSchema.parse(
+      await (await app.request("/api/library")).json(),
+    );
     expect(library.items).toHaveLength(1);
-    expect(library.items[0]?.provenance.pdf_url).toBe("https://arxiv.org/pdf/1234.5678v1");
-    expect(library.items[0]?.sourceLineage?.originalProvenance.pdf_url).toBe(published("/~author/lattices.pdf"));
+    expect(library.items[0]?.provenance.pdf_url).toBe(
+      "https://arxiv.org/pdf/1234.5678v1",
+    );
+    expect(library.items[0]?.sourceLineage?.originalProvenance.pdf_url).toBe(
+      published("/~author/lattices.pdf"),
+    );
     await shows('aside[aria-label="Item details"]', "arxiv.org");
-    const promotedPanel = await page.$eval('aside[aria-label="Item details"]', (element) => element.textContent);
+    const promotedPanel = await page.$eval(
+      'aside[aria-label="Item details"]',
+      (element) => element.textContent,
+    );
     expect(promotedPanel).toContain("Original capture");
-    const sourceLinks = await page.$$eval('aside[aria-label="Item details"] a',
-      (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href));
+    const sourceLinks = await page.$$eval(
+      'aside[aria-label="Item details"] a',
+      (anchors) => anchors.map((anchor) => (anchor as HTMLAnchorElement).href),
+    );
     expect(sourceLinks).toContain("https://arxiv.org/pdf/1234.5678v1");
     expect(sourceLinks).toContain(published("/~author/lattices.pdf"));
-    const preferredThumbnail = await page.$eval('aside[aria-label="Item details"] img[alt="First page"]',
-      (image) => (image as HTMLImageElement).src);
+    const preferredThumbnail = await page.$eval(
+      'aside[aria-label="Item details"] img[alt="First page"]',
+      (image) => (image as HTMLImageElement).src,
+    );
     expect(preferredThumbnail).not.toBe(originalThumbnail);
     await shot("arxiv-replacement");
   } finally {
@@ -609,7 +633,7 @@ const firstPageCorner = async (key: string) => {
       ).jsonValue(),
     );
   // A zoom still settling moves and resizes the page, so the corner is taken once it stays put.
-  for (let before = await corner(); ;) {
+  for (let before = await corner(); ; ) {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const after = await corner();
     if (
@@ -1173,7 +1197,7 @@ test("back returns to the place inside the page an outline entry or a search mat
         ?.provides()
         .getState().currentZoomLevel;
     }, viewerOf("outlined"));
-  for (let before = await scaleOf(); ;) {
+  for (let before = await scaleOf(); ; ) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     const after = await scaleOf();
     if (after === before) {
@@ -2191,11 +2215,13 @@ test("a note saved after a metadata write to the open PDF keeps that metadata, a
 test("the reader records the last viewed page, the library shows it out of the page count, and the reader reopens there", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");
-  const recorded = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/api/items/reading/reading") &&
-      response.request().postData() === JSON.stringify({ page: 4, pages: 10 }),
-  );
+  const recorded = page.waitForResponse((response) => {
+    if (!response.url().endsWith("/api/items/reading/reading")) return false;
+    const report = ReadingRequestSchema.safeParse(
+      JSON.parse(response.request().postData() ?? "null"),
+    );
+    return report.success && report.data.page === 4 && report.data.pages === 10;
+  });
   await goToPage("reading", 4);
   expect((await recorded).status()).toBe(200);
 

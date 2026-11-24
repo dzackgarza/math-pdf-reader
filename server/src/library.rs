@@ -276,20 +276,33 @@ async fn reading(
     if request.page > request.pages {
         return Err(AppError::invalid("page lies beyond the page count"));
     }
+    let locked = state.organizations.lock().await?;
     let indexed = state.require(&key).await?;
+    if request.edition != indexed.stored.provenance {
+        return Err(AppError::api(
+            StatusCode::CONFLICT,
+            ApiErrorErrorKind::StalePdf,
+            format!("{key} changed after this reader displayed it"),
+        ));
+    }
     let reading = Reading::Viewed {
         page: request.page,
         pages: request.pages,
         viewed_at: Timestamp::now(),
     };
     let captured_at = indexed.stored.provenance.captured_at;
-    let payload = state
-        .change_items(&[&key], |org| {
+    let organization = state
+        .organizations
+        .update_items_locked(&locked, &[&key], |org| {
             Ok(set_reading(org, &key, &captured_at, reading))
         })
         .await?;
+    drop(locked);
+    let payload = Json(state.payload_of(organization).await?);
     // The reader's page is also the assistant's context; the page is recorded either way.
-    if let Err(failure) = crate::ai::announce_view(&state, &key, &origin(&headers)?).await {
+    if let Err(failure) =
+        crate::ai::announce_view(&state, &key, &request.edition, &origin(&headers)?).await
+    {
         eprintln!("pdf-bucket: the assistant was not told the reader's page: {failure:?}");
     }
     Ok(payload)

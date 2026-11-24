@@ -12,7 +12,12 @@ import {
   type Preferences,
 } from "../../contract/library";
 import { request, requestError } from "../useLibraryApi";
-import { DocumentStorage, entityTag, type Position } from "./documentStorage";
+import {
+  DocumentStorage,
+  entityTag,
+  pdfEdition,
+  type Position,
+} from "./documentStorage";
 import type {
   Bookmark,
   Capabilities,
@@ -35,6 +40,7 @@ type Loaded = {
   // The stored PDF's bytes and their entity tag.
   bytes: ArrayBuffer;
   tag: string;
+  edition: BucketItem["provenance"];
 };
 
 async function load(key: string): Promise<Loaded> {
@@ -52,6 +58,7 @@ async function load(key: string): Promise<Loaded> {
     preferences: library.preferences,
     bytes: await response.arrayBuffer(),
     tag: entityTag(response),
+    edition: pdfEdition(response),
   };
 }
 
@@ -81,6 +88,7 @@ async function openLoaded(
   const storage = new DocumentStorage(
     key,
     loaded.tag,
+    loaded.edition,
     () => exporter.forDocument(key).saveAsCopy().toPromise(),
     async () => {
       const scope = annotations.forDocument(key);

@@ -615,7 +615,12 @@ async fn view(
 /// Tells KEY's chat the exact reader page and search hint as an instruction entry,
 /// which the assistant reads on every turn. Does nothing when the assistant is not running or
 /// KEY has no chat yet; the chat gets the entry when it opens.
-pub async fn announce_view(state: &Shared, key: &str, bucket_origin: &str) -> AppResult<()> {
+pub async fn announce_view(
+    state: &Shared,
+    key: &str,
+    edition: &Provenance,
+    bucket_origin: &str,
+) -> AppResult<()> {
     let ai = &state.ai;
     let password = ai.password().await?;
     if !ai.answers(&password).await {
@@ -624,6 +629,9 @@ pub async fn announce_view(state: &Shared, key: &str, bucket_origin: &str) -> Ap
     let Some(selected) = state.indexed(key).await? else {
         return Ok(());
     };
+    if &selected.stored.provenance != edition {
+        return Ok(());
+    }
     #[cfg(feature = "arxiv-fixtures")]
     selected_edition_gate("PDF_BUCKET_TEST_AI_PAGE_SELECTED").await?;
     let _one = ai.chats.lock().await;

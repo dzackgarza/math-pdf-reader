@@ -31,7 +31,9 @@ const MessagesSchema = z.object({
             state: z
               .object({
                 status: z.string(),
-                content: z.array(z.object({ text: z.string().optional() })).optional(),
+                content: z
+                  .array(z.object({ text: z.string().optional() }))
+                  .optional(),
               })
               .passthrough()
               .optional(),
@@ -59,15 +61,31 @@ test("the assistant inspects the original PDF with the shell and discovers a new
   const marker = `pdf-bucket-live-discovery-${randomUUID()}`;
   const passage = `The lattice $Z^2$ has determinant 1. Source verification: ${marker}`;
   const manifestPath = join(root, "extractions.json");
-  writeFileSync(manifestPath, JSON.stringify({ plugins: [{
-    id: "live-passage",
-    name: "Live passage fixture",
-    source_kind: "document_structure",
-    authoritative: true,
-    command: ["sh", join(import.meta.dir, "fixtures/plugins/extractor.sh"),
-      "record", "$pdf", "$output", "# Lecture 2", passage],
-    accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
-  }] }));
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      plugins: [
+        {
+          id: "live-passage",
+          name: "Live passage fixture",
+          source_kind: "document_structure",
+          authoritative: true,
+          command: [
+            "sh",
+            join(import.meta.dir, "fixtures/plugins/extractor.sh"),
+            "record",
+            "$pdf",
+            "$output",
+            "# Lecture 2",
+            passage,
+          ],
+          accepted_inputs: [
+            { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+          ],
+        },
+      ],
+    }),
+  );
   const app = await serveBucket({
     root,
     zoteroUrl: closedPortUrl(),
@@ -81,25 +99,23 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     const catalogNumber = String(randomInt(100000, 1000000));
     const fixtures = join(import.meta.dir, "fixtures");
     const scan = Bun.spawnSync([
-      join(import.meta.dir, "../.venv/bin/python"), join(fixtures, "assistant-scan.py"),
-      join(fixtures, "long-notes.pdf"), catalogNumber,
+      join(import.meta.dir, "../.venv/bin/python"),
+      join(fixtures, "assistant-scan.py"),
+      join(fixtures, "long-notes.pdf"),
+      catalogNumber,
     ]);
-    expect({ status: scan.exitCode, stderr: scan.stderr.toString() }).toEqual({ status: 0, stderr: "" });
+    expect({ status: scan.exitCode, stderr: scan.stderr.toString() }).toEqual({
+      status: 0,
+      stderr: "",
+    });
     const form = new FormData();
     form.set(
       "pdf",
-      new File(
-        [new Uint8Array(scan.stdout)],
-        "long-notes.pdf",
-        {
-          type: "application/pdf",
-        },
-      ),
+      new File([new Uint8Array(scan.stdout)], "long-notes.pdf", {
+        type: "application/pdf",
+      }),
     );
-    form.set(
-      "pdf_url",
-      "https://www.math.example.edu/~author/long-notes.pdf",
-    );
+    form.set("pdf_url", "https://www.math.example.edu/~author/long-notes.pdf");
     form.set("title_hint", "Long Notes");
     expect(
       (await app.request("/capture-bytes", { method: "POST", body: form }))
@@ -155,49 +171,87 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     }
 
     const pdf = join(root, "long-notes", "long-notes.pdf");
-    const expectedHash = createHash("sha256").update(readFileSync(pdf)).digest("hex");
-    const pdfAnswer = await ask([
-      "Inspect the original PDF using your shell. Report its SHA-256.",
-      "Read the scanned cover using pdftoppm -f 1 -l 1 -scale-to 1800 -png long-notes.pdf | tesseract stdin stdout.",
-      "Report the printed catalog number and a line labeled Signer with the name you can read.",
-      "Use only the scanned cover for this question. If it labels the signature as redacted, enter UNREADABLE and explain the limitation.",
-    ].join(" "));
-    const coverAnswer = pdfAnswer.filter((part) => part.type === "text").map((part) => part.text).join(" ");
+    const expectedHash = createHash("sha256")
+      .update(readFileSync(pdf))
+      .digest("hex");
+    const pdfAnswer = await ask(
+      [
+        "Inspect the original PDF using your shell. Report its SHA-256.",
+        "Read the scanned cover using pdftoppm -f 1 -l 1 -scale-to 1800 -png long-notes.pdf | tesseract stdin stdout.",
+        "Report the printed catalog number and a line labeled Signer with the name you can read.",
+        "Use only the scanned cover for this question. If it labels the signature as redacted, enter UNREADABLE and explain the limitation.",
+      ].join(" "),
+    );
+    const coverAnswer = pdfAnswer
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join(" ");
     expect(coverAnswer).toContain(expectedHash);
     expect(coverAnswer).toContain(catalogNumber);
-    expect(coverAnswer.replaceAll("*", "")).toMatch(/Signer\s*[:|]\s*\x60?UNREADABLE/i);
-    expect(coverAnswer).toMatch(/redact|obscur|black(?:ed| box| bar| rectangle)/i);
+    expect(coverAnswer.replaceAll("*", "")).toMatch(
+      /Signer\s*[:|]\s*\x60?UNREADABLE/i,
+    );
+    expect(coverAnswer).toMatch(
+      /redact|obscur|black(?:ed| box| bar| rectangle)/i,
+    );
 
+    const displayed = LibraryPayloadSchema.parse(
+      await (await app.request("/api/library")).json(),
+    ).items.find((item) => item.id === "long-notes");
+    if (displayed === undefined)
+      throw new Error("the document left the library");
     const pageReport = await app.request("/api/items/long-notes/reading", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: 2, pages: 210 }),
+      body: JSON.stringify({
+        page: 2,
+        pages: 210,
+        edition: displayed.provenance,
+      }),
     });
     expect(pageReport.status).toBe(200);
     const context = await (await app.request("/api/ai/view/long-notes")).text();
     expect(context).toContain("page 2");
     expect(context).toContain("lattice Z2");
     const accession = randomUUID();
-    writeFileSync(join(root, "long-notes", "catalog.json"), JSON.stringify({ accession }));
+    writeFileSync(
+      join(root, "long-notes", "catalog.json"),
+      JSON.stringify({ accession }),
+    );
     const paper = join(root, "long-notes");
     const markdownPath = join(paper, "long-notes.md");
     expect(existsSync(markdownPath)).toBe(false);
-    const extraction = await app.request("/api/items/long-notes/extractions/live-passage", {
-      method: "POST",
-    });
+    const extraction = await app.request(
+      "/api/items/long-notes/extractions/live-passage",
+      {
+        method: "POST",
+      },
+    );
     expect(extraction.status).toBe(200);
     const outcome = ExtractionOutcomeSchema.parse(await extraction.json());
-    expect(outcome).toMatchObject({ status: "succeeded", key: "long-notes",
-      plugin_id: "live-passage", markdown: { path: "long-notes.md" } });
+    expect(outcome).toMatchObject({
+      status: "succeeded",
+      key: "long-notes",
+      plugin_id: "live-passage",
+      markdown: { path: "long-notes.md" },
+    });
     const published = readFileSync(markdownPath, "utf8");
     expect(published).toContain(passage);
     expect(outcome.status).toBe("succeeded");
     if (outcome.status === "succeeded") {
-      expect(outcome.markdown.sha256).toBe(createHash("sha256").update(published).digest("hex"));
+      expect(outcome.markdown.sha256).toBe(
+        createHash("sha256").update(published).digest("hex"),
+      );
     }
-    const library = LibraryPayloadSchema.parse(await (await app.request("/api/library")).json());
-    expect(library.items.find((item) => item.id === "long-notes")?.extraction).toMatchObject({
-      status: "extracted", sourceKind: "document_structure", authoritative: true,
+    const library = LibraryPayloadSchema.parse(
+      await (await app.request("/api/library")).json(),
+    );
+    expect(
+      library.items.find((item) => item.id === "long-notes")?.extraction,
+    ).toMatchObject({
+      status: "extracted",
+      sourceKind: "document_structure",
+      authoritative: true,
     });
     const discoveryParts = await ask(
       "Find the new Markdown in this paper directory. Use the reader's current page to locate the passage. Use a shell command to read the Markdown. Return the lattice notation exactly as written in that file and its source verification value. Also report the accession identifier from the separate catalog metadata.",
@@ -213,9 +267,11 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     const toolCalls = MessagesSchema.parse(await transcript.json())
       .data.flatMap((message) => message.content)
       .filter((part) => part.type === "tool");
-    const shellReads = toolCalls.filter((part) =>
-      part.name === "shell" && part.state?.status === "completed" &&
-      part.state.content?.some((block) => block.text?.includes(passage))
+    const shellReads = toolCalls.filter(
+      (part) =>
+        part.name === "shell" &&
+        part.state?.status === "completed" &&
+        part.state.content?.some((block) => block.text?.includes(passage)),
     );
     expect(discoveryAnswer).toContain("Z^2");
     expect(discoveryAnswer).toContain(marker);

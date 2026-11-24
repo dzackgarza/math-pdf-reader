@@ -13,6 +13,7 @@ use axum::{Json, Router};
 use axum_extra::headers::Range;
 use axum_extra::TypedHeader;
 use axum_range::{KnownSize, Ranged};
+use base64::Engine;
 use futures::stream::{self, StreamExt};
 use nix::errno::Errno;
 use nix::unistd::{access, AccessFlags};
@@ -406,9 +407,16 @@ async fn pdf(
     let Some(key) = file.strip_suffix(".pdf") else {
         return Err(AppError::unknown_item(&file));
     };
+    // Replacement exchanges the PDF under the filing lock. Select its provenance and open
+    // its file while holding that lock, so the edition header names these exact bytes.
+    let locked = state.organizations.lock().await?;
+    let indexed = state.require(key).await?;
     let Some(opened) = state.store.open(key).await? else {
         return Err(AppError::unknown_item(key));
     };
+    let edition = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(serde_json::to_vec(&indexed.stored.provenance)?);
+    drop(locked);
     let body = KnownSize::file(opened.file).await?;
     let ranged = Ranged::new(range.map(|TypedHeader(range)| range), body);
     Ok((
@@ -418,6 +426,10 @@ async fn pdf(
                 "application/pdf".parse().expect("a media type"),
             ),
             (header::ETAG, entity_tag(&opened.sha256)),
+            (
+                "x-pdf-edition".parse().expect("a header name"),
+                edition.parse().expect("base64 is a header value"),
+            ),
         ],
         ranged,
     )

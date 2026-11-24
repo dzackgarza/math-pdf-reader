@@ -16,7 +16,13 @@
 // jump from A keeps the positions before the current one, then A; the place the jump leads to is
 // stored when a step leaves it. A step back or forward is not itself a jump.
 import type { ZoomLevel } from "@embedpdf/react-pdf-viewer";
-import { MIN_PAGE_SECONDS, READER_IDLE_MINUTES } from "../../contract/library";
+import {
+  MIN_PAGE_SECONDS,
+  READER_IDLE_MINUTES,
+  ReadingRequestSchema,
+  type Provenance,
+} from "../../contract/library";
+import { ProvenanceSchema } from "../../contract/capture";
 import { requestError } from "../useLibraryApi";
 import { ReadingSession } from "./readingSession";
 
@@ -45,6 +51,18 @@ export function entityTag(response: Response): string {
     );
   }
   return tag;
+}
+
+export function pdfEdition(response: Response): Provenance {
+  const encoded = response.headers.get("X-Pdf-Edition");
+  if (encoded === null || !/^[A-Za-z0-9_-]+$/.test(encoded)) {
+    throw new Error(`${response.url} answered without the PDF edition`);
+  }
+  const bytes = Uint8Array.from(
+    atob(encoded.replace(/-/g, "+").replace(/_/g, "/")),
+    (character) => character.charCodeAt(0),
+  );
+  return ProvenanceSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
 }
 
 // The positions the reader jumped between, and the one it shows: an index past the last position
@@ -98,6 +116,7 @@ export class DocumentStorage {
   constructor(
     readonly key: string,
     private storedTag: string,
+    private readonly edition: Provenance,
     // This document's bytes with every annotation, from EmbedPDF's export plugin.
     private readonly exported: () => Promise<ArrayBuffer>,
     // EmbedPDF has written every committed annotation edit of this document into it.
@@ -259,7 +278,13 @@ export class DocumentStorage {
       fetch(`/api/items/${encodeURIComponent(this.key)}/reading`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page: pageNumber, pages: totalPages }),
+        body: JSON.stringify(
+          ReadingRequestSchema.parse({
+            page: pageNumber,
+            pages: totalPages,
+            edition: this.edition,
+          }),
+        ),
       })
         .then(async (response) => {
           if (!response.ok) {

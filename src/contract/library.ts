@@ -1,11 +1,22 @@
 // The library API contract: what `/api/library` and the filing mutations send and accept.
 // Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
-import { ImportMethodSchema, ProvenanceSchema, RetrieveMetadataOutcomeSchema } from "./capture";
+import {
+  ImportMethodSchema,
+  ProvenanceSchema,
+  RetrieveMetadataOutcomeSchema,
+} from "./capture";
 import { ExtractionOutcomeSchema } from "./extraction";
 import { NonEmptySchema, Sha256Schema, TrimmedSchema } from "./text";
 
-export const SEARCH_FIELDS = ["title", "source", "pdfUrl", "tags", "notes", "key"] as const;
+export const SEARCH_FIELDS = [
+  "title",
+  "source",
+  "pdfUrl",
+  "tags",
+  "notes",
+  "key",
+] as const;
 
 export type SearchField = (typeof SEARCH_FIELDS)[number];
 
@@ -110,7 +121,9 @@ export const RuleSchema = z.discriminatedUnion("field", [
   }),
 ]);
 
-export const RULE_FIELDS = RuleSchema.options.map((option) => option.shape.field.value);
+export const RULE_FIELDS = RuleSchema.options.map(
+  (option) => option.shape.field.value,
+);
 
 // A saved search: its rules, all of which or any of which an item must meet.
 export const SavedSearchSchema = z.strictObject({
@@ -133,8 +146,15 @@ export const ReadingSchema = z.discriminatedUnion("status", [
 ]);
 
 export const ReadingRequestSchema = z
-  .strictObject({ page: z.int().min(1), pages: z.int().min(1) })
-  .refine((reading) => reading.page <= reading.pages, "page lies beyond the page count");
+  .strictObject({
+    page: z.int().min(1),
+    pages: z.int().min(1),
+    edition: ProvenanceSchema,
+  })
+  .refine(
+    (reading) => reading.page <= reading.pages,
+    "page lies beyond the page count",
+  );
 
 // Whether a URL still serves the captured PDF: never checked; the same bytes (accessible);
 // other bytes (changed); or no PDF at all (dead), with the HTTP status or network error.
@@ -222,7 +242,10 @@ export const SendStepSchema = z.discriminatedUnion("step", [
 
 // How a send made its Zotero item: by one of the write API's methods, or as a standalone
 // attachment ("Send PDF Only"), the PDF with no parent item, which owes only the `pdf` step.
-export const SendMethodSchema = z.enum([...ImportMethodSchema.options, "standalone_attachment"]);
+export const SendMethodSchema = z.enum([
+  ...ImportMethodSchema.options,
+  "standalone_attachment",
+]);
 
 // The Zotero item a send goes to (for a standalone attachment, the attachment), and the steps
 // done on it so far.
@@ -431,7 +454,9 @@ export const LibraryPayloadSchema = z.strictObject({
   preferences: PreferencesSchema,
   // Files named `<key>.pdf` in the root that the store cannot read (torn, foreign, without
   // the bucket's provenance): the library lists every other item and names these.
-  unreadable: z.array(z.strictObject({ file: NonEmptySchema, message: NonEmptySchema })),
+  unreadable: z.array(
+    z.strictObject({ file: NonEmptySchema, message: NonEmptySchema }),
+  ),
 });
 
 // What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
@@ -583,7 +608,10 @@ export const NewCollectionRequestSchema = z.strictObject({
 // `minProperties` it carries into the JSON Schema checks it in the server.
 function changingSomething<T extends z.ZodObject>(update: T) {
   return update
-    .refine((fields) => Object.keys(fields).length > 0, "the update changes nothing")
+    .refine(
+      (fields) => Object.keys(fields).length > 0,
+      "the update changes nothing",
+    )
     .meta({ minProperties: 1 });
 }
 // Any of a collection's own fields; the others stay as they are.
@@ -598,7 +626,9 @@ export const CollectionUpdateRequestSchema = changingSomething(
     .partial(),
 );
 // Any of the preferences; the others stay as they are.
-export const PreferencesUpdateRequestSchema = changingSomething(PreferencesSchema.partial());
+export const PreferencesUpdateRequestSchema = changingSomething(
+  PreferencesSchema.partial(),
+);
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
 export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({
   id: true,
@@ -610,12 +640,16 @@ export const SettingsSchema = z.strictObject({
 });
 
 // The collection and every collection below it.
-export function collectionSubtree(collections: Collection[], id: string): Set<string> {
+export function collectionSubtree(
+  collections: Collection[],
+  id: string,
+): Set<string> {
   const subtree = new Set([id]);
   for (let grew = true; grew; ) {
     grew = false;
     for (const collection of collections) {
-      const below = collection.parentId !== undefined && subtree.has(collection.parentId);
+      const below =
+        collection.parentId !== undefined && subtree.has(collection.parentId);
       if (below && !subtree.has(collection.id)) {
         subtree.add(collection.id);
         grew = true;
@@ -629,7 +663,9 @@ export function collectionSubtree(collections: Collection[], id: string): Set<st
 export const TOPIC_PREFIX = "topic:";
 
 export type Provenance = z.infer<typeof ProvenanceSchema>;
-export type AdvancedSearchSettings = z.infer<typeof AdvancedSearchSettingsSchema>;
+export type AdvancedSearchSettings = z.infer<
+  typeof AdvancedSearchSettingsSchema
+>;
 export type Collection = z.infer<typeof CollectionSchema>;
 export type Rule = z.infer<typeof RuleSchema>;
 export type RuleField = Rule["field"];
@@ -651,7 +687,9 @@ export type ImportMethod = z.infer<typeof ImportMethodSchema>;
 export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
 export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;
-export type SendAndExtractResponse = z.infer<typeof SendAndExtractResponseSchema>;
+export type SendAndExtractResponse = z.infer<
+  typeof SendAndExtractResponseSchema
+>;
 export type SendMethod = z.infer<typeof SendMethodSchema>;
 export type TitleSource = z.infer<typeof TitleSourceSchema>;
 export type Reading = z.infer<typeof ReadingSchema>;
@@ -662,13 +700,19 @@ export type RebuildOutcome = z.infer<typeof RebuildOutcomeSchema>;
 export type ImportUrlRequest = z.infer<typeof ImportUrlRequestSchema>;
 export type ImportUrlResponse = z.infer<typeof ImportUrlResponseSchema>;
 export type FolderImportResponse = z.infer<typeof FolderImportResponseSchema>;
-export type RetrieveMetadataOutcome = z.infer<typeof RetrieveMetadataOutcomeSchema>;
-export type RetrieveMetadataResponse = z.infer<typeof RetrieveMetadataResponseSchema>;
+export type RetrieveMetadataOutcome = z.infer<
+  typeof RetrieveMetadataOutcomeSchema
+>;
+export type RetrieveMetadataResponse = z.infer<
+  typeof RetrieveMetadataResponseSchema
+>;
 export type ManualMetadataRequest = z.infer<typeof ManualMetadataRequestSchema>;
 export type GuessMetadataResponse = z.infer<typeof GuessMetadataResponseSchema>;
 export type ArxivSearchResponse = z.infer<typeof ArxivSearchResponseSchema>;
 export type ArxivMatch = z.infer<typeof ArxivMatchSchema>;
-export type ArxivPromotionResponse = z.infer<typeof ArxivPromotionResponseSchema>;
+export type ArxivPromotionResponse = z.infer<
+  typeof ArxivPromotionResponseSchema
+>;
 
 // The session-storage key under which the library page keeps its current view (the address's
 // hash, e.g. `#/unfiled`); the reader's Library button returns to that view.

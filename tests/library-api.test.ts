@@ -748,6 +748,7 @@ test("the reader's last viewed page is recorded per item without counting as a f
   const viewed = await send(bucket, "PUT", "/api/items/lattices/reading", {
     page: 2,
     pages: 2,
+    edition: before?.provenance,
   });
   expect(viewed.status).toBe(200);
   const after = byId((await library(await open(bucket.root))).items).get(
@@ -759,11 +760,13 @@ test("the reader's last viewed page is recorded per item without counting as a f
   const beyond = await send(bucket, "PUT", "/api/items/lattices/reading", {
     page: 3,
     pages: 2,
+    edition: before?.provenance,
   });
   expect(beyond.status).toBe(400);
   const unknown = await send(bucket, "PUT", "/api/items/missing/reading", {
     page: 1,
     pages: 2,
+    edition: before?.provenance,
   });
   expect(unknown.status).toBe(404);
 });
