@@ -197,6 +197,19 @@ function Sources({
     <div className="w-full space-y-2">
       <ul className="space-y-1">
         <SourceLine url={item.provenance.pdf_url} check={item.sourceCheck} />
+        {item.sourceLineage !== undefined && (
+          <li className="space-y-0.5 text-xs">
+            <span className="text-muted">Original capture</span>
+            <a
+              href={item.sourceLineage.originalProvenance.pdf_url}
+              target="_blank"
+              rel="noreferrer"
+              className="block min-w-0 truncate text-accent hover:underline"
+            >
+              {item.sourceLineage.originalProvenance.pdf_url}
+            </a>
+          </li>
+        )}
         {item.mirrors.map((mirror) => (
           <SourceLine
             key={mirror.url}
