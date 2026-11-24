@@ -29,9 +29,14 @@ The server reads the saved file, applies the same provenance/storage path as
 
 ## `POST /api/import-url`
 
-URL import is an explicit server-side fetch path. It must apply the same provenance
-embedding, hash validation, durable storage, and reader event behavior as browser
-capture.
+Send JSON with the source `url` and a required boolean `open_reader`. The server
+fetches the PDF and applies the same provenance embedding, hash validation and
+durable storage as browser capture. On success it returns `{ key, existing }`.
+
+| Request | Expected result |
+| --- | --- |
+| `open_reader: false` | The paper is available at its stored key. The import emits no `open-reader` event. |
+| `open_reader: true` | The paper is available at its stored key. The import emits `open-reader` with that paper's reader URL and title. |
 
 ## `GET /api/events`
 

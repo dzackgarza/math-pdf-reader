@@ -50,6 +50,12 @@ then start the application without running that workflow.
    the affected browser builds are updated.
 2. **Given** no extension provisioning has run, **When** the app starts, **Then**
    application-only startup remains independent and reports extension status clearly.
+3. **Given** an enabled extension whose installed version differs from the provisioned
+   version for that browser, **When** the user navigates to an eligible PDF, **Then**
+   the extension refuses capture and shows how to replace it.
+4. **Given** the user installed the matching extension, **When** they repeat the same
+   navigation with capture enabled and the bucket running, **Then** the bucket
+   stores the PDF and opens its reader.
 
 ### Edge Cases
 - A changed build may fail before the desktop window opens.
@@ -70,6 +76,8 @@ then start the application without running that workflow.
 - **FR-006**: Browser-extension provisioning MUST be a separate explicit workflow.
 - **FR-007**: The user MUST be able to identify whether the application and browser
   integrations are current.
+- **FR-008**: Chrome and Firefox MUST each refuse capture on a version mismatch and
+  identify the replacement for that browser.
 
 ### Key Entities
 - **Application Build**: Installed user-facing desktop runtime.
@@ -84,6 +92,9 @@ then start the application without running that workflow.
 - **SC-003**: 100% of intentional build failures remain visible and block stale startup.
 - **SC-004**: Extension-only changes trigger no application provisioning in 100% of
   app-start tests.
+- **SC-005**: In each browser, navigation with a mismatched extension leaves the
+  fixture PDF absent from the bucket and exposes replacement instructions. After
+  replacement, the same fixture appears in the bucket and opens in the reader.
 
 ## Assumptions
 - The installed application is separate from the source checkout.

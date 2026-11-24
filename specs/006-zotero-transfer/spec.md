@@ -24,6 +24,10 @@ then send it explicitly and inspect the citation record.
    **Then** the requested extraction output accompanies the transfer.
 4. **Given** a paper, **When** the user chooses Send PDF Only, **Then** a standalone
    PDF attachment is transferred without an extraction requirement.
+5. **Given** a paper without an extraction, **When** the user chooses Send to Zotero
+   and Extract, **Then** the app sends the PDF before running the configured plugin
+   chain. When a plugin succeeds, the same Zotero citation contains both the PDF
+   and the Markdown that plugin produced.
 
 ### User Story 2 - Handle transfer failure (Priority: P1)
 
@@ -34,8 +38,12 @@ The user can see why a transfer failed and continue using the local paper.
 **Acceptance Scenarios**:
 1. **Given** the citation store is unavailable, **When** the user sends a paper,
    **Then** the failure is visible and the local record remains intact.
-2. **Given** a partial transfer failure, **When** the user retries deliberately,
-   **Then** the application reports the new result without duplicating success claims.
+2. **Given** Zotero created the citation but the PDF attachment failed, **When** the
+   user retries after attachment service resumes, **Then** Zotero contains the
+   original citation with exactly one PDF child and no duplicate citation.
+3. **Given** the PDF transfer succeeded, **When** every plugin in the extraction
+   chain fails, **Then** the user sees that extraction failed. The Zotero citation
+   retains its PDF and has no generated Markdown attachment.
 
 ### User Story 3 - Use the user's connector (Priority: P2)
 
@@ -62,8 +70,9 @@ own connector action.
 - **FR-001**: Citation-store writes MUST require an explicit user action.
 - **FR-002**: Capture, extraction, reading, and library operations MUST NOT write to
   the citation store implicitly.
-- **FR-003**: The send action MUST support a paper-only transfer and a transfer that
-  includes requested extraction output.
+- **FR-003**: Send to Zotero MUST transfer the citation and PDF. Send to Zotero
+  and Extract MUST also attach existing extraction Markdown or, if absent, run
+  the configured plugin chain after the send and attach its first successful result.
 - **FR-004**: The send action MUST support Send PDF Only without requiring an
   extraction.
 - **FR-005**: The user MUST be able to target the citation store's selected
@@ -81,7 +90,9 @@ own connector action.
 ### Measurable Outcomes
 - **SC-001**: 0% of capture, extraction, reading, and organization tests create
   implicit citation-store writes.
-- **SC-002**: 95% of successful send tests create the expected citation and attachment.
+- **SC-002**: For every successful Send to Zotero, the destination citation has the
+  paper's PDF. For every successful extraction in Send to Zotero and Extract, that
+  citation also has the corresponding Markdown attachment.
 - **SC-003**: 100% of failed transfer tests preserve the local paper and show the
   failure.
 - **SC-004**: Users complete an explicit send in under 30 seconds in 90% of tests.

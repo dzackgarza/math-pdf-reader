@@ -13,11 +13,12 @@ The user can browse captured papers and quickly narrow the library to unfiled,
 unread, recently added, offline, or needs-recovery papers. The unfiled view is
 presented as Inbox.
 
-**Independent Test**: Seed papers with each state and verify every filter.
+**Independent Test**: For each quick filter, seed both matching and nonmatching
+papers. Compare the displayed paper IDs with the full set expected from the seed.
 
 **Acceptance Scenarios**:
 1. **Given** papers with different states, **When** a quick filter is selected,
-   **Then** only matching papers are shown.
+   **Then** the library shows every matching paper and excludes every nonmatching paper.
 2. **Given** no papers match, **When** a filter is selected, **Then** the empty state
    explains the result without showing unrelated papers.
 3. **Given** a paper is in no collection, **When** the user opens Inbox, **Then** the
@@ -85,8 +86,8 @@ metadata and verify the displayed states.
 ### Measurable Outcomes
 - **SC-001**: Users retrieve a seeded paper using a collection or tag on the first
   attempt at least 90% of the time.
-- **SC-002**: Every quick filter returns only matching papers in 100% of acceptance
-  tests.
+- **SC-002**: For every quick filter, the displayed paper IDs equal the expected set,
+  including when that set is empty.
 - **SC-003**: Users can file a paper and verify its new location in under 20 seconds.
 - **SC-004**: No missing metadata is rendered as a success-shaped placeholder.
 - **SC-005**: 100% of collection-rule fixtures update membership after the relevant
