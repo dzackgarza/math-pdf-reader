@@ -82,3 +82,9 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 - **Firefox keeps its start page in a tab's session history.** A tab opened for a PDF alone still holds one entry before the PDF's.
 
 - **The fixture site sets its session cookie on its pages; its PDFs refuse requests without it.** One native load is one request; an intercepted load adds the capture page's own fetch.
+
+- **`page.goto` leaves without the page's leave prompt.** CDP's `Page.navigate` does not run `beforeunload`, so a reader page with an unsaved note is left at once and the note is lost, which the user's own navigation never allows.
+  To test leaving, navigate from the page (`location.href = …` in `page.evaluate`) or click a link. To leave a reader after writing a note, use its Library button, which settles every save.
+
+- **`page.goto` to the same path with only a new fragment does not load the page.** The page stays and only `hashchange` fires, so a test that expects the reader to open again sees the old page and its old status.
+  Load `about:blank` first.

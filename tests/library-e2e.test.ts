@@ -2353,6 +2353,35 @@ test("a text note deleted in the reader is gone from the PDF after a reload", as
   }
 }, 60_000);
 
+test("leaving the reader page at once after a note is written asks first, and the note is then saved", async () => {
+  const key = await captureCopy("left-at-once", "A note left at once");
+  const dialogs: string[] = [];
+  const answer = (dialog: Dialog) => {
+    dialogs.push(dialog.type());
+    void dialog.dismiss();
+  };
+  page.on("dialog", answer);
+  try {
+    await page.goto(`${bucket.origin}/read/${key}`);
+    await readerLoaded(key);
+    const note = `Written just before leaving ${Date.now()}`;
+    await writeNote(key, note, 200);
+    await page.evaluate(() => {
+      location.href = "/";
+    });
+    await page
+      .waitForFunction(() => window.location.pathname === "/", { timeout: 3000 })
+      .catch(() => undefined);
+    expect(dialogs).toEqual(["beforeunload"]);
+    await leaveReader(key);
+    await page.goto(`${bucket.origin}/read/${key}`);
+    expect(await notesOnFirstPage(key)).toContain(note);
+  } finally {
+    page.off("dialog", answer);
+    await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+  }
+}, 60_000);
+
 test("leaving the reader page while a note is still being saved asks first, and once it is saved leaves at once", async () => {
   await page.goto(`${bucket.origin}/read/lattices`);
   await readerLoaded("lattices");
