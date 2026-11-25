@@ -2274,6 +2274,85 @@ test("a text note written on a page in the reader is saved into the PDF and is t
   expect(await notesOnFirstPage("problems")).toContain(note);
 });
 
+const captureCopy = async (name: string, title: string) => {
+  const form = new FormData();
+  const bytes = new Uint8Array([
+    ...fixture("problem-set.pdf"),
+    ...new TextEncoder().encode(`% ${name}\n`),
+  ]);
+  form.set("pdf", new File([bytes], `${name}.pdf`));
+  form.set("pdf_url", published(`/~author/${name}.pdf`));
+  form.set("title_hint", title);
+  const captured = await fetch(`${bucket.origin}/capture-bytes`, { method: "POST", body: form });
+  expect(captured.status).toBe(200);
+  return CaptureResponseSchema.parse(await captured.json()).key;
+};
+const leaveReader = async (key: string) => {
+  await page.click(readerButton(key, "library"));
+  await page.waitForSelector("nav a");
+};
+const pickNote = async (key: string, down: number, clicks: 1 | 2) => {
+  await page.click(inViewer(key, '[data-epdf-i="annotate-mode"] button'));
+  await page.keyboard.press("Escape");
+  const corner = await firstPageCorner(key);
+  await page.mouse.click(corner.x + 128, corner.y + down + 6, { count: clicks });
+};
+
+test("a text note edited in the reader keeps its new text, and not the old, after a reload", async () => {
+  const key = await captureCopy("edited-note", "A note to edit");
+  try {
+    await page.goto(`${bucket.origin}/read/${key}`);
+    await readerLoaded(key);
+    const before = `Before the edit ${Date.now()}`;
+    await writeNote(key, before, 200);
+    await leaveReader(key);
+
+    await page.goto(`${bucket.origin}/read/${key}`);
+    await readerLoaded(key);
+    expect(await notesOnFirstPage(key)).toContain(before);
+    const after = `After the edit ${Date.now()}`;
+    await pickNote(key, 200, 2);
+    await page.waitForSelector(inViewer(key, '[contenteditable="true"]'), { timeout: 5000 });
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.type(after);
+    await page.keyboard.press("Escape");
+    await shot("reader-note-edited");
+    await leaveReader(key);
+
+    await page.goto(`${bucket.origin}/read/${key}`);
+    const notes = await notesOnFirstPage(key);
+    expect(notes).toContain(after);
+    expect(notes).not.toContain(before);
+  } finally {
+    await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+  }
+}, 60_000);
+
+test("a text note deleted in the reader is gone from the PDF after a reload", async () => {
+  const key = await captureCopy("deleted-note", "A note to delete");
+  try {
+    await page.goto(`${bucket.origin}/read/${key}`);
+    await readerLoaded(key);
+    const note = `To be deleted ${Date.now()}`;
+    await writeNote(key, note, 200);
+    await leaveReader(key);
+
+    await page.goto(`${bucket.origin}/read/${key}`);
+    expect(await notesOnFirstPage(key)).toContain(note);
+    await pickNote(key, 200, 1);
+    await page.keyboard.press("Delete");
+    await shot("reader-note-deleted");
+    await leaveReader(key);
+
+    await page.goto(`${bucket.origin}/read/${key}`);
+    expect(await notesOnFirstPage(key)).not.toContain(note);
+  } finally {
+    await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+  }
+}, 60_000);
+
 test("leaving the reader page while a note is still being saved asks first, and once it is saved leaves at once", async () => {
   await page.goto(`${bucket.origin}/read/lattices`);
   await readerLoaded("lattices");
