@@ -8,11 +8,17 @@
 
 ## Automated checks
 
+The commands below check, in order: the PDF and reader addresses; 404 for unknown
+keys; the copied original URL; a revisit at the recorded page; the launcher's failed
+rebuild; and the release app through its window, failure cases included.
+
 ```bash
-bun test tests/server-capture.test.ts -t "served at its PDF URL|name no stored PDF"
-bun test tests/library-e2e.test.ts -t "reader link button copies the captured PDF URL|reader records the last viewed page"
-just test-desktop        # release app through its window, including the failure cases
-uv run pytest tests/test_launch.py   # launcher freshness and failed rebuild (T016, not yet written)
+bun test tests/server-capture.test.ts -t "served at its PDF URL"
+bun test tests/server-capture.test.ts -t "name no stored PDF"
+bun test tests/library-e2e.test.ts -t "reader link button copies the captured PDF URL"
+bun test tests/library-e2e.test.ts -t "reader records the last viewed page"
+bun test tests/launch.test.ts -t "a failed rebuild keeps its output"
+just test-desktop
 ```
 
 Expected: the reader and PDF addresses answer for a stored key and give 404 otherwise.
@@ -34,5 +40,5 @@ rebuild exits 1 and never starts the installed binary.
    `server/src/reader.rs`), then run `pdf-bucket`. The build terminal shows the error,
    a critical notification appears, and no window opens. Revert the edit.
 5. With the app stopped, hold the port (`python -m http.server 8770 --bind 127.0.0.1`),
-   then start the app. The window shows "The bucket is not serving" and names the
+   then start the app. The window shows "Math PDF Reader is not serving" and names the
    origin and the OS error.

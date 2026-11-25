@@ -44,7 +44,7 @@ The desktop process, its server and its window.
 | State | Condition | Window shows |
 | --- | --- | --- |
 | serving | `start()` returns `Serving` | the library at the origin |
-| start failed | `start()` returns a `StartFailure` | own page: "The bucket is not serving" and the report |
+| start failed | `start()` returns a `StartFailure` | own page: "Math PDF Reader is not serving" and the report |
 | stopped | the server task ends | own page with the stop reason |
 | no own page | failure before the own page loaded | an error dialog |
 

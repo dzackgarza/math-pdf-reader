@@ -95,15 +95,23 @@ an old build and the window never stays blank.
 **Independent Test**: Run the launcher with a failing rebuild, and start the app with
 the port taken and with no web bundle. Each case shows an actionable failure.
 
-- [ ] T011 [US2] Stop the launch when the rebuild fails: message on stderr, critical
+- [X] T011 [US2] Stop the launch when the rebuild fails: message on stderr, critical
   notification, exit 1, installed binary not started, in `scripts/launch` (US2/AC1,
   FR-004, SC-003)
-  - Status: code `scripts/launch:12-16,36-41`; no test runs the launcher. See T016.
-- [ ] T012 [US2] Rebuild before start when the stamp differs from
+  - Evidence: code `scripts/launch:8-12,35-39`; tests `tests/launch.test.ts:188-208`
+    (the build terminal waits for Enter, critical notification, exit 1, no app start),
+    `tests/launch.test.ts:210-236` (the failure stays readable at `/api/app-build` after
+    the terminal closes). Run 2026-11-26: the first passed.
+- [X] T012 [US2] Rebuild before start when the stamp differs from
   `scripts/source-fingerprint` or is absent, and write the stamp last, in
   `scripts/launch` and `scripts/provision.sh` (FR-004: no stale startup)
-  - Status: code `scripts/launch:36-44`, `scripts/provision.sh:14,73`; no test. See T016.
-- [ ] T013 [US2] Show "The bucket is not serving" and the report on the window's own
+  - Evidence: code `scripts/launch:35-42`, `scripts/provision.sh:14,73`; tests
+    `tests/launch.test.ts:160-175` (no app, then a source edit: rebuild, then the new
+    build starts), `tests/launch.test.ts:177-186` (unchanged source: no rebuild),
+    `tests/launch.test.ts:261-276` (the stamp is the hash of the built source),
+    `tests/launch.test.ts:278-285` (a failed build writes no stamp). Run 2026-11-26: all
+    four passed.
+- [ ] T013 [US2] Show "Math PDF Reader is not serving" and the report on the window's own
   page when `start()` fails, in `desktop/src-tauri/src/lib.rs` and
   `desktop/src/index.html` (US2/AC2, FR-004, SC-001, SC-003)
   - Status: code `desktop/src-tauri/src/lib.rs:57-80,279-340`,
@@ -130,7 +138,7 @@ the port taken and with no web bundle. Each case shows an actionable failure.
 
 ## Parallel Opportunities
 
-- T016 (`tests/test_launch.py`) and T017/T019 (`tests/desktop_workflow.py`) touch
+- T016 (`tests/launch.test.ts`) and T017/T019 (`tests/desktop_workflow.py`) touch
   different files.
 - T017 and T019 share `tests/desktop_workflow.py`; do them in sequence.
 
@@ -142,19 +150,18 @@ correct the one wrong remedy (T018) and verify the installed app (T015).
 
 ## Phase 6: Convergence
 
-- [ ] T016 [US2] Add `tests/test_launch.py`, which runs `scripts/launch` with a scratch
-  `HOME` and `XDG_DATA_HOME`. The installed binary is a marker script, and stubs on
-  `PATH` stand in for `kitty`, `just` and `notify-send`. Cover three cases: (a) the
-  stamp is absent and `just provision-for-launch` exits 1; (b) the stamp equals
-  `scripts/source-fingerprint`; (c) the stamp differs and the provision writes the new
-  stamp. Check (a): exit 1, stderr `pdf-bucket: rebuild failed; ...`, a critical
-  notification, and the marker never runs. Check (b): the marker runs with the
-  launcher's arguments and no rebuild. Check (c): the marker runs only after the
-  rebuild. Per US2/AC1, FR-004 and SC-003 (missing).
+- [X] T016 [US2] Run `scripts/launch` itself with a scratch `HOME` and
+  `XDG_DATA_HOME`, a marker binary, and stubs for `kitty`, `just` and `notify-send`.
+  Cover a failed rebuild, a current stamp and a stale stamp. Per US2/AC1, FR-004 and
+  SC-003 (missing).
+  - Evidence: feature 007 shipped this test as `tests/launch.test.ts`.
+    `launcherCheckout` (`tests/launch.test.ts:99-106`) runs the checkout's
+    `scripts/launch` with `tests/fixtures/launch/bin` first on `PATH`. See T011 and T012
+    for the cases and runs.
 - [ ] T017 [US2] Add start-failure cases to `tests/desktop_workflow.py`, in the
   `just test-desktop` namespace. (a) Hold the configured port on 127.0.0.1, then start
-  the release app. The window must not reach `ORIGIN`. Its body must contain "The bucket
-  is not serving", the origin and the OS bind error. (b) Leave `dist/web` out of the
+  the release app. The window must not reach `ORIGIN`. Its body must contain "Math PDF
+  Reader is not serving", the origin and the OS bind error. (b) Leave `dist/web` out of the
   scratch runtime. The body must name the missing `index.html` path and `just provision`.
   Per US2/AC2, FR-004, SC-001 and SC-003 (missing).
 - [ ] T018 [US2] Change the `NoWebBundle` report in `desktop/src-tauri/src/lib.rs:102-106`

@@ -116,7 +116,7 @@ tests/
 **Structure Decision**: Keep the current owners. `desktop/src-tauri/src/lib.rs` owns
 startup and the window's failure page. `scripts/launch` owns build freshness.
 `server/src/reader.rs` owns address derivation. New tests extend
-`tests/desktop_workflow.py`. A new `tests/test_launch.py` exercises the launcher.
+`tests/desktop_workflow.py`. `tests/launch.test.ts` exercises the launcher.
 
 ## Design
 
@@ -133,7 +133,7 @@ startup and the window's failure page. `scripts/launch` owns build freshness.
    that cannot be made, a missing web bundle, a bad port, or a bind or migration error.
 4. The window opens on its own page, `desktop/src/index.html`. After the first load it
    goes to the bucket origin, or to its own page with the percent-encoded report in the
-   fragment. The page shows "The bucket is not serving" and the report.
+   fragment. The page shows "Math PDF Reader is not serving" and the report.
 5. If the server task ends later, `show_failure` takes the window to the same report
    page.
 
@@ -151,7 +151,6 @@ the local PDF address.
   writes the checkout's `dist/web`, but the installed app reads
   `$XDG_DATA_HOME/pdf-bucket-app/dist/web` (`server/src/config.rs:84-86`). Only
   `just provision` writes that copy, so the stated remedy does not repair the failure.
-- No test runs `scripts/launch`.
 - No test opens the window when the bucket cannot serve.
 - The desktop smoke test checks that the window reaches the origin and renders a
   captured PDF in a tab. It does not load or reload the returned reader address in the

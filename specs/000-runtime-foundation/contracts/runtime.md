@@ -20,7 +20,7 @@ origin or to that page with a report.
 | Condition | Window URL | Visible text |
 | --- | --- | --- |
 | serving | `http://127.0.0.1:8770/` | the library |
-| start failed or server stopped | own page, report percent-encoded in the fragment | heading "The bucket is not serving" and the report |
+| start failed or server stopped | own page, report percent-encoded in the fragment | heading "Math PDF Reader is not serving" and the report |
 
 ## Addresses
 
