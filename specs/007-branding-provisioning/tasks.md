@@ -164,16 +164,26 @@ that is not `[X]` maps to a task here.
   FR-005, SC-002, SC-003, SC-004, US2/AC1-AC3 (missing).
   - Evidence: `tests/launch.test.ts`, all three describe blocks; the programs it
     substitutes are in `tests/fixtures/launch`.
-- [ ] T025 Keep the failure of the last rebuild after its terminal closes, and show it in
+- [X] T025 Keep the failure of the last rebuild after its terminal closes, and show it in
   the next window, and mark an app that is already running as stale when its source
   changed: `scripts/launch`, `scripts/provision.sh`, `server/src/app.rs` (`/status`),
   `src/contract/capture.ts`, `src/web/components/StatusBar.tsx`. Today a failed rebuild
   leaves a running old app with no sign. Per FR-004, FR-007, US2/AC2 (partial).
-- [ ] T026 Report the Provisioning State of the app build (current, stale, failed) and of
+  - Evidence: The launcher keeps the rebuild output in rebuild.log and the exit status in
+    rebuild-failure; GET /api/app-build answers failed with both (tests/launch.test.ts
+    "after a failed rebuild's terminal closes"); a running window re-reads it on focus
+    and shows Old build or Rebuild failed in the status bar (tests/library-e2e.test.ts
+    "Settings and the status bar say whether the app build").
+- [X] T026 Report the Provisioning State of the app build (current, stale, failed) and of
   each extension build (provisioned version or none) in the library: add the app build's
   fingerprint to `/status` (`server/src/app.rs:375-397`, `src/contract/capture.ts:126`)
   and show both in `src/web/screens/SettingsScreen.tsx`, which today shows only the
   constant crate version (`SettingsScreen.tsx:218`). Per FR-007, US3/AC2 (partial).
+  - Evidence: Settings shows App build (current, old, failed, not provisioned) from GET
+    /api/app-build and the Chrome and Firefox extension builds, or None
+    (tests/library-e2e.test.ts "Settings and the status bar say whether the app build").
+    The state is a separate endpoint, not a /status field, because installed extensions
+    parse /status with a strict schema.
 - [X] T027 Report a missing extension provisioning in the extension: when `/status`
   gives `null` for the browser, `checkBucket` in `src/extension/bucket-status.ts:66-70`
   treats the build as current and the popup says nothing. Per FR-007, US3/AC2 (partial).

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# The installed `pdf-bucket` command, the launcher entry and the login autostart entry run this
-# script, so no launch can start a build older than the source. `just provision` stamps the hash of
-# the source it built from; a different hash means provision first, without starting the app (this
-# launch starts it). A failed provision stops the launch: the old app is never started.
 set -euo pipefail
 repo="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -19,16 +15,18 @@ rebuild_in_terminal() {
     command -v kitty > /dev/null ||
         fail "kitty is required to show the rebuild output"
     kitty --title "Math PDF Reader - Building" bash -c '
-        set +e
-        repo="$1"
-        just --justfile "$repo/justfile" --working-directory "$repo" provision-for-launch
+        set +e -o pipefail
+        repo="$1" installed="$2"
+        just --justfile "$repo/justfile" --working-directory "$repo" provision-for-launch 2>&1 |
+            tee "$installed/rebuild.log"
         status=$?
         if (( status != 0 )); then
+            printf "%d\n" "$status" > "$installed/rebuild-failure"
             printf "\nRebuild failed (exit %d). Press Enter to close.\n" "$status"
             read -r
         fi
         exit "$status"
-    ' bash "$repo"
+    ' bash "$repo" "$data/pdf-bucket-app"
 }
 
 mkdir -p "$data/pdf-bucket-app"

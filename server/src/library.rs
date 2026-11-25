@@ -530,6 +530,7 @@ pub fn routes() -> Router<Shared> {
         .route("/api/library", get(library))
         .route("/api/preferences", patch(preferences))
         .route("/api/settings", get(settings))
+        .route("/api/app-build", get(crate::app_build::app_build))
         .route(
             "/api/items/{key}/metadata",
             post(metadata).patch(edit_metadata),

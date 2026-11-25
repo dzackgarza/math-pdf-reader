@@ -1,4 +1,4 @@
-import { Archive, BookMarked, HardDrive, Radio } from "lucide-react";
+import { Archive, BookMarked, HardDrive, Radio, TriangleAlert } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { useEffect, useState } from "react";
 import {
@@ -8,6 +8,7 @@ import {
   ZoteroHealthSchema,
 } from "../../contract/capture";
 import type { LibraryPayload } from "../../contract/library";
+import { appBuildSentence, appBuildWarning } from "../appBuild";
 import { onBucketEvent } from "../bucketEvents";
 import type { StatusRead } from "../useBucketStatus";
 
@@ -26,6 +27,28 @@ function CaptureIndicator({ read }: { read: StatusRead }) {
   return (
     <span role="status" aria-label={title} title={title} className={color}>
       <Radio aria-hidden className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+function AppBuildIndicator({ read }: { read: StatusRead }) {
+  if (read.kind !== "read") {
+    return null;
+  }
+  const warning = appBuildWarning(read.status.appBuild);
+  if (warning === null) {
+    return null;
+  }
+  const sentence = appBuildSentence(read.status.appBuild);
+  return (
+    <span
+      role="status"
+      aria-label={sentence}
+      title={sentence}
+      className="flex min-w-0 items-center gap-1.5 text-danger"
+    >
+      <TriangleAlert aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      <span className="truncate">{warning}</span>
     </span>
   );
 }
@@ -126,6 +149,7 @@ export default function StatusBar({
       </span>
       <ExportIndicator />
       <span className="ml-auto flex min-w-0 items-center gap-4">
+        <AppBuildIndicator read={read} />
         <ZoteroIndicator />
         <CaptureIndicator read={read} />
       </span>

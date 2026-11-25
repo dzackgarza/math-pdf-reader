@@ -31,3 +31,7 @@ tauri-plugin-dialog serialize their `Error` with `serialize_str`.
 
 The status bar shows, on hover, whether browser captures can land. A refused or failed
 index export, and an unavailable Zotero, show their reason and what to do in the bar itself.
+A failed storage check answers `/status` with the app's error document, whose message
+carries the operating system's error; Settings shows it in each row that reads `/status`.
+An old app build or a failed rebuild shows in the bar itself (`GET /api/app-build`, the
+provisioning contract of 007).

@@ -8,6 +8,7 @@ import {
   ThemeSchema,
 } from "../../contract/library";
 import { type ActionFailure, type ActionRejection, actionFailure } from "../actionFailure";
+import { appBuildSentence } from "../appBuild";
 import Switch from "../components/Switch";
 import { showInFolder } from "../desktop";
 import {
@@ -69,8 +70,6 @@ function LibraryFolder({
   );
 }
 
-// What the bucket's /status report says for one row: the value once read, a spinner while it is
-// being read, and why it could not be read.
 function Reported({
   read,
   value,
@@ -84,12 +83,16 @@ function Reported({
     case "failed":
       return (
         <span role="alert" className="text-danger">
-          The bucket's status could not be read: {read.message}
+          Math PDF Reader's status could not be read: {read.message}
         </span>
       );
     case "read":
       return value(read.status);
   }
+}
+
+function extensionBuild(version: string | null): string {
+  return version ?? "None: Math PDF Reader offers no build of this extension";
 }
 
 function Keybindings() {
@@ -217,6 +220,15 @@ export default function SettingsScreen({
         </Row>
         <Row label="Version">
           <Reported read={read} value={(status) => status.service.version} />
+        </Row>
+        <Row label="App build">
+          <Reported read={read} value={(status) => appBuildSentence(status.appBuild)} />
+        </Row>
+        <Row label="Chrome extension">
+          <Reported read={read} value={(status) => extensionBuild(status.extensions.chrome)} />
+        </Row>
+        <Row label="Firefox extension">
+          <Reported read={read} value={(status) => extensionBuild(status.extensions.firefox)} />
         </Row>
       </dl>
       <Keybindings />

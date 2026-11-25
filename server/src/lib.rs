@@ -3,6 +3,7 @@
 //! evidence runs.
 pub mod ai;
 pub mod app;
+pub mod app_build;
 pub mod arxiv;
 pub mod config;
 pub mod contract;
