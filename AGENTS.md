@@ -77,11 +77,12 @@ The execution tracker is the GitHub issue tree rooted at
 [#4 Math PDF Reader roadmap](https://github.com/dzackgarza/math-pdf-reader/issues/4): its
 sub-issues are the milestones in delivery order, each with its definition of done and its
 blockers. The plan of record, with the invariants, the Decision Log and the handoff, is a
-card in the agent-memory vault, not a file in this repo.
+card in the agent-memory vault, not a file in this repo. The first command shows the
+roadmap (milestones, invariants, decisions); the second shows the parent feature.
 
 ```bash
-agent-memory plan show PLAN-PDF-BUCKET-ROADMAP     # roadmap: milestones, invariants, decisions
-agent-memory feature show FEATURE-PDF-BUCKET       # parent feature
+agent-memory plan show PLAN-PDF-BUCKET-ROADMAP
+agent-memory feature show FEATURE-PDF-BUCKET
 ```
 
 Read the roadmap before any change. Milestones M1 (capture extension) and M2 (library UI)
@@ -99,8 +100,8 @@ Nothing in this repo is invented. Two kinds of source, handled differently:
   write API addon): import directly, or fork. Cribbing code from them is also fine.
 - **The user's own prior repos** (below): reference implementations. Crib their code into
   this repo because it is already written and debugged, then treat it as this repo's code.
-  Never import them as dependencies, never keep the copies in sync, never treat their
-  decisions as gospel, and never name them in code, comments, docstrings, error text or
+  Do not import them as dependencies or keep the copies in sync. Their decisions are
+  inputs, not rules. Do not name them in code, comments, docstrings, error text or
   user-facing docs: they will not exist when this project is mature. Commit messages are
   the only place their names belong.
 
@@ -142,7 +143,7 @@ to build from scratch.
 When a mockup and a reused component disagree on a label, keep the component's label in
 code and note the mockup term once in the plan's Decision Log.
 
-## Invariants that must always hold
+## Invariants
 
 These constrain every milestone, child plan, and commit. A change that satisfies its task
 but breaks one of these is wrong.
@@ -247,7 +248,7 @@ A positive disposition requires a commit.
 
 Do not resolve an accepted review comment until the code/proof remediation is committed and the reply cites the commit.
 
-Never reply “accepted,” “aligned,” “fixed,” “addressed,” or “will address” to a review thread unless the remediation is already committed.
+Reply “accepted,” “aligned,” “fixed,” “addressed,” or “will address” to a review thread only after the remediation is committed.
 A thread cannot be resolved on intent or future work.
 
 Every substantive review item must receive its visible thread- or surface-local disposition and evidence before resolution.
