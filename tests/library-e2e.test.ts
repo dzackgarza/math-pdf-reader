@@ -30,6 +30,7 @@ import type {
   DocumentManagerPlugin,
   EmbedPdfContainer,
   ScrollPlugin,
+  SearchPlugin,
   SelectionPlugin,
   ViewportPlugin,
   ZoomPlugin,
@@ -37,6 +38,7 @@ import type {
 import { $ } from "bun";
 import puppeteer, {
   type BrowserContext,
+  type ConsoleMessage,
   type Dialog,
   type HTTPRequest,
   type Page,
@@ -1296,6 +1298,71 @@ test("back returns to the place inside the page an outline entry or a search mat
   await showsPage("outlined", 2);
   await scrollSettled("outlined");
   expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
+});
+
+test("a PDF with no outline and no text shows an empty outline and finds nothing, without an error", async () => {
+  const form = new FormData();
+  form.set("pdf", new File([fixture("image-only.pdf")], "image-only.pdf"));
+  form.set("pdf_url", published("/~author/image-only.pdf"));
+  form.set("title_hint", "A scanned page without text");
+  const captured = await fetch(`${bucket.origin}/capture-bytes`, {
+    method: "POST",
+    body: form,
+  });
+  expect(captured.status).toBe(200);
+  const key = CaptureResponseSchema.parse(await captured.json()).key;
+  const errors: string[] = [];
+  const onConsole = (message: ConsoleMessage) => {
+    if (message.type() === "error") {
+      errors.push(message.text());
+    }
+  };
+  page.on("console", onConsole);
+  try {
+    await page.goto(`${bucket.origin}/read/${key}`);
+    await readerLoaded(key);
+    await page.click(inViewer(key, '[data-epdf-i="sidebar-button"] button'));
+    await page.waitForSelector(inViewer(key, '[role="tab"]'));
+    const [, outlineTab] = await page.$$(inViewer(key, '[role="tab"]'));
+    await outlineTab?.click();
+    const outlineEmpty = await page
+      .waitForFunction(
+        (css) => document.querySelector(css)?.shadowRoot?.textContent?.includes("No outline available") === true,
+        { timeout: 5000 },
+        viewerOf(key),
+      )
+      .then(() => true)
+      .catch(() => false);
+    expect(outlineEmpty).toBe(true);
+
+    await page.keyboard.down("Control");
+    await page.keyboard.press("f");
+    await page.keyboard.up("Control");
+    await page.waitForSelector(inViewer(key, '[data-sidebar-id="search-panel"] input[type="text"]'));
+    await page.keyboard.type("lattice");
+    const searched = await page
+      .waitForFunction(
+        async (css) => {
+          const registry = await document.querySelector<EmbedPdfContainer>(css)?.registry;
+          const state = registry?.getPlugin<SearchPlugin>("search")?.provides().getState();
+          return state !== undefined && state.query === "lattice" && !state.loading && { total: state.total };
+        },
+        { timeout: 5000 },
+        viewerOf(key),
+      )
+      .then(async (handle) => await handle.jsonValue())
+      .catch(() => "no finished search");
+    expect(searched).toEqual({ total: 0 });
+    await shot("reader-no-outline-no-text");
+    expect({
+      status: await page.$eval(`${readerOf(key)} [role="status"]`, (element) => element.textContent),
+      alert: await page.$(`${readerOf(key)} [role="alert"]`),
+      errors,
+    }).toEqual({ status: "", alert: null, errors: [] });
+  } finally {
+    page.off("console", onConsole);
+    await fetch(`${bucket.origin}/api/items/${key}`, { method: "DELETE" });
+  }
 });
 
 test("a link in the PDF to another page is a jump that back returns from, to the place it left", async () => {

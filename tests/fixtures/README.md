@@ -18,3 +18,6 @@ suite additionally verifies request method, frame size, and origin boundaries.
 `arxiv-corpus.json` contains titles, authors, and identifiers from the first 20
 results of the arXiv API `cat:math.AG` query, retrieved 2026-11-22. The
 discovery test serves these bibliographic records as a local Atom feed.
+
+`image-only.pdf` is two pages of drawn shapes with no text and no outline, as a scan
+without OCR is. Write it again with `uv run --with reportlab tests/fixtures/image-only.py`.
