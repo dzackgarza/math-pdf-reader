@@ -101,7 +101,7 @@ impl fmt::Display for StartFailure {
             }
             Self::NoWebBundle(page) => write!(
                 formatter,
-                "The web bundle is missing at {}; run `just build-web`.",
+                "Math PDF Reader is missing its library page {}; run `just provision` to install it.",
                 page.display()
             ),
             Self::Port(port) => write!(

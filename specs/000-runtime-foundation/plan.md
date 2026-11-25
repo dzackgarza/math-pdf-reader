@@ -9,12 +9,11 @@
 
 The runtime foundation is the walking skeleton: one desktop process that serves the
 bucket, a window that shows the library and reader tabs, and stable local addresses for
-each stored PDF and its reader page. Most of it exists in the source. The launcher blocks
-an old build. The window shows a report page when the bucket cannot serve. No automated
-test exercises either failure path. The window smoke test does not load or reload a
-reader address. This plan records the existing architecture and the work that remains:
-regression tests for both failure paths, one wrong remedy in a failure message, and a
-reader-address reload step in the desktop smoke test.
+each stored PDF and its reader page. The launcher blocks an old build. The window shows a
+report page when the app cannot serve. This plan records that architecture and the tests
+that exercise it: the launcher's rebuild paths, the window's failure page for a taken
+port, an unmakeable library folder and a missing library page, and a reader address
+loaded and reloaded in the window.
 
 ## Technical Context
 
@@ -145,16 +144,12 @@ original PDF URL is only in `provenance.pdf_url`, embedded in the PDF. The reade
 Copy PDF link copies `provenance.pdf_url`. The reader page's `citation_pdf_url` names
 the local PDF address.
 
-### Gaps found in the source
+### Remedies
 
-- `StartFailure::NoWebBundle` tells the user to run `just build-web`. That recipe
-  writes the checkout's `dist/web`, but the installed app reads
-  `$XDG_DATA_HOME/pdf-bucket-app/dist/web` (`server/src/config.rs:84-86`). Only
-  `just provision` writes that copy, so the stated remedy does not repair the failure.
-- No test opens the window when the bucket cannot serve.
-- The desktop smoke test checks that the window reaches the origin and renders a
-  captured PDF in a tab. It does not load or reload the returned reader address in the
-  window.
+`StartFailure::NoWebBundle` names `just provision`. The installed app reads
+`$XDG_DATA_HOME/pdf-bucket-app/dist/web` (`server/src/config.rs:84-86`), and only
+`just provision` writes that copy. `just build-web` writes the checkout's `dist/web` and
+does not repair the failure.
 
 ## Risks and stop rules
 

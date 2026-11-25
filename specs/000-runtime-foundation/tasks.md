@@ -82,10 +82,12 @@ its reader address.
     `src/web/reader/commands.ts:103-112`; tests `tests/server-capture.test.ts:68,80-85`
     (local addresses while the source is `https://www.math.example.edu/...`),
     `tests/library-e2e.test.ts:1337-1350` (the copied link is the published URL).
-- [ ] T010 [US1] Load the capture's `reader_url` in the desktop window, reload it, and
+- [X] T010 [US1] Load the capture's `reader_url` in the desktop window, reload it, and
   verify that the same paper renders, in `tests/desktop_workflow.py` (SC-002, US1
   independent test)
-  - Status: no desktop test loads or reloads a reader address in the window. See T019.
+  - Evidence: test `tests/desktop_workflow.py:1838`
+    (`test_a_captured_reader_address_draws_its_pdf_in_the_window_and_again_after_reload`).
+    Run 2026-11-26 on a fresh release build: passed. See T019.
 
 ## Phase 4: User Story 2 - Surface startup failure (P1)
 
@@ -111,15 +113,17 @@ the port taken and with no web bundle. Each case shows an actionable failure.
     `tests/launch.test.ts:261-276` (the stamp is the hash of the built source),
     `tests/launch.test.ts:278-285` (a failed build writes no stamp). Run 2026-11-26: all
     four passed.
-- [ ] T013 [US2] Show "Math PDF Reader is not serving" and the report on the window's own
+- [X] T013 [US2] Show "Math PDF Reader is not serving" and the report on the window's own
   page when `start()` fails, in `desktop/src-tauri/src/lib.rs` and
   `desktop/src/index.html` (US2/AC2, FR-004, SC-001, SC-003)
-  - Status: code `desktop/src-tauri/src/lib.rs:57-80,279-340`,
-    `desktop/src/index.html:29-41`; no test starts the app in a failure state. See T017.
-- [ ] T014 [US2] Name, in each `StartFailure` report, the cause and a remedy that
+  - Evidence: code `desktop/src-tauri/src/lib.rs:122-136`, `desktop/src/index.html`;
+    tests `tests/desktop_workflow.py:1472` (port taken, shipped by 007),
+    `tests/desktop_workflow.py:1791` (library folder, shipped by 007),
+    `tests/desktop_workflow.py:1814` (missing library page). See T017.
+- [X] T014 [US2] Name, in each `StartFailure` report, the cause and a remedy that
   repairs it, in `desktop/src-tauri/src/lib.rs` (US2/AC2: actionable)
-  - Status: `NoWebBundle` (`desktop/src-tauri/src/lib.rs:102-106`) names `just build-web`.
-    That recipe does not write the installed bundle. See T018.
+  - Evidence: code `desktop/src-tauri/src/lib.rs:91-118`; `NoWebBundle` now names
+    `just provision` (T018); test `tests/desktop_workflow.py:1814`.
 
 ## Phase 5: Polish and cross-cutting
 
@@ -158,19 +162,31 @@ correct the one wrong remedy (T018) and verify the installed app (T015).
     `launcherCheckout` (`tests/launch.test.ts:99-106`) runs the checkout's
     `scripts/launch` with `tests/fixtures/launch/bin` first on `PATH`. See T011 and T012
     for the cases and runs.
-- [ ] T017 [US2] Add start-failure cases to `tests/desktop_workflow.py`, in the
+- [X] T017 [US2] Add start-failure cases to `tests/desktop_workflow.py`, in the
   `just test-desktop` namespace. (a) Hold the configured port on 127.0.0.1, then start
   the release app. The window must not reach `ORIGIN`. Its body must contain "Math PDF
   Reader is not serving", the origin and the OS bind error. (b) Leave `dist/web` out of the
   scratch runtime. The body must name the missing `index.html` path and `just provision`.
   Per US2/AC2, FR-004, SC-001 and SC-003 (missing).
-- [ ] T018 [US2] Change the `NoWebBundle` report in `desktop/src-tauri/src/lib.rs:102-106`
+  - Evidence: (a) feature 007 shipped
+    `test_a_port_already_taken_shows_math_pdf_reader_is_not_serving_in_its_window`
+    (`tests/desktop_workflow.py:1472`); run 2026-11-26 on a fresh release build: passed.
+    (b) `test_a_missing_library_page_shows_math_pdf_reader_is_not_serving_and_names_just_provision`
+    (`tests/desktop_workflow.py:1814`), committed red in e41b6c8: the report said
+    "run `just build-web`".
+- [X] T018 [US2] Change the `NoWebBundle` report in `desktop/src-tauri/src/lib.rs:102-106`
   to name `just provision`. The installed app reads
   `$XDG_DATA_HOME/pdf-bucket-app/dist/web` (`server/src/config.rs:84-86`). Only
   `scripts/provision.sh` writes that copy; `just build-web` writes the checkout's
   `dist/web`. Commit the failing T017(b) first. Per US2/AC2 and T014 (contradicts).
-- [ ] T019 [US1] Make `capture` in `tests/desktop_workflow.py` return the capture
+  - Evidence: the report reads "Math PDF Reader is missing its library page <path>; run
+    `just provision` to install it."; T017(b) passed on the rebuilt release app.
+- [X] T019 [US1] Make `capture` in `tests/desktop_workflow.py` return the capture
   response. Add a test that navigates the window to its `reader_url` and waits for the
   key's reader to draw. Then reload the window and wait again. Check that
   `reader_url` is on `ORIGIN` and differs from `provenance.pdf_url`. Per SC-002, US1/AC2,
   US1/AC3 and T010 (partial).
+  - Evidence: `post_capture` (`tests/desktop_workflow.py:151`) returns the response and
+    `capture` uses it. The test at `tests/desktop_workflow.py:1838` checks the published
+    URL in `provenance.pdf_url`, `reader_url` as `ORIGIN/read/<key>`, and the drawn PDF
+    of the key before and after a reload. Run 2026-11-26: passed.

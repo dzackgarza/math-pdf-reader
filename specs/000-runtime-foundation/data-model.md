@@ -54,6 +54,6 @@ The desktop process, its server and its window.
 | --- | --- | --- |
 | `Envrc` | `direnv export json` fails or prints bad JSON | the direnv output (for example `direnv allow`) |
 | `Root` | the data root cannot be made | the path and the OS error |
-| `NoWebBundle` | `<installed>/dist/web/index.html` is missing | `just provision` (the current text says `just build-web`; see T018 in tasks.md) |
+| `NoWebBundle` | `<installed>/dist/web/index.html` is missing | `just provision` |
 | `Port` | the configured port exceeds 65535 | the configured value |
 | `Bind` | bind or legacy-layout migration fails | the origin and the OS or migration error |

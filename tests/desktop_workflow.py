@@ -36,6 +36,7 @@ from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 import pikepdf
 import pymupdf
@@ -147,9 +148,9 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         yield driver
 
 
-def capture(driver: webdriver.WebKitGTK, fixture: str) -> str:
-    """Capture a fixture PDF as the browser extension does; return its key after the
-    capture's reader event has opened and drawn its PDF."""
+def post_capture(fixture: str) -> dict[str, Script]:
+    """Capture a fixture PDF as the browser extension does, from its published URL; return the
+    capture response."""
     output = subprocess.run(
         [
             "curl",
@@ -168,8 +169,16 @@ def capture(driver: webdriver.WebKitGTK, fixture: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
-    key = json.loads(output)["key"]
-    assert isinstance(key, str), output
+    response = json.loads(output)
+    assert isinstance(response, dict), output
+    return response
+
+
+def capture(driver: webdriver.WebKitGTK, fixture: str) -> str:
+    """Capture a fixture PDF as the browser extension does; return its key after the
+    capture's reader event has opened and drawn its PDF."""
+    key = post_capture(fixture)["key"]
+    assert isinstance(key, str), key
     try:
         WebDriverWait(driver, 30).until(
             lambda d: d.find_elements(
@@ -1823,4 +1832,30 @@ def test_a_missing_library_page_shows_math_pdf_reader_is_not_serving_and_names_j
         report = driver.find_element(By.ID, "report").text
         assert str(page) in report, report
         assert "`just provision`" in report, report
-        assert "bucket" not in report.lower(), report
+        assert "bucket" not in report.replace(str(page), "").lower(), report
+
+
+def test_a_captured_reader_address_draws_its_pdf_in_the_window_and_again_after_reload(
+    app: webdriver.WebKitGTK,
+) -> None:
+    """The capture answers with the local reader address, derived from the key; the published
+    URL stays only in the provenance."""
+    fixture = "arxiv-2609.21174v1.pdf"
+    response = post_capture(fixture)
+    key = response["key"]
+    assert isinstance(key, str), response
+    provenance = response["provenance"]
+    assert isinstance(provenance, dict), response
+    assert provenance["pdf_url"] == f"https://www.math.example.edu/~author/{fixture}"
+    assert response["reader_url"] == f"{ORIGIN}/read/{quote(key, safe='')}", response
+
+    address = f"{ORIGIN}/read/{quote(key, safe='')}"
+    viewer = f"[data-reader-key={json.dumps(key)}] embedpdf-container"
+    app.get(address)
+    WebDriverWait(app, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, viewer))
+    Reader(app, key).loaded()
+    app.refresh()
+    WebDriverWait(app, 30).until(lambda d: d.find_elements(By.CSS_SELECTOR, viewer))
+    Reader(app, key).loaded()
+
+    assert app.current_url.startswith(address)
