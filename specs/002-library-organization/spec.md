@@ -11,7 +11,7 @@
 
 The user can browse captured papers and quickly narrow the library to unfiled,
 unread, recently added, offline, or needs-recovery papers. The unfiled view is
-presented as Inbox.
+named Unfiled.
 
 **Independent Test**: For each quick filter, seed both matching and nonmatching
 papers. Compare the displayed paper IDs with the full set expected from the seed.
@@ -21,7 +21,7 @@ papers. Compare the displayed paper IDs with the full set expected from the seed
    **Then** the library shows every matching paper and excludes every nonmatching paper.
 2. **Given** no papers match, **When** a filter is selected, **Then** the empty state
    explains the result without showing unrelated papers.
-3. **Given** a paper is in no collection, **When** the user opens Inbox, **Then** the
+3. **Given** a paper is in no collection, **When** the user opens Unfiled, **Then** the
    paper is included.
 
 ### User Story 2 - File and tag papers (Priority: P1)
@@ -66,7 +66,7 @@ metadata and verify the displayed states.
 - **FR-001**: The library MUST display captured papers with stable identity and
   reading state.
 - **FR-002**: The library MUST provide unfiled, unread, recent, offline, and
-  needs-recovery filters, with unfiled papers represented by Inbox.
+  needs-recovery filters, with unfiled papers shown by the Unfiled filter.
 - **FR-003**: Users MUST be able to create nested collections and file papers in them.
 - **FR-004**: Users MUST be able to add, remove, and filter by tags.
 - **FR-005**: Users MUST be able to define and use saved searches.

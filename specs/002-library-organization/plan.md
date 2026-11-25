@@ -146,7 +146,6 @@ Status column shows Cached or Offline.
 
 | Requirement | Gap | Class |
 | --- | --- | --- |
-| FR-002, US1 | The unfiled filter is labelled "Unfiled", not "Inbox" | contradicts (owner decision, see Decision Log) |
 | US1/AC2, SC-002 | An empty quick filter shows the generic "Empty" | partial |
 | FR-007, US3/AC1 | The inspector shows no SHA-256, no file path and no cache state | partial |
 | FR-008, SC-004, US3/AC2 | Missing authors, year and abstract are hidden, not marked missing | partial |
@@ -163,9 +162,7 @@ Status column shows Cached or Offline.
 ## Decision Log
 
 - 2026-09-24 (user, #17, roadmap Decision Log): "Inbox is named Unfiled", and a reading app
-  shows no permanent explanatory prose. The spec (2026-11-22) says the unfiled view "is
-  presented as Inbox". The code follows the user decision. The repo owner must decide
-  which one holds; T032 waits for that answer.
+  shows no permanent explanatory prose. The spec follows this decision.
 - 2026-09-23 (M2, roadmap Decision Log): the mockups' "Smart Collection" is a saved search.
   FR-006 "collections support rules" is met by smart collections.
 - Mockup term "Inbox" is noted here once, as AGENTS.md requires for a label mismatch.

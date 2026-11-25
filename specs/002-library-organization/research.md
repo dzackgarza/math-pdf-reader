@@ -18,10 +18,10 @@
 - **Alternatives considered**: rules as a field of `Collection`. Not built; it would duplicate
   the saved-search mechanism.
 
-## R3. The Inbox label
+## R3. The unfiled filter's label
 
-- **Decision**: open. The code uses "Unfiled" per the user decision of 2026-09-24 (#17). The
-  spec says "Inbox". See the plan's Decision Log.
+- **Decision**: "Unfiled", Zotero's term, per the user decision of 2026-09-24 (#17) in the
+  roadmap Decision Log and the mockup table in AGENTS.md.
 
 ## R4. Tags as values, not entities
 

@@ -41,10 +41,9 @@ the displayed IDs with the expected set.
 - [ ] T007 [US1] [FR-002] Show exactly the papers captured in the last 7 days for Added This Week, in `src/web/librarySelectors.ts` (US1/AC1)
   Code: `src/web/librarySelectors.ts:69-72`. No test drives this filter. See T034.
 - [X] T008 [US1] [FR-002] Include a paper in no collection in the unfiled view (US1/AC3)
-  Evidence: `src/web/librarySelectors.ts:60-61`; `tests/library-e2e.test.ts:2941` (Unfiled keys are `item.collections.length === 0`). The view is labelled "Unfiled"; see T011.
+  Evidence: `src/web/librarySelectors.ts:60-61`; `tests/library-e2e.test.ts:2941` (Unfiled keys are `item.collections.length === 0`). The view is labelled "Unfiled".
 - [ ] T009 [US1] Explain an empty quick filter in the table's empty state, in `src/web/components/EmptyTable.tsx` (US1/AC2). See T033.
 - [ ] T010 [US1] [SC-002] Prove for every quick filter that the displayed IDs equal the expected set, including the empty set. See T034.
-- [ ] T011 [US1] [FR-002] Present the unfiled view as Inbox. See T032.
 
 ## Phase 3: User Story 2 - File and tag papers (Priority: P1)
 
@@ -101,7 +100,6 @@ verifies it in under 20 seconds) measure people. No automated task covers them.
 
 ## Phase 7: Convergence
 
-- [ ] T032 Name the unfiled quick filter "Inbox" in `FIXED_VIEW_NAMES` in `src/web/librarySelectors.ts`, and its route in `QUICK_FILTERS`, with the e2e test at `tests/library-e2e.test.ts:2941` updated, per FR-002, US1 and US1/AC3 (contradicts). Blocked: the user decision of 2026-09-24 (#17) in the roadmap Decision Log says "Inbox is named Unfiled". The repo owner decides which one holds; if Unfiled holds, the spec changes instead.
 - [ ] T033 Explain an empty quick filter or tag, collection or saved-search view in `src/web/components/EmptyTable.tsx` and its caller at `src/web/Workspace.tsx:422`: name the view and state that no PDF matches it, in place of the generic "Empty", per US1/AC2 (partial). Test first in `tests/library-e2e.test.ts` with a filter that matches nothing.
 - [ ] T034 Add one e2e test in `tests/library-e2e.test.ts` that seeds its own items and, for each of Unread, Unfiled, Added This Week, Offline and Needs Re-fetch, asserts the row keys equal the expected set, once with a non-empty set and once with the empty set (Needs Re-fetch empty shows "Every PDF is in the library."), per SC-002, FR-002 and US1/AC1 (partial). The existing test covers only Unread and Unfiled with non-empty sets.
 - [ ] T035 Show the original SHA-256 from `item.provenance.original_sha256` in the inspector's details in `src/web/components/InspectorPanel.tsx`, with an e2e test that reads it, per FR-007 and US3/AC1 (missing).
