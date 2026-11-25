@@ -44,3 +44,41 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 
 - **Every test file makes its folders with `mkdtempSync(join(tmpdir(), ...))` and removes none of them.** The preload sets `TMPDIR` to one folder per test process (`pdf-bucket-test-run-<pid>-*`), removes it after the last test file, and at start removes the folders of runs whose process is gone.
   Screenshots meant for review go under `SCREENSHOT_ROOT` from the preload, the system temporary folder, so they stay after the run.
+
+# Traps in the capture suite
+
+`tests/capture-e2e.test.ts` drives both built extensions with Puppeteer: Chromium through `--load-extension`, Firefox through WebDriver BiDi `webExtension.install`, against the fixture site and a server over a scratch store.
+
+- **Firefox gives each installed extension a random internal UUID for its `moz-extension://` origin.** The suite pins it with a pref so that it can open the extension's own pages.
+
+- **Chromium prints nothing about a launch that times out waiting for the DevTools endpoint.** The suite copies Chromium's own output into the test log.
+
+- **WebDriver BiDi scripts a `moz-extension` document only when it is privileged, and refuses to screenshot, resize or activate a privileged top-level document.** In Firefox the capture page photographs its own tab through the extension API, at the default viewport only, and the extension API activates tabs in both browsers.
+
+- **Chrome's service worker registers its capture rules asynchronously after install.** A navigation before the rules are in force reaches the browser's own viewer; wait for the rules, then navigate.
+
+- **`URL.origin` is `"null"` for the non-special `chrome-extension:` scheme.** Build the origin from `protocol` and `host`.
+
+- **The server announces every capture, new or existing, on the event stream.** Subscribe before the capture starts; the subscription resolves only once the server has registered it, so an announcement cannot be missed.
+
+- **Firefox reports no navigation events for `moz-extension` documents, and WebDriver BiDi cannot navigate a tab into one.** Poll the document's own location, bounded by the case timeout. To open the toolbar popup as a tab in Firefox, a page script goes to the web-accessible capture page with no PDF URL (it captures nothing), then within the extension's origin. After a tab navigates into a `moz-extension` document, BiDi loses track of it: `isClosed()` stays false after it closes, and the browser refuses to evaluate in it.
+
+- **In Chrome a top-level PDF navigation becomes a download.** The tab stays on the page that holds the link, the browser saves the response to the downloads folder, and the server reads it there; the extension removes the download only once the server answers that it holds the PDF. For a failed capture the background opens a capture page tab. Chrome closes a tab opened only for a download before its page can be attached, so watch the tab count. In Firefox the tab passes through the capture page and keeps the navigation's own response.
+
+- **Chrome's Page for a tab keeps the frame Chromium swapped out for the extension page.** Nothing can be evaluated there even while the tab is open; `isClosed()` reports a closed tab.
+
+- **Firefox refuses synthesized input in privileged documents.** A DOM click flips a checkbox and fires its change event in both browsers.
+
+- **A publisher's "Download PDF" button is a link with the `download` attribute.** It starts a download, not a navigation, and is not intercepted.
+
+- **Chromium replaces an iframe's frame when it commits the capture page; Firefox keeps one frame and reports no URL change into it.** A handle to a frame that still shows the PDF URL detaches in Chromium. Chromium's own PDF viewer adds a nested frame.
+
+- **The capture page is web-accessible, so a web page can frame it with any PDF URL.** Only a frame the extension itself sent there gets its PDF captured.
+
+- **Chrome stops a service worker whose `fetch()` response takes more than 30 s.** A slow store can hold the server's answer past that; the emptied downloads folder shows that a later worker delivered the capture. A page load or a followed PDF link starts a worker.
+
+- **Invariant 4 counts a GET response as a PDF beyond `application/pdf`.** A generic or missing type on a `.pdf` path, the legacy PDF type, and whitespace before the parameters all count.
+
+- **Firefox keeps its start page in a tab's session history.** A tab opened for a PDF alone still holds one entry before the PDF's.
+
+- **The fixture site sets its session cookie on its pages; its PDFs refuse requests without it.** One native load is one request; an intercepted load adds the capture page's own fetch.
