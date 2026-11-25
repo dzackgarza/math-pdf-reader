@@ -831,3 +831,60 @@ test("a send of a source Zotero cannot identify gives Zotero's reason and record
   expect(zotero.items.size).toBe(0);
   await expectPaperKept(bucket, "lattices", before);
 }, 30_000);
+
+test("a send leaves a paper in the library when a Keep offline collection holds it, directly or through a subcollection, and removes any other paper", async () => {
+  const { bucket } = await stubbedBucket();
+  await capture(bucket, "direct", lectureNotes);
+  await capture(bucket, "nested", problemSet);
+  await capture(bucket, "outside", join(import.meta.dir, "fixtures/long-notes.pdf"));
+  const offline = await (
+    await json(bucket, "POST", "/api/collections", { name: "Offline shelf" })
+  ).json();
+  const shelf = await (
+    await json(bucket, "POST", "/api/collections", {
+      name: "Lower shelf",
+      parentId: offline.id,
+    })
+  ).json();
+  const other = await (
+    await json(bucket, "POST", "/api/collections", { name: "Elsewhere" })
+  ).json();
+  expect(
+    (await json(bucket, "PATCH", `/api/collections/${offline.id}`, { keepOffline: true }))
+      .status,
+  ).toBe(200);
+  for (const [key, collection] of [
+    ["direct", offline.id],
+    ["nested", shelf.id],
+    ["outside", other.id],
+  ]) {
+    await json(bucket, "POST", "/api/bulk/collections", {
+      keys: [key],
+      add: [collection],
+      remove: [],
+    });
+  }
+
+  const kept = [];
+  for (const key of ["direct", "nested", "outside"]) {
+    const response = await send(bucket, key);
+    expect(response.status).toBe(200);
+    kept.push([key, SendResponseSchema.parse(await response.json()).kept]);
+  }
+
+  expect(kept).toEqual([
+    ["direct", true],
+    ["nested", true],
+    ["outside", false],
+  ]);
+  const payload = LibraryPayloadSchema.parse(
+    await (await bucket.request("/api/library")).json(),
+  );
+  expect(payload.items.map((candidate) => candidate.id).sort()).toEqual([
+    "direct",
+    "nested",
+  ]);
+  expect((await bucket.request("/read/direct")).status).toBe(200);
+  expect((await bucket.request("/read/nested")).status).toBe(200);
+  expect((await bucket.request("/read/outside")).status).toBe(404);
+}, 30_000);
