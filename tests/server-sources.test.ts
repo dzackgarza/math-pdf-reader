@@ -2377,6 +2377,70 @@ test("discovery with the production configuration keeps its arXiv API requests 3
   }
 }, 60_000);
 
+test("discovery lists every ranked arXiv candidate, and the user can promote a low-scoring one", async () => {
+  served.set("/notes/arbiter.pdf", lectureNotes);
+  served.set("/pdf/2611.70001v2", problemSet);
+  const config = loadAppConfig(CONFIG_PATH);
+  const localArxiv = {
+    ...config,
+    arxiv: {
+      api_url: at("/api/query"),
+      abs_url: at("/abs/"),
+      pdf_url: at("/pdf/"),
+      e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
+    },
+  };
+  const { root, request, capture, item } = await bucket(null, localArxiv);
+  await capture(lectureNotes, "arbiter", at("/notes/arbiter.pdf"));
+  await recordMetadata(root, "arbiter", "pdf-metadata", {
+    title: "Lattices in hyperbolic space",
+    authors: ["Someone Else"],
+    year: 2024,
+  });
+  searchedEntries = [
+    {
+      id: "http://arxiv.org/abs/2611.70001v2",
+      title: "Lattices in Hyperbolic Space",
+      authors: ["An Author"],
+    },
+    {
+      id: "http://arxiv.org/abs/2611.70002v1",
+      title: "Reflective lattices in hyperbolic space and their roots",
+      authors: ["Other Person"],
+    },
+  ];
+  try {
+    const search = ArxivSearchResponseSchema.parse(
+      await (await request("POST", "/api/items/arbiter/arxiv")).json(),
+    );
+    // No author agrees, so neither candidate is a confident match; both are still offered,
+    // ranked, each with its score and the reasons for it.
+    expect(search.matches.map((match) => match.id)).toEqual([
+      "2611.70001",
+      "2611.70002",
+    ]);
+    expect(search.matches[0].score).toBeGreaterThan(search.matches[1].score);
+    expect(search.matches[0].score).toBeLessThan(0.8);
+    for (const match of search.matches) {
+      expect(match.reasons.length).toBeGreaterThan(0);
+    }
+
+    const promoted = await request(
+      "POST",
+      "/api/items/arbiter/arxiv/promote",
+      search.matches[0],
+    );
+    expect(promoted.status, await promoted.clone().text()).toBe(200);
+    const result = ArxivPromotionResponseSchema.parse(await promoted.json());
+    expect((await item(result.key)).provenance.pdf_url).toBe(
+      "https://arxiv.org/pdf/2611.70001v2",
+    );
+  } finally {
+    searchedEntries = undefined;
+  }
+});
+
 test("known arXiv papers rank first among the accepted results for their captured metadata", async () => {
   expect(discoveryCorpus.length).toBeGreaterThanOrEqual(20);
   const config = loadAppConfig(CONFIG_PATH);
