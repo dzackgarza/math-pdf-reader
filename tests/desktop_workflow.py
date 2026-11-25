@@ -1508,14 +1508,75 @@ def test_keys_reach_the_reader_opened_from_the_library_before_any_click_in_it(
     )
 
 
+def port_holders(port: int) -> str:
+    """Every socket on `port` in the test's network namespace (/proc/net/tcp and tcp6), with its
+    TCP state, the processes whose descriptors hold it, whether each is in the test's network
+    namespace, and each one's chain of parents."""
+
+    def command(pid: str) -> str:
+        try:
+            return (
+                Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode()
+            )
+        except OSError as error:
+            return f"(unreadable: {error})"
+
+    def parents(pid: str) -> list[str]:
+        chain = []
+        while pid not in ("0", "1"):
+            try:
+                pid = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1]
+            except OSError:
+                break
+            chain.append(f"{pid} {command(pid)}")
+        return chain
+
+    own = os.readlink("/proc/self/ns/net")
+    sockets = [
+        (table, fields[1], fields[3], fields[9])
+        for table in ("tcp", "tcp6")
+        for fields in (
+            line.split()
+            for line in Path(f"/proc/net/{table}").read_text().splitlines()[1:]
+        )
+        if int(fields[1].rsplit(":", 1)[1], 16) == port
+    ]
+    if not sockets:
+        return f"no socket on port {port} in the test's namespace {own}"
+    owners: dict[str, list[str]] = {inode: [] for *_, inode in sockets}
+    for process in Path("/proc").iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            links = {os.readlink(fd) for fd in (process / "fd").iterdir()}
+            namespace = os.readlink(process / "ns/net")
+        except OSError:
+            continue
+        for inode, held in owners.items():
+            if f"socket:[{inode}]" in links:
+                held.append(
+                    f"pid {process.name} ({command(process.name)}), "
+                    f"{'in' if namespace == own else 'outside'} the test's namespace, "
+                    f"parents {parents(process.name)}"
+                )
+    return "; ".join(
+        f"{table} {local} state {state} inode {inode} held by {owners[inode] or 'no readable process'}"
+        for table, local, state, inode in sockets
+    )
+
+
 def test_a_port_already_taken_shows_math_pdf_reader_is_not_serving_in_its_window(
     data_home: Path, tmp_path: Path
 ) -> None:
     """The window names Math PDF Reader, and a start failure names it too."""
-    with (
-        socket.create_server(("127.0.0.1", int(ORIGIN.rsplit(":", 1)[1]))),
-        ExitStack() as stack,
-    ):
+    port = int(ORIGIN.rsplit(":", 1)[1])
+    try:
+        taken = socket.create_server(("127.0.0.1", port))
+    except OSError as error:
+        pytest.fail(
+            f"the test could not take port {port}: {error}; {port_holders(port)}"
+        )
+    with taken, ExitStack() as stack:
         driver = open_window(stack, data_home, tmp_path)
         WebDriverWait(driver, 60).until(
             lambda d: d.execute_script(
