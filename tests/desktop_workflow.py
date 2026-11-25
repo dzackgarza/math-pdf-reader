@@ -303,7 +303,7 @@ class Reader:
             viewer: V !== null, tab: document.querySelector('[data-tab-key={json.dumps(self.key)}]')?.dataset.state,
             boxes: S ? [...S.querySelectorAll('{PAGE_BOX}')].map((e) => {{ const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }}) : null,
             images: S ? [...S.querySelectorAll('{PAGE_BOX} img')].map((image) => ({{complete: image.complete, width: image.naturalWidth, src: image.src.slice(0, 40)}})) : null,
-            errors: window.__errors, pens: window.__pens?.slice(0, 6), moves: window.__moves?.slice(-20), body: document.body.innerText.slice(0, 1000),
+            errors: window.__errors, pens: window.__pens?.slice(0, 6), moves: window.__moves?.slice(-40), body: document.body.innerText.slice(0, 1000),
           }};
           if (V === null) {{ done(page); return; }}
           page.visibility = document.visibilityState;
@@ -459,10 +459,14 @@ class Reader:
         """
         page = self.page_number()
         self.run(
-            "if (window.__moves === undefined) { window.__moves = []; const v = P('viewport'), t0 = performance.now(), at = () => Math.round(performance.now() - t0);"
-            " v.onViewportResize(({ metrics: m }) => window.__moves.push(['resize', at(), m.scrollTop, m.clientWidth, m.scrollHeight]));"
+            "if (window.__moves === undefined) { window.__moves = []; const v = P('viewport'), t0 = performance.now(), at = () => Math.round(performance.now() - t0); window.__at = at;"
+            " v.onViewportResize(({ metrics: m }) => window.__moves.push(['resize', at(), m.scrollTop, m.clientWidth, m.clientHeight, m.scrollHeight]));"
             " v.onScrollChange(({ scrollMetrics: m }) => window.__moves.push(['scroll', at(), m.scrollTop]));"
-            " P('zoom').onZoomChange((e) => window.__moves.push(['zoom', at(), e.newZoom])); } window.__moves = [];"
+            " P('scroll').onPageChangeState(({ state: s }) => window.__moves.push(['change', at(), s.isChanging, s.fromPage, s.targetPage]));"
+            " P('zoom').onZoomChange((e) => window.__moves.push(['zoom', at(), e.newZoom])); window.__requested = new Set(); }"
+            f" if (!window.__requested.has({json.dumps(self.key)})) {{ window.__requested.add({json.dumps(self.key)});"
+            f" V.__registry.getPlugin('viewport').onScrollRequest({json.dumps(self.key)}, ({{ x, y, behavior }}) => window.__moves.push(['request', window.__at(), Math.round(x), Math.round(y), behavior])); }}"
+            " window.__moves = [];"
         )
         heights = [
             self.number(
@@ -479,6 +483,7 @@ class Reader:
                 or heights[-1] == heights[-2]
             )
         )
+        self.run("window.__moves.push(['click', window.__at()])")
         self.click(
             "[data-epdf-i='bucket-page-controls'] button[aria-label='Next Page']"
         )
