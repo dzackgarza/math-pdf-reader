@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   symlinkSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -835,7 +836,8 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
     "lattices.pdf",
     at("/notes/lecture-notes.pdf"),
   );
-  // The app trashed the PDF of a key it recorded as removed, and stopped before its filing went.
+  // The app trashed the document directory of a key it recorded as removed, and stopped before
+  // its filing went.
   writeOrganization(root, {
     version: 2,
     collections: [],
@@ -867,7 +869,7 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
       RemovedKeysSchema.parse({ version: 1, keys: [lattices.key] }),
     ),
   );
-  unlinkSync(join(root, "lattices", "lattices.pdf"));
+  rmSync(join(root, "lattices"), { recursive: true });
   const app = await serve(
     root,
     join(temporaryDirectory("export"), "index.json"),
