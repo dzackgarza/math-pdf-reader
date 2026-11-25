@@ -2,8 +2,6 @@ import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 import type { ActionFailure } from "../actionFailure";
 import FailureText from "./FailureText";
 
-// A message at the window's corner: why a call failed, what a call that succeeded could not do,
-// or what a call did.
 export type ToastMessage =
   | { kind: "failure"; failure: ActionFailure }
   | { kind: "error"; message: string }
@@ -25,16 +23,18 @@ function Body({ toast }: { toast: ToastMessage }) {
 
 export default function Toast({
   toast,
+  besideInspector,
   onDismiss,
 }: {
   toast: ToastMessage;
+  besideInspector: boolean;
   onDismiss: () => void;
 }) {
   const alert = toast.kind !== "notice" && toast.kind !== "progress";
   return (
     <div
       role={alert ? "alert" : "status"}
-      className="fixed right-5 bottom-12 z-50 flex max-h-[60vh] max-w-md items-start gap-2 overflow-y-auto rounded-lg bg-toast px-4 py-3 text-sm text-white shadow-xl"
+      className={`absolute right-5 bottom-5 left-5 z-50 flex max-h-[60vh] w-fit max-w-md items-start gap-2 overflow-y-auto rounded-lg bg-toast px-4 py-3 text-sm text-white shadow-xl ${besideInspector ? "max-xl:right-[23.25rem]" : ""}`}
     >
       {toast.kind === "progress" ? (
         <LoaderCircle

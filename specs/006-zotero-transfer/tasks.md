@@ -263,9 +263,12 @@ last.
   Evidence: red in 880dfb9 (each answer lacked `target`); `tests/server-send.test.ts:604`,
   `:626`, `:643`, `:662`, `:674` and `:727` pass, 23 of 23 in the file; `target_of` at
   `server/src/send.rs:255`.
-- [ ] T032 Keep the inspector's Open and Send to Zotero buttons usable while a send's
+- [X] T032 Keep the inspector's Open and Send to Zotero buttons usable while a send's
   message shows. After Send to Zotero and Extract fails in every plugin, the message at the
   window's lower right covers the inspector's footer, so a click on Open or Send reaches the
   message. Per FR-006 (failures are visible), US2, and the send controls of US1. First commit a
   failing test in `tests/library-e2e.test.ts`: with the message shown, the point at the
   middle of each button hits that button.
+  Evidence: red in 4222c79 (expected true, received false); with the message in the library
+  pane, `tests/library-e2e.test.ts` "each send control sends its way" passes at 1400 px and
+  1024 px wide; screenshots `send-extract-failed-inspector-usable-1400.png` and `-1024.png`.

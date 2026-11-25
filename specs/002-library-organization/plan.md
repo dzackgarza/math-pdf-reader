@@ -142,6 +142,33 @@ the PDF URL's site as a link, the capture date and the file size. `Sources` show
 URL with its last check, the capture lineage, mirrors with Add mirror, and Verify. The table's
 Status column shows Cached or Offline.
 
+### Window state
+
+`src/web/Workspace.tsx` holds the library window's state once the library has loaded: the
+sidebar, the screen that the address names, the inspector of the selected PDF, the status
+bar, and the dialogs and palettes. The panels only draw that state.
+
+- The table shows the items of the view that the address names. A screen with no table, or
+  an address that names a deleted collection or saved search, has no view.
+- When a read of the library fails after the first one, the window keeps what it shows and
+  says that the data is old. Files in the library folder that the store cannot read are
+  listed by name with the reason; all other items still show.
+- The theme is the root element's `data-theme`; `index.css` resolves each colour from it.
+- Each dialog opens with new fields from its request, not from the last dialog.
+- An empty note draft is removed, so an item with no stored draft has an empty one.
+- Each key that the window acts on comes from the current payload's items; an unknown key is
+  an error.
+- A new PDF's Retrieve metadata runs after its capture or import answers. The library then
+  shows the title it found, or says what it could not do (start Zotero, identify an item).
+- A row among the checked rows acts for all checked rows; another row acts only for itself.
+  The menu of an item that left the library (deleted in another window) closes.
+- A PDF's tab offers its item's menu and shows and runs its extraction, from the current
+  library, plugins and runs.
+- A message (failure, shortfall, progress or notice) shows at the lower left of the library
+  pane, never over the sidebar or the inspector. When the inspector overlays the pane on a
+  narrow window, the message stops at the inspector's edge, so Open and Send to Zotero stay
+  usable while it shows.
+
 ## Gaps against the spec
 
 | Requirement | Gap | Class |

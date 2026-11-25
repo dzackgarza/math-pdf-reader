@@ -1,6 +1,3 @@
-// The library window once the library has loaded: the sidebar, the screen the address names,
-// the details of the selected PDF, the status bar, and the dialogs and palettes over them.
-// Workspace holds the window's state; the panels below it draw it.
 import type { Table } from "@tanstack/react-table";
 import { AlertTriangle } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,8 +70,6 @@ import type { LibraryApi } from "./useLibraryApi";
 import { useLibraryShortcuts } from "./useLibraryShortcuts";
 import { resetColumnLayout, useLibraryTable } from "./useLibraryTable";
 
-// The view whose items the table shows on this screen, or null when the screen has no table (or
-// names a collection or saved search that no longer exists).
 function tableView(payload: LibraryPayload, screen: Screen): LibraryView | null {
   if (screen.kind === "library") {
     return screen.view;
@@ -86,7 +81,6 @@ function tableView(payload: LibraryPayload, screen: Screen): LibraryView | null 
   return null;
 }
 
-// The smart collection being edited: a new one (id null) or a saved search.
 type SmartEditor = {
   key: number;
   id: string | null;
@@ -94,7 +88,6 @@ type SmartEditor = {
   initial: SmartCollectionDraft;
 };
 
-// A read of the library after the first one failed: the window keeps what it shows and says so.
 function StaleNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <p
@@ -112,8 +105,6 @@ function StaleNotice({ message, onRetry }: { message: string; onRetry: () => voi
   );
 }
 
-// Files in the library folder the store cannot read as bucket PDFs: every other item is listed,
-// and these are named with the reason.
 function UnreadableNotice({ files }: { files: LibraryPayload["unreadable"] }) {
   return (
     <section
@@ -200,7 +191,6 @@ export default function Workspace({
   initialLayout,
 }: WorkspaceProps) {
   const [, navigate] = useLocation();
-  // index.css resolves every colour from the root's data-theme.
   const { theme } = payload.preferences;
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -208,7 +198,6 @@ export default function Workspace({
   const [search, setSearch] = useState<AdvancedSearchSettings>(defaultSearchSettings);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // Each dialog opened is a new one: its fields start from its request, not from the last dialog.
   const dialogsOpened = useRef(0);
   const [nameRequest, setNameRequest] = useState<{
     key: number;
@@ -224,12 +213,10 @@ export default function Workspace({
   const [sendAttempts, setSendAttempt] = useKeyedAttempts<SendAttempt>();
   const [extractionAttempts, setExtractionAttempt] = useKeyedAttempts<ExtractionAttempt>();
   const [noteDrafts, setNoteDraft] = useKeyedAttempts<string>();
-  // An item with no draft stored has an empty one: an emptied draft is removed.
   const noteDraftOf = (key: string): string => {
     const text = noteDrafts.get(key);
     return text === undefined ? "" : text;
   };
-  // Keys whose sources are being verified, and lost PDFs being rebuilt.
   const [verifying, setVerifying] = useKeyedAttempts<true>();
   const [rebuilding, setRebuilding] = useKeyedAttempts<true>();
   const [layout, setLayout] = useState<LibraryLayout>(initialLayout);
@@ -257,8 +244,6 @@ export default function Workspace({
     [api, tabs.closeReader, navigate, fail],
   );
 
-  // A new PDF's Retrieve metadata runs after its capture or import answered: the library shows
-  // the title it gave, or says what it could not do (start Zotero, no item identified).
   useEffect(() => {
     return onBucketEvent("metadata", (event) => {
       const { key, outcome } = MetadataEventSchema.parse(JSON.parse(event.data));
@@ -296,7 +281,6 @@ export default function Workspace({
   );
   const knownTags = [...new Set(payload.items.flatMap((item) => item.tags))].sort();
 
-  // Every key the window acts on comes from this payload's items.
   const itemById = (key: string) => {
     const item = payload.items.find((candidate) => candidate.id === key);
     if (item === undefined) {
@@ -308,7 +292,6 @@ export default function Workspace({
   const readerHref = (key: string) => new URL(readerPath(key), window.location.origin).href;
   const reveal = showInFolder();
   const deselect = () => setSelectedId(null);
-  // Runs an action outside the page; a failure shows as a toast.
   const attempt = (action: Promise<void>): void => run(context, action);
   const send = (key: string, way: SendWay) =>
     sendToZotero(context, key, way, (sending) => setSendAttempt(key, sending));
@@ -345,7 +328,6 @@ export default function Workspace({
       selected === undefined ? null : () => itemMenuActions(context, selected, deselect).delete(),
   });
 
-  // The menu of an item that has left the library (deleted in another window) closes.
   const rowMenu = (key: string, leading: ReactNode = null) => {
     const item = payload.items.find((candidate) => candidate.id === key);
     if (item === undefined) {
@@ -361,7 +343,6 @@ export default function Workspace({
           open: () => openReader(key),
           openInBrowser: () => attempt(openInBrowser(readerHref(key))),
           retrieveMetadata: actions.retrieveMetadata,
-          // A row among the checked rows acts for all of them; any other row, for itself.
           guessMetadata: () => {
             const keys = selectedKeys.includes(key) ? selectedKeys : [key];
             guessMetadata(context, keys.map(itemById));
@@ -377,12 +358,9 @@ export default function Workspace({
       />
     );
   };
-  // A PDF's tab offers its item's menu too, as this render's library has it.
   const setItemMenu = tabs.setItemMenu;
   useEffect(() => setItemMenu(rowMenu));
   useEffect(() => () => setItemMenu(null), [setItemMenu]);
-  // A PDF's tab shows its item's extraction and runs one; the view is given again when the items,
-  // the plugins or a run change.
   const setExtractionView = tabs.setExtractionView;
   useEffect(() => {
     setExtractionView((key) => {
@@ -470,7 +448,7 @@ export default function Workspace({
       {payload.unreadable.length > 0 && <UnreadableNotice files={payload.unreadable} />}
       <div className="flex min-h-0 flex-1">
         <Sidebar pdfCount={payload.items.length} onNewCollection={newCollection} />
-        <main className="flex min-w-0 flex-1 flex-col bg-panel">
+        <main className="relative flex min-w-0 flex-1 flex-col bg-panel">
           {searchable && (
             <TopBar
               ref={searchField}
@@ -542,6 +520,13 @@ export default function Workspace({
               onFailure={fail}
               preferences={payload.preferences}
               onPreferences={(update) => updatePreferences(context, update)}
+            />
+          )}
+          {toast !== null && (
+            <Toast
+              toast={toast}
+              besideInspector={selected !== undefined && searchable}
+              onDismiss={() => setToast(null)}
             />
           )}
         </main>
@@ -626,7 +611,6 @@ export default function Workspace({
       {confirmRequest !== null && (
         <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />
       )}
-      {toast !== null && <Toast toast={toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }
