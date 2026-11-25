@@ -2,7 +2,7 @@
 
 | Spec entity | Code today | Fields | Gap |
 | --- | --- | --- | --- |
-| Reader Manager | EmbedPDF DocumentManagerPlugin in the one `PDFViewer` (`src/web/reader/Reader.tsx`), with `newHost()` state (`src/web/reader/readerHost.ts`) | manager: `documentOrder`, `activeDocumentId`, per-document zoom and scroll; host: `held`, `bookmarks`, `focus`, `parked`, `moving` | `host.focus` is a second active key (D1) |
+| Reader Manager | EmbedPDF DocumentManagerPlugin in the one `PDFViewer` (`src/web/reader/Reader.tsx`), with `newHost()` state (`src/web/reader/readerHost.ts`) | manager: `documentOrder`, `activeDocumentId`, per-document zoom and scroll; host: `held`, `bookmarks`, `focus`, `parked`, `moving` | none |
 | Workspace Tab | `TabEntry` in `ReaderProjection {tabs, active}` | key, title, state (open, loading, failed, asleep) | built from manager plus host maps |
 | Reading Record | `ReadingSchema` (`src/contract/library.ts:138`), written by `PUT /api/items/<key>/reading` | `unread`, or `viewed` with page, pages, viewedAt | no zoom; no record of open tabs |
 | PDF Revision | the stored PDF; its SHA-256 ETag; `X-Pdf-Edition` | bytes, entity tag, provenance | none |

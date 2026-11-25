@@ -27,8 +27,7 @@ Under FR-003 they display what the reader reports and hold no document lifecycle
 ## `ReaderProjection` (reported through `onProjection`)
 
 `{ tabs: TabEntry[], active: string | null }`. `tabs` follows the manager's
-`getDocumentOrder()` plus held and sleeping entries. `active` must equal the manager's
-active document once D1 is applied; now it is `host.focus`.
+`getDocumentOrder()` plus held and sleeping entries. `active` is the shown tab (`host.focus`).
 
 ## HTTP used by the reader
 

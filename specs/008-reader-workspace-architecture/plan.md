@@ -49,12 +49,11 @@ instance per window.
 
 | Rule (Constitution 5.0.0) | Status |
 | --- | --- |
-| Application owns wiring only; EmbedPDF renders | Pass: one `PDFViewer`; no own renderer. The app-owned sleep, history and tab row are wiring around upstream gaps; [research.md](research.md) puts each to the owner. |
+| Application owns wiring only; EmbedPDF renders | Pass: one `PDFViewer`; no own renderer. The app-owned sleep, navigation history and tab row are wiring around features EmbedPDF 2.15.1 does not have. |
 | Stable local URL for every PDF and reader page | Pass for `/read/<key>`. Partial in tab mode: the library window address does not follow the reader (FR-006). |
 | Failing focused test first; provision before a user-visible change counts | Applies to every convergence task. |
 
-No violation needs a Complexity Tracking entry. The open owner decisions are D1 to D6 in
-[research.md](research.md).
+No violation needs a Complexity Tracking entry.
 
 ## Project Structure
 
@@ -88,7 +87,7 @@ tests/
 
 **Structure Decision**: Keep the current owners. `Reader.tsx` with `documents.ts` is the
 per-window manager wrapper around EmbedPDF's DocumentManagerPlugin. `tabs.tsx` displays.
-No new module is added before the owner decides D1 to D6.
+No new module is added.
 
 ## Current Architecture
 
@@ -132,20 +131,16 @@ No new module is added before the owner decides D1 to D6.
 - **Acceptance**: Each PDF shows its own page and zoom after every switch.
 - **Commit boundary**: The test; a fix only if it fails.
 
-### Make the tab row a projection of manager state
+### Prove that the tab row and the reader agree
 
-- **Obligation**: FR-003, US2/AC2, SC-002.
-- **Preconditions**: Owner decision D1.
-- **Change**: Derive the active tab from `getActiveDocumentId()`; keep loading and
-  sleeping tabs as decorated entries keyed by document id.
-- **Acceptance**: A test opens from the library and from a tab, and the tab row, the
-  manager and the library agree on the active document and page.
+- **Obligation**: US2/AC2, SC-002.
+- **Change**: A test opens from the library and from a tab, and the selected tab, the
+  shown PDF and its page agree.
 
 ### Make the address follow the reader
 
 - **Obligation**: FR-006, FR-009.
-- **Preconditions**: Owner decision D4.
-- **Change**: Pass `onPage` in `tabs.tsx` and write the chosen address form.
+- **Change**: Pass `onPage` in `tabs.tsx` and write `/read/<key>#page=N` (research.md).
 
 ### Restore tabs and zoom after reload
 
@@ -159,9 +154,8 @@ No new module is added before the owner decides D1 to D6.
 
 ## Risks / Recovery / Stop Rules
 
-- An EmbedPDF upgrade can add suspend, view state or scoped shortcuts. Recheck D2, D3 and
-  D6 at each upgrade and delete the app part that upstream replaces.
-- Stop for the owner on D1 to D6 only. All other tasks are clear.
+- An EmbedPDF upgrade can add suspend, view state or scoped shortcuts. At each upgrade,
+  delete the app part that upstream replaces.
 
 ## Decision Log
 

@@ -37,11 +37,8 @@ behaviour through its real path are both named below it.
 - [ ] T008 [US2] Check in the T004 test that a Library round trip keeps each reader's
   page and zoom, per US2/AC1 and the edge case "a library view may be visible while a
   reader remains loaded"
-- [ ] T009 [US2] Derive the tab row's active entry from the manager's active document in
-  `src/web/reader/Reader.tsx` and `src/web/tabs.tsx`, per FR-003, SC-002
 - [ ] T010 [US2] Add an end-to-end test that activates a PDF from the library and from
-  its tab and checks that the tab row, the manager and the library agree on the active
-  document and page, per US2/AC2, SC-002
+  its tab and checks that the selected tab, the shown PDF and its page agree, per US2/AC2, SC-002
 - [X] T011 [US2] Settle the save before a reader closes and keep the reading record
   apart from the reader, per US2/AC3, FR-008 and the edge case "closing a reader must not
   delete the paper or its reading record"
@@ -51,9 +48,6 @@ behaviour through its real path are both named below it.
   - Evidence: `src/web/reader/main.tsx:38-49`. Test `tests/library-e2e.test.ts:1110` (`:1163-1170`).
 - [ ] T013 [US2] Make the library window address follow the shown reader and its page in
   `src/web/tabs.tsx`, per FR-006 (tab mode)
-- [ ] T014 [US2] Put navigation history under the manager in
-  `src/web/reader/documentStorage.ts`, `src/web/reader/positions.ts` and
-  `src/web/reader/commands.ts`, per FR-002 (navigation)
 
 ## Phase 4: User Story 3 - Persist reader work (P3)
 
@@ -77,16 +71,12 @@ behaviour through its real path are both named below it.
 ## Dependencies
 
 - T008 and T007 extend T004.
-- T009 needs owner decision D1; T010 tests it.
-- T013 needs D4. T014 needs D2.
 
 ## Phase 5: Convergence
 
 - [ ] T019 Add an end-to-end test in `tests/library-e2e.test.ts` that opens two awake PDFs, sets page 3 at 150% in one and page 5 at 80% in the other, switches A, B, Library, A, B, and checks each page and zoom with `showsPage` and `zoomOf`, per US1/AC1, US1/AC2, US2/AC1, FR-005, SC-001 (partial). The code relies on EmbedPDF per-document state; no test switches between two awake PDFs.
-- [ ] T020 Derive `ReaderProjection.active` from `documents.getActiveDocumentId()` in `src/web/reader/Reader.tsx:99-119` and drop `host.focus` (`src/web/reader/readerHost.ts:109`, `src/web/reader/documents.ts:193`, `:225`), keeping loading and sleeping tabs as entries keyed by document id, per FR-003, SC-002 (contradicts). Blocked on owner decision D1.
-- [ ] T021 Add an end-to-end test in `tests/library-e2e.test.ts` that opens a PDF from the library row, then shows a second by its tab, and checks that the selected tab, `getActiveDocumentId()` and the shown page agree after each step, per US2/AC2, SC-002 (missing).
-- [ ] T022 Pass `onPage` from `src/web/tabs.tsx` to `Reader` and write the shown reader's address and page into the library window with `history.replaceState`, restoring the library route when the Library tab is shown, with a test in `tests/library-e2e.test.ts`, per FR-006 (partial). Blocked on owner decision D4.
-- [ ] T023 Move `Positions` and the `host.moving` flag from `src/web/reader/documentStorage.ts:70`, `src/web/reader/positions.ts:51`, `:87` and `src/web/reader/viewer.ts:505` into an EmbedPDF plugin registered on the one viewer, keeping tests `tests/library-e2e.test.ts:1110`, `:1178`, `:1266` green, per FR-002 (contradicts). Blocked on owner decision D2.
+- [ ] T021 Add an end-to-end test in `tests/library-e2e.test.ts` that opens a PDF from the library row, then shows a second by its tab, and checks that the selected tab, the shown PDF and its page agree after each step, per US2/AC2, SC-002 (missing).
+- [ ] T022 Pass `onPage` from `src/web/tabs.tsx` to `Reader` and write the shown reader's address and page into the library window with `history.replaceState`, restoring the library route when the Library tab is shown, with a test in `tests/library-e2e.test.ts`, per FR-006 (partial).
 - [ ] T024 Add `zoom` to `ReadingSchema` and `ReadingRequestSchema` in `src/contract/library.ts:138-156`, store it in `server/src/library.rs` `reading`, send it from `src/web/reader/documentStorage.ts:266-282`, and open at it in `src/web/reader/viewer.ts:59`, with an API test in `tests/library-api.test.ts` and a reload test in `tests/library-e2e.test.ts`, per FR-008, FR-009, US3/AC3 and the Key Entity Reading Record "page, zoom" (partial).
 - [ ] T025 Record the library window's open tab keys, their order and the shown tab, and reopen them after a window reload in `src/web/tabs.tsx` and `src/web/reader/documents.ts`, with a reload test in `tests/library-e2e.test.ts`, per FR-009 and US3/AC3 (missing). A reload of the library window now shows no reader tabs.
 - [ ] T026 Time each switch in the T019 test from the tab selection to `showsPage` and fail above 2 s, writing the times to the test log, per SC-005 (missing).
