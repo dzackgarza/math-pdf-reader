@@ -215,7 +215,7 @@ and repository QC.
 - [ ] T062 Start the app through `scripts/launch`, verify on port 8770 that arXiv search shows the 0.80 threshold, explicit promotion replaces the PDF under its existing key, filing and reading state remain, and arXiv source extraction produces its authoritative artifact per T040, T048, T057, and the constitution Development Workflow (missing)
   - On port 8770, replacement of a disposable linked pair using the real arXiv PDF 1706.03762v7 retained its key, tag and reading position. A repeat returned the same item. The installed extractor produced Markdown and the source archive. Fresh discovery from the installed app returned HTTP 429 from arXiv. The fixture-backed browser test covers discovery through replacement.
 - [X] T063 Notify the index exporter when an extraction is placed, so the export carries the extraction's `sourceKind` and `authoritative` instead of a stale record, proven by a test that fails before the fix and passes after per FR-008, FR-011, and the plan Archive Contract (missing; found by T062)
-- [ ] T064 Neutralize the `\input`/`\include` targets an arXiv source package does not ship before `latexpand` flattens it, so a paper whose source pulls in a system package (for example `\input{xy}` for xypic) converts instead of failing per the plan Archive Contract conversion-failure path (partial; found by T062)
+- [X] T064 Neutralize the `\input`/`\include` targets an arXiv source package does not ship before `latexpand` flattens it, so a paper whose source pulls in a system package (for example `\input{xy}` for xypic) converts instead of failing per the plan Archive Contract conversion-failure path (partial; found by T062)
 
 ## Phase 10: Convergence
 

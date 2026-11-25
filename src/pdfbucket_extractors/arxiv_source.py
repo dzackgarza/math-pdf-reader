@@ -3,7 +3,8 @@
 The arXiv id comes from the PDF URL embedded in the stored PDF. The source package (`/e-print/<id>`)
 is a tar archive, or one gzipped `.tex` file. Its main file is the one with `\\documentclass`
 that no other file pulls in. `latexpand` (texlive-extra-utils) inlines every `\\input`/`\\include`
-and the `.bbl` bibliography and drops comments, so a paper strewn across many files is one
+of a file in the package and the `.bbl` bibliography, and drops comments; an input of an
+installed macro package stays as written, so a paper strewn across many files is one
 document; `pandoc` reads it, applies the paper's own macros, and writes Markdown with citations
 as `[@key]` and `$...$` math. LaTeX that pandoc cannot interpret is dropped, not passed through
 as raw TeX, which keeps the Markdown readable. The flattened source stays in
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import gzip
 import io
+import os
 import re
 import subprocess
 import tarfile
@@ -72,8 +74,8 @@ def main_file(source: Path) -> Path:
     return max(unincluded, key=lambda path: len(texts[path]))
 
 
-def run(command: list[str], cwd: Path) -> bytes:
-    done = subprocess.run(command, cwd=cwd, capture_output=True, check=False)
+def run(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> bytes:
+    done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, check=False)
     if done.returncode != 0:
         raise ArxivSourceError(f"{command[0]} exited {done.returncode}: {done.stderr.decode(errors='replace').strip()}")
     return done.stdout
@@ -100,7 +102,11 @@ def flatten(main: Path) -> str:
     bibliography = main.with_suffix(".bbl")
     if bibliography.exists():
         command += ["--expand-bbl", bibliography.name]
-    return decode(run([*command, main.name], main.parent))
+    # TEXINPUTS without a trailing colon confines kpsewhich, and so latexpand, to the main
+    # file's directory (Kpathsea manual, "Default expansion"). An input of a file that the
+    # package does not ship, such as xypic's `xy`, stays as written instead of inlining the
+    # installed macro package.
+    return decode(run([*command, main.name], main.parent, {**os.environ, "TEXINPUTS": "."}))
 
 
 def markdown(flattened: Path) -> str:
