@@ -45,6 +45,7 @@ import puppeteer, {
 } from "puppeteer-core";
 import { z } from "zod";
 import { CaptureResponseSchema } from "../src/contract/capture";
+import { recordTiming } from "./timings";
 import {
   CONFIG_PATH,
   loadAppConfig,
@@ -1535,6 +1536,9 @@ test("two open PDFs keep their own page and zoom through switches between them a
   await switchTo("reading");
   await shot("tabs-switched");
   console.info("reader switch timing", switches);
+  for (const { to, milliseconds } of switches) {
+    recordTiming("library-e2e", "tab switch to page shown", milliseconds, { key: to });
+  }
   for (const { milliseconds } of switches) {
     expect(milliseconds).toBeLessThan(2000);
   }
@@ -2655,6 +2659,48 @@ const recordedPageOf = async (key: string) => {
   const item = (await libraryPayload()).items.find((candidate) => candidate.id === key);
   return item?.reading.status === "viewed" ? item.reading.page : null;
 };
+
+test("a reader address with a page shows that page in under 5 s", async () => {
+  await page.goto("about:blank");
+  const started = performance.now();
+  await page.goto(`${bucket.origin}/read/notes#page=6`);
+  await readerLoaded("notes");
+  await showsPage("notes", 6);
+  const milliseconds = performance.now() - started;
+  console.info("reader page from address timing", { milliseconds });
+  recordTiming("library-e2e", "reader address to page shown", milliseconds, { key: "notes", page: 6 });
+  expect(milliseconds).toBeLessThan(5000);
+});
+
+test("the reader page shows no provenance or mirrors, and the viewer fills its width", async () => {
+  await page.goto(`${bucket.origin}/read/lattices`);
+  await readerLoaded("lattices");
+  const item = (await libraryPayload()).items.find((candidate) => candidate.id === "lattices");
+  if (item === undefined) {
+    throw new Error("the library holds no lattices");
+  }
+  const shown = await page.evaluate(() => document.body.innerText);
+  const widths = await page.evaluate(
+    (reader, viewer) => ({
+      window: document.documentElement.clientWidth,
+      reader: document.querySelector(reader)?.getBoundingClientRect().width ?? 0,
+      viewer: document.querySelector(viewer)?.getBoundingClientRect().width ?? 0,
+    }),
+    readerOf("lattices"),
+    viewerOf("lattices"),
+  );
+  expect({
+    pdfUrl: shown.includes(item.provenance.pdf_url),
+    sha256: shown.includes(item.provenance.original_sha256),
+    mirrors: /mirror|provenance|SHA-?256/i.test(shown),
+    widths,
+  }).toEqual({
+    pdfUrl: false,
+    sha256: false,
+    mirrors: false,
+    widths: { window: widths.window, reader: widths.window, viewer: widths.window },
+  });
+});
 
 test("the page in the address wins over the recorded reading position, on open and on reload", async () => {
   await markViewed("reading", 3, 10);
