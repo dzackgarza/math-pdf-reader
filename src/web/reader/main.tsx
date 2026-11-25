@@ -7,6 +7,7 @@ import { onBucketEvent } from "../bucketEvents";
 import styles from "../index.css?inline";
 import { dropKeptTabs, keepTabs, keptTabs, reloaded } from "../windowTabs";
 import { Reader } from "./Reader";
+import type { PageAsked } from "./readerHost";
 
 const root = document.getElementById("reader");
 if (root === null) {
@@ -41,7 +42,10 @@ function showReader(container: HTMLElement): void {
     tag.setAttribute("content", outcome.title);
   });
 
-  const hashPage = /^#page=([1-9][0-9]*)$/.exec(window.location.hash);
+  const hash = window.location.hash;
+  const hashPage = /^#page=([1-9][0-9]*)$/.exec(hash);
+  const asked: PageAsked | undefined =
+    hashPage !== null ? Number(hashPage[1]) : hash === "" ? undefined : { fragment: hash };
 
   createRoot(container).render(
     <StrictMode>
@@ -49,7 +53,7 @@ function showReader(container: HTMLElement): void {
         shown
         inTab={false}
         onControl={(control) =>
-          control.open(key, document.title, hashPage === null ? undefined : Number(hashPage[1]))
+          control.open(key, document.title, asked)
         }
         onPage={(_, page) => window.history.replaceState(null, "", `#page=${page}`)}
       />

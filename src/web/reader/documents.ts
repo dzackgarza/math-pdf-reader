@@ -18,6 +18,7 @@ import type {
   Capabilities,
   Held,
   OpenAt,
+  PageAsked,
   ReaderControl,
   ReaderHost,
   ReaderProjection,
@@ -183,7 +184,7 @@ export function useDocuments(context: Context) {
   );
 
   const open = useCallback(
-    (key: string, title: string, page?: number) => {
+    (key: string, title: string, at?: PageAsked) => {
       host.titles.set(key, title);
       if (host.held.has(key)) {
         activate(key);
@@ -194,9 +195,11 @@ export function useDocuments(context: Context) {
       const openAt: OpenAt =
         bookmark !== undefined && bookmark.position !== null
           ? { position: bookmark.position }
-          : page !== undefined
-            ? { page }
-            : null;
+          : at === undefined
+            ? null
+            : typeof at === "number"
+              ? { page: at }
+              : at;
       const loading: Extract<Held, { status: "loading" }> = {
         status: "loading",
         openAt,

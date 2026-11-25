@@ -117,3 +117,7 @@ jumped between.
 ## Leaving the page
 
 A page or zoom change is recorded after a 1 s pause. When the page unloads (`pagehide`), each open PDF sends its waiting record at once, as a `keepalive` request, so a reload or a navigation made in that second does not lose the change.
+
+## Opening page
+
+A PDF opens at its bookmark's exact position, else at the page the address or the caller names, else at its reading record, else at page 1. A page past the PDF's last page, or an address fragment that names no page, opens page 1 instead: the reader's status names the page asked for and the page count (FR-007), and page 1 is recorded at once.

@@ -40,11 +40,26 @@ const NIGHT_PAGES = 'div[style*="transform-origin"][style*="background-color: rg
 const LINE_STEP = 40;
 const PAGE_SHARE = 0.9;
 
-function startPage(openAt: { page: number } | null, item: BucketItem): number {
-  if (openAt !== null) {
-    return openAt.page;
+function startPage(
+  openAt: { page: number } | { fragment: string } | null,
+  item: BucketItem,
+  totalPages: number,
+): { page: number; problem: string | null } {
+  if (openAt !== null && "fragment" in openAt) {
+    return {
+      page: 1,
+      problem: `${openAt.fragment} names no page of this PDF. The reader shows page 1.`,
+    };
   }
-  return item.reading.status === "viewed" ? item.reading.page : 1;
+  const page =
+    openAt !== null ? openAt.page : item.reading.status === "viewed" ? item.reading.page : 1;
+  if (page > totalPages) {
+    return {
+      page: 1,
+      problem: `Page ${page} is not in this PDF, which has ${totalPages} pages. The reader shows page 1.`,
+    };
+  }
+  return { page, problem: null };
 }
 
 const DEFAULT_TOOL: Command = {
@@ -351,25 +366,27 @@ function laidOut(context: ViewerContext, documentId: string, totalPages: number)
     storage.opened(openAt.position.pageNumber, totalPages, openAt.position.zoom);
     context.restoreOnceSized(documentId, openAt.position);
   } else {
-    const page = startPage(openAt, item);
+    const { page, problem } = startPage(openAt, item, totalPages);
     const recorded = item.reading.status === "viewed" ? item.reading.zoom : undefined;
     const zoom =
       recorded ?? host.caps.zoom.forDocument(documentId).getState().zoomLevel;
     storage.opened(page, totalPages, zoom);
-    if (page <= totalPages) {
-      if (recorded === undefined) {
-        context.scrollToStart(documentId, page);
-      } else {
-        context.restoreOnceSized(documentId, {
-          pageNumber: page,
-          x: 0,
-          y: 0,
-          zoom: viewerZoom(recorded),
-        });
-      }
+    if (problem !== null) {
+      storage.show({ text: problem, failed: true });
+      storage.recordNow();
+    }
+    if (recorded === undefined) {
+      context.scrollToStart(documentId, page);
+    } else {
+      context.restoreOnceSized(documentId, {
+        pageNumber: page,
+        x: 0,
+        y: 0,
+        zoom: viewerZoom(recorded),
+      });
     }
   }
-  storage.session.start(storage.recordedPage, context.isShown(documentId));
+  storage.session.start(storage.page, context.isShown(documentId));
 }
 
 function isPosition(openAt: OpenAt): openAt is { position: Position } {

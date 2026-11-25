@@ -266,6 +266,13 @@ export class DocumentStorage {
     this.pendingRecord = setTimeout(() => this.sendRecord(false), RECORD_PAUSE_MS);
   }
 
+  recordNow(): void {
+    if (this.pendingRecord !== null) {
+      clearTimeout(this.pendingRecord);
+    }
+    this.sendRecord(false);
+  }
+
   leaving(): void {
     if (this.pendingRecord === null) {
       return;

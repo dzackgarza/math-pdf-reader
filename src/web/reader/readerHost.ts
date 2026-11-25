@@ -19,7 +19,7 @@ export type TabEntry = { key: string; title: string; asleep: boolean };
 export type ReaderProjection = { tabs: TabEntry[]; active: string | null };
 
 export type ReaderControl = {
-  open: (key: string, title: string, page?: number) => void;
+  open: (key: string, title: string, at?: PageAsked) => void;
   activate: (key: string) => void;
   close: (key: string) => Promise<void>;
   discard: (key: string) => void;
@@ -55,7 +55,9 @@ export function plugin<
   return found.provides() as ReturnType<T["provides"]>;
 }
 
-export type OpenAt = { position: Position } | { page: number } | null;
+export type PageAsked = number | { fragment: string };
+
+export type OpenAt = { position: Position } | { page: number } | { fragment: string } | null;
 
 export type Bookmark = { title: string; position: Position | null; index: number };
 

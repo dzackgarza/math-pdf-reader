@@ -2496,6 +2496,7 @@ test("the page in the address wins over the recorded reading position, on open a
 test("a page outside the PDF, or a fragment that names no page, says so and opens and records page 1", async () => {
   for (const fragment of ["#page=99", "#page=abc"]) {
     await markViewed("reading", 4, 10);
+    await page.goto("about:blank");
     await page.goto(`${bucket.origin}/read/reading${fragment}`);
     await readerLoaded("reading");
     const status = `${readerOf("reading")} [role="status"]`;
