@@ -146,3 +146,20 @@ def test_a_source_in_an_eight_bit_encoding_is_read_in_that_encoding(arxiv: tuple
 
     assert done.returncode == 0, done.stderr
     assert "Pages 1–2 of a Windows-1252 paper." in (output / "extraction.md").read_text()
+
+
+def test_an_input_of_a_file_the_package_does_not_ship_is_left_to_tex(arxiv: tuple[str, dict[str, bytes]], tmp_path: Path) -> None:
+    origin, packages = arxiv
+    source = "\\documentclass{article}\n\\input{xy}\n\\xyoption{all}\n\\begin{document}\n\\input{intro}\nA diagram follows.\n\\end{document}\n"
+    packages["2301.00004"] = tar_of({"main.tex": source, "intro.tex": INTRO})
+    output = tmp_path / "out"
+
+    done = extract(stored(tmp_path, "https://arxiv.org/pdf/2301.00004"), output, origin)
+
+    assert done.returncode == 0, done.stderr
+    markdown = (output / "extraction.md").read_text()
+    assert "# Intro" in markdown
+    assert "A diagram follows." in markdown
+    flattened = (output / "artifacts" / "source.tex").read_text()
+    assert "\\input{intro}" not in flattened
+    assert "\\input{xy}" in flattened
