@@ -2464,6 +2464,22 @@ test("the reader records a change of zoom with the page shown, and opens again a
   expect(await zoomOf("reading")).toBe(1.5);
 });
 
+test("a page change made just before the window leaves is recorded", async () => {
+  await page.goto(`${bucket.origin}/read/reading`);
+  await readerLoaded("reading");
+  await goToPage("reading", 7);
+  await page.goto(`${bucket.origin}/`);
+  const recordedPage = async () => {
+    const item = (await libraryPayload()).items.find((candidate) => candidate.id === "reading");
+    return item?.reading.status === "viewed" ? item.reading.page : null;
+  };
+  const deadline = Date.now() + 3000;
+  while ((await recordedPage()) !== 7 && Date.now() < deadline) {
+    await new Promise((settled) => setTimeout(settled, 200));
+  }
+  expect(await recordedPage()).toBe(7);
+});
+
 test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Shift+Enter step through the matches", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");
