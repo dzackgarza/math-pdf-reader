@@ -37,23 +37,32 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
   - Evidence: `tests/launch.test.ts` "provisioning for a launch" runs the real
     `scripts/provision.sh --for-launch` and reads `Name=Math PDF Reader` in the installed
     entry.
-- [ ] T005 [P] [US1] Name both extensions "Math PDF Reader" in `wxt.config.ts:41`
+- [X] T005 [P] [US1] Name both extensions "Math PDF Reader" in `wxt.config.ts:41`
   (FR-001, US1/AC1). Source has it; `tests/extension-manifest.test.ts` checks only the
   permissions.
-- [ ] T006 [P] [US1] Title the library, the window failure page, the popup and the
+  - Evidence: tests/extension-manifest.test.ts asserts manifest.name "Math PDF Reader" in
+    the Chrome and Firefox builds.
+- [X] T006 [P] [US1] Title the library, the window failure page, the popup and the
   capture page "Math PDF Reader" in `src/web/index.html`, `desktop/src/index.html`,
   `src/extension/entrypoints/popup/index.html`, `src/extension/entrypoints/capture/index.html`
-  (FR-001, US1/AC1). Source has it; no test.
+  (FR-001, US1/AC1).
+  - Evidence: tests/library-e2e.test.ts asserts the library title and the title and
+    heading of desktop/src/index.html; tests/capture-e2e.test.ts asserts the popup title
+    in both browsers and the capture failure page title "Not saved · Math PDF Reader" in
+    Firefox.
 - [X] T007 [US1] Name Math PDF Reader in the popup's report of a foreign service on the
   bucket's port (FR-001, US1/AC1)
   - Evidence: `src/extension/bucket-status.ts:63-64`;
     `tests/capture-e2e.test.ts:954-966` asserts "not a Math PDF Reader status report" in
     `#connection-details` of each browser's popup.
-- [ ] T008 [US1] Name Math PDF Reader in the rebuild terminal title and in the launcher
-  notifications in `scripts/launch:14,21,38,40` (FR-001, US1/AC1). Source has it; no
-  test.
-- [ ] T009 [US1] Show no compatibility identifier as the product name or as a command
+- [X] T008 [US1] Name Math PDF Reader in the rebuild terminal title and in the launcher
+  notifications in `scripts/launch:14,21,38,40` (FR-001, US1/AC1).
+  - Evidence: tests/launch.test.ts rebuild tests assert the kitty title "Math PDF Reader
+    - Building" and both notifications.
+- [X] T009 [US1] Show no compatibility identifier as the product name or as a command
   to run on any surface (FR-002, US1/AC2). Partial: see T033.
+  - Evidence: The two commands shown to the user (popup Start it, forget) are replaced
+    (T033); the popup label "Bucket" is "Address".
 
 ## Phase 3: User Story 2 - Launch the current build (P1)
 
@@ -165,9 +174,12 @@ that is not `[X]` maps to a task here.
   fingerprint to `/status` (`server/src/app.rs:375-397`, `src/contract/capture.ts:126`)
   and show both in `src/web/screens/SettingsScreen.tsx`, which today shows only the
   constant crate version (`SettingsScreen.tsx:218`). Per FR-007, US3/AC2 (partial).
-- [ ] T027 Report a missing extension provisioning in the extension: when `/status`
+- [X] T027 Report a missing extension provisioning in the extension: when `/status`
   gives `null` for the browser, `checkBucket` in `src/extension/bucket-status.ts:66-70`
   treats the build as current and the popup says nothing. Per FR-007, US3/AC2 (partial).
+  - Evidence: The popup shows "Provisioned: none: Math PDF Reader offers no build of this
+    extension, ..." when /status reports null (tests/capture-e2e.test.ts "the status page
+    and the badge name Math PDF Reader", both browsers); captures stay accepted.
 - [X] T028 Refuse extension provisioning when the extension input is not committed, and
   name the paths, in `scripts/provision-extensions.sh`. The version is the commit count
   (`wxt.config.ts:24-27`), so uncommitted input reuses the installed version:
@@ -192,16 +204,28 @@ that is not `[X]` maps to a task here.
   that the same navigation stores the PDF and opens the reader (T022). Extend
   `tests/bucket.ts:62-81` to take that directory. Per FR-008, SC-005, US3/AC3-AC4
   (missing).
+  - Open: "a build other than the provisioned one shows OLD" passes in Firefox (T018-T020,
+    T022). In Chrome it times out at 30 s before the stale status page is shown; the
+    output does not say whether the extension's reload or the stale status is what never
+    comes.
 - [ ] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the
   manifest `name` in `tests/extension-manifest.test.ts`, and the titles of the library,
   failure, popup and capture pages; assert the window title in `tests/desktop_workflow.py`.
   Covers T002-T006, T008. Per FR-001, SC-001, US1/AC1 (missing).
+  - Open: the dialog titles and the tray item labels (T003) have no test. Over the
+    private session bus of `tests/desktop_workflow.py`, `busctl tree` on the app's bus
+    name exited 1, so the tray's StatusNotifierItem could not be read.
 - [ ] T032 Give the tray icon the title and tooltip "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:390-405`; today `TrayIconBuilder::with_id("main")` sets
   neither, so the tray host shows an undetermined name. Per FR-001, US1/AC1 (partial).
-- [ ] T033 Remove the visible compatibility identifiers given as commands: the popup's
+  - Open: the app sets GLib's application name to "Math PDF Reader" before it builds the
+    tray, which libappindicator (it imports `g_get_application_name`) uses as the
+    StatusNotifierItem Title when none is set. tray-icon's `title` is a label beside the
+    icon and its `tooltip` does nothing on Linux, so neither is set. No test reads the
+    Title (see T031).
+- [X] T033 Remove the visible compatibility identifiers given as commands: the popup's
   "Start it: `gtk-launch pdf-bucket-desktop`" (`src/extension/entrypoints/popup/main.ts:76`),
   and "`pdf-bucket forget <key>`" in `src/web/components/StatusBar.tsx:55` and
   `server/src/main.rs:150`. The installed `~/.local/bin/pdf-bucket` is the launcher
@@ -209,6 +233,10 @@ that is not `[X]` maps to a task here.
   the forget instruction does not work; the working command is `just forget <key>`. Add
   a test for each string. Per FR-002, US1/AC2, edge case "internal compatibility names
   … without being shown to users" (partial).
+  - Evidence: Popup "Start it: Open Math PDF Reader from the application menu"
+    (tests/capture-e2e.test.ts "with Math PDF Reader stopped", both browsers); the status
+    bar and the export-index stderr name `just forget <key>` (tests/library-e2e.test.ts
+    "a refused index export names the command", tests/index-export.test.ts forget test).
 - [ ] T034 Rename "the bucket" in user-visible strings to "Math PDF Reader" (owner decision in plan.md):
   `desktop/src-tauri/src/lib.rs:71,98,112,373-375`, `desktop/src/index.html` ("The
   bucket is not serving"), `src/web/actionFailure.ts:48-51`,
@@ -217,6 +245,13 @@ that is not `[X]` maps to a task here.
   replacement text in `src/extension/bucket-status.ts`, and
   `src/extension/entrypoints/background.ts:97`. Rename each and test each. Per
   FR-001, US1/AC1 (partial).
+  - Renamed and tested: `actionFailure.ts` (tests/library-e2e.test.ts "the library is
+    titled Math PDF Reader"), `OrganizationScreen.tsx` (the collection cards test),
+    `desktop/src/index.html` (the failure page test), the popup heading and label and the
+    badge title (tests/capture-e2e.test.ts), the Firefox replacement (the stale test), and
+    the port failure report in lib.rs (tests/desktop_workflow.py).
+  - Open: renamed without a test: background.ts's "lost" download failure, and lib.rs's
+    "does not serve" dialog, library folder failure and server stopped/failed reports.
 
 ## Dependencies
 

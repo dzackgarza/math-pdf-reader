@@ -31,7 +31,6 @@ export type OrganizationActions = {
   updateCollection: (collection: Collection, update: CollectionUpdate) => void;
   editDescription: (collection: Collection) => void;
   deleteSavedSearch: (search: SavedSearch) => void;
-  // Act on the rows chosen with their checkboxes.
   newTopic: () => void;
   bulkTag: () => void;
   newSmartCollection: () => void;
@@ -43,7 +42,6 @@ type OrganizationScreenProps = {
   tab: OrganizationTab;
   entry: string | null;
   actions: OrganizationActions;
-  // How many rows are chosen with their checkboxes.
   chosen: number;
   table: ReactNode;
 };
@@ -128,7 +126,6 @@ function SavedSearchList({ payload, entry }: { payload: LibraryPayload; entry: s
 const ACTION_CLASSES =
   "inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm font-medium hover:bg-surface";
 
-// A collection's page: its description, Keep offline, its subcollections and recent activity.
 function CollectionDetails({
   payload,
   collection,
@@ -163,7 +160,7 @@ function CollectionDetails({
           <span>
             <span className="block font-medium">Keep offline</span>
             <span className="block text-xs text-muted">
-              Its PDFs stay in the bucket after Send to Zotero.
+              Its PDFs stay in Math PDF Reader after Send to Zotero.
             </span>
           </span>
           <Switch
@@ -303,8 +300,6 @@ function EntryHeader({
 const TOOLBAR_BUTTON =
   "inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm font-medium hover:bg-surface disabled:opacity-40";
 
-// New collection, and the actions on the chosen rows: a new topic for them, a tag for them;
-// and a new smart collection (a saved search built from rules).
 function Toolbar({ actions, chosen }: { actions: OrganizationActions; chosen: number }) {
   const needsRows = chosen === 0 ? "Choose PDFs with their checkboxes first" : undefined;
   return (

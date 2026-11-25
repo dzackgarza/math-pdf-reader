@@ -1,13 +1,3 @@
-// Capture background: registers PDF interception for this browser while the capture switch is
-// on, records link origins and carries them along redirects, captures PDFs for the capture
-// page, sends a tab it captured a PDF in back to the page it left or closes it, hands (tab, URL) pairs back to the
-// browser's own viewer when the capture page asks, hands the PDFs the browser saved as downloads to
-// the bucket, sends a window's tabs to the bucket's Import URL, and keeps the toolbar badge in
-// step with the bucket and the switch. Every message
-// gets exactly one reply; an error in the background is a `failed` reply at stage `extension`.
-// Only the extension's own pages may ask for a capture, an exemption, a tab to be left or tabs
-// to be sent;
-// content scripts, which run in web pages, only report followed links.
 import { browser } from "wxt/browser";
 import { defineBackground } from "wxt/utils/define-background";
 import { z } from "zod";
@@ -35,15 +25,12 @@ import {
 } from "../messages";
 import { sendWindowTabs } from "../send-tabs";
 
-// How often the badge re-reads `/status` between captures; Chrome's alarm floor is 30 s.
 const STATUS_ALARM = "bucket-status";
 const STATUS_PERIOD_MINUTES = 1;
 
 const DONE: DoneReply = { kind: "done" };
 
 export default defineBackground(() => {
-  // A background restarted from a build written over the loaded one reloads the extension, which
-  // then loads that build whole.
   if (newerThanLoaded()) {
     browser.runtime.reload();
     return;
@@ -55,8 +42,6 @@ export default defineBackground(() => {
     : enabled.then((on) => chromeInterception(bucketOrigin, on));
   const interception: Promise<ChromeInterception | FirefoxInterception> =
     chrome ?? Promise.resolve(firefoxInterception(bucketOrigin, enabled));
-  // The bucket check never throws; only the browser refusing a storage read or a badge update
-  // rejects here, as an uncaught error in the background.
   const refresh = () => void refreshToolbar(bucketOrigin);
 
   async function record(pdfUrl: string, outcome: CaptureOutcome): Promise<CaptureOutcome> {
@@ -65,8 +50,6 @@ export default defineBackground(() => {
     return outcome;
   }
 
-  // A stale build refuses before it takes the PDF; `record`'s refresh then starts its
-  // replacement, after the refusal's reply.
   async function capture(pdfUrl: string, tabId: number, frameId: number): Promise<CaptureOutcome> {
     const state = await checkBucket(bucketOrigin);
     if (state.kind === "stale") {
@@ -81,7 +64,6 @@ export default defineBackground(() => {
     return record(pdfUrl, outcome);
   }
 
-  // What became of a download's capture, without its record.
   async function downloadOutcome(saved: SavedPdf): Promise<CaptureOutcome> {
     const state = await checkBucket(bucketOrigin);
     if (state.kind === "stale") {
@@ -94,7 +76,7 @@ export default defineBackground(() => {
       case "lost":
         return failed(
           "extension",
-          "the browser stopped Math PDF Reader's extension each time before the bucket answered; the bucket may hold the PDF",
+          "the browser stopped Math PDF Reader's extension each time before Math PDF Reader answered; Math PDF Reader may hold the PDF",
         );
       case "complete":
         return postDownloadToBucket(
@@ -107,8 +89,6 @@ export default defineBackground(() => {
     }
   }
 
-  // Scripts run in a frame whose navigation became a download see the document it showed before:
-  // a download commits no document.
   const frameTarget = (frame: PdfFrame) => ({ tabId: frame.tab_id, frameIds: [frame.frame_id] });
 
   async function smallFrame(frame: PdfFrame): Promise<boolean> {
@@ -135,10 +115,6 @@ export default defineBackground(() => {
     await browser.downloads.erase({ id: saved.id });
   }
 
-  // The browser saved a captured PDF as a download. A frame too small to read in is handed back
-  // to the browser's viewer, which fetches the PDF again. Otherwise, once the bucket holds the
-  // PDF, the download goes and a frame shows the stored item; a failed capture keeps the download
-  // and shows the failure in the frame, or in a capture page tab for a top-level navigation.
   async function captureDownload(saved: SavedPdf): Promise<void> {
     const pdfUrl = saved.pdfUrl.href;
     const { frame } = saved;
@@ -171,7 +147,6 @@ export default defineBackground(() => {
   }
   watchPdfDownloads(captureDownload);
 
-  // A stale build refuses before it sends anything, as a capture does.
   async function sendTabs(windowId: number): Promise<DoneReply> {
     const state = await checkBucket(bucketOrigin);
     if (state.kind === "stale") {
@@ -223,7 +198,6 @@ export default defineBackground(() => {
       reportFailure(`a ${message.data.type} message came from ${sender.url ?? "an unknown page"}`);
       return false;
     }
-    // The toolbar popup, which sends tabs, is in no tab.
     if (message.data.type === "send-tabs") {
       sendTabs(message.data.window_id).then(sendResponse, reportFailure);
       return true;
@@ -238,7 +212,6 @@ export default defineBackground(() => {
     return true;
   });
 
-  // A followed link's report also names the page for each URL the navigation is redirected to.
   browser.webRequest.onBeforeRedirect.addListener(
     (details) => {
       if (/^https?:/.test(details.redirectUrl)) {
@@ -256,7 +229,6 @@ export default defineBackground(() => {
     void interception.then((active) => active.setEnabled(enabled)).then(refresh);
   });
 
-  // A PDF a capture page gave up during the reload opens again, to be captured by this build.
   void reopenAfterReload.getValue().then(async (pdfUrl) => {
     if (pdfUrl !== null) {
       await reopenAfterReload.setValue(null);

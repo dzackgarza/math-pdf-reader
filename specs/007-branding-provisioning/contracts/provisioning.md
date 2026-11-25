@@ -62,5 +62,19 @@ and its `sha256:` hash. The package is the AMO-signed `firefox.xpi`
 | --- | --- | --- | --- | --- |
 | equal | — | ready / not-ready | `ON` / `OFF` | accepted when ready |
 | differs, not null | — | stale | `OLD` | refused; the popup shows This build, Provisioned, Replacement |
-| `null` | — | ready / not-ready (today) | `ON` / `OFF` | accepted |
+| `null` | — | ready / not-ready; the popup shows Provisioned "none" | `ON` / `OFF` | accepted |
 | no status report | — | unreachable | `!` | refused with the error page |
+
+How a stale build is replaced (`replacement` in the stale state):
+
+- Firefox installs the provisioned build by itself: the enterprise policy points its add-on
+  update check at the app and runs it every few minutes. `runtime.reload` would only
+  restart the installed build, so Firefox never reloads.
+- Chromium runs the unpacked build that provisioning rewrote, so one reload per provisioned
+  version (`reloadedFor`) brings that build. A build still stale after that reload means
+  Chromium loads the extension from another directory; a second reload would loop.
+- Chromium keeps an unpacked extension's manifest from when it loaded it, but reads each
+  page and a restarted background from the directory. A page or background whose baked-in
+  version differs from the loaded manifest therefore reloads the extension, which then
+  loads the new build whole. A PDF that a capture page gave up during that reload opens
+  again in the reloaded build.

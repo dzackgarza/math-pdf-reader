@@ -11,7 +11,6 @@ import type { LibraryPayload } from "../../contract/library";
 import { onBucketEvent } from "../bucketEvents";
 import type { StatusRead } from "../useBucketStatus";
 
-// Whether browser captures can land: the one state worth a glance, detailed on hover.
 function CaptureIndicator({ read }: { read: StatusRead }) {
   const [color, title] =
     read.kind === "checking"
@@ -31,8 +30,6 @@ function CaptureIndicator({ read }: { read: StatusRead }) {
   );
 }
 
-// The index export's state as the bucket streams it (`index-export` on /api/events, the
-// current state first).
 function useIndexExport(): IndexExportState | null {
   const [state, setState] = useState<IndexExportState | null>(null);
   useEffect(() => {
@@ -52,15 +49,13 @@ function exportSummary(state: IndexExportState): [string, string] {
     case "refused":
       return [
         "text-danger",
-        `The index export is not updated: it lists ${state.missing.join(", ")}, whose PDFs are gone. Rebuild them from Needs Re-fetch, or forget them (pdf-bucket forget <key>).`,
+        `The index export is not updated: it lists ${state.missing.join(", ")}, whose PDFs are gone. Rebuild them from Needs Re-fetch, or forget them with \`just forget <key>\`.`,
       ];
     case "failed":
       return ["text-danger", `The index export failed: ${state.message}`];
   }
 }
 
-// Whether the backup export that can rebuild the library is current; a refused or failed export
-// shows its reason in the bar itself.
 function ExportIndicator() {
   const state = useIndexExport();
   if (state === null) {
@@ -81,7 +76,6 @@ function ExportIndicator() {
   );
 }
 
-// Zotero's state as the bucket streams it (`zotero` on /api/events, the current state first).
 function useZoteroHealth(): ZoteroHealth | null {
   const [health, setHealth] = useState<ZoteroHealth | null>(null);
   useEffect(() => {
@@ -92,8 +86,6 @@ function useZoteroHealth(): ZoteroHealth | null {
   return health;
 }
 
-// Whether Retrieve metadata and Send to Zotero can reach Zotero; an unavailable Zotero shows
-// what to do about it in the bar itself.
 function ZoteroIndicator() {
   const health = useZoteroHealth();
   if (health === null) {

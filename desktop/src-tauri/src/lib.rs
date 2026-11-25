@@ -24,8 +24,8 @@ use tauri::{
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
-// A failure of a window operation after startup: the process is the bucket's server too, so it
-// is shown in a dialog and the app carries on.
+/// A failure of a window operation after startup: the process is the bucket's server too, so it
+/// is shown in a dialog and the app carries on.
 fn report(app: &AppHandle, what: &str, error: impl fmt::Display) {
     app.dialog()
         .message(format!("{what}: {error}"))
@@ -34,8 +34,8 @@ fn report(app: &AppHandle, what: &str, error: impl fmt::Display) {
         .show(|_| {});
 }
 
-// Unhide, unminimize and focus the main window: the tray's Show item and a second launch.
-// Pattern: Tauri's system-tray guide (tauri-apps/tauri-docs, learn/system-tray.mdx).
+/// Unhide, unminimize and focus the main window: the tray's Show item and a second launch.
+/// Pattern: Tauri's system-tray guide (tauri-apps/tauri-docs, learn/system-tray.mdx).
 fn show_main_window(app: &AppHandle) -> tauri::Result<()> {
     let window = app
         .get_webview_window("main")
@@ -51,9 +51,9 @@ fn show_or_report(app: &AppHandle) {
     }
 }
 
-// The app's own page (src/index.html) with REPORT in its fragment, which the page shows, so a
-// bucket that does not serve is never silent. The URL parser drops newlines from a fragment,
-// so the report travels percent-encoded.
+/// The app's own page (src/index.html) with REPORT in its fragment, which the page shows, so a
+/// bucket that does not serve is never silent. The URL parser drops newlines from a fragment,
+/// so the report travels percent-encoded.
 fn failure_page(page: &Url, report: &str) -> Url {
     let mut url = page.clone();
     url.set_fragment(Some(
@@ -62,13 +62,13 @@ fn failure_page(page: &Url, report: &str) -> Url {
     url
 }
 
+/// - When the app's own page never loaded, it cannot show the report: the dialog does.
 fn show_failure(app: &AppHandle, page: Option<&Url>, failure: &str) {
     let navigated = match (app.get_webview_window("main"), page) {
         (Some(window), Some(page)) => window.navigate(failure_page(page, failure)),
         (None, _) => Err(tauri::Error::WindowNotFound),
-        // The app's own page never loaded, so it cannot show the report: the dialog does.
         (Some(_), None) => {
-            report(app, "The bucket does not serve", failure);
+            report(app, "Math PDF Reader does not serve", failure);
             return;
         }
     };
@@ -79,7 +79,7 @@ fn show_failure(app: &AppHandle, page: Option<&Url>, failure: &str) {
     show_or_report(app);
 }
 
-// Why the bucket does not serve.
+/// Why the bucket does not serve.
 enum StartFailure {
     Envrc(process_config::EnvrcFailure),
     Root(PathBuf, std::io::Error),
@@ -95,7 +95,7 @@ impl fmt::Display for StartFailure {
             Self::Root(root, error) => {
                 write!(
                     formatter,
-                    "The bucket root {} could not be made: {error}.",
+                    "Math PDF Reader could not make its library folder {}: {error}.",
                     root.display()
                 )
             }
@@ -109,14 +109,17 @@ impl fmt::Display for StartFailure {
                 "pdf-bucket.config.json names port {port}, which is not a TCP port."
             ),
             Self::Bind(origin, error) => {
-                write!(formatter, "The bucket could not serve {origin}: {error}.")
+                write!(
+                    formatter,
+                    "Math PDF Reader could not serve {origin}: {error}."
+                )
             }
         }
     }
 }
 
-// The bucket is this process: its port is bound here, on Tauri's tokio runtime, before the
-// window loads it, so the window finds a bucket that already answers.
+/// The bucket is this process: its port is bound here, on Tauri's tokio runtime, before the
+/// window loads it, so the window finds a bucket that already answers.
 fn start(config: &AppConfig) -> Result<Serving, StartFailure> {
     let bucket =
         BucketConfig::configured(process_config::process_env().map_err(StartFailure::Envrc)?);
@@ -133,8 +136,8 @@ fn start(config: &AppConfig) -> Result<Serving, StartFailure> {
         .map_err(|error| StartFailure::Bind(format!("http://{host}:{port}"), error))
 }
 
-// What the library answers `quit-requested` with (follow-open-events.js): every open reader
-// saved its annotations, or one could not.
+/// What the library answers `quit-requested` with (follow-open-events.js): every open reader
+/// saved its annotations, or one could not.
 #[derive(Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 enum QuitSettled {
@@ -142,8 +145,8 @@ enum QuitSettled {
     Failed { message: String },
 }
 
-// Asks before quitting with work that is not saved; the window stays open unless the user
-// chooses Quit.
+/// Asks before quitting with work that is not saved; the window stays open unless the user
+/// chooses Quit.
 fn ask_before_quitting(app: &AppHandle, reason: &str) {
     show_or_report(app);
     let quitting = app.clone();
@@ -164,8 +167,10 @@ fn ask_before_quitting(app: &AppHandle, reason: &str) {
         });
 }
 
-// The tray's Quit: the library settles every open reader's pending saves first and answers
-// `quit-settled`; the app exits then, or asks when a save failed or no answer came in time.
+/// The tray's Quit: the library settles every open reader's pending saves first and answers
+/// `quit-settled`; the app exits then, or asks when a save failed or no answer came in time.
+///
+/// - A late answer is dropped: the wait timed out and the question is already asked.
 fn quit(app: &AppHandle) {
     let (settled, answer) = tokio::sync::oneshot::channel::<String>();
     let settled = Mutex::new(Some(settled));
@@ -173,7 +178,6 @@ fn quit(app: &AppHandle) {
         if let Some(settled) = settled.lock().expect("never poisoned").take() {
             match settled.send(event.payload().to_string()) {
                 Ok(()) => {}
-                // The wait timed out and the question is already asked.
                 Err(_late) => {}
             }
         }
@@ -210,21 +214,47 @@ fn quit(app: &AppHandle) {
     });
 }
 
+/// - Diagnostics are recorded first, so every later line, the WebKit processes' included, reaches
+///   the run's log file.
+/// - The single-instance plugin is registered first, as it requires: a second launch (the
+///   desktop entry while the app runs) exits before binding the bucket's port and brings back this process's window.
+/// - Closing the window hides it; the process, the bucket it serves and the tray icon stay, and the
+///   tray's Quit item exits. Pattern: Tauri's `CloseRequested` + `prevent_close`.
+/// - The follower script calls these window commands from the bucket's pages.
+/// - Quit: the follower hears `quit-requested` and answers `quit-settled`.
+/// - The library's Open in Browser and Show in Folder (@tauri-apps/plugin-opener): http(s) URLs in
+///   the default browser, files in the file manager.
+/// - Add Folder's Browse button: the system folder chooser.
+/// - The follower script file is one function expression statement; binding it in a block keeps
+///   the call valid whatever the statement's terminator.
+/// - The diagnostics script (diagnostics.rs's page-side half) and the pen bridge script
+///   (stylus.rs's) are built the same way.
+/// - tauri.conf.json declares the window with `create: false`; it is built here so that it carries
+///   the follower script. It opens on the app's own page, whose URL is where a failure report goes,
+///   and goes on once that page has loaded: to the bucket, or to the page with the reason the bucket
+///   does not serve. A navigation made before the first load finishes can lose to that load.
+/// - A link that asks for a new window (a PDF's external link in a reader tab, a PDF URL on the
+///   Timeline) opens in the default browser; the window keeps its tabs.
+/// - The first finished load is the app's own page, and `pending` is taken once, so this runs once.
+/// - WebKitGTK reports pen events as mouse input. GDK identifies tablet tools: View pen input and
+///   the Annotate eraser use the bridge; other pens stay native.
+/// - The server runs for the life of the process; if it ever stops, say why.
+/// - The tray host shows the StatusNotifierItem Title, which libappindicator takes from GLib's
+///   application name when no title is set; tray-icon's own title is a label beside the icon, and
+///   its tooltip does nothing on Linux.
+/// - Linux tray icons (StatusNotifierItem through libappindicator) report no clicks, so
+///   every click opens this menu.
+/// - A bucket that does not serve has no library, so no reader to wait for.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> tauri::Result<()> {
-    // First, so every later line, the WebKit processes' included, reaches the run's log file.
     #[cfg(target_os = "linux")]
     diagnostics::record()?;
     tauri::Builder::default()
-        // Registered first, as the plugin requires: a second launch (the desktop entry while the
-        // app runs) exits before binding the bucket's port and brings back this process's window.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_or_report(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        // Closing the window hides it; the process, the bucket it serves and the tray icon stay,
-        // and the tray's Quit item exits. Pattern: Tauri's `CloseRequested` + `prevent_close`.
         .on_window_event(|window, event| {
             #[cfg(target_os = "linux")]
             diagnostics::window_event(event);
@@ -238,7 +268,6 @@ pub fn run() -> tauri::Result<()> {
         .setup(|app| {
             let config = app_config();
             let origin = format!("http://{}:{}", *config.server.host, config.server.port);
-            // The follower script calls these window commands from the bucket's pages.
             app.add_capability(
                 CapabilityBuilder::new("bucket-window-follow")
                     .remote(origin.clone())
@@ -246,25 +275,17 @@ pub fn run() -> tauri::Result<()> {
                     .permission("core:window:allow-show")
                     .permission("core:window:allow-set-focus")
                     .permission("core:window:allow-unminimize")
-                    // Quit: the follower hears `quit-requested` and answers `quit-settled`.
                     .permission("core:event:allow-listen")
                     .permission("core:event:allow-unlisten")
                     .permission("core:event:allow-emit")
-                    // The library's Open in Browser and Show in Folder (@tauri-apps/plugin-opener):
-                    // http(s) URLs in the default browser, files in the file manager.
                     .permission("opener:default")
-                    // Add Folder's Browse button: the system folder chooser.
                     .permission("dialog:allow-open"),
             )?;
-            // The file is one function expression statement; binding it in a block keeps the
-            // call valid whatever the statement's terminator.
             let follower = format!(
                 "{{ const followOpenEvents = {}\nfollowOpenEvents({}); }}",
                 include_str!("follow-open-events.js"),
                 serde_json::to_string(&origin)?
             );
-            // The diagnostics script (diagnostics.rs's page-side half) and the pen bridge script
-            // (stylus.rs's) are built the same way.
             let page_diagnostics = format!(
                 "{{ const pageDiagnostics = {}\npageDiagnostics({}); }}",
                 include_str!("diagnostics.js"),
@@ -279,11 +300,6 @@ pub fn run() -> tauri::Result<()> {
             let started = start(&config);
             let serving = started.is_ok();
 
-            // tauri.conf.json declares the window with `create: false`; it is built here so
-            // that it carries the follower script. It opens on the app's own page, whose URL is
-            // where a failure report goes, and goes on once that page has loaded: to the bucket,
-            // or to the page with the reason the bucket does not serve. A navigation made
-            // before the first load finishes can lose to that load.
             let pending = Mutex::new(Some(match &started {
                 Ok(serving) => Ok(serving.origin.parse::<Url>()?),
                 Err(failure) => Err(failure.to_string()),
@@ -298,9 +314,6 @@ pub fn run() -> tauri::Result<()> {
                 .ok_or(tauri::Error::WindowNotFound)?
                 .clone();
             window_config.url = WebviewUrl::App("index.html".into());
-            // A link that asks for a new window (a PDF's external link in a reader tab, a
-            // PDF URL on the Timeline) opens in the default browser; the window keeps its
-            // tabs.
             let opener = app.handle().clone();
             WebviewWindowBuilder::from_config(app.handle(), &window_config)?
                 .initialization_script(follower)
@@ -324,8 +337,6 @@ pub fn run() -> tauri::Result<()> {
                         Ok(origin) => origin,
                         Err(failure) => failure_page(&own_page, &failure),
                     };
-                    // The first finished load is the app's own page, and `pending` is taken
-                    // once, so this runs once.
                     match loaded.set(own_page) {
                         Ok(()) => {}
                         Err(_set_before) => unreachable!("the app's own page loads first, once"),
@@ -339,8 +350,6 @@ pub fn run() -> tauri::Result<()> {
                     }
                 })
                 .build()?;
-            // WebKitGTK reports pen events as mouse input. GDK identifies tablet tools:
-            // View pen input and the Annotate eraser use the bridge; other pens stay native.
             #[cfg(target_os = "linux")]
             if let Err(error) = app
                 .get_webview_window("main")
@@ -367,19 +376,16 @@ pub fn run() -> tauri::Result<()> {
             }
             if let Ok(serving) = started {
                 let handle = app.handle().clone();
-                // The server runs for the life of the process; if it ever stops, say why.
                 tauri::async_runtime::spawn(async move {
                     let failure = match serving.task.await {
-                        Ok(Ok(())) => "The bucket's server stopped.".to_string(),
-                        Ok(Err(error)) => format!("The bucket's server stopped: {error}."),
-                        Err(error) => format!("The bucket's server failed: {error}."),
+                        Ok(Ok(())) => "Math PDF Reader's server stopped.".to_string(),
+                        Ok(Err(error)) => format!("Math PDF Reader's server stopped: {error}."),
+                        Err(error) => format!("Math PDF Reader's server failed: {error}."),
                     };
                     show_failure(&handle, page.get(), &failure);
                 });
             }
 
-            // Linux tray icons (StatusNotifierItem through libayatana-appindicator) report no
-            // clicks, so every click opens this menu.
             let show = MenuItemBuilder::with_id("show", "Show Math PDF Reader").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Math PDF Reader").build(app)?;
             let menu = MenuBuilder::new(app)
@@ -387,6 +393,8 @@ pub fn run() -> tauri::Result<()> {
                 .separator()
                 .item(&quit_item)
                 .build()?;
+            #[cfg(target_os = "linux")]
+            gtk::glib::set_application_name("Math PDF Reader");
             TrayIconBuilder::with_id("main")
                 .icon(
                     app.default_window_icon()
@@ -396,7 +404,6 @@ pub fn run() -> tauri::Result<()> {
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => show_or_report(app),
-                    // A bucket that does not serve has no library, so no reader to wait for.
                     "quit" if serving => quit(app),
                     "quit" => app.exit(0),
                     other => report(app, "The tray menu has no item", other),

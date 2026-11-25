@@ -1,7 +1,3 @@
-// Status page, shown as the toolbar popup and as the options page: whether the bucket answers
-// and can store PDFs, this browser's capture switch, the last capture from this browser, and
-// Send tabs with the result of its last run.
-// Opening it re-reads `/status` and brings the toolbar badge up to date.
 import { browser } from "wxt/browser";
 import { bucketBuild, newerThanLoaded } from "../../bucket-config";
 import {
@@ -35,12 +31,6 @@ function detail(term: string, value: Node | string, id?: string): Node[] {
   return [dt, dd];
 }
 
-function code(text: string): HTMLElement {
-  const node = document.createElement("code");
-  node.textContent = text;
-  return node;
-}
-
 const HEADINGS: Record<BucketState["kind"], string> = {
   ready: "Connected to Math PDF Reader",
   "not-ready": "Connected, but it cannot store PDFs",
@@ -52,7 +42,7 @@ const HEADINGS: Record<BucketState["kind"], string> = {
 function renderConnection(state: BucketState): void {
   element("connection", HTMLElement).dataset.state = state.kind;
   element("connection-heading", HTMLHeadingElement).textContent = HEADINGS[state.kind];
-  const origin = detail("Bucket", bucketBuild.bucketOrigin, "bucket-origin");
+  const origin = detail("Address", bucketBuild.bucketOrigin, "bucket-origin");
   if (state.kind === "check-failed") {
     element("connection-details", HTMLDListElement).replaceChildren(
       ...origin,
@@ -73,7 +63,7 @@ function renderConnection(state: BucketState): void {
     element("connection-details", HTMLDListElement).replaceChildren(
       ...origin,
       ...detail("Error", state.detail),
-      ...detail("Start it", code("gtk-launch pdf-bucket-desktop")),
+      ...detail("Start it", "Open Math PDF Reader from the application menu"),
     );
     return;
   }
@@ -81,6 +71,12 @@ function renderConnection(state: BucketState): void {
     ...origin,
     ...detail("Version", state.status.service.version, "bucket-version"),
     ...detail("Data folder", state.status.root, "bucket-root"),
+    ...(state.status.extensions[import.meta.env.FIREFOX ? "firefox" : "chrome"] === null
+      ? detail(
+          "Provisioned",
+          "none: Math PDF Reader offers no build of this extension, so it cannot replace this one when it changes",
+        )
+      : []),
   );
 }
 
@@ -156,8 +152,6 @@ function renderSendFailure(detail: string): void {
   element("sent-tabs", HTMLDivElement).replaceChildren(line);
 }
 
-// The background sends the tabs, so the work goes on when this popup closes; the list is
-// rendered from the stored result.
 async function sendTabs(): Promise<void> {
   const button = element("send-tabs", HTMLButtonElement);
   const section = element("tabs", HTMLElement);
@@ -183,8 +177,6 @@ async function sendTabs(): Promise<void> {
   section.dataset.state = reply.kind;
 }
 
-// A status page from a build written over the loaded extension reloads the extension, which
-// closes the page; the next one shows the new build.
 if (newerThanLoaded()) {
   browser.runtime.reload();
 }

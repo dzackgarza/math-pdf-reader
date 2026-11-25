@@ -1,5 +1,3 @@
-// What the extension knows about the bucket and about its own capture switch, shared by the
-// background (toolbar badge) and the status page (popup and options page).
 import { browser } from "wxt/browser";
 import { storage } from "wxt/utils/storage";
 import { type ServerStatus, ServerStatusSchema } from "../contract/capture";
@@ -7,24 +5,18 @@ import { ApiErrorSchema } from "../contract/library";
 import { checkedBody } from "./json";
 import type { CaptureOutcome } from "./messages";
 
-// Whether this browser's PDF navigations go to the bucket. On until the user switches it off.
 export const captureEnabled = storage.defineItem<boolean>("local:captureEnabled", {
   init: () => true,
 });
 
 export type LastCapture = { pdf_url: string; at: number; outcome: CaptureOutcome };
 
-// The most recent capture attempt from this browser; null until the first one.
 export const lastCapture = storage.defineItem<LastCapture | null>("local:lastCapture", {
   fallback: null,
 });
 
-// The build provisioning last installed into Chromium's extension directory that this
-// extension reloaded for; null until the first reload.
 const reloadedFor = storage.defineItem<string | null>("local:reloadedFor", { fallback: null });
 
-// The PDF a capture page could not take because its files are newer than the loaded extension;
-// the reloaded background opens it again, and the capture starts over. Null when none waits.
 export const reopenAfterReload = storage.defineItem<string | null>("local:reopenAfterReload", {
   fallback: null,
 });
@@ -38,12 +30,6 @@ export type BucketState =
   | { kind: "check-failed"; detail: string }
   | { kind: "unreachable"; detail: string };
 
-// A refused connection or a non-bucket answer on the configured port is `unreachable`: the
-// extension cannot hand PDFs to it. The bucket's own error document is `check-failed`: it
-// answered, but could not tell whether its data folder can take captures. A bucket provisioned
-// with another build of this extension is `stale`: this build may not speak its contract;
-// `replacement` says how the provisioned build takes its place. Every answer is read as text and
-// checked against its schema, so no answer makes the check throw.
 export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   const answered = await fetch(`${bucketOrigin}/status`, { cache: "no-store" }).then(
     (response) => ({ ok: true as const, response }),
@@ -71,14 +57,9 @@ export async function checkBucket(bucketOrigin: string): Promise<BucketState> {
   return { kind: status.value.ready ? "ready" : "not-ready", status: status.value };
 }
 
-// How the provisioned build replaces a stale one. Firefox installs it by itself: the enterprise
-// policy points its add-on update check at the bucket and runs the check every few minutes
-// (`runtime.reload` would restart the installed build). Chromium runs the unpacked build that
-// provisioning rewrote, so a reload brings the provisioned build; a reload that did not means
-// Chromium loads this extension from another directory, and reloading again would loop.
 async function replacement(provisioned: string): Promise<string> {
   if (import.meta.env.FIREFOX) {
-    return "Firefox installs it from the bucket at its next add-on update check, within a few minutes";
+    return "Firefox installs it from Math PDF Reader at its next add-on update check, within a few minutes";
   }
   if ((await reloadedFor.getValue()) === provisioned) {
     return "Chromium loads this extension from another directory; load it unpacked from the installed app's extensions/chrome-mv3";
@@ -86,7 +67,6 @@ async function replacement(provisioned: string): Promise<string> {
   return "the extension is reloading";
 }
 
-// Chromium: reload a stale build once per provisioned build.
 async function reloadStaleBuild(provisioned: string): Promise<void> {
   if (import.meta.env.FIREFOX || (await reloadedFor.getValue()) === provisioned) {
     return;
@@ -95,7 +75,6 @@ async function reloadStaleBuild(provisioned: string): Promise<void> {
   browser.runtime.reload();
 }
 
-// Why a stale extension refuses a capture.
 export function staleDetail(state: StaleBuild): string {
   return `Math PDF Reader was provisioned with version ${state.provisioned} of this extension, which is version ${state.own}; it captures nothing until it is replaced: ${state.replacement}`;
 }
@@ -127,10 +106,9 @@ function badgeFor(state: BucketState, enabled: boolean, bucketOrigin: string): B
   if (!enabled) {
     return { text: "OFF", color: "#5f6368", title: "Math PDF Reader: capture is off in this browser" };
   }
-  return { text: "ON", color: "#1e7a3c", title: "Math PDF Reader: PDF links open in the bucket" };
+  return { text: "ON", color: "#1e7a3c", title: "Math PDF Reader: PDF links open in the app" };
 }
 
-// Chrome (MV3) names the toolbar button `action`, Firefox (MV2) `browserAction`.
 function toolbarButton() {
   return import.meta.env.FIREFOX ? browser.browserAction : browser.action;
 }

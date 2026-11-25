@@ -517,7 +517,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
       const before = bucket.files();
       await followLinkToFailure("/abs/2401.00001");
-      expect(await page.title()).toBe("Math PDF Reader");
+      expect(await page.title()).toBe("Not saved · Math PDF Reader");
       expect(await text("#details")).toContain(`${stale}${replacement}`);
       expect(bucket.files()).toEqual(before);
 

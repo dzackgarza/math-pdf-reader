@@ -19,3 +19,15 @@ schemas in `src/contract/library.ts`. Errors use `ApiErrorSchema` with an `error
 
 Tag and collection edits are deltas, so two edits made from the same stale copy both land
 (`tests/library-api.test.ts:479`).
+
+## How the window reports a failed action
+
+The alert names what refused: the app's server with its `error.kind`, the app not
+answering, a desktop plugin, the browser (for example the clipboard, with the
+`DOMException` name), or a defect in the window's own code (an answer that does not parse).
+An answer that is not the app's error document (a proxy, a crash) has no kind and shows its
+HTTP status. A Tauri plugin rejects with its error as a string: tauri-plugin-opener and
+tauri-plugin-dialog serialize their `Error` with `serialize_str`.
+
+The status bar shows, on hover, whether browser captures can land. A refused or failed
+index export, and an unavailable Zotero, show their reason and what to do in the bar itself.

@@ -7,7 +7,10 @@
 //!   serves until its standard input closes; the test suites and evidence runs use it so that
 //!   they never touch the configured bucket or its port. The config file has the schema of
 //!   pdf-bucket.config.json and sets the time limits and the other tunables in place of the
-//!   compiled-in copy, so a test can run the server with short limits.
+//!   compiled-in copy, so a test can run the server with short limits. The assistant's files
+//!   lie beside the index export, in the test's own temporary directory, so no test touches the
+//!   configured assistant. A test process that dies closes the standard input and so takes its
+//!   servers with it.
 //! - `export-index`, `import-index`, `rebuild-cache` and `forget` take an optional export file
 //!   (default: the configured one).
 use std::path::PathBuf;
@@ -147,7 +150,7 @@ impl std::fmt::Display for Failure {
             Self::Refused(file, missing) => write!(
                 formatter,
                 "{} lists {}, which have no PDF in the store; run `just rebuild-cache`, or \
-                 `pdf-bucket forget <key>` for an item removed on purpose",
+                 `just forget <key>` for an item removed on purpose",
                 file.display(),
                 missing.join(", ")
             ),
@@ -188,8 +191,6 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
         } => {
             let app: AppConfig = from_json(&tokio::fs::read(&config_file).await?)
                 .map_err(|violation| Failure::Config(config_file, violation))?;
-            // The assistant's files lie beside the index export, which a test keeps in its own
-            // temporary directory, so no test touches the configured assistant.
             let ai_root = index_export.with_file_name("ai");
             let bucket = BucketConfig {
                 root,
@@ -206,8 +207,6 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             };
             let serving = pdf_bucket::serve(bucket, &app.server.host, 0).await?;
             println!("{}", serving.origin);
-            // Serves until its standard input closes, so a test process that dies takes its
-            // servers with it.
             let (mut stdin, mut sink) = (tokio::io::stdin(), tokio::io::sink());
             let stdin_closed = tokio::io::copy(&mut stdin, &mut sink);
             tokio::select! {
