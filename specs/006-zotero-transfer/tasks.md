@@ -285,3 +285,7 @@ last.
   plugin extracted the PDF" timed out); the test passes through all five controls, with the
   earlier-send message in `send-earlier-send-named.png`; `tests/server-send.test.ts` passes,
   23 of 23, with `collectionName` checked for Send to Zotero and Send PDF Only.
+- [ ] T034 Say "Already in Zotero from an earlier send" when a send finishes an earlier send,
+  in place of "Sent to Zotero in the place an earlier send put it", in the wording team-lead
+  set for the send message. First commit the failing palette retry check in
+  `tests/library-e2e.test.ts`.

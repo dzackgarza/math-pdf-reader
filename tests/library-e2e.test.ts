@@ -87,9 +87,13 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-const served = new Map<string, Uint8Array<ArrayBuffer>>(
-  CAPTURES.map(([key, bytes]) => [`/~author/${key}.pdf`, bytes]),
-);
+const served = new Map<string, Uint8Array<ArrayBuffer>>();
+const publishCaptures = () => {
+  served.clear();
+  for (const [key, bytes] of CAPTURES) {
+    served.set(`/~author/${key}.pdf`, bytes);
+  }
+};
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -3142,7 +3146,7 @@ test("each send control sends its way and names where the paper went in Zotero: 
     await shows(inspectorAlert, "Disk full");
     zotero.refuse = null;
     await runCommand("Send Selected PDF to Zotero");
-    await shows(message("status"), "Sent to Zotero in the place an earlier send put it");
+    await shows(message("status"), "Already in Zotero from an earlier send");
     await shot("send-earlier-send-named");
     await page.waitForSelector(row("reading"), { hidden: true });
 
