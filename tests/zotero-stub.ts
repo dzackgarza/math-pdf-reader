@@ -1,7 +1,3 @@
-// A loopback Zotero with the local write API, for tests that must not write to the user's own
-// library. It answers in the shapes the write API documents (the addon's openapi.yaml, 3.11.2)
-// and Zotero's local API serves, keeps the items and children the requests make, and records
-// every request, so a test can read what Zotero would hold and what the bucket asked of it.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -10,13 +6,10 @@ const ADDON_VERSION = "3.11.2";
 
 export type ZoteroRequest = {
   method: string;
-  // The path with its query, such as `/api/users/0/items/ABCD2345/children?itemType=annotation`.
   path: string;
-  // The JSON body of a POST.
   body: Record<string, unknown> | null;
 };
 
-// A child of a Zotero item as Zotero's local API answers it, with the fields the tests read.
 export type ZoteroChild = {
   key: string;
   data: {
@@ -38,8 +31,6 @@ export type ZoteroItem = {
   deleted: boolean;
 };
 
-// The row selected in Zotero's pane: a collection, a row that is not one (the library root, a
-// saved search), or no row at all because no Zotero window is open.
 export type Selection =
   | { kind: "collection"; key: string; name: string }
   | { kind: "library_root" }
@@ -51,11 +42,8 @@ export type ZoteroStub = {
   items: Map<string, ZoteroItem>;
   standalone: ZoteroChild[];
   selection: Selection;
-  // Answers a request with Zotero's refusal instead of the stub's own answer; null lets the stub
-  // answer. Set by a test to make Zotero fail one request.
   refuse: ((request: ZoteroRequest) => Response | null) | null;
   children(itemKey: string): ZoteroChild[];
-  // Every write the bucket asked for: each `/write` operation and each `/attach`.
   writes(): string[];
   stop(): void;
 };
@@ -80,7 +68,6 @@ function success(operation: string, details: Record<string, unknown>, extra = {}
   });
 }
 
-// The write API's error answer (`ErrorResponse`).
 export function refusal(
   status: number,
   operation: string,
@@ -316,6 +303,20 @@ export function zoteroStub(): ZoteroStub {
       }
       if (request.method === "POST" && url.pathname === "/attach") {
         return attach(request.body ?? {});
+      }
+      const collection = url.pathname.match(/^\/api\/users\/0\/collections\/([^/]+)$/);
+      if (request.method === "GET" && collection !== null) {
+        const { selection } = stub;
+        if (selection.kind === "collection" && selection.key === collection[1]) {
+          return json(200, {
+            key: selection.key,
+            data: { key: selection.key, name: selection.name, parentCollection: false },
+          });
+        }
+        return new Response("Not found\n", {
+          status: 404,
+          headers: { "Content-Type": "text/plain" },
+        });
       }
       const read = url.pathname.match(/^\/api\/users\/0\/items\/([^/]+)\/children$/);
       if (request.method === "GET" && read !== null) {

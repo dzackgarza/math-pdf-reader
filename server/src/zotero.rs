@@ -35,6 +35,22 @@ struct Selected {
 #[derive(Deserialize)]
 struct SelectedDetails {
     collection_key: String,
+    collection_name: String,
+}
+
+pub struct SelectedCollection {
+    pub key: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+struct CollectionEntry {
+    data: CollectionData,
+}
+
+#[derive(Deserialize)]
+struct CollectionData {
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -356,7 +372,7 @@ impl ZoteroWriteApi {
         self.post("/write", &body).await
     }
 
-    pub async fn selected_collection(&self) -> AppResult<Option<String>> {
+    pub async fn selected_collection(&self) -> AppResult<Option<SelectedCollection>> {
         let what = "get_selected_collection";
         let body = json!({ "operation": what });
         let (status, answer) = self
@@ -364,7 +380,10 @@ impl ZoteroWriteApi {
             .await?;
         if status.is_success() {
             let selected: Selected = parsed(what, &answer)?;
-            return Ok(Some(selected.details.collection_key));
+            return Ok(Some(SelectedCollection {
+                key: selected.details.collection_key,
+                name: selected.details.collection_name,
+            }));
         }
         if status == StatusCode::NOT_FOUND && serde_json::from_slice::<Refusal>(&answer).is_ok() {
             return Ok(None);
@@ -486,6 +505,18 @@ impl ZoteroWriteApi {
             .await
             .map_err(|error| self.unanswered(error))?;
         Err(refused(path, status, &answer))
+    }
+
+    pub async fn collection_name(&self, collection_key: &str) -> AppResult<String> {
+        let path = format!("/api/users/0/collections/{collection_key}");
+        let answer = self
+            .read(&path)
+            .await?
+            .bytes()
+            .await
+            .map_err(|error| self.unanswered(error))?;
+        let entry: CollectionEntry = parsed(&path, &answer)?;
+        Ok(entry.data.name)
     }
 
     pub async fn pdfs(&self, item_key: &str) -> AppResult<Vec<String>> {

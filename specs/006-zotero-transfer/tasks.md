@@ -272,10 +272,16 @@ last.
   Evidence: red in 4222c79 (expected true, received false); with the message in the library
   pane, `tests/library-e2e.test.ts` "each send control sends its way" passes at 1400 px and
   1024 px wide; screenshots `send-extract-failed-inspector-usable-1400.png` and `-1024.png`.
-- [ ] T033 Name where the paper went in each send's message in the library UI: "in the
+  Since 87a4470 the same test also clicks the details pane's Send to Zotero while the failed
+  send's message shows, and that send goes to Zotero.
+- [X] T033 Name where the paper went in each send's message in the library UI: "in the
   collection “<name>”", "in My Library", or "in the place an earlier send put it". The
   server puts the collection's name in `SendTarget`: Send to Zotero reads it from
   `get_selected_collection`; Send PDF Only reads it from Zotero's local API
   (`/api/users/0/collections/<key>`), because the attach answer gives only the key. Per
   FR-005 and US1. First commit a failing test in `tests/library-e2e.test.ts` through the
   details menu, the details pane's button, the row and tab context menus and the palette.
+  Evidence: red in 87a4470 (the wait for "Sent to Zotero in the collection “Lattices”, but no
+  plugin extracted the PDF" timed out); the test passes through all five controls, with the
+  earlier-send message in `send-earlier-send-named.png`; `tests/server-send.test.ts` passes,
+  23 of 23, with `collectionName` checked for Send to Zotero and Send PDF Only.

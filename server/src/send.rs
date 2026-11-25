@@ -17,7 +17,7 @@ use crate::layout;
 use crate::organization::{filing_of, kept_offline, non_empty, set_zotero_record};
 use crate::reader::pdf_url_path;
 use crate::state::Shared;
-use crate::zotero::note_html;
+use crate::zotero::{note_html, SelectedCollection};
 
 #[derive(Clone, Copy)]
 enum Step<'a> {
@@ -133,7 +133,7 @@ async fn find_or_create(
         .zotero
         .import_from_url(
             &import_url(origin, &stored.provenance, &stored.key),
-            collection.as_deref(),
+            collection.as_ref().map(|selected| selected.key.as_str()),
         )
         .await?;
     let record = ZoteroRecord {
@@ -252,9 +252,12 @@ struct Sent {
     target: SendTarget,
 }
 
-fn target_of(collection: Option<String>) -> SendTarget {
+fn target_of(collection: Option<SelectedCollection>) -> SendTarget {
     match collection {
-        Some(key) => SendTarget::Collection(non_empty(&key)),
+        Some(selected) => SendTarget::Collection {
+            collection_key: non_empty(&selected.key),
+            collection_name: non_empty(&selected.name),
+        },
         None => SendTarget::Library,
     }
 }
@@ -438,12 +441,19 @@ async fn send_pdf_only_item(state: Shared, key: String) -> AppResult<SendRespons
     };
     save(&state, &key, &record).await?;
     let kept = leave(&state, &key).await?;
+    let target = match attached.details.collection_key {
+        Some(key) => {
+            let name = state.zotero.collection_name(&key).await?;
+            target_of(Some(SelectedCollection { key, name }))
+        }
+        None => target_of(None),
+    };
     Ok(SendResponse {
         item_key: attachment,
         created: true,
         performed: vec![SendResponsePerformedItem::Pdf],
         kept,
-        target: target_of(attached.details.collection_key),
+        target,
     })
 }
 

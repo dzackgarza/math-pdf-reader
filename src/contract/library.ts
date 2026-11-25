@@ -266,11 +266,15 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
 );
 
 export const SendTargetSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("collection"), collectionKey: NonEmptySchema }),
+  z.strictObject({
+    kind: z.literal("collection"),
+    collectionKey: NonEmptySchema,
+    collectionName: NonEmptySchema,
+  }),
   z.strictObject({ kind: z.literal("library") }),
   z.strictObject({ kind: z.literal("earlier_send") }),
 ]).describe(
-  "Where a send put the item in Zotero: the collection selected in Zotero's pane (`collection`), the library root when the selected row is not a collection (`library`), or nowhere new, because the send finished an earlier send (`earlier_send`).",
+  "Where a send put the item in Zotero: the collection selected in Zotero's pane, with its key and its name as Zotero shows it (`collection`), the library root when the selected row is not a collection (`library`), or nowhere new, because the send finished an earlier send (`earlier_send`).",
 );
 
 export const SendResponseSchema = z.strictObject({
@@ -674,6 +678,7 @@ export type ImportMethod = z.infer<typeof ImportMethodSchema>;
 export type ZoteroRecord = z.infer<typeof ZoteroRecordSchema>;
 export type ZoteroStatus = z.infer<typeof ZoteroStatusSchema>;
 export type SendResponse = z.infer<typeof SendResponseSchema>;
+export type SendTarget = z.infer<typeof SendTargetSchema>;
 export type SendAndExtractResponse = z.infer<
   typeof SendAndExtractResponseSchema
 >;

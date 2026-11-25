@@ -169,6 +169,34 @@ bar, and the dialogs and palettes. The panels only draw that state.
   narrow window, the message stops at the inspector's edge, so Open and Send to Zotero stay
   usable while it shows.
 
+### Library actions
+
+`src/web/libraryActions.ts` holds what the window's controls do. Each action asks for what it
+needs (a name, a confirmation), calls the library API, and moves to the result.
+
+- Tags and collections change through the bulk add and remove routes, for one item or many.
+  A change names only what it adds or removes, so two changes made from old copies of the
+  library both take effect. Each text the user typed is trimmed before it is sent.
+- A failed call leaves the library as the server holds it, and the window says what refused
+  it. A call that succeeded but could not do all of its work (a PDF not restored, no item
+  that Zotero identified) is reported as a shortfall. A call that succeeded shows a notice
+  when the library does not show the result by itself.
+- New Collection creates the collection and files the chosen items in it; the filing answer
+  is the library, which then holds the new collection.
+- Rebuild reports, for each item that no URL serves, each URL tried and what it served. It
+  runs for one lost PDF or for all of them in one request.
+- Delete closes the item's reader tab once its annotations are saved, then deletes the item.
+  Deleting a collection or saved search asks first and leaves its page.
+- Retrieve metadata is Zotero's "Retrieve Metadata": Zotero resolves the item's URL, and
+  its answer gives the title. The outcome reports what it could not do, or nothing when
+  Zotero resolved the item.
+- Import URL and Add Folder each ask for one line, store what they find and show the new
+  item; Add Folder reports how many PDFs were new.
+- Saving a smart collection creates a new one (id null), which then opens, or saves the one
+  with that id.
+- A successful extraction placed files beside the PDF, so the library is read again: the
+  item's extraction comes from those files.
+
 ## Gaps against the spec
 
 | Requirement | Gap | Class |

@@ -601,7 +601,9 @@ test("Send to Zotero files the new Zotero item in the collection selected in Zot
 
   expect(response.status).toBe(200);
   const body: unknown = await response.json();
-  expect(body).toMatchObject({ target: { kind: "collection", collectionKey: "LATT2345" } });
+  expect(body).toMatchObject({
+    target: { kind: "collection", collectionKey: "LATT2345", collectionName: "Lattices" },
+  });
   const sent = SendResponseSchema.parse(body);
   expect(sent.created).toBe(true);
   expect(zotero.items.get(sent.itemKey)?.collections).toEqual(["LATT2345"]);
@@ -623,7 +625,9 @@ test("Send to Zotero files a work Zotero already holds in the selected collectio
 
   expect(response.status).toBe(200);
   const body: unknown = await response.json();
-  expect(body).toMatchObject({ target: { kind: "collection", collectionKey: "LATT2345" } });
+  expect(body).toMatchObject({
+    target: { kind: "collection", collectionKey: "LATT2345", collectionName: "Lattices" },
+  });
   expect(SendResponseSchema.parse(body)).toMatchObject({ itemKey: "HELD2345", created: false });
   expect(zotero.items.get("HELD2345")?.collections).toEqual([
     "OLDC2345",
@@ -659,7 +663,9 @@ test("Send PDF Only names the collection selected in Zotero that holds the stand
 
   expect(response.status).toBe(200);
   const body: unknown = await response.json();
-  expect(body).toMatchObject({ target: { kind: "collection", collectionKey: "LATT2345" } });
+  expect(body).toMatchObject({
+    target: { kind: "collection", collectionKey: "LATT2345", collectionName: "Lattices" },
+  });
   expect(SendResponseSchema.parse(body).itemKey).toBe(zotero.standalone[0]?.key ?? "");
 });
 
