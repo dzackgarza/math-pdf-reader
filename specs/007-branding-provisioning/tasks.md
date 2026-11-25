@@ -56,9 +56,11 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
 
 **Independent Test**: quickstart.md US2.
 
-- [ ] T010 [US2] Exclude `src/extension/**` and `wxt.config.ts` from the application
-  input in `scripts/source-fingerprint:7-12` (FR-005, SC-004, US2/AC3). Source has it;
-  no test. Contradicted for two scripts: see T023.
+- [X] T010 [US2] Exclude `src/extension/**` and `wxt.config.ts` from the application
+  input in `scripts/source-fingerprint:7-12` (FR-005, SC-004, US2/AC3).
+  - Evidence: `scripts/source-fingerprint:4-9`; `tests/launch.test.ts` "the application
+    input hash" edits each extension input in a scratch checkout and expects the same
+    hash, and expects a new hash after an edit to `src/web/index.html`.
 - [ ] T011 [US2] Rebuild before the launch when the binary or the stamp is missing or the
   stamp differs, then start the new build, in `scripts/launch:37-44` (FR-003, SC-002,
   US2/AC1). Source has it; no test.
@@ -113,10 +115,12 @@ captures and names its replacement.
 **Assessment basis**: commit `3a4a08a`, the working tree on 2026-11-25. Every task above
 that is not `[X]` maps to a task here.
 
-- [ ] T023 Remove `scripts/amo_signed.py` and `scripts/firefox-policy.sh` from the
+- [X] T023 Remove `scripts/amo_signed.py` and `scripts/firefox-policy.sh` from the
   application input in `scripts/source-fingerprint:8`. Only
   `scripts/provision-extensions.sh` and `just firefox-policy` read them, so an edit to
   them now rebuilds the app. Per FR-005 and SC-004 (contradicts).
+  - Evidence: `scripts/source-fingerprint:4-9`; the red test (ec7d7e9) failed for both
+    scripts and passes after the change.
 - [ ] T024 Test the launcher in `tests/launch.test.ts` (T001 harness): changed source
   runs `just provision-for-launch` in the `kitty` substitute and then the new binary
   (T011); a failed substitute build gives exit 1, the critical notification, a terminal
