@@ -281,35 +281,45 @@ test("an item's extraction is derived from the Markdown and the artifact directo
     join(bucket.root, "lattices", "lattices.md"),
     "# Lattices and Codes\n",
   );
+  const markdownFile = {
+    name: "lattices.md",
+    path: join(bucket.root, "lattices", "lattices.md"),
+    sizeBytes: 21,
+  };
+  const artifactFiles = [
+    {
+      name: "content_list.json",
+      path: join(bucket.root, "lattices", "lattices.extraction/content_list.json"),
+      sizeBytes: 2,
+    },
+    {
+      name: "pages/page-1.png",
+      path: join(bucket.root, "lattices", "lattices.extraction/pages/page-1.png"),
+      sizeBytes: 9,
+    },
+  ];
+  // A Markdown whose artifact directory holds no metadata.json has no known source kind; the
+  // library says so instead of guessing one, so the user re-runs the extraction.
+  expect(await extraction()).toEqual({
+    status: "unlabelled",
+    reason: "metadata.json is missing",
+    markdown: markdownFile,
+    files: artifactFiles,
+  });
+
+  const metadata = join(bucket.root, "lattices", "lattices.extraction/metadata.json");
+  writeFileSync(metadata, "{not json");
+  const invalid = await extraction();
+  expect(invalid?.status).toBe("unlabelled");
+  expect(invalid?.status === "unlabelled" && invalid.reason).toStartWith("metadata.json is invalid: ");
+
+  writeFileSync(metadata, JSON.stringify({ sourceKind: "ocr", authoritative: true }));
   expect(await extraction()).toEqual({
     status: "extracted",
-    sourceKind: "document_structure",
-    authoritative: false,
-    markdown: {
-      name: "lattices.md",
-      path: join(bucket.root, "lattices", "lattices.md"),
-      sizeBytes: 21,
-    },
-    files: [
-      {
-        name: "content_list.json",
-        path: join(
-          bucket.root,
-          "lattices",
-          "lattices.extraction/content_list.json",
-        ),
-        sizeBytes: 2,
-      },
-      {
-        name: "pages/page-1.png",
-        path: join(
-          bucket.root,
-          "lattices",
-          "lattices.extraction/pages/page-1.png",
-        ),
-        sizeBytes: 9,
-      },
-    ],
+    sourceKind: "ocr",
+    authoritative: true,
+    markdown: markdownFile,
+    files: artifactFiles,
   });
   expect(
     readdirSync(bucket.root).filter((name) => name.endsWith(".json")),
