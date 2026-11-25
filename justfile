@@ -65,7 +65,7 @@ test-capture:
 
 [doc("Run the mutating Zotero integration suite against the real local Zotero write API.")]
 test-zotero-live:
-    @bun test ./tests/server-send-live.ts --timeout 180000
+    @ZOTERO_LIVE=1 bun test ./tests/server-send-live.ts --timeout 180000
 
 [doc("Verify the configured assistant can inspect a PDF and read newly added Markdown with its shell.")]
 test-assistant-live:

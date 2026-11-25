@@ -14,8 +14,9 @@
   (`placeStandalone` in the addon's `src/attach.ts`).
 - **Alternatives considered**: A collection picker in the bucket. The spec names the citation
   store's own selection, and the mockup table puts no Zotero section in settings.
-- **No collection selected**: Use the library root, as Send PDF Only does, and name that
-  target in the send's answer (T031).
+- **No collection selected**: AGENTS.md (mockup table, settings row) fixes the library target
+  as Zotero's selected collection, and My Library is that selection. So the item goes to the
+  library root, as Send PDF Only does, and the send names that target in its answer (T031).
 
 ## Proof boundary for Zotero failures (US2, SC-003)
 

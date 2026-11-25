@@ -17,7 +17,8 @@ collection, and each failed send keeps the local paper.
 
 Run only with Zotero 8 and the local write API addon running, and with My Library (not a
 collection) selected in Zotero's pane: the suite fails before any send otherwise. The suite
-moves every item it creates to Zotero's trash.
+moves every item it creates to Zotero's trash. The file refuses to run unless `ZOTERO_LIVE=1`,
+which the recipe sets, and each test name starts with "writes to the real Zotero library".
 
 ```bash
 just test-zotero-live

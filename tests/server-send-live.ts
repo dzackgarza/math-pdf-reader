@@ -13,6 +13,13 @@ import {
 import { EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const ZOTERO_URL = "http://127.0.0.1:23119";
+const LIVE = "writes to the real Zotero library:";
+
+if (process.env.ZOTERO_LIVE !== "1") {
+  throw new Error(
+    "This suite writes items to the real Zotero library and moves each item it created to Zotero's trash afterwards. It never touches an item the library already held, but such an item gains the selected collection, so select My Library first. Run it only through `just test-zotero-live`, which sets ZOTERO_LIVE=1.",
+  );
+}
 const REMOTE_TIMEOUT_MS = 180_000;
 
 const createdItemKeys: string[] = [];
@@ -70,7 +77,7 @@ async function sendAll(bucket: Bucket): Promise<string[]> {
 }
 
 test(
-  "two papers captured from one listing page become two Zotero items",
+  `${LIVE} ${"two papers captured from one listing page become two Zotero items"}`,
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
     const bucket = await serveBucket({
@@ -106,7 +113,7 @@ test(
 );
 
 test(
-  "two papers imported from one folder become two Zotero items",
+  `${LIVE} ${"two papers imported from one folder become two Zotero items"}`,
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
     const bucket = await serveBucket({
@@ -178,7 +185,7 @@ async function captureOne(bucket: Bucket, key: string, pdfUrl: string): Promise<
 }
 
 test(
-  "Send PDF Only stores a PDF from a one-off link as a standalone attachment, and the item leaves",
+  `${LIVE} ${"Send PDF Only stores a PDF from a one-off link as a standalone attachment, and the item leaves"}`,
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
     const bucket = await serveBucket({
@@ -206,7 +213,7 @@ test(
 );
 
 test(
-  "Send to Zotero and Extract sends, tries the chain in order, and attaches the first success's Markdown",
+  `${LIVE} ${"Send to Zotero and Extract sends, tries the chain in order, and attaches the first success's Markdown"}`,
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
     const extractor = join(import.meta.dir, "fixtures/plugins/extractor.sh");
@@ -266,7 +273,7 @@ test(
 );
 
 test(
-  "a send of a PDF URL Zotero identifies leaves one PDF on the new item: the bucket's copy",
+  `${LIVE} ${"a send of a PDF URL Zotero identifies leaves one PDF on the new item: the bucket's copy"}`,
   async () => {
     const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
     const bucket = await serveBucket({
@@ -342,7 +349,7 @@ async function sendCopy(file: string): Promise<string[]> {
 }
 
 test(
-  "a send of a paper Zotero holds leaves its entry one PDF: the copy with more annotations",
+  `${LIVE} ${"a send of a paper Zotero holds leaves its entry one PDF: the copy with more annotations"}`,
   async () => {
     const plain = await sendCopy("arxiv-2609.21174v1.pdf");
     expect(plain).toHaveLength(1);
