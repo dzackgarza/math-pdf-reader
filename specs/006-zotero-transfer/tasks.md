@@ -57,11 +57,11 @@ inspect the Zotero item.
   the copy that has more annotations. In `server/src/send.rs`. Per the edge case "The citation
   store may reject a duplicate".
   Evidence: `server/src/send.rs:184-213`; live `tests/server-send-live.ts:346`.
-- [ ] T006 [US1] File the item that Send to Zotero makes or finds in Zotero's selected
+- [X] T006 [US1] File the item that Send to Zotero makes or finds in Zotero's selected
   collection, in `server/src/zotero.rs` and `server/src/send.rs`. Per FR-005 and US1/AC2.
-  Code: `import_from_url` (`server/src/zotero.rs:357-361`) sends no `collection_keys`, so a new
-  item goes to the library root. Only Send PDF Only lands in the selected collection, through
-  the addon's placement.
+  Evidence: `server/src/zotero.rs:370-403` (`import_from_url` with `collection_keys`,
+  `selected_collection`), `server/src/send.rs:151-160`; `tests/server-send.test.ts:582` (new
+  item), `:595` (held item gains the collection), `:618` (library root).
 - [ ] T007 [US1] Send to Zotero and Extract attaches the paper's existing Markdown, in
   `server/src/send.rs`. Per FR-003 and US1/AC3.
   Code: `server/src/send.rs:236-247`, `:389-391`. `tests/server-send.test.ts:136` shows only
@@ -120,9 +120,12 @@ inspect the Zotero item.
   `502 zotero_failed` with Zotero's reason and record no Zotero item, in `server/src/zotero.rs`.
   Per the edge case "reject a duplicate or incomplete record" and FR-006.
   Code: `server/src/zotero.rs:337-347`, `server/src/error.rs:77`. No test.
-- [ ] T017 [US2] When the selected collection is unavailable, make the send's target explicit,
+- [X] T017 [US2] When the selected collection is unavailable, make the send's target explicit,
   in `server/src/send.rs`. Per the edge case "A selected collection may be unavailable" and
   FR-005. Depends on T006.
+  Evidence: `server/src/zotero.rs:387-403` passes the write API's `409` through as
+  `zotero_failed`, and `server/src/send.rs:151` reads the selection before any import;
+  `tests/server-send.test.ts:631` (the message names the closed window, no item is made).
 
 ## Phase 4: User Story 3 - Use the user's connector (P2)
 
@@ -170,13 +173,15 @@ last.
   `/api/users/0/items/<key>/children` reads. Prerequisite for T003, T014, T015 and T016
   (missing).
   Evidence: `tests/zotero-stub.ts:106`; used by `tests/server-send.test.ts:446`.
-- [ ] T021 CRITICAL: Pass Zotero's selected collection to `import_from_url` in
+- [X] T021 CRITICAL: Pass Zotero's selected collection to `import_from_url` in
   `server/src/zotero.rs` and `server/src/send.rs`. Read it with `get_selected_collection`, send
   its key in `collection_keys`, and file an existing item in that collection. With no
   collection selected, use the library root, as Send PDF Only does. First commit a failing
   test in `tests/server-send.test.ts` that asserts the stub received that collection key. Per
   FR-005, US1/AC2 and T006 (missing). The open question in `research.md` decides the
   no-selection case.
+  Evidence: see T006. The no-selection case uses the library root, the plan's choice; the
+  owner has not yet confirmed it (`research.md` open question).
 - [X] T022 Add an implicit-write audit to `tests/server-send.test.ts` with the T020 stub.
   Capture a PDF, open `/read/<key>`, save an annotation, run an extraction, file the item in a
   collection, tag it, add a note and run Retrieve metadata. Assert that the stub received only
@@ -216,8 +221,9 @@ last.
   running: start Zotero", the button enabled again and the reader opening the paper. Repeat
   through the row context menu and the palette command "Send Selected PDF to Zotero". Per
   FR-001, FR-006, US2/AC1, T010 and T012 (missing).
-- [ ] T030 Make the send's answer to an unavailable selected collection explicit in
+- [X] T030 Make the send's answer to an unavailable selected collection explicit in
   `server/src/send.rs`. When no Zotero window is open, the addon refuses with a conflict. Show
   it as `zotero_failed` with a message that names the cause, and record no item. Cover it with
   the T020 stub. Per the edge case "A selected collection may be unavailable", FR-005 and T017
   (missing). Depends on T021.
+  Evidence: see T017.

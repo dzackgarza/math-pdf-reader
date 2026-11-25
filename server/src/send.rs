@@ -146,9 +146,15 @@ async fn find_or_create(
     indexed: &IndexedItem,
 ) -> AppResult<(ZoteroRecord, bool)> {
     let stored = &indexed.stored;
+    // The item goes in the collection selected in Zotero's pane, or in the library root when
+    // the selected row is not a collection, as a standalone attachment does.
+    let collection = state.zotero.selected_collection().await?;
     let imported = state
         .zotero
-        .import_from_url(&import_url(origin, &stored.provenance, &stored.key))
+        .import_from_url(
+            &import_url(origin, &stored.provenance, &stored.key),
+            collection.as_deref(),
+        )
         .await?;
     let record = ZoteroRecord {
         item_key: non_empty(&imported.item_key),

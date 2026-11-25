@@ -36,6 +36,17 @@ struct Version {
 /// attaches the bucket's own copy, so the import must store no PDF of its own.
 const IMPORT_STORE_ATTACHMENTS: &str = "import_store_attachments";
 
+/// `get_selected_collection`'s answer when a collection is selected.
+#[derive(Deserialize)]
+struct Selected {
+    details: SelectedDetails,
+}
+
+#[derive(Deserialize)]
+struct SelectedDetails {
+    collection_key: String,
+}
+
 #[derive(Deserialize)]
 struct Refusal {
     operation: String,
@@ -354,10 +365,39 @@ impl ZoteroWriteApi {
     /// The item for the source at `url`: the write API identifies the source by its own
     /// methods, and answers the library's item for that work when it already holds one. A new
     /// item gets no attachment: the send attaches the bucket's copy.
-    pub async fn import_from_url(&self, url: &str) -> AppResult<Imported> {
-        let body =
-            json!({ "operation": "import_from_url", "url": url, "store_attachments": false });
+    /// `collection`, when given, is a collection the item goes in: a new item is made there, and
+    /// an item the library already held gains it.
+    pub async fn import_from_url(
+        &self,
+        url: &str,
+        collection: Option<&str>,
+    ) -> AppResult<Imported> {
+        let body = json!({
+            "operation": "import_from_url",
+            "url": url,
+            "store_attachments": false,
+            "collection_keys": collection.into_iter().collect::<Vec<_>>(),
+        });
         self.post("/write", &body).await
+    }
+
+    /// The key of the collection selected in Zotero's pane, or `None` when the selected row is
+    /// not a collection (the library root, a saved search). With no Zotero window open the
+    /// write API refuses with a conflict, which is Zotero's failure here.
+    pub async fn selected_collection(&self) -> AppResult<Option<String>> {
+        let what = "get_selected_collection";
+        let body = json!({ "operation": what });
+        let (status, answer) = self
+            .exchange(self.client.post(self.url("/write")).json(&body))
+            .await?;
+        if status.is_success() {
+            let selected: Selected = parsed(what, &answer)?;
+            return Ok(Some(selected.details.collection_key));
+        }
+        if status == StatusCode::NOT_FOUND && serde_json::from_slice::<Refusal>(&answer).is_ok() {
+            return Ok(None);
+        }
+        Err(refused(what, status, &answer))
     }
 
     /// The metadata Zotero's methods resolve for the source at `url`, without saving an item.
