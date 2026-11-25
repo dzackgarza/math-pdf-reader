@@ -109,6 +109,10 @@ def open_window(
     """The app starts as autostart starts it: outside any shell that has loaded the `.envrc`.
 
     The driver and the app write to the test's output, which pytest shows when the run fails.
+    WEBKIT_DEBUG=SessionHost makes WebKitWebDriver log how each session's connection to the app
+    ends (WebKitWebDriver --help); the app inherits it and has no channel of that name.
+    WebKitWebDriver writes its log, with each inspector command it sends and each reply, to the
+    user's journal, not to its output.
     """
     env = {
         **{
@@ -122,6 +126,7 @@ def open_window(
         "XDG_DATA_HOME": str(data_home),
         "XDG_CACHE_HOME": str(tmp_path / "cache"),
         "TAURI_WEBVIEW_AUTOMATION": "true",
+        "WEBKIT_DEBUG": "SessionHost",
     }
     options = webdriver.WebKitGTKOptions()
     options.binary_location = str(APP)
@@ -132,8 +137,7 @@ def open_window(
         log_output=subprocess.STDOUT,
     )
     driver = webdriver.WebKitGTK(options=options, service=service)
-    stack.callback(exited, app_processes(service))
-    stack.callback(driver.quit)
+    stack.callback(quit_and_wait, driver, service, app_processes(service))
     return driver
 
 
@@ -150,20 +154,64 @@ def app_processes(service: webdriver.WebKitGTKService) -> list[int]:
     return started
 
 
-def exited(processes: list[int]) -> None:
-    """Wait until the app is gone, so its port is free for the next test's app.
+def quit_and_wait(
+    driver: webdriver.WebKitGTK,
+    service: webdriver.WebKitGTKService,
+    processes: list[int],
+) -> None:
+    """End the session, then wait until the app is gone, so its port is free for the next test's
+    app.
 
     The driver's quit can return before the app has exited, and the app holds the bucket's port
     until its last thread has exited. The thread-group leader shows state Z as soon as its own
     thread exits, while the other threads still hold the descriptors.
+
+    If the app outlives the wait, the failure gives how long the quit took, WebKitWebDriver's exit
+    status, the app's parent and signal masks (SigBlk, SigIgn, SigCgt in /proc/<pid>/status), and
+    WebKitWebDriver's last journal lines.
     """
+    assert service.process is not None
+    started = time.monotonic()
+    driver.quit()
+    quit_took = time.monotonic() - started
     deadline = time.monotonic() + 30
     for pid in processes:
         while threads := live_threads(pid):
-            assert time.monotonic() < deadline, (
-                f"the app {pid} did not exit after the driver quit; threads {threads}"
-            )
+            if time.monotonic() >= deadline:
+                pytest.fail(
+                    f"the app {pid} did not exit after the driver quit; quit took {quit_took:.1f} s; "
+                    f"WebKitWebDriver {service.process.pid} exit status {service.process.poll()}; "
+                    f"{process_status(pid)}; threads {threads}; "
+                    f"WebKitWebDriver's journal: {journal(service.process.pid)}"
+                )
             time.sleep(0.1)
+
+
+def journal(pid: int) -> str:
+    """The last 20 lines a process wrote to the user's journal, or why journalctl could not read
+    them."""
+    run = subprocess.run(
+        ["journalctl", "--merge", "--no-pager", "-o", "short-precise", f"_PID={pid}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if run.returncode != 0:
+        return f"journalctl exited {run.returncode}: {run.stderr}"
+    return "\n".join(run.stdout.splitlines()[-20:])
+
+
+def process_status(pid: int) -> str:
+    """A process's PPid, SigBlk, SigIgn and SigCgt lines from /proc/<pid>/status."""
+    try:
+        lines = Path(f"/proc/{pid}/status").read_text().splitlines()
+    except FileNotFoundError:
+        return "status gone"
+    return ", ".join(
+        line
+        for line in lines
+        if line.split(":")[0] in ("PPid", "SigBlk", "SigIgn", "SigCgt")
+    )
 
 
 def live_threads(pid: int) -> list[str]:
