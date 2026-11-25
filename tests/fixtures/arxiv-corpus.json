@@ -10,14 +10,28 @@
       "Franca Lippert",
       "Oliver Schlotterer",
       "Yoann Sohnle"
-    ]
+    ],
+    "captured": {
+      "title": "Equivariant Iterated Eisenstein Integrals for Congruence Subgroups of Level 2",
+      "authors": [
+        "E. Claasen",
+        "M. Doroudiani",
+        "C. Duhr"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26429v1",
     "title": "Algebraic matroids with non-algebraic duals exist in any positive characteristic",
     "authors": [
       "Lukas Grund"
-    ]
+    ],
+    "captured": {
+      "title": "Algebraic matroids with non-algebraic duals exist in any positive characteristic.",
+      "authors": [
+        "L. Grund"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26301v1",
@@ -26,14 +40,28 @@
       "Yanbo Fang",
       "Jiyuan Han",
       "Mingchen Xia"
-    ]
+    ],
+    "captured": {
+      "title": "The envelope property for unibranch projective varieties",
+      "authors": [
+        "Mingchen Xia",
+        "Yanbo Fang",
+        "Jiyuan Han"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26290v1",
     "title": "Hilbert schemes of points on plane curves via standard families",
     "authors": [
       "Miika Rankaviita"
-    ]
+    ],
+    "captured": {
+      "title": "Hilbert schemes of points on plane curves via standard families",
+      "authors": [
+        "Rankaviita, Miika"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26246v1",
@@ -46,7 +74,14 @@
       "Jenna Rajchgot",
       "Lisa Seccia",
       "Adam Van Tuyl"
-    ]
+    ],
+    "captured": {
+      "title": "Presentations of the cohomology ring of Hessenberg varieties for the minimal nilpotent orbit in type $A$",
+      "authors": [
+        "M. Harada",
+        "A. Van Tuyl"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26237v1",
@@ -54,21 +89,40 @@
     "authors": [
       "Evelia R. García Barroso",
       "William G. Hernández-Yanes"
-    ]
+    ],
+    "captured": {
+      "title": "Concentration of plane branches",
+      "authors": [
+        "E. R. García Barroso",
+        "W. G. Hernández-Yanes"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26217v1",
     "title": "Surface sheaves on the quintic II. Donaldson-Thomas invariants and the M5-brane modified elliptic genus in string theory",
     "authors": [
       "Artan Sheshmani"
-    ]
+    ],
+    "captured": {
+      "title": "Surface sheaves on the quintic II: Donaldson--Thomas invariants and the M5-brane modified elliptic genus in string theory",
+      "authors": [
+        "A. Sheshmani"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26207v1",
     "title": "Surface sheaves on the quintic I. Expanded degenerations and virtual gluing",
     "authors": [
       "Artan Sheshmani"
-    ]
+    ],
+    "captured": {
+      "title": "Surface sheaves on the quintic I: expanded degenerations and virtual gluing",
+      "authors": [
+        "Artan Sheshmani"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26185v1",
@@ -77,7 +131,15 @@
       "Giovanni Cerulli Irelli",
       "Evgeny Feigin",
       "Markus Reineke"
-    ]
+    ],
+    "captured": {
+      "title": "Euler up-down numbers and quiver representations",
+      "authors": [
+        "G. Cerulli Irelli",
+        "E. Feigin",
+        "M. Reineke"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26163v1",
@@ -85,7 +147,14 @@
     "authors": [
       "Rahul Ajit",
       "Daniel Apsley"
-    ]
+    ],
+    "captured": {
+      "title": "Uniform positivity of the F-signature and pure descent of KLT singularities",
+      "authors": [
+        "R. Ajit",
+        "D. Apsley"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26152v1",
@@ -93,14 +162,27 @@
     "authors": [
       "Xin Lü",
       "Wan-Yuan Xu"
-    ]
+    ],
+    "captured": {
+      "title": "Orbifold Chern slopes of surfaces with negative second Segre number and big cotangent bundle",
+      "authors": [
+        "Xin Lu",
+        "Wan-Yuan Xu"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26115v1",
     "title": "Rational multisections and unirationality of supersingular K3 surfaces",
     "authors": [
       "Haitao Zou"
-    ]
+    ],
+    "captured": {
+      "title": "Rational multisections and unirationality of supersingular K3 surfaces",
+      "authors": [
+        "H. Zou"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.26001v1",
@@ -108,7 +190,14 @@
     "authors": [
       "Yota Maeda",
       "Atsuhira Nagano"
-    ]
+    ],
+    "captured": {
+      "title": "Moduli spaces of (3,6)-K3 surfaces and cubic surfaces",
+      "authors": [
+        "Y. Maeda",
+        "A. Nagano"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25974v1",
@@ -116,35 +205,66 @@
     "authors": [
       "Hongyu Luo",
       "Thomas Polstra"
-    ]
+    ],
+    "captured": {
+      "title": "Uniform bounds of F-signature and effective ideal containments",
+      "authors": [
+        "Luo, Hongyu",
+        "Polstra, Thomas"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25863v1",
     "title": "A note on the learning coefficient of exceptional singularities",
     "authors": [
       "Giacomo Graziani"
-    ]
+    ],
+    "captured": {
+      "title": "A Note on the Learning Coefficient of Exceptional Singularities",
+      "authors": [
+        "G. Graziani"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25783v1",
     "title": "Symmetry of pole order spectra and freeness of plane curves",
     "authors": [
       "Gabriel Sticlaru"
-    ]
+    ],
+    "captured": {
+      "title": "Symmetry of pole order spectra and freeness of plane curves",
+      "authors": [
+        "G. Sticlaru"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25767v1",
     "title": "Plane curves attaining the Dimca-Sernesi bound and Jacobian syzygies of pencil-type curves",
     "authors": [
       "Gabriel Sticlaru"
-    ]
+    ],
+    "captured": {
+      "title": "Plane curves attaining the Dimca–Sernesi bound and Jacobian syzygies of pencil-type curves",
+      "authors": [
+        "Gabriel Sticlaru"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25693v1",
     "title": "Constructible properties of minimal models",
     "authors": [
       "Daniil Serebrennikov"
-    ]
+    ],
+    "captured": {
+      "title": "Constructible properties of minimal models",
+      "authors": [
+        "D. Serebrennikov"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25630v1",
@@ -152,7 +272,14 @@
     "authors": [
       "Jie Wang",
       "Dan Yan"
-    ]
+    ],
+    "captured": {
+      "title": "Linear dependence and tameness for homogeneous nilpotent Jacobian maps in dimension four",
+      "authors": [
+        "J. Wang",
+        "D. Yan"
+      ]
+    }
   },
   {
     "id": "http://arxiv.org/abs/2611.25501v1",
@@ -160,6 +287,13 @@
     "authors": [
       "Xintong Jiang",
       "Santai Qu"
-    ]
+    ],
+    "captured": {
+      "title": "Stein degree on birational log Calabi--Yau fibrations",
+      "authors": [
+        "X. Jiang",
+        "S. Qu"
+      ]
+    }
   }
 ]

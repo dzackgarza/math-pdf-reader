@@ -48,24 +48,48 @@ const fixture = (name: string) =>
 const lectureNotes = fixture("lecture-notes.pdf");
 const problemSet = fixture("problem-set.pdf");
 const outlinedNotes = fixture("outlined-notes.pdf");
-const discoveryCorpus: { id: string; title: string; authors: string[] }[] =
-  JSON.parse(
-    readFileSync(join(import.meta.dir, "fixtures/arxiv-corpus.json"), "utf8"),
-  );
+type FeedEntry = { id: string; title: string; authors: string[] };
+// Known arXiv papers, each with the title and authors a capture recorded for it: abbreviated,
+// reordered or partial authors, TeX or none, a subtitle dropped or punctuated differently.
+const discoveryCorpus: (FeedEntry & {
+  captured: { title: string; authors: string[] };
+})[] = JSON.parse(
+  readFileSync(join(import.meta.dir, "fixtures/arxiv-corpus.json"), "utf8"),
+);
+// Papers that share words and authors with the corpus.
+const distractors: FeedEntry[] = JSON.parse(
+  readFileSync(join(import.meta.dir, "fixtures/arxiv-distractors.json"), "utf8"),
+);
 const xml = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-const corpusFeed = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">${discoveryCorpus
-  .map(
-    (entry) =>
-      `<entry><id>${xml(entry.id)}</id><title>${xml(entry.title)}</title>${entry.authors
-        .map((author) => `<author><name>${xml(author)}</name></author>`)
-        .join("")}</entry>`,
-  )
-  .join("")}</feed>`;
+const tokens = (text: string) =>
+  text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token !== "");
+// The entries an arXiv API `search_query` selects: every `ti:` clause, a word or a quoted
+// phrase, must occur in the title.
+function selected(entries: FeedEntry[], query: string): FeedEntry[] {
+  const clauses = [...query.matchAll(/ti:(?:"([^"]*)"|(\S+))/g)].map(
+    (clause) => tokens(clause[1] ?? clause[2]).join(" "),
+  );
+  return entries.filter((entry) => {
+    const title = ` ${tokens(entry.title).join(" ")} `;
+    return clauses.length > 0 && clauses.every((clause) => title.includes(` ${clause} `));
+  });
+}
+const feedOf = (entries: FeedEntry[]) =>
+  `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">${entries
+    .map(
+      (entry) =>
+        `<entry><id>${xml(entry.id)}</id><title>${xml(entry.title)}</title>${entry.authors
+          .map((author) => `<author><name>${xml(author)}</name></author>`)
+          .join("")}</entry>`,
+    )
+    .join("")}</feed>`;
 
 // The publisher: what each path serves right now; a path with nothing serves 404.
 const served = new Map<string, Uint8Array<ArrayBuffer>>();
 let atomFeed: string | undefined;
+// When set, the arXiv API answers each query with the entries of this set it selects.
+let searchedEntries: FeedEntry[] | undefined;
 // When each arXiv API request arrived, in milliseconds since the epoch.
 const apiRequests: number[] = [];
 // A refusal the arXiv API answers instead of a feed, when set.
@@ -80,6 +104,12 @@ const publisher = Bun.serve({
       apiRequests.push(Date.now());
       if (apiRefusal !== undefined) {
         return new Response("Rate exceeded.", apiRefusal);
+      }
+      if (searchedEntries !== undefined) {
+        const query = url.searchParams.get("search_query") ?? "";
+        return new Response(feedOf(selected(searchedEntries, query)), {
+          headers: { "Content-Type": "application/atom+xml" },
+        });
       }
       return new Response(
         atomFeed ??
@@ -2347,7 +2377,7 @@ test("discovery with the production configuration keeps its arXiv API requests 3
   }
 }, 60_000);
 
-test("known arXiv papers rank in the accepted results on the 20-paper corpus", async () => {
+test("known arXiv papers rank first among the accepted results for their captured metadata", async () => {
   expect(discoveryCorpus.length).toBeGreaterThanOrEqual(20);
   const config = loadAppConfig(CONFIG_PATH);
   const localArxiv = {
@@ -2362,25 +2392,24 @@ test("known arXiv papers rank in the accepted results on the 20-paper corpus", a
   };
   const { root, request, capture } = await bucket(null, localArxiv);
   await capture(lectureNotes, "corpus", at("/notes/corpus.pdf"));
-  atomFeed = corpusFeed;
-  let accepted = 0;
+  searchedEntries = [...discoveryCorpus, ...distractors];
+  const missed: string[] = [];
   try {
     for (const entry of discoveryCorpus) {
-      await recordMetadata(root, "corpus", "resolver", {
-        title: entry.title.toLowerCase(),
-        authors: entry.authors,
+      await recordMetadata(root, "corpus", "pdf-metadata", {
+        ...entry.captured,
         year: 2024,
       });
       const response = await request("POST", "/api/items/corpus/arxiv");
       expect(response.status).toBe(200);
       const result = ArxivSearchResponseSchema.parse(await response.json());
       const expected = entry.id.split("/abs/")[1]?.replace(/v\d+$/, "");
-      if (result.matches.some((match) => match.id === expected)) accepted++;
+      if (result.matches[0]?.id !== expected) missed.push(entry.captured.title);
     }
   } finally {
-    atomFeed = undefined;
+    searchedEntries = undefined;
   }
-  expect(accepted / discoveryCorpus.length).toBeGreaterThanOrEqual(0.95);
+  expect(missed.length / discoveryCorpus.length, missed.join("\n")).toBeLessThanOrEqual(0.05);
 }, 120_000);
 
 test("an item the export holds whose PDF is gone needs re-fetching; Rebuild restores it from the PDF URL or a mirror", async () => {
