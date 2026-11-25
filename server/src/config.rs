@@ -154,6 +154,11 @@ pub struct BucketConfig {
     pub index_export: PathBuf,
     /// The capture extension builds the bucket offers (config::extensions_dir).
     pub extensions_dir: PathBuf,
+    /// The directory holding the app build's stamp and the launcher's rebuild record
+    /// (config::installed).
+    pub app_build_dir: PathBuf,
+    /// The checkout whose source the app build's stamp is compared with (config::checkout).
+    pub checkout: PathBuf,
     /// The bin directory of the Python environment the store's commands and the plugins run
     /// from.
     pub python_bin: PathBuf,
@@ -176,6 +181,8 @@ impl BucketConfig {
             extractions_manifest: extractions_manifest(&runtime),
             index_export: index_export_file(),
             extensions_dir: extensions_dir(&runtime),
+            app_build_dir: runtime.clone(),
+            checkout: checkout(),
             python_bin: python_bin(&runtime),
             app,
             process_env,

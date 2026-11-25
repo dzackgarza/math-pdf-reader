@@ -642,6 +642,19 @@ export const SettingsSchema = z.strictObject({
   organizationFile: NonEmptySchema,
 });
 
+export const AppBuildSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("current") }),
+  z.strictObject({ state: z.literal("stale") }),
+  z.strictObject({
+    state: z.literal("failed"),
+    exitStatus: z.int(),
+    log: NonEmptySchema,
+  }),
+  z.strictObject({ state: z.literal("unprovisioned") }),
+]);
+
+export type AppBuild = z.infer<typeof AppBuildSchema>;
+
 export function collectionSubtree(
   collections: Collection[],
   id: string,

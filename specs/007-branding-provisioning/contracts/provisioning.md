@@ -9,7 +9,7 @@ run it.
 | --- | --- | --- |
 | binary present and stamp equals `scripts/source-fingerprint` | `exec ~/.local/bin/pdf-bucket-desktop args…`; no build | the app's |
 | binary missing, stamp missing, or stamp differs | notification "Source changed: rebuilding before launch"; `kitty --title "Math PDF Reader - Building"` runs `just provision-for-launch`; then `exec` the new binary | the app's |
-| that rebuild fails | the terminal prints "Rebuild failed (exit N). Press Enter to close." and waits; critical notification "rebuild failed; see the Math PDF Reader build terminal for details"; the app does not start | 1 |
+| that rebuild fails | `rebuild-failure` holds N and `rebuild.log` the output (see `GET /api/app-build`); the terminal prints "Rebuild failed (exit N). Press Enter to close." and waits; critical notification "rebuild failed; see the Math PDF Reader build terminal for details"; the app does not start | 1 |
 | rebuild needed and `kitty` not on `PATH` | critical notification "kitty is required to show the rebuild output"; the app does not start | 1 |
 
 ## `scripts/source-fingerprint`
@@ -78,3 +78,31 @@ How a stale build is replaced (`replacement` in the stale state):
   version differs from the loaded manifest therefore reloads the extension, which then
   loads the new build whole. A PDF that a capture page gave up during that reload opens
   again in the reloaded build.
+
+## `GET /api/app-build`
+
+The server reads the app build's state at each request from the installed runtime
+directory (`config::installed`, `serve --app-build`) and the checkout's
+`scripts/source-fingerprint` (`config::checkout`, `serve --checkout`). Provisioning stops
+the running app before it writes the stamp, so the stamp names the running build.
+
+It is not a field of `/status`: an installed extension parses `/status` with a strict
+schema, so a new field there makes every extension built before it refuse all captures
+until it is replaced.
+
+| Condition, in this order | Answer (`AppBuildSchema` in `src/contract/library.ts`) |
+| --- | --- |
+| no `source-fingerprint` stamp | `{"state": "unprovisioned"}` |
+| stamp equals the checkout's fingerprint | `{"state": "current"}` |
+| `rebuild-failure` is newer than the stamp | `{"state": "failed", "exitStatus": N, "log": "<dir>/rebuild.log"}` |
+| otherwise | `{"state": "stale"}` |
+
+The launcher's rebuild terminal copies the rebuild's output to `rebuild.log`. When the
+rebuild fails it writes the exit status to `rebuild-failure`, so the failure stays after
+the terminal closes. A later successful provision writes a newer stamp, which ends the
+failed state.
+
+The library reads `/status` and `/api/app-build` when the window opens and again each time
+the window takes the focus. Settings shows the state in the App build row and each
+browser's provisioned extension version, or "none". The status bar shows "Old build" or "Rebuild failed" with
+the full sentence as its label; it shows nothing for current and unprovisioned.

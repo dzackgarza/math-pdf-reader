@@ -11,6 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { REPO_ROOT } from "../src/contract/config";
+import { AppBuildSchema } from "../src/contract/library";
+import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const CHECKOUT_FILES = [
   ".gitignore",
@@ -203,6 +205,34 @@ describe("the launcher", () => {
       "-u critical Math PDF Reader rebuild failed; see the Math PDF Reader build terminal for details",
     );
     expect(scratch.recorded("app")).toEqual(["build 1 --from-launcher"]);
+  });
+
+  test("after a failed rebuild's terminal closes, the app's status reports the failure with its exit status and the file that keeps its output", async () => {
+    const scratch = launcherCheckout();
+    expect(await launched(scratch)).toBe(0);
+    appendFileSync(join(scratch.repo, "src/web/index.html"), "\n");
+    expect(await launched(scratch, { BUILD_FAILS: "1" })).toBe(1);
+
+    const appBuild = join(scratch.data, "pdf-bucket-app");
+    const app = await serveBucket({
+      root: mkdtempSync(join(tmpdir(), "pdf-bucket-launch-root-")),
+      zoteroUrl: closedPortUrl(),
+      extractionsManifest: EXTRACTIONS_MANIFEST,
+      appBuild,
+      checkout: scratch.repo,
+    });
+    try {
+      const build = AppBuildSchema.parse(await (await app.request("/api/app-build")).json());
+
+      expect(build).toEqual({
+        state: "failed",
+        exitStatus: 3,
+        log: join(appBuild, "rebuild.log"),
+      });
+      expect(readFileSync(join(appBuild, "rebuild.log"), "utf8")).toContain("the build stopped");
+    } finally {
+      await app.stop();
+    }
   });
 
   test("two launches during one rebuild build once, and both start the new build", async () => {

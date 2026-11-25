@@ -2,7 +2,7 @@
 //! commands over the configured data root.
 //!
 //! - `serve <root> <zotero url> <extractions manifest> --index-export <file> --config <file>
-//!   --extensions <dir>`
+//!   --extensions <dir> --app-build <dir> --checkout <dir>`
 //!   serves any bucket root on a free port, prints its origin and
 //!   serves until its standard input closes; the test suites and evidence runs use it so that
 //!   they never touch the configured bucket or its port. The config file has the schema of
@@ -56,6 +56,13 @@ enum Command {
         /// config::extensions_dir; a directory without them offers none.
         #[arg(long)]
         extensions: PathBuf,
+        /// The directory holding the app build's stamp and the launcher's rebuild record, in
+        /// the layout of config::installed.
+        #[arg(long)]
+        app_build: PathBuf,
+        /// The checkout whose source the app build's stamp is compared with.
+        #[arg(long)]
+        checkout: PathBuf,
     },
     /// Write the index export: every stored item's provenance and filing.
     ExportIndex { file: Option<PathBuf> },
@@ -188,6 +195,8 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
             index_export,
             config: config_file,
             extensions,
+            app_build,
+            checkout,
         } => {
             let app: AppConfig = from_json(&tokio::fs::read(&config_file).await?)
                 .map_err(|violation| Failure::Config(config_file, violation))?;
@@ -201,6 +210,8 @@ async fn run(command: Command) -> Result<ExitCode, Failure> {
                 extractions_manifest,
                 index_export,
                 extensions_dir: extensions,
+                app_build_dir: app_build,
+                checkout,
                 python_bin: config::python_bin(&config::checkout()),
                 process_env: ProcessEnv::new(),
                 app: app.clone(),

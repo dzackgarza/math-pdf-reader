@@ -19,6 +19,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -49,6 +50,7 @@ import { recordTiming } from "./timings";
 import {
   CONFIG_PATH,
   loadAppConfig,
+  REPO_ROOT,
   STORE_COMMAND,
 } from "../src/contract/config";
 import {
@@ -3423,6 +3425,86 @@ test("a refused index export names the command that forgets an item", async () =
     );
   } finally {
     await lost.stop();
+  }
+});
+
+test("Settings and the status bar say whether the app build is current, old, or its rebuild failed, and which extension builds the app offers", async () => {
+  const appBuild = mkdtempSync(join(tmpdir(), "pdf-bucket-app-build-"));
+  const extensions = mkdtempSync(join(tmpdir(), "pdf-bucket-extensions-"));
+  mkdirSync(join(extensions, "chrome-mv3"));
+  writeFileSync(
+    join(extensions, "chrome-mv3/manifest.json"),
+    JSON.stringify({ version: "1.2.3" }),
+  );
+  const stamp = join(appBuild, "source-fingerprint");
+  writeFileSync(
+    stamp,
+    Bun.spawnSync([join(REPO_ROOT, "scripts/source-fingerprint")], {
+      env: process.env,
+    })
+      .stdout.toString()
+      .trim(),
+  );
+  const app = await serveBucket({
+    root: mkdtempSync(join(tmpdir(), "pdf-bucket-app-build-root-")),
+    zoteroUrl: closedPortUrl(),
+    extractionsManifest: EXTRACTIONS_MANIFEST,
+    extensions,
+    appBuild,
+  });
+  const appBuildRow = () =>
+    page.$$eval("dl > div", (rows) =>
+      Object.fromEntries(
+        rows.map((row) => [
+          row.querySelector("dt")?.textContent,
+          row.querySelector("dd")?.textContent,
+        ]),
+      ),
+    );
+  const shown = (text: string) =>
+    page.waitForFunction(
+      (expected) =>
+        [...document.querySelectorAll("dl > div")].some(
+          (row) =>
+            row.querySelector("dt")?.textContent === "App build" &&
+            row.querySelector("dd")?.textContent === expected,
+        ),
+      {},
+      text,
+    );
+  const indicator = () =>
+    page.$$eval('footer [role="status"][aria-label^="Old build"], footer [role="status"][aria-label^="Rebuild failed"]', (found) =>
+      found.map((status) => [status.getAttribute("aria-label"), status.textContent]),
+    );
+  const refocus = () => page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  try {
+    await page.goto(`${app.origin}/#/settings`);
+    await shown("Current: built from the source as it is now");
+    const rows = await appBuildRow();
+    expect(rows["Chrome extension"]).toBe("1.2.3");
+    expect(rows["Firefox extension"]).toBe(
+      "None: Math PDF Reader offers no build of this extension",
+    );
+    expect(await indicator()).toEqual([]);
+
+    writeFileSync(stamp, "0".repeat(64));
+    const hourAgo = new Date(Date.now() - 3_600_000);
+    utimesSync(stamp, hourAgo, hourAgo);
+    await refocus();
+    const old =
+      "Old build: the source changed after this build. Quit Math PDF Reader and open it again to rebuild.";
+    await shown(old);
+    expect(await indicator()).toEqual([[old, "Old build"]]);
+
+    writeFileSync(join(appBuild, "rebuild.log"), "the build stopped\n");
+    writeFileSync(join(appBuild, "rebuild-failure"), "3\n");
+    await refocus();
+    const failed = `Rebuild failed (exit 3): this window runs the previous build. The rebuild's output is in ${join(appBuild, "rebuild.log")}.`;
+    await shown(failed);
+    expect(await indicator()).toEqual([[failed, "Rebuild failed"]]);
+    await shot("settings-rebuild-failed");
+  } finally {
+    await app.stop();
   }
 });
 
