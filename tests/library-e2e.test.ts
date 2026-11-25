@@ -2366,6 +2366,44 @@ test("the reader records the last viewed page, the library shows it out of the p
   await showsPage("reading", 4);
 });
 
+test("the reader records a change of zoom with the page shown, and opens again at that page and zoom", async () => {
+  const reports: unknown[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/items/reading/reading")) {
+      reports.push(JSON.parse(request.postData() ?? "null"));
+    }
+  });
+  const reported = (wanted: (report: unknown) => boolean) =>
+    page
+      .waitForResponse(
+        (response) =>
+          response.url().endsWith("/api/items/reading/reading") &&
+          wanted(JSON.parse(response.request().postData() ?? "null")),
+        { timeout: 5000 },
+      )
+      .catch(() => undefined);
+  await page.goto(`${bucket.origin}/read/reading`);
+  await readerLoaded("reading");
+  const paged = reported(
+    (report) => z.object({ page: z.literal(4) }).safeParse(report).success,
+  );
+  await goToPage("reading", 4);
+  await paged;
+  const zoomed = reported(
+    (report) => z.object({ zoom: z.literal(1.5) }).safeParse(report).success,
+  );
+  await zoomTo("reading", 1.5);
+  await zoomed;
+  const last = reports.at(-1);
+  expect(last).toMatchObject({ zoom: 1.5 });
+  const { page: recorded } = z.object({ page: z.int() }).parse(last);
+
+  await page.goto(`${bucket.origin}/read/reading`);
+  await readerLoaded("reading");
+  await showsPage("reading", recorded);
+  expect(await zoomOf("reading")).toBe(1.5);
+});
+
 test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Shift+Enter step through the matches", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");

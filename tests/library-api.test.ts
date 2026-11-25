@@ -263,7 +263,6 @@ test("an item's extraction is derived from the Markdown and the artifact directo
 
   expect(await extraction()).toEqual({ status: "none" });
 
-  // The runner moves artifacts first and the Markdown last; artifacts alone are no extraction.
   mkdirSync(join(bucket.root, "lattices", "lattices.extraction/pages"), {
     recursive: true,
   });
@@ -298,8 +297,6 @@ test("an item's extraction is derived from the Markdown and the artifact directo
       sizeBytes: 9,
     },
   ];
-  // A Markdown whose artifact directory holds no metadata.json has no known source kind; the
-  // library says so instead of guessing one, so the user re-runs the extraction.
   expect(await extraction()).toEqual({
     status: "unlabelled",
     reason: "metadata.json is missing",
@@ -512,7 +509,6 @@ test("tag and collection edits are deltas, so two edits made from the same stale
     remove: [],
   });
 
-  // Two windows that both saw ["to-read", "survey"] and [forms]: one reads it, the other tags it.
   const [read, tagged, moved] = await Promise.all([
     send(bucket, "POST", "/api/bulk/tags", {
       keys: ["lattices"],
@@ -698,11 +694,9 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
   const tag = (bytes: Uint8Array) =>
     `"${createHash("sha256").update(bytes).digest("hex")}"`;
 
-  // The PDF's URL names what it serves: the entity tag is the stored bytes' SHA-256.
   const served = await bucket.request("/pdf/lattices.pdf");
   expect(served.headers.get("ETag")).toBe(tag(before));
 
-  // An incremental update: the stored bytes with objects appended.
   const annotated = new Uint8Array([
     ...before,
     ...new TextEncoder().encode("\n% an incremental update\n"),
@@ -715,8 +709,6 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
     byId((await library(bucket)).items).get("lattices")?.provenance,
   ).toEqual(lattices.provenance);
 
-  // A second view still holding the first bytes: its save is refused, and the answer names
-  // the stored bytes it would have to be made from.
   const secondView = new Uint8Array([
     ...before,
     ...new TextEncoder().encode("\n% another view's annotation\n"),
@@ -727,10 +719,8 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
   expect(stale.headers.get("ETag")).toBe(tag(annotated));
   expect(readFileSync(stored)).toEqual(Buffer.from(annotated));
 
-  // A save that names no stored bytes is not taken.
   expect((await put("lattices", secondView, null)).status).toBe(428);
 
-  // Another item's PDF carries another provenance; bytes that are no PDF carry none.
   const foreign = await put(
     "lattices",
     new Uint8Array(readFileSync(join(bucket.root, "problems", "problems.pdf"))),
@@ -749,7 +739,7 @@ test("a reader save replaces the stored PDF only when made from the stored bytes
   expect((await put("missing", annotated, tag(annotated))).status).toBe(404);
 });
 
-test("the reader's last viewed page is recorded per item without counting as a filing change", async () => {
+test("the reader's last viewed page and zoom are recorded per item without counting as a filing change", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
   const before = byId((await library(bucket)).items).get("lattices");
@@ -758,24 +748,43 @@ test("the reader's last viewed page is recorded per item without counting as a f
   const viewed = await send(bucket, "PUT", "/api/items/lattices/reading", {
     page: 2,
     pages: 2,
+    zoom: 1.5,
     edition: before?.provenance,
   });
   expect(viewed.status).toBe(200);
   const after = byId((await library(await open(bucket.root))).items).get(
     "lattices",
   );
-  expect(after?.reading).toMatchObject({ status: "viewed", page: 2, pages: 2 });
+  expect(after?.reading).toMatchObject({
+    status: "viewed",
+    page: 2,
+    pages: 2,
+    zoom: 1.5,
+  });
   expect(after?.dateModified).toBe(before?.dateModified ?? "");
+
+  const fitted = await send(bucket, "PUT", "/api/items/lattices/reading", {
+    page: 1,
+    pages: 2,
+    zoom: "fit-width",
+    edition: before?.provenance,
+  });
+  expect(fitted.status).toBe(200);
+  expect(
+    byId((await library(bucket)).items).get("lattices")?.reading,
+  ).toMatchObject({ status: "viewed", page: 1, zoom: "fit-width" });
 
   const beyond = await send(bucket, "PUT", "/api/items/lattices/reading", {
     page: 3,
     pages: 2,
+    zoom: 1,
     edition: before?.provenance,
   });
   expect(beyond.status).toBe(400);
   const unknown = await send(bucket, "PUT", "/api/items/missing/reading", {
     page: 1,
     pages: 2,
+    zoom: 1,
     edition: before?.provenance,
   });
   expect(unknown.status).toBe(404);
@@ -792,8 +801,9 @@ test("an item's first page is served as a PNG of the requested width", async () 
     expect(response.headers.get("Content-Type")).toBe("image/png");
     return new Uint8Array(await response.arrayBuffer());
   };
-  // PNG: the signature, then the IHDR chunk whose first field is the width (big-endian).
-  const pngWidth = (png: Uint8Array) => new DataView(png.buffer).getUint32(16);
+  const PNG_SIGNATURE_AND_IHDR_HEADER_BYTES = 16;
+  const pngWidth = (png: Uint8Array) =>
+    new DataView(png.buffer).getUint32(PNG_SIGNATURE_AND_IHDR_HEADER_BYTES);
 
   const small = await thumbnail(160);
   expect([...small.slice(0, 8)]).toEqual([
@@ -813,7 +823,6 @@ test("an item's first page is served as a PNG of the requested width", async () 
 test("a thumbnail asked for while its item is deleted is served or is unknown, never a failure", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, lectureNotes, "lattices.pdf", "Lattices and Codes");
-  // More widths than render slots, so most requests wait for a slot while the delete runs.
   const thumbnails = [160, 200, 240, 280, 320, 360, 400, 440].map((width) =>
     bucket.request(`/api/items/lattices/thumbnail?width=${width}`),
   );
@@ -944,7 +953,6 @@ test("a collection's description, pin and Keep offline persist, and its activity
   expect(restarted.activity.map(({ at: _at, ...entry }) => entry)).toEqual([
     { kind: "created", collectionId: forms.id },
     { kind: "filed", collectionId: forms.id, count: 1 },
-    // lattices was in the collection already; only problems is new to it.
     { kind: "filed", collectionId: forms.id, count: 1 },
     { kind: "tagged", collectionId: forms.id, count: 2, tags: ["MMP"] },
     { kind: "keptOffline", collectionId: forms.id, on: true },
@@ -1039,7 +1047,6 @@ test("deleting a collection repairs every saved search naming it or a subcollect
         })
       ).json(),
     );
-  // "is not" a deleted collection holds for every item, "is" one for none.
   const unreadOutside = await search("Unread outside forms", "all", [
     unread,
     { field: "collection", operator: "is not", value: even.id },
