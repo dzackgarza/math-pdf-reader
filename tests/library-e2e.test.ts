@@ -10,6 +10,7 @@ import {
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -35,7 +36,7 @@ import type {
 } from "@embedpdf/react-pdf-viewer";
 import { $ } from "bun";
 import puppeteer, {
-  type Browser,
+  type BrowserContext,
   type Dialog,
   type HTTPRequest,
   type Page,
@@ -121,20 +122,19 @@ async function serveLibrary(root: string, indexExport: string) {
   return { root, origin: app.origin, indexExport, stop: app.stop };
 }
 
-async function startBucket() {
-  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-"));
+async function captureLibrary() {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-captured-"));
   const indexExport = join(
     mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")),
     "index.json",
   );
   const bucket = await serveLibrary(root, indexExport);
-  const origin = bucket.origin;
   for (const [key, bytes, linkText] of CAPTURES) {
     const form = new FormData();
     form.set("pdf", new File([bytes], `${key}.pdf`));
     form.set("pdf_url", published(`/~author/${key}.pdf`));
     form.set("title_hint", linkText);
-    const response = await fetch(`${origin}/capture-bytes`, {
+    const response = await fetch(`${bucket.origin}/capture-bytes`, {
       method: "POST",
       body: form,
     });
@@ -144,11 +144,23 @@ async function startBucket() {
       );
     }
   }
-  return bucket;
+  await bucket.stop();
+  rmSync(dirname(indexExport), { recursive: true, force: true });
+  return root;
+}
+
+async function startBucket() {
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-"));
+  cpSync(capturedLibrary, root, { recursive: true });
+  const indexExport = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")),
+    "index.json",
+  );
+  return serveLibrary(root, indexExport);
 }
 
 let bucket: Awaited<ReturnType<typeof startBucket>>;
-let browser: Browser;
+let context: BrowserContext;
 let page: Page;
 
 const shot = async (name: string) => {
@@ -763,36 +775,38 @@ const shownReader = async (key: string) => {
 };
 
 await $`just build-web`.env({ ...process.env, NODE_ENV: "production" }).quiet();
+const capturedLibrary = await captureLibrary();
+const browser = await puppeteer.launch({
+  browser: "chrome",
+  executablePath: executable("chromium"),
+  headless: true,
+  defaultViewport: viewport,
+});
 
 beforeEach(async () => {
   publishCaptures();
   bucket = await startBucket();
-  browser = await puppeteer.launch({
-    browser: "chrome",
-    executablePath: executable("chromium"),
-    headless: true,
-    defaultViewport: viewport,
-  });
-  await browser
-    .defaultBrowserContext()
-    .overridePermissions(bucket.origin, [
-      "clipboard-read",
-      "clipboard-sanitized-write",
-    ]);
-  page = await browser.newPage();
+  context = await browser.createBrowserContext();
+  await context.overridePermissions(bucket.origin, [
+    "clipboard-read",
+    "clipboard-sanitized-write",
+  ]);
+  page = await context.newPage();
   page.on("console", (message) =>
     console.info("browser console", message.type(), message.text()),
   );
 });
 
 afterEach(async () => {
-  await browser.close();
+  await context.close();
   await bucket.stop();
   rmSync(bucket.root, { recursive: true, force: true });
   rmSync(dirname(bucket.indexExport), { recursive: true, force: true });
 });
 
-afterAll(() => {
+afterAll(async () => {
+  await browser.close();
+  rmSync(capturedLibrary, { recursive: true, force: true });
   publisher.stop(true);
 });
 
@@ -1656,7 +1670,7 @@ test("a failed annotation save still warns before leaving the reader page", asyn
     chmodSync(bucket.root, mode);
     await page.tracing.stop();
     await page.close();
-    page = await browser.newPage();
+    page = await context.newPage();
   }
 });
 
@@ -1714,7 +1728,7 @@ test("saving my copy can recover after another save changes an already conflicti
   } finally {
     await page.tracing.stop();
     await page.close();
-    page = await browser.newPage();
+    page = await context.newPage();
   }
 });
 
@@ -1793,7 +1807,7 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
     expect(response.status).toBe(200);
     return CaptureResponseSchema.parse(await response.json()).key;
   };
-  const own = await browser.newPage();
+  const own = await context.newPage();
   await page.bringToFront();
   try {
     await page.goto(`${app.origin}/`);
@@ -3379,3 +3393,241 @@ test("each send control sends its way and names where the paper went in Zotero: 
     zotero.stop();
   }
 }, 120_000);
+
+const showView = async (hash: string, count: number) => {
+  await page.evaluate((target) => {
+    location.hash = target;
+  }, hash);
+  await page.waitForFunction(
+    (target, wanted) =>
+      location.hash === target &&
+      document.querySelectorAll("tr[data-item-id]").length === wanted,
+    {},
+    hash,
+    count,
+  );
+  return (await rowKeys()).sort();
+};
+const tableText = () =>
+  page.$eval("table tbody", (body) => body.textContent?.trim());
+const newSavedSearch = async (
+  name: string,
+  rule: Record<string, string>,
+) =>
+  z
+    .object({ id: z.string() })
+    .parse(
+      await (
+        await api("POST", "/api/saved-searches", {
+          name,
+          match: "all",
+          rules: [rule],
+        })
+      ).json(),
+    ).id;
+
+test("smart collections with title, author and tag rules follow each edit made in the details pane", async () => {
+  const byTitle = await newSavedSearch("Quadratic titles", {
+    field: "title",
+    operator: "contains",
+    value: "quadratic",
+  });
+  const byAuthor = await newSavedSearch("By Noether", {
+    field: "author",
+    operator: "contains",
+    value: "Noether",
+  });
+  const byTag = await newSavedSearch("Survey papers", {
+    field: "tag",
+    operator: "is",
+    value: "survey",
+  });
+  const titled = (await libraryPayload()).items
+    .filter((item) => item.title.toLowerCase().includes("quadratic"))
+    .map((item) => item.id)
+    .sort();
+  expect(titled).not.toContain("lattices");
+  const withLattices = [...titled, "lattices"].sort();
+
+  await openLibrary();
+  expect(await showView(`#/organization/saved/${byTitle}`, titled.length)).toEqual(titled);
+  expect(await showView(`#/organization/saved/${byAuthor}`, 0)).toEqual([]);
+  expect(await showView(`#/organization/saved/${byTag}`, 0)).toEqual([]);
+
+  await showView("#/", CAPTURES.length);
+  await page.click(row("lattices"));
+  await page.click('button[aria-label="Edit metadata"]');
+  await page.click('input[aria-label="Title"]', { count: 3 });
+  await page.keyboard.press("Backspace");
+  await page.type('input[aria-label="Title"]', "Quadratic forms on integral lattices");
+  await (await byRole("button", "Save metadata")).click();
+  await shows("aside h2", "Quadratic forms on integral lattices");
+  expect(
+    await showView(`#/organization/saved/${byTitle}`, withLattices.length),
+  ).toEqual(withLattices);
+  expect(await showView(`#/organization/saved/${byAuthor}`, 0)).toEqual([]);
+
+  await showView("#/", CAPTURES.length);
+  await page.click(row("lattices"));
+  await page.click('button[aria-label="Edit metadata"]');
+  await page.type('textarea[aria-label="Authors, one per line"]', "Emmy Noether");
+  await (await byRole("button", "Save metadata")).click();
+  await shows("aside header", "Emmy Noether");
+  expect(await showView(`#/organization/saved/${byAuthor}`, 1)).toEqual([
+    "lattices",
+  ]);
+
+  await showView("#/", CAPTURES.length);
+  await page.click(row("lattices"));
+  await page.click('button[aria-label="Add tag"]');
+  await page.type('input[aria-label="Tag"]', "survey");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector('aside button[aria-label="Remove survey"]');
+  expect(await showView(`#/organization/saved/${byTag}`, 1)).toEqual([
+    "lattices",
+  ]);
+  await shot("smart-collection-follows-edits");
+
+  await showView("#/", CAPTURES.length);
+  await page.click(row("lattices"));
+  await page.click('aside button[aria-label="Remove survey"]');
+  await page.waitForSelector('aside button[aria-label="Remove survey"]', {
+    hidden: true,
+  });
+  expect(await showView(`#/organization/saved/${byTag}`, 0)).toEqual([]);
+  expect(await tableText()).toBe("No PDF matches Survey papers");
+}, 60_000);
+
+test("a tag on the Tags page lists exactly the PDFs that carry it", async () => {
+  await api("POST", "/api/bulk/tags", {
+    keys: ["lattices", "problems"],
+    add: ["survey"],
+    remove: [],
+  });
+  await api("POST", "/api/bulk/tags", {
+    keys: ["notes"],
+    add: ["exercises"],
+    remove: [],
+  });
+  await page.goto(`${bucket.origin}/#/organization/tags`);
+  await (
+    await page.waitForSelector('a[href$="/organization/tags/survey"]')
+  )?.click();
+  await page.waitForFunction(
+    () => location.hash === "#/organization/tags/survey",
+  );
+  await page.waitForFunction(
+    () => document.querySelectorAll("tr[data-item-id]").length === 2,
+  );
+  expect((await rowKeys()).sort()).toEqual(["lattices", "problems"]);
+  await shot("tag-page");
+});
+
+test("a PDF in two collections shows in both and not in Unfiled; once removed from both it shows in Unfiled", async () => {
+  const algebra = await fileInto("Algebra", ["lattices"]);
+  const geometry = await fileInto("Geometry", ["lattices"]);
+  const unfiled = ["notes", "outlined", "problems", "reading"];
+  await openLibrary();
+  expect(
+    await showView(`#/organization/collections/${algebra}`, 1),
+  ).toEqual(["lattices"]);
+  expect(
+    await showView(`#/organization/collections/${geometry}`, 1),
+  ).toEqual(["lattices"]);
+  expect(await showView("#/unfiled", unfiled.length)).toEqual(unfiled);
+
+  await showView("#/", CAPTURES.length);
+  await page.click(row("lattices"));
+  for (const name of ["Algebra", "Geometry"]) {
+    await page.click(`aside button[aria-label="Remove ${name}"]`);
+    await page.waitForSelector(`aside button[aria-label="Remove ${name}"]`, {
+      hidden: true,
+    });
+  }
+  expect(await showView(`#/organization/collections/${algebra}`, 0)).toEqual([]);
+  expect(await tableText()).toBe("No PDF matches Algebra");
+  const all = ["lattices", ...unfiled].sort();
+  expect(await showView("#/unfiled", all.length)).toEqual(all);
+});
+
+test("a saved search whose tag left its last PDF stays and opens empty", async () => {
+  await api("POST", "/api/bulk/tags", {
+    keys: ["problems"],
+    add: ["survey"],
+    remove: [],
+  });
+  const search = await newSavedSearch("Survey papers", {
+    field: "tag",
+    operator: "is",
+    value: "survey",
+  });
+  await openLibrary();
+  expect(await showView(`#/organization/saved/${search}`, 1)).toEqual([
+    "problems",
+  ]);
+  await page.click(row("problems"));
+  await page.click('aside button[aria-label="Remove survey"]');
+  await page.waitForSelector('aside button[aria-label="Remove survey"]', {
+    hidden: true,
+  });
+  expect(await showView(`#/organization/saved/${search}`, 0)).toEqual([]);
+  expect(await tableText()).toBe("No PDF matches Survey papers");
+  expect(await page.$('[role="alert"]')).toBeNull();
+  await shot("saved-search-tag-gone");
+
+  await page.reload();
+  await shows("table tbody", "No PDF matches Survey papers");
+  expect(await rowKeys()).toEqual([]);
+  const kept = (await libraryPayload()).savedSearches.find(
+    (saved) => saved.id === search,
+  );
+  expect(kept?.rules).toEqual([
+    { field: "tag", operator: "is", value: "survey" },
+  ]);
+});
+
+test("a failed library load shows the alert with Reload; an empty library says No PDFs yet with no alert", async () => {
+  let failing = true;
+  const failLoad = (request: HTTPRequest) => {
+    if (failing && new URL(request.url()).pathname === "/api/library") {
+      void request.respond({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { kind: "internal", message: "the store is unreadable in this test" },
+        }),
+      });
+      return;
+    }
+    void request.continue();
+  };
+  await page.setRequestInterception(true);
+  page.on("request", failLoad);
+  try {
+    await page.goto(`${bucket.origin}/`);
+    await shows('[role="alert"] h1', "The library could not be loaded");
+    await shot("library-load-failed");
+    failing = false;
+    await (await byRole("button", "Reload the library")).click();
+    await page.waitForSelector(row("lattices"));
+    expect(await page.$('[role="alert"]')).toBeNull();
+  } finally {
+    page.off("request", failLoad);
+    await page.setRequestInterception(false);
+  }
+
+  await bucket.stop();
+  rmSync(bucket.root, { recursive: true, force: true });
+  rmSync(dirname(bucket.indexExport), { recursive: true, force: true });
+  bucket = await serveLibrary(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-")),
+    join(
+      mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-export-")),
+      "index.json",
+    ),
+  );
+  await page.goto(`${bucket.origin}/`);
+  await shows("main", "No PDFs yet");
+  expect(await page.$('[role="alert"]')).toBeNull();
+  await shot("library-empty");
+});

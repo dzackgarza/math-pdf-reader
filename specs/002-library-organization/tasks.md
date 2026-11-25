@@ -56,7 +56,7 @@ through each path.
   Evidence: `server/src/library.rs:365` (`bulk_collections`), `src/web/components/InspectorPanel.tsx` (collection picker); `tests/library-e2e.test.ts:798`, `tests/library-e2e.test.ts:891`, `tests/library-e2e.test.ts:2402`, `tests/library-api.test.ts:319` (filed item still listed after restart).
 - [X] T014 [US2] [FR-004] Add and remove tags as deltas on one or many papers, in `server/src/library.rs`
   Evidence: `server/src/library.rs:344` (`bulk_tags`), `server/src/organization.rs:163` (`tags_of`); `tests/library-api.test.ts:479` (remove `to-read`, add `read` and `E8`), `tests/library-api.test.ts:822`, `tests/library-e2e.test.ts:891`, `tests/library-e2e.test.ts:2402`.
-- [ ] T015 [US2] [FR-004] Show all papers that carry a selected tag (US2/AC2)
+- [X] T015 [US2] [FR-004] Show all papers that carry a selected tag (US2/AC2)
   Code: `src/web/librarySelectors.ts:77-78`, `src/web/routes.ts:65`. No test selects a tag. See T040.
 - [X] T016 [US2] [FR-005] Define, edit, store and use saved searches with rules combined by all or any
   Evidence: `server/src/library.rs:466` (`new_saved_search`), `server/src/organization.rs:432-447`, `src/web/librarySelectors.ts:131` (`itemsMatching`); `tests/library-api.test.ts:944`, `tests/library-e2e.test.ts:2696` (rows equal the all-set, then the any-set after an edit).
@@ -68,7 +68,7 @@ through each path.
   Code: `server/src/organization.rs:456` (`kept_offline`), `server/src/send.rs:326` (`leave`). No test sends a kept item. See T044.
 - [X] T020 [US2] [FR-005] Repair saved searches that name a deleted collection or subcollection, in `server/src/organization.rs`
   Evidence: `server/src/organization.rs:368-430` (`settled`, `repaired`, `delete_collection`); `tests/library-api.test.ts:1010`.
-- [ ] T021 [US2] [SC-005] Update smart-collection membership when paper metadata changes (US2/AC3)
+- [X] T021 [US2] [SC-005] Update smart-collection membership when paper metadata changes (US2/AC3)
   Code: membership is computed per render in `src/web/librarySelectors.ts:95-140`. No test edits metadata and checks membership. See T039.
 
 ## Phase 4: User Story 3 - Inspect paper details (Priority: P2)
@@ -87,9 +87,9 @@ verify the displayed states.
 
 ## Phase 5: Edge Cases
 
-- [ ] T028 A paper may belong to multiple collections and to none. Code: `BucketItemSchema.collections` is a list. No test files one paper into two collections and checks both views. See T041.
-- [ ] T029 A tag may be removed while a saved search still references it. See T042.
-- [ ] T030 An empty result is distinguishable from a failed library load. Code: `src/web/App.tsx:45-57` (alert "The library could not be loaded"). No test drives a failed load. See T043.
+- [X] T028 A paper may belong to multiple collections and to none. Code: `BucketItemSchema.collections` is a list. No test files one paper into two collections and checks both views. See T041.
+- [X] T029 A tag may be removed while a saved search still references it. See T042.
+- [X] T030 An empty result is distinguishable from a failed library load. Code: `src/web/App.tsx:45-57` (alert "The library could not be loaded"). No test drives a failed load. See T043.
 - [X] T031 Keep offline is a retention preference, not a library view
   Evidence: `src/web/librarySelectors.ts:17` (`LibraryView` has no Keep offline view), `src/web/screens/OrganizationScreen.tsx:164-170` (a switch on the collection page); `tests/library-e2e.test.ts:2612` (the switch sets `keepOffline` and the page stays the collection page).
 
@@ -106,9 +106,9 @@ verifies it in under 20 seconds) measure people. No automated task covers them.
 - [X] T036 Show the cache state (Cached or Offline, from `availability`) in the inspector in `src/web/components/InspectorPanel.tsx`, with the e2e test at `tests/library-e2e.test.ts:2862` extended to read it there, per FR-007 and US3/AC1 (partial). The state shows only in the table's Status column.
 - [X] T037 Show the stored file's path (`item.file.path`) in the inspector in `src/web/components/InspectorPanel.tsx`, with an e2e test, per FR-007 and US3/AC1 (partial). The inspector shows the size only; the path is reachable only through Show in folder.
 - [X] T038 Mark missing authors, year and abstract as missing in the inspector header in `src/web/components/InspectorPanel.tsx:699-709`, in place of hiding them, with an e2e test on an item whose metadata has none, per FR-008, SC-004 and US3/AC2 (partial).
-- [ ] T039 Add an e2e test in `tests/library-e2e.test.ts` that builds smart collections with title, author and tag rules, edits each item's metadata or tags through the details pane, and asserts the smart collection's rows follow each edit without a reload, per SC-005 and US2/AC3 (partial).
-- [ ] T040 Add an e2e test in `tests/library-e2e.test.ts` that opens `#/organization/tags/<tag>` from the Tags page for a tag on several papers and asserts the rows equal the papers that carry it, per FR-004 and US2/AC2 (partial).
-- [ ] T041 Add a test that files one paper into two collections and asserts it shows in both collection views and not in Unfiled, then removes both and asserts it shows in Unfiled, per the edge case "multiple collections and no collection" and FR-003 (partial).
-- [ ] T042 Add a test that removes a tag from its last paper while a saved search names it, and asserts the saved search stays, opens without error and shows the empty-result state from T033, per the edge case "tags removed while saved searches reference them" and FR-005 (partial).
-- [ ] T043 Add an e2e test that makes `GET /api/library` fail and asserts the alert "The library could not be loaded" with Reload, and that an empty library shows "No PDFs yet" with no alert, per the edge case "empty result distinguishable from a failed load" (partial). Code: `src/web/App.tsx:45-57`, `src/web/components/EmptyTable.tsx:26`.
+- [X] T039 Add an e2e test in `tests/library-e2e.test.ts` that builds smart collections with title, author and tag rules, edits each item's metadata or tags through the details pane, and asserts the smart collection's rows follow each edit without a reload, per SC-005 and US2/AC3 (partial).
+- [X] T040 Add an e2e test in `tests/library-e2e.test.ts` that opens `#/organization/tags/<tag>` from the Tags page for a tag on several papers and asserts the rows equal the papers that carry it, per FR-004 and US2/AC2 (partial).
+- [X] T041 Add a test that files one paper into two collections and asserts it shows in both collection views and not in Unfiled, then removes both and asserts it shows in Unfiled, per the edge case "multiple collections and no collection" and FR-003 (partial).
+- [X] T042 Add a test that removes a tag from its last paper while a saved search names it, and asserts the saved search stays, opens without error and shows the empty-result state from T033, per the edge case "tags removed while saved searches reference them" and FR-005 (partial).
+- [X] T043 Add an e2e test that makes `GET /api/library` fail and asserts the alert "The library could not be loaded" with Reload, and that an empty library shows "No PDFs yet" with no alert, per the edge case "empty result distinguishable from a failed load" (partial). Code: `src/web/App.tsx:45-57`, `src/web/components/EmptyTable.tsx:26`.
 - [X] T044 Add a test in `tests/server-send.test.ts` that sends an item held by a Keep offline collection (directly and through a subcollection) to the fake Zotero and asserts the item stays in the library, and that an item outside such a collection leaves, per FR-006 offline retention (partial). Code: `server/src/send.rs:326`.

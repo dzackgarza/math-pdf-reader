@@ -32,8 +32,8 @@ with the current payload.
 
 **Testing**: `bun test` with the real server: `tests/library-api.test.ts` (HTTP API) and
 `tests/library-e2e.test.ts` (Puppeteer against the built library UI). Each e2e test starts its
-own server over a fresh library and its own Chromium, and seeds the filing and reading state it
-needs through the HTTP API, so a test runs alone with `-t`.
+own server over a fresh library and its own browser context in one shared Chromium, and
+seeds the filing and reading state it needs through the HTTP API, so a test runs alone with `-t`.
 
 **Target Platform**: Linux desktop (Tauri window with the in-process server on 127.0.0.1)
 
@@ -208,13 +208,6 @@ needs (a name, a confirmation), calls the library API, and moves to the result.
   with that id.
 - A successful extraction placed files beside the PDF, so the library is read again: the
   item's extraction comes from those files.
-
-## Gaps against the spec
-
-| Requirement | Gap | Class |
-| --- | --- | --- |
-| US2/AC3, SC-005 | No test shows membership following a metadata edit | partial |
-| FR-002 recent, FR-004 tag filter, edge cases | Code exists; no test through the real path | partial |
 
 ## Decision Log
 
