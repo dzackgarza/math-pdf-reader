@@ -35,12 +35,12 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
 - [ ] T003 [P] [US1] Name the dialogs and the tray items "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:32,154,383-384` (FR-001, US1/AC1). Source has it; no
   test.
-  - Open: the tray menu labels are read over the session bus by
-    `test_the_tray_item_and_its_menu_name_math_pdf_reader` in `tests/desktop_workflow.py`.
-    Its second run (2026-11-25) failed on the menu: the dbusmenu layout's root carries
-    libdbusmenu's placeholder label "Label Empty", which the test read as an item. The test
-    now reads only the root's children; it has not run since. The dialog titles have no
-    test: a tauri-plugin-dialog dialog is a separate GTK toplevel, which WebDriver does not
+  - Evidence (tray items): `test_the_tray_item_and_its_menu_name_math_pdf_reader` in
+    `tests/desktop_workflow.py` reads the tray menu over the session bus with
+    `com.canonical.dbusmenu` `GetLayout` and finds the items "Show Math PDF Reader" and
+    "Quit Math PDF Reader" (pass 2026-11-25). The layout's root is not an item: it carries
+    libdbusmenu's placeholder label "Label Empty".
+  - Open: the dialog titles have no test: a tauri-plugin-dialog dialog is a separate GTK toplevel, which WebDriver does not
     see, headless Weston gives no client a list of toplevel titles, and the AT-SPI registry
     does not start in the test's private namespace ("Could not activate remote peer
     'org.a11y.atspi.Registry': unit failed" in the run's output).
@@ -232,8 +232,11 @@ that is not `[X]` maps to a task here.
     one service worker target (`background.js`) is listed, and Puppeteer reports no
     service worker target created after the reload. The suite attaches to the worker at
     its start, and Puppeteer's `TargetManager` says an attached session keeps a service
-    worker from being destroyed. The output does not show whether the old worker stays or a
-    new one is not reported.
+    worker from being destroyed. A probe run that detached that session before the reload
+    and logged the browser's CDP `Target.targetCreated` and `Target.targetDestroyed`
+    events failed at the same step: the status page was destroyed, the old service worker
+    target was not, and no service worker target was created in 8 s. The attached session
+    is not the cause; the step's diagnostics keep the CDP target events.
 - [ ] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the

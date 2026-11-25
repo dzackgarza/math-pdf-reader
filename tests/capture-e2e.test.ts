@@ -479,16 +479,35 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
           ),
         ),
       );
+  const extensionWorkers = () =>
+    browser
+      .targets()
+      .filter(
+        (target) =>
+          target.type() === "service_worker" &&
+          target.url().startsWith(extensionOrigin),
+      );
   const statusPageReloadsChrome = async () => {
-    const restarted = new Promise<void>((resolve) => {
-      const created = (target: Target) => {
-        if (target.type() === "service_worker") {
-          browser.off("targetcreated", created);
-          resolve();
-        }
-      };
-      browser.on("targetcreated", created);
-    });
+    const cdp = await browser.target().createCDPSession();
+    cdp.on("Target.targetCreated", (event) =>
+      workerConsole.push(
+        `[cdp created ${event.targetInfo.type} ${event.targetInfo.targetId} ${event.targetInfo.url}]`,
+      ),
+    );
+    cdp.on("Target.targetDestroyed", (event) =>
+      workerConsole.push(`[cdp destroyed ${event.targetId}]`),
+    );
+    await cdp.send("Target.setDiscoverTargets", { discover: true });
+    const old = extensionWorkers();
+    const restarted = browser
+      .waitForTarget(
+        (target) =>
+          target.type() === "service_worker" &&
+          target.url().startsWith(extensionOrigin) &&
+          !old.includes(target),
+        { timeout: 0 },
+      )
+      .then(() => workerConsole.push("[new service worker target]"));
     const opener = await browser.newPage();
     followPage(opener);
     void opener.goto(`${extensionOrigin}/popup.html`).catch(() => undefined);
@@ -500,6 +519,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     if (!opener.isClosed()) {
       await opener.close().catch(() => undefined);
     }
+    await cdp.detach();
   };
 
   const provenance = async (key: string) =>
