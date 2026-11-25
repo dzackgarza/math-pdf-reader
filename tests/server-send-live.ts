@@ -6,7 +6,10 @@
 // MUTATING: the send writes into the Zotero library.
 // Every item a send reports as created is trashed in `afterAll`, with its attachments; an item
 // the library already held is never touched. Zotero being unreachable is a failure.
-import { afterAll, expect, test } from "bun:test";
+// A send files its item in the collection selected in Zotero, and an item the library already
+// held would gain that collection, which the cleanup does not undo. So the run needs the library
+// root selected in Zotero's pane, and fails before any send otherwise.
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,6 +28,19 @@ const ZOTERO_URL = "http://127.0.0.1:23119";
 const REMOTE_TIMEOUT_MS = 180_000;
 
 const createdItemKeys: string[] = [];
+
+beforeAll(async () => {
+  const response = await fetch(`${ZOTERO_URL}/write`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operation: "get_selected_collection" }),
+  });
+  if (response.status !== 404) {
+    throw new Error(
+      `select My Library in Zotero's pane before this run; get_selected_collection answered ${response.status}: ${await response.text()}`,
+    );
+  }
+});
 
 afterAll(async () => {
   for (const itemKey of createdItemKeys) {
@@ -257,6 +273,8 @@ test(
     expect(
       children.filter((child) => child.title === markdown).map((child) => child.itemType),
     ).toEqual(["attachment"]);
+    // The PDF went first, to the same item, and stays its only PDF.
+    expect(children.filter((child) => child.contentType === "application/pdf")).toHaveLength(1);
     const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
     expect(library.items).toEqual([]);
     await bucket.stop();
