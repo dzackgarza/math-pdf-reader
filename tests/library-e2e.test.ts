@@ -1,6 +1,3 @@
-// End-to-end proof of the library window's workflows in the real UI: the built web bundle
-// served by the real app over a temporary bucket of fixture PDFs, driven in Chromium with
-// Puppeteer. Screenshots of every state land in $TMPDIR/pdf-bucket-library-e2e.
 
 import {
   afterAll,
@@ -61,23 +58,18 @@ const fixtures = join(import.meta.dir, "fixtures");
 const screenshots = join(tmpdir(), "pdf-bucket-library-e2e");
 const viewport = { width: 1400, height: 900 };
 
-// The bytes of a committed fixture PDF.
 const fixture = (file: string) =>
   new Uint8Array(readFileSync(join(fixtures, file)));
-// The ten-page notes with a comment after their end: the same pages as another PDF, so the
-// store keeps it as its own item.
 const readingCopy = new Uint8Array([
   ...fixture("ten-page-notes.pdf"),
   ...new TextEncoder().encode("% the reading copy\n"),
 ]);
 
-// Items captured through the real capture endpoint: key, PDF bytes, link text.
 const CAPTURES = [
   ["lattices", fixture("lecture-notes.pdf"), "Lectures on integral lattices"],
   ["problems", fixture("problem-set.pdf"), "Problem set on quadratic forms"],
   ["notes", fixture("ten-page-notes.pdf"), "Ten lectures on lattice theory"],
   ["reading", readingCopy, "Ten lectures, the reading copy"],
-  // Its catalog asks viewers to open its outline (/PageMode /UseOutlines).
   ["outlined", fixture("outlined-notes.pdf"), "Ten lectures with an outline"],
 ] as const;
 
@@ -95,7 +87,6 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-// The publisher the fixtures were captured from: what each path serves right now.
 const served = new Map<string, Uint8Array<ArrayBuffer>>(
   CAPTURES.map(([key, bytes]) => [`/~author/${key}.pdf`, bytes]),
 );
@@ -111,8 +102,6 @@ const publisher = Bun.serve({
 });
 const published = (path: string) => new URL(path, publisher.url).href;
 
-// The bucket over ROOT. Zotero's URL is a port nothing listens on, so a send reaches for Zotero
-// and fails instead of writing.
 async function serveLibrary(root: string, indexExport: string) {
   const app = await serveBucket({
     root,
@@ -283,15 +272,12 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
     arxiv.stop(true);
   }
 }, 120_000);
-// The filing as the server wrote it to disk.
 const organization = async () => readOrganization(bucket.root);
 const row = (key: string) => `tr[data-item-id="${key}"]`;
 const rowKeys = () =>
   page.$$eval("tr[data-item-id]", (rows) =>
     rows.map((tr) => tr.getAttribute("data-item-id")),
   );
-// Waits until the element at SELECTOR shows TEXT. Its text only: `::-p-text` also matches the
-// value typed into a field, so it passes while the change is still on its way to the server.
 const shows = (selector: string, text: string) =>
   page.waitForFunction(
     (css, wanted) =>
@@ -300,7 +286,6 @@ const shows = (selector: string, text: string) =>
     selector,
     text,
   );
-// The element with this ARIA role whose text is exactly LABEL, once it is on the page.
 const byRole = async (role: string, label: string) => {
   const selector = `[role="${role}"], ${role}`;
   const text = (element: Element) => element.textContent?.trim();
@@ -325,13 +310,11 @@ const openLibrary = async () => {
   await page.goto(`${bucket.origin}/`);
   await page.waitForSelector(row("lattices"));
 };
-// The library with no particular row expected (some may be missing from the store).
 const openRoot = async () => {
   await page.goto(`${bucket.origin}/`);
   await page.waitForSelector("nav a");
 };
 const tab = (key: string) => `[data-tab-key="${key}"]`;
-// Presses the button labelled LABEL in the open confirmation dialog, once the dialog is shown.
 const pressInDialog = async (label: string) => {
   await page.waitForSelector('[role="alertdialog"]', { visible: true });
   for (const button of await page.$$('[role="alertdialog"] button')) {
@@ -342,24 +325,18 @@ const pressInDialog = async (label: string) => {
   }
   throw new Error(`the dialog has no button labelled ${label}`);
 };
-// The reader while it shows KEY, in a tab or on its own page, and the EmbedPDF viewer in it,
-// whose UI is in the viewer's shadow root (puppeteer's `>>>` reaches into it).
 const readerOf = (key: string) => `[data-reader-key="${key}"]`;
 const viewerOf = (key: string) => `${readerOf(key)} embedpdf-container`;
 const inViewer = (key: string, css: string) => `${viewerOf(key)} >>> ${css}`;
-// The button of a reader command in EmbedPDF's toolbar, and the classes with which EmbedPDF
-// draws a disabled button and an active one.
 const readerButton = (key: string, command: string) =>
   inViewer(key, `[data-epdf-i="bucket:${command}"] button`);
 const DISABLED = ".cursor-not-allowed";
 const ACTIVE = ".bg-interactive-selected";
-// A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
 const PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]';
 const openTabKeys = () =>
   page.$$eval("[data-tab-key]", (tabs) =>
     tabs.map((element) => element.getAttribute("data-tab-key")),
   );
-// The keys of the PDFs open in the window's viewer, as its document manager holds them.
 const readerKeys = async () =>
   (
     await page.evaluate(async () => {
@@ -374,7 +351,6 @@ const readerKeys = async () =>
       return documents.getDocumentOrder();
     })
   ).sort();
-// How far KEY's PDF is scrolled, in CSS pixels, as EmbedPDF's viewport holds it.
 const scrollOf = (key: string) =>
   page.evaluate(async (css) => {
     const viewer = document.querySelector<EmbedPdfContainer>(css);
@@ -387,7 +363,6 @@ const scrollOf = (key: string) =>
     const metrics = viewport.getMetrics();
     return { top: metrics.scrollTop, left: metrics.scrollLeft };
   }, viewerOf(key));
-// Where KEY's PDF is once a smooth scroll of it has stopped.
 const scrollSettled = async (key: string) => {
   for (;;) {
     const before = await scrollOf(key);
@@ -398,8 +373,6 @@ const scrollSettled = async (key: string) => {
     }
   }
 };
-// Once a smooth scroll of KEY's PDF has stopped, scrolls it DOWN pixels further at once, through
-// EmbedPDF's viewport, and answers where it then is.
 const scrollBy = async (key: string, down: number) => {
   const from = await scrollSettled(key);
   await page.evaluate(
@@ -419,7 +392,6 @@ const scrollBy = async (key: string, down: number) => {
   await scrolledFrom(key, from.top);
   return scrollSettled(key);
 };
-// Waits until KEY's PDF is scrolled away from TOP.
 const scrolledFrom = (key: string, top: number) =>
   page.waitForFunction(
     async (css, from) => {
@@ -433,8 +405,6 @@ const scrolledFrom = (key: string, top: number) =>
     viewerOf(key),
     top,
   );
-// EmbedPDF's Ctrl+= (Zoom In), pressed with no click first, zooms KEY's PDF: the reader shown
-// answers its keys at once.
 const keysReach = async (key: string) => {
   const before = await zoomOf(key);
   await page.keyboard.down("Control");
@@ -453,7 +423,6 @@ const keysReach = async (key: string) => {
     before,
   );
 };
-// What the desktop app's tray Quit hears back from the library (follow-open-events.js).
 const quitOutcome = () =>
   page.evaluate(
     () =>
@@ -472,8 +441,6 @@ const quitOutcome = () =>
         );
       }),
   );
-// Waits until the viewer shows KEY's PDF, laid out, with a page drawn as an image in a page
-// box. The viewer is shared, so the images alone may still be another PDF's.
 const readerLoaded = async (key: string) => {
   console.info("reader test load", { key, stage: "document" });
   await page.waitForFunction(
@@ -517,8 +484,6 @@ const readerLoaded = async (key: string) => {
   );
   console.info("reader test load", { key, stage: "complete" });
 };
-// The page KEY's reader shows, as its page box below the PDF reads. The box holds a typed page
-// before EmbedPDF moves there, so EmbedPDF must also have the page in view.
 const pageInput = (key: string) => inViewer(key, 'input[inputmode="numeric"]');
 const showsPage = (key: string, pageNumber: number) =>
   page.waitForFunction(
@@ -540,7 +505,6 @@ const showsPage = (key: string, pageNumber: number) =>
     viewerOf(key),
     String(pageNumber),
   );
-// Goes to a page of KEY's PDF as a reader does: typed into the page box.
 const goToPage = async (key: string, pageNumber: number) => {
   console.info("reader test page entry", {
     key,
@@ -595,10 +559,6 @@ const goToPage = async (key: string, pageNumber: number) => {
     stage: "settled",
   });
 };
-// The top left corner of page 1 of KEY's PDF, once the reader shows it. The scroll goes
-// through EmbedPDF itself: its page box is absent from a PDF of one page. EmbedPDF draws only
-// the pages near the one shown, so page 1 is the highest page drawn once its top is in the
-// window, and a page above the window is still on the way to it.
 const firstPageCorner = async (key: string) => {
   await page.evaluate(async (css) => {
     const viewer = document.querySelector<EmbedPdfContainer>(css);
@@ -634,7 +594,6 @@ const firstPageCorner = async (key: string) => {
         )
       ).jsonValue(),
     );
-  // A zoom still settling moves and resizes the page, so the corner is taken once it stays put.
   for (let before = await corner(); ; ) {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const after = await corner();
@@ -648,15 +607,8 @@ const firstPageCorner = async (key: string) => {
     before = after;
   }
 };
-// Writes NOTE on page 1 of KEY's PDF with EmbedPDF's free-text tool, from its Annotate toolbar.
-// DOWN is the note's distance, in CSS pixels, from the page's top.
 const writeNote = async (key: string, note: string, down = 160) => {
-  // The Annotate toolbar opens below the main one and moves the pages down, so the page's
-  // corner is found once it is open.
   await page.click(inViewer(key, '[data-epdf-i="annotate-mode"] button'));
-  // After a note the free-text tool stays in hand, and its button would put it down. EmbedPDF
-  // ends a note's editing only when the note loses the focus, so a note still edited ends with
-  // a click on the page before the next note is placed.
   const inHand = await page.evaluate(async (css) => {
     const viewer = document.querySelector<EmbedPdfContainer>(css);
     const annotations = (await viewer?.registry)
@@ -694,8 +646,6 @@ const writeNote = async (key: string, note: string, down = 160) => {
   await page.keyboard.press("Escape");
   console.info("reader test note", { key, stage: "complete" });
 };
-// The contents of the annotations on page 1 of KEY's PDF, as its reader reads them from the
-// stored file.
 const notesOnFirstPage = async (key: string) => {
   await readerLoaded(key);
   return z.array(z.string()).parse(
@@ -715,7 +665,6 @@ const notesOnFirstPage = async (key: string) => {
     }, viewerOf(key)),
   );
 };
-// The zoom KEY's reader was given, a scale or a fit, as EmbedPDF's zoom plugin holds it.
 const zoomOf = async (key: string) =>
   z.union([z.number(), z.enum(["automatic", "fit-page", "fit-width"])]).parse(
     await page.evaluate(async (css) => {
@@ -729,14 +678,12 @@ const zoomOf = async (key: string) =>
       return zoom.getState().zoomLevel;
     }, viewerOf(key)),
   );
-// The tab for KEY, once it is the tab shown and its reader has drawn the PDF.
 const shownReader = async (key: string) => {
   await page.waitForSelector(`${tab(key)}[data-state="active"]`);
   await page.waitForSelector(readerOf(key), { visible: true });
   await readerLoaded(key);
 };
 
-// A new browser with one page, which may read and write the clipboard on the bucket's origin.
 const openBrowser = async () => {
   browser = await puppeteer.launch({
     browser: "chrome",
@@ -758,8 +705,6 @@ const openBrowser = async () => {
 
 beforeAll(async () => {
   mkdirSync(screenshots, { recursive: true });
-  // The app serves the bundle in dist/web; build it from the current source as `just provision`
-  // does. `bun test` sets NODE_ENV=test, under which Vite bundles React's development build.
   await $`just build-web`
     .env({ ...process.env, NODE_ENV: "production" })
     .quiet();
@@ -767,12 +712,6 @@ beforeAll(async () => {
   await openBrowser();
 }, 60_000);
 
-// A test that runs past its time limit leaves the next one a broken bucket and browser: Bun stops
-// the test and kills the processes the file spawned that still run
-// (https://bun.com/docs/test/writing-tests#zombie-process-killer). The bucket's server dies at
-// once; the browser's helpers die with it, and the browser goes down later. A bucket that does
-// not answer marks that kill: the test starts with a new bucket over the same store and a new
-// browser.
 beforeEach(async () => {
   const answers = await fetch(bucket.origin).then(
     (response) => response.ok,
@@ -790,7 +729,6 @@ beforeEach(async () => {
   await openBrowser();
 });
 
-// Runs also when a test or the setup fails; closing the browser removes its profile.
 afterAll(async () => {
   publisher.stop(true);
   await bucket.stop();
@@ -1104,7 +1042,6 @@ test("wheel reading keeps its position as pages render", async () => {
     await page.mouse.wheel({ deltaY: delta });
     await scrolledFrom("reading", before.top);
     const after = await scrollSettled("reading");
-    // Native wheel scrolling rounds fractional device pixels at page boundaries.
     expect(Math.abs(after.top - before.top - delta)).toBeLessThanOrEqual(1);
   }
 });
@@ -1114,7 +1051,6 @@ test("reader back and forward walk the positions visited in the PDF and stay in 
   await page.waitForSelector(row("reading"));
   await page.goto(`${bucket.origin}/read/reading#page=1`);
   await readerLoaded("reading");
-  // The keys a browser scrolls a page with scroll the PDF before anything in it is clicked.
   const unscrolled = (await scrollOf("reading")).top;
   await page.keyboard.press("PageDown");
   await scrolledFrom("reading", unscrolled);
@@ -1131,9 +1067,6 @@ test("reader back and forward walk the positions visited in the PDF and stay in 
     {},
     viewerOf("reading"),
   );
-  // A page typed into the page box is a jump, as a link or an outline entry is; the reader's
-  // address names the page it shows. A scroll inside page 7 moves no page, and back returns to
-  // that place in it, not to the page's top.
   await goToPage("reading", 7);
   await page.waitForFunction(() => location.hash === "#page=7");
   const within7 = await scrollBy("reading", 120);
@@ -1183,8 +1116,6 @@ test("back returns to the place inside the page an outline entry or a search mat
   const back = readerButton("outlined", "back");
   const forward = readerButton("outlined", "forward");
 
-  // The sidebar holds the page thumbnails, then the outline of the notes' section titles. It is
-  // opened first: opening it can change the pages' scale, and with it every scroll position.
   await page.click(
     inViewer("outlined", '[data-epdf-i="sidebar-button"] button'),
   );
@@ -1240,7 +1171,6 @@ test("back returns to the place inside the page an outline entry or a search mat
   await scrollSettled("outlined");
   expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
 
-  // A search match on page 6 is a jump too.
   await page.keyboard.down("Control");
   await page.keyboard.press("f");
   await page.keyboard.up("Control");
@@ -1252,8 +1182,6 @@ test("back returns to the place inside the page an outline entry or a search mat
   await scrollSettled("outlined");
   expect((await scrollOf("outlined")).top).toBeCloseTo(within2.top, 0);
 
-  // Back, forward and back again, with no wait between them, end at page 2's place: the search
-  // jump replaced the outline jump in the history after it.
   await page.click(forward);
   await showsPage("outlined", 6);
   await scrollSettled("outlined");
@@ -1266,7 +1194,6 @@ test("back returns to the place inside the page an outline entry or a search mat
 });
 
 test("a link in the PDF to another page is a jump that back returns from, to the place it left", async () => {
-  // The test captures and deletes its own PDF, so later tests see the fixtures as they were.
   const form = new FormData();
   form.set("pdf", new File([fixture("linked-notes.pdf")], "linked-notes.pdf"));
   form.set("pdf_url", published("/~author/linked-notes.pdf"));
@@ -1280,8 +1207,6 @@ test("a link in the PDF to another page is a jump that back returns from, to the
 
   await page.goto(`${bucket.origin}/read/${key}`);
   await readerLoaded(key);
-  // The reference to Section 3 on page 1 links to page 3; its box is at 246–253 pt across and
-  // 161–170 pt down the 612 pt page. The page is found at its top, then scrolled a little.
   const corner = await firstPageCorner(key);
   const top = (await scrollOf(key)).top;
   const left = await scrollBy(key, 40);
@@ -1364,16 +1289,13 @@ test("each PDF opens in its own tab after the Library tab, which keeps its selec
   };
   await openLibrary();
   await page.click(row("problems"), { count: 2 });
-  // The Library tab is shown again, and the PDF loads while its tab is hidden.
   await page.waitForSelector(`${tab("problems")}[data-state="active"]`);
   await (await byRole("tab", "Library")).click();
   await page.waitForSelector(`${row("problems")}[aria-selected="true"]`, {
     visible: true,
   });
   expect(new URL(page.url()).pathname).toBe("/");
-  // Loaded while hidden, the PDF has drawn its pages when its tab is shown.
   await readerLoaded("problems");
-  // The Library tab has focus and answers Enter itself; the row takes it back.
   await page.click(row("problems"));
   await page.keyboard.press("Enter");
   await shownReader("problems");
@@ -1382,7 +1304,6 @@ test("each PDF opens in its own tab after the Library tab, which keeps its selec
   expect(
     await page.$eval(tab("problems"), (element) => element.textContent),
   ).toBe(titleOf("problems"));
-  // The tab strip holds the way back, so the reader in a tab shows no Library button.
   expect(await page.$(readerButton("problems", "library"))).toBeNull();
   await shot("tabs-reader");
 
@@ -1393,7 +1314,6 @@ test("each PDF opens in its own tab after the Library tab, which keeps its selec
   expect(await openTabKeys()).toEqual(["problems", "reading"]);
   await shot("tabs-two");
 
-  // Keys pressed while reading reach the tab strip from inside the PDF.
   await page.click(inViewer("reading", PAGE_BOX));
   await page.keyboard.down("Control");
   await page.keyboard.press("Tab");
@@ -1413,7 +1333,6 @@ test("each PDF opens in its own tab after the Library tab, which keeps its selec
 });
 
 test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the viewer, and wakes at the same place and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
-  // The test opens and deletes its own PDFs, so later tests see the fixtures as they were.
   const captureTab = async (source: string, ordinal: string) => {
     const form = new FormData();
     const bytes = new Uint8Array([
@@ -1437,7 +1356,6 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
     ),
   ]);
   const [second, third] = later;
-  // KEY's tab sleeps, and EmbedPDF, which closes a document asynchronously, has closed its PDF.
   const asleep = async (key: string) => {
     await page.waitForSelector(`${tab(key)}[data-asleep="true"]`);
     await page.waitForFunction(
@@ -1458,7 +1376,6 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
   await page.click(row(first), { count: 2 });
   await shownReader(first);
   await goToPage(first, 3);
-  // EmbedPDF's Zoom In button.
   const unzoomed = await zoomOf(first);
   await page.click(inViewer(first, 'button[aria-label="Zoom In"]'));
   await page.waitForFunction(
@@ -1474,7 +1391,6 @@ test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the
     unzoomed,
   );
   const zoomed = await zoomOf(first);
-  // A place inside page 3, which the tab keeps through its sleep.
   const within3 = await scrollBy(first, 120);
   for (const key of later) {
     await (await byRole("tab", "Library")).click();
@@ -1582,7 +1498,6 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
   await openLibrary();
   await page.click(row("reading"), { count: 2 });
   await shownReader("reading");
-  // Another window saves the PDF after this reader loaded it.
   const stored = await fetch(`${bucket.origin}/pdf/reading.pdf`);
   const tag = stored.headers.get("ETag");
   if (tag === null) {
@@ -1611,7 +1526,6 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
   await page.waitForSelector(conflict, { visible: true });
   await shot("reader-save-conflict");
 
-  // Closing while the conflict is open asks first; Cancel keeps the tab.
   await page.click(`${tab("reading")} button[aria-label^="Close"]`);
   const ask = await page.waitForSelector('[role="alertdialog"]', {
     visible: true,
@@ -1623,7 +1537,6 @@ test("a note saved over a PDF changed elsewhere shows the conflict, and closing 
   await page.waitForSelector('[role="alertdialog"]', { hidden: true });
   await page.waitForSelector(`${tab("reading")}[data-state="active"]`);
   expect(await openTabKeys()).toContain("reading");
-  // The desktop tray's Quit waits for the readers, and hears that one cannot settle.
   expect(await quitOutcome()).toBe("failed");
 
   const kept = page.waitForResponse(
@@ -1652,7 +1565,6 @@ test("a failed annotation save still warns before leaving the reader page", asyn
     path: join(screenshots, "reader-failed-save.trace.json"),
     screenshots: true,
   });
-  // A read-only store lets the real server read the PDF but prevents its atomic save.
   chmodSync(bucket.root, 0o500);
   try {
     const failed = page.waitForResponse(
@@ -1666,7 +1578,6 @@ test("a failed annotation save still warns before leaving the reader page", asyn
     expect(sha256(readFileSync(path))).toBe(original);
     await shot("reader-failed-save");
 
-    // Observe a real navigation: dismissing the warning must keep the unsaved reader open.
     const outcome = new Promise<string>((resolve) => {
       page.once("dialog", (dialog) => {
         void dialog.dismiss().then(() => resolve(dialog.type()));
@@ -1766,8 +1677,6 @@ test("a capture made while the library is open opens its PDF in a tab", async ()
 });
 
 test("the status bar shows Zotero's state; a capture's reader opened before Retrieve metadata answers takes the title it resolves, in its tab and on its own page, and a source nothing identifies shows why", async () => {
-  // Zotero identifies the arXiv URL, once the test lets it answer; no method identifies any
-  // other URL. The PDF captured there has no title of its own, so it opens under its hint.
   const arxivPdf = "https://arxiv.org/pdf/2609.21174v1";
   let answer = () => {};
   const answered = new Promise<void>((resolve) => {
@@ -1823,8 +1732,6 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
     expect(response.status).toBe(200);
     return CaptureResponseSchema.parse(await response.json()).key;
   };
-  // A new page comes to the front, and Chromium draws no frames for a page behind it: the
-  // library goes back to the front, so the reader in its tab draws the PDF.
   const own = await browser.newPage();
   await page.bringToFront();
   try {
@@ -1838,8 +1745,6 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
     expect(
       await page.$eval(tab(key), (element) => element.textContent),
     ).toContain("View PDF");
-    // The same PDF on its own reader page, whose title and citation tags a Zotero Connector
-    // reads.
     await own.goto(`${app.origin}/read/${key}`);
     await own.waitForSelector(readerOf(key));
     answer();
@@ -1876,8 +1781,6 @@ test("the status bar shows Zotero's state; a capture's reader opened before Retr
 });
 
 test("a PDF that asks for its outline opens with the outline closed, unless the setting opens it", async () => {
-  // Whether EmbedPDF's sidebar shows an entry of the outline, whose entries are the section
-  // titles of outlined-notes.pdf. EmbedPDF draws the page's own text into images, not elements.
   const outlineShown = (css: string) => {
     const viewer = document.querySelector(css);
     if (viewer === null || viewer.shadowRoot === null) {
@@ -1915,7 +1818,6 @@ test("a PDF that asks for its outline opens with the outline closed, unless the 
 });
 
 test("the theme follows a dark system setting until Settings chooses Light, in the library and the reader", async () => {
-  // The library's surface token (index.css) as its background, and EmbedPDF's colour scheme.
   const LIBRARY = { light: "rgb(247, 248, 250)", dark: "rgb(15, 20, 27)" };
   const themeSelect = 'select[aria-label="Theme"]';
   const libraryBackground = async () => {
@@ -1961,7 +1863,6 @@ test("the theme follows a dark system setting until Settings chooses Light, in t
 });
 
 test("night mode in the reader draws the PDF's pages light on dark, and turns off again", async () => {
-  // The colour of the window's pixel at POINT, as a screenshot shows it.
   const pixelAt = async (point: { x: number; y: number }) => {
     const png = await page.screenshot({
       clip: { x: point.x, y: point.y, width: 1, height: 1 },
@@ -1981,7 +1882,6 @@ test("night mode in the reader draws the PDF's pages light on dark, and turns of
       }, png),
     );
   };
-  // A point in the white margin of page 1.
   const margin = async () => {
     await readerLoaded("lattices");
     const corner = await firstPageCorner("lattices");
@@ -2001,7 +1901,6 @@ test("night mode in the reader draws the PDF's pages light on dark, and turns of
   expect(await pixelAt(await margin())).toEqual([0, 0, 0]);
   expect((await organization()).preferences.readerNightMode).toBe(true);
   await shot("reader-night-mode");
-  // A reader opened later reads in night mode too.
   await page.reload();
   expect(await pixelAt(await margin())).toEqual([0, 0, 0]);
 
@@ -2016,7 +1915,6 @@ test("a text note written on a page in the reader is saved into the PDF and is t
   const note = `Checked the Hasse–Minkowski step ${Date.now()}`;
   await writeNote("problems", note);
   await shot("reader-annotated");
-  // The reader's Library button leaves once every annotation is saved.
   await page.click(readerButton("problems", "library"));
   await page.waitForSelector("nav a");
 
@@ -2027,14 +1925,12 @@ test("a text note written on a page in the reader is saved into the PDF and is t
 test("leaving the reader page while a note is still being saved asks first, and once it is saved leaves at once", async () => {
   await page.goto(`${bucket.origin}/read/lattices`);
   await readerLoaded("lattices");
-  // The note's save is held until the test lets it through.
   const held: HTTPRequest[] = [];
   let holding = true;
   let saving = () => {};
   const started = new Promise<void>((resolve) => {
     saving = resolve;
   });
-  // The saves of the PDF still in flight: the note's first save, and the save of its text after.
   let inFlight = 0;
   const isSave = (request: HTTPRequest) =>
     request.method() === "PUT" &&
@@ -2108,8 +2004,6 @@ test("leaving the reader page while a note is still being saved asks first, and 
 test("a right-click on selected text keeps the selection, and the highlight in its menu highlights it", async () => {
   await page.goto(`${bucket.origin}/read/problems`);
   await readerLoaded("problems");
-  // The problem set's first exercise line is at 237–246 pt from the top of its 595 pt page,
-  // from 146 pt across.
   const corner = await firstPageCorner("problems");
   const at = (x: number, y: number) => ({
     x: corner.x + (x * corner.width) / 595,
@@ -2187,12 +2081,10 @@ test("a note saved after a metadata write to the open PDF keeps that metadata, a
   });
   expect(edited.status).toBe(200);
 
-  // The reader's copy predates the metadata write; the server writes the metadata into it.
   const first = `Saved over new metadata ${Date.now()}`;
   const firstSave = saved();
   await writeNote("lattices", first);
   expect((await firstSave).status()).toBe(200);
-  // The answered tag names the reader's bytes, which the next save is made from.
   const second = `Saved after the rebase ${Date.now()}`;
   const secondSave = saved();
   await writeNote("lattices", second, 320);
@@ -2269,7 +2161,6 @@ test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Sh
     {},
     viewerOf("reading"),
   );
-  // "unimodular" is on pages 6 and 10; the first match is shown once the search answers.
   console.info("reader search test", { stage: "query" });
   await page.keyboard.type("unimodular");
   await showsPage("reading", 6);
@@ -2307,7 +2198,6 @@ test("a PDF tab whose item left the bucket closes once Close Without Saving conf
   expect(captured.status).toBe(200);
   const key = CaptureResponseSchema.parse(await captured.json()).key;
   await shownReader(key);
-  // A page read for six seconds is a reading the tab owes the bucket when it closes.
   await Bun.sleep(6000);
   const deleted = await fetch(`${bucket.origin}/api/items/${key}`, {
     method: "DELETE",
@@ -2333,7 +2223,6 @@ test("a PDF tab whose item left the bucket closes once Close Without Saving conf
 test("the Timeline shows a reading session with the pages read for at least five seconds, and its title reopens the PDF in a tab", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");
-  // Pages 1 and 2 are read for six seconds each; page 3 is passed through at once.
   for (const pageNumber of [1, 2]) {
     await goToPage("reading", pageNumber);
     await Bun.sleep(6000);
@@ -2342,14 +2231,12 @@ test("the Timeline shows a reading session with the pages read for at least five
   const reported = page.waitForResponse((response) =>
     response.url().endsWith("/api/reading-sessions"),
   );
-  // The Library button leaves once the session is reported and every annotation saved.
   await page.click(readerButton("reading", "library"));
   expect((await reported).status()).toBe(200);
   await page.waitForSelector("nav a");
 
   await page.goto(`${bucket.origin}/#/timeline`);
   await page.waitForSelector('select[aria-label="Shortest reading"]');
-  // Twelve seconds is under the default minimum of thirty.
   expect(await page.$('[data-timeline-key="reading"]')).toBeNull();
   await page.select('select[aria-label="Shortest reading"]', "5");
   const entry = await page.waitForSelector('[data-timeline-key="reading"]');
@@ -2394,7 +2281,6 @@ test("the grid view shows each PDF's first page, and a double-click opens the re
   await page.click('[data-card-id="reading"]', { count: 2 });
   await shownReader("reading");
 
-  // The layout is kept for the next visit; the list comes back only when chosen.
   await openRoot();
   await page.waitForSelector('[data-card-id="reading"]');
   await page.click('button[aria-label="List view"]');
@@ -2442,8 +2328,6 @@ test("rows chosen with their checkboxes are tagged and filed together", async ()
 });
 
 test("Guess Metadata in the menu of a row outside the checked rows guesses that row; in a checked row, every checked row", async () => {
-  // The browser answers each guess itself, so no model provider is reached; the keys guessed
-  // are the ones the library asked for.
   const guessed: string[] = [];
   const answerGuess = (request: HTTPRequest) => {
     const guess = /^\/api\/items\/([^/]+)\/guess-metadata$/.exec(
@@ -2469,7 +2353,6 @@ test("Guess Metadata in the menu of a row outside the checked rows guesses that 
     guessed.length = 0;
     await page.click(row(key), { button: "right" });
     await (await menuItem("Guess Metadata")).click();
-    // The action reports once every guess it asked for has answered.
     await shows('[role="alert"]', "no model answers in this test");
     await (await byRole("button", "Dismiss")).click();
     return [...guessed];
@@ -2505,13 +2388,11 @@ test("Import URL and Add Folder in the toolbar add PDFs to the library", async (
   await shot("dialog-import-url");
   await page.keyboard.press("Enter");
   await page.waitForSelector(row("imported"));
-  // The dialog closes once the server has accepted the URL.
   await page.waitForFunction(
     () => document.querySelector('[role="dialog"]') === null,
   );
 
   const folder = mkdtempSync(join(tmpdir(), "pdf-bucket-library-e2e-folder-"));
-  // A PDF the library does not hold yet: the problem set with a comment after its end.
   writeFileSync(
     join(folder, "folder notes.pdf"),
     new Uint8Array([
@@ -2683,7 +2564,6 @@ test("collection cards show counts and pins; a collection keeps a description, K
   expect(after.items[chosen]?.tags).toContain("topic:Genus theory");
   await page.click('button[aria-label="Clear selection"]');
 
-  // An emptied description clears it.
   await page.click('button[aria-label="Edit description"]');
   await page.click('[role="dialog"] input', { count: 3 });
   await page.keyboard.press("Backspace");
@@ -2714,7 +2594,6 @@ test("a smart collection built from rules lists the PDFs meeting all of them, an
       .sort();
   const both = keys((item) => inForms(item) && unread(item));
   const either = keys((item) => inForms(item) || unread(item));
-  // The two readings must differ, or the edit would prove nothing.
   expect(either.length).toBeGreaterThan(both.length);
 
   await page.goto(`${bucket.origin}/#/organization/saved`);
@@ -2890,8 +2769,6 @@ test("Verify marks a PDF whose URL no longer serves it Offline; a mirror that se
     published("/~author/mirror/problems.pdf"),
   );
   await page.keyboard.press("Enter");
-  // The mirror's link in the sources list; a text match would also find the URL still in the
-  // field it was typed into, before the server's answer adds the line.
   await page.waitForSelector(
     `${details} li a[href="${published("/~author/mirror/problems.pdf")}"]`,
   );
@@ -2908,7 +2785,6 @@ test("Verify marks a PDF whose URL no longer serves it Offline; a mirror that se
 });
 
 test("a lost PDF the export holds is listed under Needs Re-fetch until Rebuild restores it", async () => {
-  // The export is written after every change; wait until it holds the item to be lost.
   const exported = async () =>
     existsSync(bucket.indexExport)
       ? readFileSync(bucket.indexExport, "utf8")
@@ -2979,7 +2855,6 @@ test("the Library entry counts the PDFs; each quick filter narrows the library a
     `Library${all.length}`,
   );
   for (const filter of filters) {
-    // Each filter must discriminate: it keeps some items and drops others.
     expect(filter.keys.length).toBeGreaterThan(0);
     expect(filter.keys.length).toBeLessThan(all.length);
     expect(
@@ -3119,7 +2994,6 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
 });
 
 const inspectorAlert = 'aside[aria-label="Item details"] [role="alert"]';
-// The details pane's own Send to Zotero button.
 const inspectorSend = () => byRole("button", "Send to Zotero");
 const runCommand = async (name: string) => {
   await page.keyboard.down("Control");
@@ -3208,7 +3082,6 @@ test("each send control sends its way: the details menu, the row and tab context
     await page.goto(`${app.origin}/`);
     await page.waitForSelector(row("lattices"));
 
-    // The details menu: Send to Zotero and Extract, with every plugin failing.
     await page.click(row("lattices"));
     await page.click('button[aria-label="Other sends"]');
     await (await menuItem("Send to Zotero and Extract")).click();
@@ -3218,12 +3091,10 @@ test("each send control sends its way: the details menu, the row and tab context
     await shot("send-extract-all-failed");
     await page.waitForSelector(row("lattices"), { hidden: true });
 
-    // The row context menu: Send PDF Only, a standalone attachment.
     await page.click(row("problems"), { button: "right" });
     await (await menuItem("Send PDF Only to Zotero")).click();
     await page.waitForSelector(row("problems"), { hidden: true });
 
-    // The tab context menu: Send to Zotero.
     await page.click(row("notes"), { count: 2 });
     await shownReader("notes");
     await page.click(tab("notes"), { button: "right" });
@@ -3231,7 +3102,6 @@ test("each send control sends its way: the details menu, the row and tab context
     await page.waitForSelector(tab("notes"), { hidden: true });
     await page.waitForSelector(row("notes"), { hidden: true });
 
-    // The palette: Send Selected PDF to Zotero.
     await page.click(row("reading"));
     await runCommand("Send Selected PDF to Zotero");
     await page.waitForSelector(row("reading"), { hidden: true });
