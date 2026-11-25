@@ -66,6 +66,8 @@ const corpusFeed = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://ww
 // The publisher: what each path serves right now; a path with nothing serves 404.
 const served = new Map<string, Uint8Array<ArrayBuffer>>();
 let atomFeed: string | undefined;
+// When each arXiv API request arrived, in milliseconds since the epoch.
+const apiRequests: number[] = [];
 let pdfRedirect: string | undefined;
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
@@ -73,6 +75,7 @@ const publisher = Bun.serve({
   fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === "/api/query") {
+      apiRequests.push(Date.now());
       return new Response(
         atomFeed ??
           `<?xml version="1.0" encoding="UTF-8"?>
@@ -2182,6 +2185,42 @@ test("a promoted item is eligible for version-matched arXiv source extraction", 
   expect(
     (await item("extraction-original")).sourceLineage?.originalProvenance,
   ).toEqual(original);
+});
+
+test("discovery refuses a placeholder title and tells the user to set the title", async () => {
+  const config = loadAppConfig(CONFIG_PATH);
+  const localArxiv = {
+    ...config,
+    arxiv: {
+      api_url: at("/api/query"),
+      abs_url: at("/abs/"),
+      pdf_url: at("/pdf/"),
+      e_print_url: at("/e-print/"),
+    },
+  };
+  const { root, request, capture } = await bucket(null, localArxiv);
+  await capture(lectureNotes, "placeholder", at("/notes/placeholder.pdf"));
+  const before = apiRequests.length;
+  for (const [title, source] of [
+    ["View PDF", "capture-hint"],
+    ["None", "pdf-metadata"],
+    ["placeholder.pdf", "pdf-metadata"],
+    ["placeholder", "capture-hint"],
+    ["Lecture 3", "filename"],
+  ] as const) {
+    await recordMetadata(root, "placeholder", source, {
+      title,
+      authors: [],
+      year: 2024,
+    });
+    const response = await request("POST", "/api/items/placeholder/arxiv");
+    expect([title, response.status]).toEqual([title, 422]);
+    const { error } = ApiErrorSchema.parse(await response.json());
+    expect(error.kind).toBe("placeholder_title");
+    expect(error.message).toContain(`"${title}"`);
+    expect(error.message).toContain("Set the title");
+  }
+  expect(apiRequests.length).toBe(before);
 });
 
 test("known arXiv papers rank in the accepted results on the 20-paper corpus", async () => {
