@@ -165,20 +165,107 @@ fn similarity(left: &str, right: &str) -> f64 {
     2.0 * shared / (left.len() as f64 + right.len() as f64)
 }
 
+/// Lucene's English stop words (`EnglishAnalyzer.ENGLISH_STOP_WORDS_SET`). A search engine
+/// that drops them at indexing matches no `ti:` clause made of one.
+const STOP_WORDS: [&str; 33] = [
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", "in", "into", "is", "it",
+    "no", "not", "of", "on", "or", "such", "that", "the", "their", "then", "there", "these",
+    "they", "this", "to", "was", "will", "with",
+];
+
+/// The words of a title without TeX control sequences, lower-cased, without stop words, so
+/// that `$F$-Signature` and "F-signature" give the same terms. A control sequence is a
+/// backslash and its letters, or a backslash and one other character (The TeXbook, chapter 7).
+fn title_terms(title: &str) -> BTreeSet<String> {
+    let mut kept = String::new();
+    let mut characters = title.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character != '\\' {
+            kept.push(character);
+            continue;
+        }
+        if characters
+            .next_if(|next| next.is_ascii_alphabetic())
+            .is_some()
+        {
+            while characters
+                .next_if(|next| next.is_ascii_alphabetic())
+                .is_some()
+            {}
+        } else {
+            characters.next();
+        }
+        kept.push(' ');
+    }
+    words(&kept)
+        .into_iter()
+        .filter(|term| !STOP_WORDS.contains(&term.as_str()))
+        .collect()
+}
+
+/// The title before a subtitle: the text before ": ", ". ", " -- " or an em dash, or before a
+/// closing parenthetical.
+fn main_title(title: &str) -> &str {
+    let title = title.trim();
+    let mut end = [": ", ". ", " -- ", " \u{2014} ", "\u{2014}"]
+        .iter()
+        .filter_map(|separator| title.find(separator))
+        .min()
+        .unwrap_or(title.len());
+    if title.ends_with(')') {
+        if let Some(open) = title.rfind(" (") {
+            end = end.min(open);
+        }
+    }
+    &title[..end]
+}
+
+fn term_similarity(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f64 {
+    if left.is_empty() || right.is_empty() {
+        return 0.0;
+    }
+    let shared = left.intersection(right).count() as f64;
+    2.0 * shared / (left.len() as f64 + right.len() as f64)
+}
+
+/// The Dice similarity of two titles' terms, whole or before their subtitles, whichever is
+/// higher, so a capture that dropped or changed a subtitle still matches.
+fn title_similarity(left: &str, right: &str) -> f64 {
+    let whole = term_similarity(&title_terms(left), &title_terms(right));
+    let main = term_similarity(
+        &title_terms(main_title(left)),
+        &title_terms(main_title(right)),
+    );
+    whole.max(main)
+}
+
+/// The Dice similarity of two author lists, where two names agree when one can be the other
+/// abbreviated, reordered as "Surname, Given", or with diacritics folded
+/// (`human_name::Name::consistent_with`). Each author of RIGHT matches at most once.
 fn author_similarity(left: &[String], right: &[String]) -> f64 {
     if left.is_empty() || right.is_empty() {
         return 0.0;
     }
-    let left: BTreeSet<String> = left
+    let mut unmatched: Vec<Option<human_name::Name>> = right
         .iter()
-        .map(|author| text(author).to_lowercase())
+        .map(|author| human_name::Name::parse(&text(author)))
         .collect();
-    let right: BTreeSet<String> = right
-        .iter()
-        .map(|author| text(author).to_lowercase())
-        .collect();
-    let shared = left.intersection(&right).count() as f64;
-    2.0 * shared / (left.len() as f64 + right.len() as f64)
+    let mut shared = 0usize;
+    for author in left {
+        let Some(name) = human_name::Name::parse(&text(author)) else {
+            continue;
+        };
+        let found = unmatched.iter().position(|candidate| {
+            candidate
+                .as_ref()
+                .is_some_and(|candidate| candidate.consistent_with(&name))
+        });
+        if let Some(found) = found {
+            unmatched[found] = None;
+            shared += 1;
+        }
+    }
+    2.0 * shared as f64 / (left.len() as f64 + right.len() as f64)
 }
 
 fn score(
@@ -193,7 +280,7 @@ fn score(
         .iter()
         .map(|author| author.name.clone())
         .collect();
-    let title_score = similarity(title, &candidate_title);
+    let title_score = title_similarity(title, &candidate_title);
     let author_score = author_similarity(authors, &candidate_authors);
     let abstract_score = abstract_.and_then(|abstract_| {
         candidate
@@ -409,14 +496,26 @@ async fn search_candidates(state: &Shared, key: &str) -> AppResult<ArxivSearchRe
             ),
         ));
     }
-    let escaped_title = item.title.text.replace('"', "\\\"");
-    let query = format!("ti:\"{escaped_title}\"");
+    // Every term of the title before its subtitle, so that a capture whose title differs from
+    // arXiv's in TeX, punctuation or subtitle still finds the paper; candidates rank locally.
+    let terms = title_terms(main_title(&item.title.text));
+    if terms.is_empty() {
+        return Err(AppError::invalid(format!(
+            "\"{}\" has no words outside TeX to search arXiv for. Set the title, then search again.",
+            *item.title.text
+        )));
+    }
+    let query = terms
+        .iter()
+        .map(|term| format!("ti:{term}"))
+        .collect::<Vec<_>>()
+        .join(" AND ");
     let response = query_api(
         &state.config.app,
         &[
             ("search_query", query),
             ("start", "0".to_string()),
-            ("max_results", "10".to_string()),
+            ("max_results", "25".to_string()),
             ("sortBy", "relevance".to_string()),
             ("sortOrder", "descending".to_string()),
         ],
@@ -814,6 +913,44 @@ mod tests {
         )
         .expect("a near title with matching authors should match");
         assert!(candidate.score >= MATCH_THRESHOLD);
+    }
+
+    #[test]
+    fn abbreviated_reordered_and_unaccented_authors_agree() {
+        let arxiv = ["János Kollár".to_string(), "Xin Lü".to_string()];
+        for captured in [
+            ["J. Kollár".to_string(), "Xin Lu".to_string()],
+            ["Lü, Xin".to_string(), "Kollár, J.".to_string()],
+        ] {
+            assert_eq!(author_similarity(&captured, &arxiv), 1.0, "{captured:?}");
+        }
+        assert_eq!(
+            author_similarity(&["P. Kollár".to_string()], &arxiv[..1]),
+            0.0
+        );
+    }
+
+    #[test]
+    fn titles_that_differ_in_tex_or_subtitle_agree() {
+        let arxiv = "Uniform Positivity of the $F$-Signature and Pure Descent of klt Singularities";
+        assert_eq!(
+            title_similarity(
+                "Uniform positivity of the F-signature and pure descent of KLT singularities",
+                arxiv
+            ),
+            1.0
+        );
+        assert_eq!(
+            title_terms("Moduli of $\\mathbb{P}^1$ \\emph{bundles}"),
+            BTreeSet::from(["1", "bundles", "moduli", "p"].map(String::from))
+        );
+        assert_eq!(
+            title_similarity(
+                "Concentration of plane branches",
+                "Concentration of plane branches: building a complete equisingularity invariant"
+            ),
+            1.0
+        );
     }
 
     #[test]

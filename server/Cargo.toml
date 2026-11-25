@@ -32,6 +32,7 @@ futures = "0.3.34"
 hex = "0.4.3"
 html-escape = "0.2.15"
 httpdate = "1.0.3"
+human_name = "2.0.4"
 jsonschema = { version = "0.57.0", default-features = false }
 lockable = "0.2.0"
 lol_html = "3.0.1"
