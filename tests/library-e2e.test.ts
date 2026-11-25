@@ -2469,16 +2469,92 @@ test("a page change made just before the window leaves is recorded", async () =>
   await readerLoaded("reading");
   await goToPage("reading", 7);
   await page.goto(`${bucket.origin}/`);
-  const recordedPage = async () => {
-    const item = (await libraryPayload()).items.find((candidate) => candidate.id === "reading");
-    return item?.reading.status === "viewed" ? item.reading.page : null;
-  };
   const deadline = Date.now() + 3000;
-  while ((await recordedPage()) !== 7 && Date.now() < deadline) {
-    await new Promise((settled) => setTimeout(settled, 200));
+  while ((await recordedPageOf("reading")) !== 7 && Date.now() < deadline) {
+    await Bun.sleep(200);
   }
-  expect(await recordedPage()).toBe(7);
+  expect(await recordedPageOf("reading")).toBe(7);
 });
+
+const recordedPageOf = async (key: string) => {
+  const item = (await libraryPayload()).items.find((candidate) => candidate.id === key);
+  return item?.reading.status === "viewed" ? item.reading.page : null;
+};
+
+test("the page in the address wins over the recorded reading position, on open and on reload", async () => {
+  await markViewed("reading", 3, 10);
+  await page.goto(`${bucket.origin}/read/reading#page=7`);
+  await readerLoaded("reading");
+  await showsPage("reading", 7);
+  expect(new URL(page.url()).hash).toBe("#page=7");
+  await page.reload();
+  await readerLoaded("reading");
+  await showsPage("reading", 7);
+  expect(new URL(page.url()).hash).toBe("#page=7");
+});
+
+test("a page outside the PDF, or a fragment that names no page, says so and opens and records page 1", async () => {
+  for (const fragment of ["#page=99", "#page=abc"]) {
+    await markViewed("reading", 4, 10);
+    await page.goto(`${bucket.origin}/read/reading${fragment}`);
+    await readerLoaded("reading");
+    const status = `${readerOf("reading")} [role="status"]`;
+    await page
+      .waitForFunction(
+        (css) => (document.querySelector(css)?.textContent ?? "") !== "",
+        { timeout: 5000 },
+        status,
+      )
+      .catch(() => undefined);
+    expect(await page.$eval(status, (element) => element.textContent)).toBe(
+      fragment === "#page=99"
+        ? "Page 99 is not in this PDF, which has 10 pages. The reader shows page 1."
+        : `${fragment} names no page of this PDF. The reader shows page 1.`,
+    );
+    await showsPage("reading", 1);
+    const deadline = Date.now() + 3000;
+    while ((await recordedPageOf("reading")) !== 1 && Date.now() < deadline) {
+      await Bun.sleep(200);
+    }
+    expect(await recordedPageOf("reading")).toBe(1);
+  }
+  await shot("reader-page-out-of-range");
+}, 60_000);
+
+test("a PDF the viewer cannot open says so over the viewer, and its library row stays", async () => {
+  const stored = await fetch(`${bucket.origin}/pdf/problems.pdf`);
+  const headers = Object.fromEntries(
+    ["ETag", "X-Pdf-Edition", "Content-Type"].map((name) => [name, stored.headers.get(name) ?? ""]),
+  );
+  const broken = (request: HTTPRequest) => {
+    if (request.url().endsWith("/pdf/problems.pdf")) {
+      void request.respond({ status: 200, headers, body: "%PDF-1.7 this is not a PDF" });
+      return;
+    }
+    void request.continue();
+  };
+  await page.setRequestInterception(true);
+  page.on("request", broken);
+  try {
+    await page.goto(`${bucket.origin}/#/unfiled`);
+    await page.waitForSelector(row("problems"));
+    await page.click(row("problems"), { count: 2 });
+    const alert = `${readerOf("problems")} [role="alert"]`;
+    await page
+      .waitForFunction((css) => document.querySelector(css) !== null, { timeout: 10_000 }, alert)
+      .catch(() => undefined);
+    expect(await page.$eval(alert, (element) => element.textContent)).toStartWith(
+      "The PDF could not be opened",
+    );
+    await shot("reader-unreadable");
+    await (await byRole("tab", "Library")).click();
+    await page.waitForSelector(row("problems"), { visible: true });
+    expect(await rowKeys()).toContain("problems");
+  } finally {
+    page.off("request", broken);
+    await page.setRequestInterception(false);
+  }
+}, 60_000);
 
 test("in the reader Ctrl+F puts the cursor in the search field, and Enter and Shift+Enter step through the matches", async () => {
   await page.goto(`${bucket.origin}/read/reading`);
