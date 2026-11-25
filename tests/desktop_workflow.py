@@ -154,24 +154,36 @@ def exited(processes: list[int]) -> None:
     """Wait until the app is gone, so its port is free for the next test's app.
 
     The driver's quit can return before the app has exited, and the app holds the bucket's port
-    until it has. A dead process that is not yet reaped no longer holds it.
+    until its last thread has exited. The thread-group leader shows state Z as soon as its own
+    thread exits, while the other threads still hold the descriptors.
     """
     deadline = time.monotonic() + 30
     for pid in processes:
-        while running(pid):
+        while threads := live_threads(pid):
             assert time.monotonic() < deadline, (
-                f"the app {pid} did not exit after the driver quit"
+                f"the app {pid} did not exit after the driver quit; threads {threads}"
             )
             time.sleep(0.1)
 
 
-def running(pid: int) -> bool:
-    """Whether a process exists and is not a zombie (state Z in /proc/<pid>/stat)."""
+def live_threads(pid: int) -> list[str]:
+    """The threads of a process that have not exited, each with its name and state from
+    /proc/<pid>/task/<tid>/stat; none once the process is gone or only its zombie leader is left."""
+    live = []
     try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
+        tasks = list(Path(f"/proc/{pid}/task").iterdir())
     except FileNotFoundError:
-        return False
-    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+        return []
+    for task in tasks:
+        try:
+            stat = (task / "stat").read_text()
+        except FileNotFoundError:
+            continue
+        name = stat[stat.index("(") + 1 : stat.rindex(")")]
+        state = stat.rsplit(")", 1)[1].split()[0]
+        if state not in ("Z", "X"):
+            live.append(f"{task.name} {name} {state}")
+    return live
 
 
 @pytest.fixture
