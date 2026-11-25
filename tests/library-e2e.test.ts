@@ -1560,6 +1560,56 @@ test("while a PDF's tab shows, the window's address is that PDF's reader at the 
   await page.waitForSelector('button[aria-label="Unread"][aria-pressed="true"]');
 }, 60_000);
 
+test("a reload of the library window gives back its tabs in order, the tab shown at its page and zoom, and the Library when it showed", async () => {
+  const address = () => {
+    const url = new URL(page.url());
+    return url.pathname + url.hash;
+  };
+  const tabKeys = () =>
+    page.$$eval("[data-tab-key]", (tabs) =>
+      tabs.map((tab) => tab.getAttribute("data-tab-key")),
+    );
+  await page.goto(`${bucket.origin}/#/unfiled`);
+  await page.waitForSelector(row("notes"));
+  expect(await tabKeys()).toEqual([]);
+  await page.click(row("notes"), { count: 2 });
+  await shownReader("notes");
+  await goToPage("notes", 3);
+  await zoomTo("notes", 1.5);
+  await (await byRole("tab", "Library")).click();
+  await page.click(row("reading"));
+  await page.keyboard.press("Enter");
+  await shownReader("reading");
+  await goToPage("reading", 5);
+  await page.waitForFunction(
+    () => window.location.pathname + window.location.hash === "/read/reading#page=5",
+  );
+
+  await page.reload();
+  await page.waitForSelector(tab("reading"), { timeout: 10_000 }).catch(() => undefined);
+  expect({ tabs: await tabKeys(), address: address() }).toEqual({
+    tabs: ["notes", "reading"],
+    address: "/read/reading#page=5",
+  });
+  await shownReader("reading");
+  await showsPage("reading", 5);
+  await page.click(`${tab("notes")} [role="tab"]`);
+  await shownReader("notes");
+  await showsPage("notes", 3);
+  expect(await zoomOf("notes")).toBe(1.5);
+
+  await (await byRole("tab", "Library")).click();
+  await page.waitForFunction(() => window.location.hash === "#/unfiled");
+  await page.reload();
+  await page.waitForSelector(row("notes"), { visible: true });
+  await page.waitForSelector(tab("reading"), { timeout: 10_000 }).catch(() => undefined);
+  expect({ tabs: await tabKeys(), address: address() }).toEqual({
+    tabs: ["notes", "reading"],
+    address: "/#/unfiled",
+  });
+  await shot("tabs-reloaded");
+}, 90_000);
+
 test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the viewer, and wakes at the same place and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
   const captureTab = async (source: string, ordinal: string) => {
     const form = new FormData();
