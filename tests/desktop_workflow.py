@@ -1800,3 +1800,27 @@ def test_a_library_folder_that_cannot_be_made_shows_math_pdf_reader_is_not_servi
         assert driver.find_element(By.ID, "report").text.startswith(
             f"Math PDF Reader could not make its library folder {folder}: "
         )
+
+
+def test_a_missing_library_page_shows_math_pdf_reader_is_not_serving_and_names_just_provision(
+    data_home: Path, tmp_path: Path
+) -> None:
+    """The installed app reads its library page from `$XDG_DATA_HOME/pdf-bucket-app/dist/web`,
+    which only `just provision` writes; `just build-web` writes the checkout's copy."""
+    (data_home / "pdf-bucket-app/dist/web").unlink()
+    page = data_home / "pdf-bucket-app/dist/web/index.html"
+    with ExitStack() as stack:
+        driver = open_window(stack, data_home, tmp_path)
+        WebDriverWait(driver, 60).until(
+            lambda d: d.execute_script(
+                "return !document.getElementById('failure').hidden"
+            )
+        )
+
+        assert driver.find_element(By.CSS_SELECTOR, "#failure h1").text == (
+            "Math PDF Reader is not serving"
+        )
+        report = driver.find_element(By.ID, "report").text
+        assert str(page) in report, report
+        assert "`just provision`" in report, report
+        assert "bucket" not in report.lower(), report
