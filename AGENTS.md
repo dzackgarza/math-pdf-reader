@@ -103,7 +103,8 @@ Nothing in this repo is invented. Two kinds of source, handled differently:
   Do not import them as dependencies or keep the copies in sync. Their decisions are
   inputs, not rules. Do not name them in code, comments, docstrings, error text or
   user-facing docs: they will not exist when this project is mature. Commit messages are
-  the only place their names belong.
+  the only place their names belong. `just check-prior-repo-names` fails the commit when
+  code under `src`, `server`, `desktop`, `plugins` or `scripts` names one.
 
 Reference implementations:
 

@@ -81,9 +81,14 @@ test-desktop: build-web
     @uv sync --locked --quiet
     @unshare -rn sh -c 'ip link set lo up && exec dbus-run-session -- uv run pytest tests/desktop_workflow.py'
 
+[doc("Fail when code under src, server, desktop, plugins or scripts names a prior repo (mathread, zotero-gui, zotero-library, zotero-library-tools).")]
+check-prior-repo-names:
+    @! grep -rnIE 'mathread|zotero-gui|zotero_gui|zotero-library|zotero_library' src server desktop plugins scripts --exclude-dir=node_modules --exclude-dir=target --exclude-dir=.venv || { echo 'code names a prior repo; AGENTS.md Reuse policy allows those names only in commit messages' >&2; exit 1; }
+
 [doc("Run commit-tier Python and Bun QC through the central implementation.")]
 test-commit:
     @bun run typecheck
+    @just check-prior-repo-names
     @bun run build
     @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-commit
 
