@@ -339,7 +339,7 @@ test("publication failure preserves the complete extraction after restart", asyn
   }
 });
 
-test("restart restores the previous extraction when publication stops between the two renames", async () => {
+test("the previous extraction stays readable during publication and after interruption", async () => {
   const { app, root, manifestPath } = await bucketWithExtractors([
     { mode: "record", maxPages: 20 },
     { mode: "markdown", maxPages: 20 },
@@ -349,6 +349,8 @@ test("restart restores the previous extraction when publication stops between th
   const document = join(root, "lattices");
   const markdown = join(document, "lattices.md");
   const original = readFileSync(markdown, "utf8");
+  const artifact = join(document, "lattices.extraction", "source.pdf");
+  const originalArtifact = readFileSync(artifact);
   await app.stop();
   const options = { root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath };
   const gate = join(root, ".publication");
@@ -359,6 +361,9 @@ test("restart restores the previous extraction when publication stops between th
     const deadline = performance.now() + 15000;
     while (!existsSync(`${gate}.ready`) && performance.now() < deadline) await Bun.sleep(20);
     expect(existsSync(`${gate}.ready`)).toBe(true);
+    expect(existsSync(markdown)).toBe(true);
+    expect(readFileSync(markdown, "utf8")).toBe(original);
+    expect(readFileSync(artifact)).toEqual(originalArtifact);
   } finally {
     await publishing.stop();
     await request;
