@@ -1,6 +1,7 @@
 //! Search arXiv for a stored item's structured metadata and promote a selected version.
 use axum::body::Bytes;
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
 use quick_xml::de::from_str;
@@ -8,13 +9,28 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::collections::BTreeSet;
 
-use crate::contract::{ArxivMatch, ArxivPromotionResponse, ArxivSearchResponse, NonEmpty};
+use crate::contract::{
+    ApiErrorErrorKind, ArxivMatch, ArxivPromotionResponse, ArxivSearchResponse, NonEmpty,
+    TitleSource,
+};
 use crate::error::{AppError, AppResult};
 use crate::imports::find_arxiv_pdf_at;
 use crate::state::Shared;
 use crate::store::{stage_file, ResolvedMetadata, StageFailure, Upload};
 
 const MATCH_THRESHOLD: f64 = 0.8;
+/// Link and page labels that a capture records as a title when the page names no paper.
+const PAGE_LABELS: [&str; 9] = [
+    "view pdf",
+    "pdf",
+    "download",
+    "download pdf",
+    "full text",
+    "full text pdf",
+    "untitled",
+    "none",
+    "null",
+];
 const MAX_RESULTS: usize = 5;
 
 fn validate_arxiv_config(config: &crate::contract::AppConfig) -> AppResult<()> {
@@ -262,10 +278,45 @@ fn candidate(
     })
 }
 
+/// Whether TITLE names no paper: a page label, the text "None", empty, or the PDF's file name
+/// (its key, its stored name, or the last segment of its PDF URL, with or without `.pdf`).
+fn placeholder(item: &crate::contract::StoredItem) -> bool {
+    if item.title.source == TitleSource::Filename {
+        return true;
+    }
+    let title = text(&item.title.text).to_lowercase();
+    if title.is_empty() || PAGE_LABELS.contains(&title.as_str()) {
+        return true;
+    }
+    let key = item.key.as_str().to_lowercase();
+    let mut names = vec![key.clone(), format!("{key}.pdf")];
+    if let Some(segment) = url::Url::parse(&item.provenance.pdf_url)
+        .ok()
+        .and_then(|url| url.path_segments()?.next_back().map(str::to_string))
+    {
+        let segment = percent_encoding::percent_decode_str(&segment)
+            .decode_utf8_lossy()
+            .to_lowercase();
+        names.push(segment.trim_end_matches(".pdf").to_string());
+        names.push(segment);
+    }
+    names.contains(&title)
+}
+
 async fn search_candidates(state: &Shared, key: &str) -> AppResult<ArxivSearchResponse> {
     validate_arxiv_config(&state.config.app)?;
     let indexed = state.require(key).await?;
     let item = &indexed.stored;
+    if placeholder(item) {
+        return Err(AppError::api(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiErrorErrorKind::PlaceholderTitle,
+            format!(
+                "\"{}\" is not the paper's title, so arXiv cannot be searched for it. Set the title, then search again.",
+                *item.title.text
+            ),
+        ));
+    }
     let escaped_title = item.title.text.replace('"', "\\\"");
     let query = format!("ti:\"{escaped_title}\"");
     let response = Client::builder()

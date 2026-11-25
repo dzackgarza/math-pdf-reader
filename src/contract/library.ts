@@ -584,6 +584,8 @@ export const API_ERROR_KINDS = [
   "unsupported_media_type",
   // The assistant pane's OpenCode server did not start or did not answer.
   "ai_unavailable",
+  // arXiv discovery on a title that names no paper (a page label, "None", the file name).
+  "placeholder_title",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({
