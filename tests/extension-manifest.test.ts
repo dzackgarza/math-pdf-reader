@@ -8,6 +8,7 @@ const EXTENSION_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 test("the Chrome build declares the declarativeNetRequest interception route, redirect observation, download capture and frame scripting", async () => {
   const output = await build({ root: EXTENSION_ROOT, browser: "chrome", mode: "production" });
 
+  expect(output.manifest.name).toBe("Math PDF Reader");
   expect(output.manifest.manifest_version).toBe(3);
   expect(output.manifest.permissions).toEqual([
     "declarativeNetRequestWithHostAccess",
@@ -27,6 +28,7 @@ test("the Chrome build declares the declarativeNetRequest interception route, re
 test("the Firefox build declares the blocking webRequest interception route", async () => {
   const output = await build({ root: EXTENSION_ROOT, browser: "firefox", mode: "production" });
 
+  expect(output.manifest.name).toBe("Math PDF Reader");
   expect(output.manifest.manifest_version).toBe(2);
   expect(output.manifest.permissions).toEqual([
     "webRequest",

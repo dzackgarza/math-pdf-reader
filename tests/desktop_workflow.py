@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import time
 from collections.abc import Callable, Iterator
@@ -100,38 +101,44 @@ def data_home(tmp_path: Path) -> Path:
     return tmp_path / "data"
 
 
-@pytest.fixture
-def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
+def open_window(
+    stack: ExitStack, data_home: Path, tmp_path: Path
+) -> webdriver.WebKitGTK:
     """The app starts as autostart starts it: outside any shell that has loaded the `.envrc`.
 
     The driver and the app write to the test's output, which pytest shows when the run fails.
-
-    A start failure replaces the library with a page that names the cause.
     """
+    env = {
+        **{
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("DIRENV_")
+        },
+        "WAYLAND_DISPLAY": headless_display(stack),
+        "GDK_BACKEND": "wayland",
+        "GSETTINGS_BACKEND": "memory",
+        "XDG_DATA_HOME": str(data_home),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+        "TAURI_WEBVIEW_AUTOMATION": "true",
+    }
+    options = webdriver.WebKitGTKOptions()
+    options.binary_location = str(APP)
+    options.set_capability("browserName", "wry")
+    service = webdriver.WebKitGTKService(
+        executable_path="/usr/bin/WebKitWebDriver",
+        env=env,
+        log_output=subprocess.STDOUT,
+    )
+    driver = webdriver.WebKitGTK(options=options, service=service)
+    stack.callback(driver.quit)
+    return driver
+
+
+@pytest.fixture
+def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
+    """A start failure replaces the library with a page that names the cause."""
     with ExitStack() as stack:
-        env = {
-            **{
-                name: value
-                for name, value in os.environ.items()
-                if not name.startswith("DIRENV_")
-            },
-            "WAYLAND_DISPLAY": headless_display(stack),
-            "GDK_BACKEND": "wayland",
-            "GSETTINGS_BACKEND": "memory",
-            "XDG_DATA_HOME": str(data_home),
-            "XDG_CACHE_HOME": str(tmp_path / "cache"),
-            "TAURI_WEBVIEW_AUTOMATION": "true",
-        }
-        options = webdriver.WebKitGTKOptions()
-        options.binary_location = str(APP)
-        options.set_capability("browserName", "wry")
-        service = webdriver.WebKitGTKService(
-            executable_path="/usr/bin/WebKitWebDriver",
-            env=env,
-            log_output=subprocess.STDOUT,
-        )
-        driver = webdriver.WebKitGTK(options=options, service=service)
-        stack.callback(driver.quit)
+        driver = open_window(stack, data_home, tmp_path)
         try:
             WebDriverWait(driver, 60).until(lambda d: d.current_url.startswith(ORIGIN))
         except TimeoutException:
@@ -1451,3 +1458,33 @@ def test_keys_reach_the_reader_opened_from_the_library_before_any_click_in_it(
         f"P('zoom').forDocument({json.dumps(notes)}).getState().currentZoomLevel > {zoom}",
         timeout=10,
     )
+
+
+def test_a_port_already_taken_shows_math_pdf_reader_is_not_serving_in_its_window(
+    data_home: Path, tmp_path: Path
+) -> None:
+    """The window names Math PDF Reader, and a start failure names it too."""
+    with (
+        socket.create_server(("127.0.0.1", int(ORIGIN.rsplit(":", 1)[1]))),
+        ExitStack() as stack,
+    ):
+        driver = open_window(stack, data_home, tmp_path)
+        WebDriverWait(driver, 60).until(
+            lambda d: d.execute_script(
+                "return !document.getElementById('failure').hidden"
+            )
+        )
+
+        assert driver.title == "Math PDF Reader"
+        assert driver.find_element(By.CSS_SELECTOR, "#failure h1").text == (
+            "Math PDF Reader is not serving"
+        )
+        assert driver.find_element(By.ID, "report").text.startswith(
+            f"Math PDF Reader could not serve {ORIGIN}: "
+        )
+        assert (
+            driver.execute_async_script(
+                "window.__TAURI__.window.getCurrentWindow().title().then(arguments[0])"
+            )
+            == "Math PDF Reader"
+        )

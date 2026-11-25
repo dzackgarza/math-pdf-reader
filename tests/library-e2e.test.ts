@@ -3228,6 +3228,9 @@ test("collection cards show counts and pins; a collection keeps a description, K
     'button[role="switch"][aria-label="Keep offline"][aria-checked="true"]',
   );
   await page.waitForSelector("::-p-text(Kept offline)");
+  expect(await page.$eval("main", (main) => main.textContent)).toContain(
+    "Its PDFs stay in Math PDF Reader after Send to Zotero.",
+  );
 
   const chosen = Object.keys(org.items).find((key) =>
     org.items[key]?.collections.includes(forms.id),
@@ -3334,20 +3337,111 @@ test("a smart collection built from rules lists the PDFs meeting all of them, an
   expect(await rowsNow(either.length)).toEqual(either);
 });
 
-test("an action run while the bucket is down says the bucket did not answer", async () => {
+test("the library is titled Math PDF Reader, and an action it refuses, answers without its error document, or does not answer names Math PDF Reader", async () => {
   const downed = await startBucket();
   await page.goto(`${downed.origin}/`);
   await page.waitForSelector(row("lattices"));
+  expect(await page.title()).toBe("Math PDF Reader");
+  const verifyAll = async () => {
+    await page.keyboard.down("Control");
+    await page.keyboard.down("Shift");
+    await page.keyboard.press("p");
+    await page.keyboard.up("Shift");
+    await page.keyboard.up("Control");
+    await page.keyboard.type("Verify All Sources");
+    await page.keyboard.press("Enter");
+  };
+  let answer: "refusal" | "proxy" = "refusal";
+  const answerVerify = (request: HTTPRequest) => {
+    if (!new URL(request.url()).pathname.endsWith("/verify")) {
+      void request.continue();
+      return;
+    }
+    void request.respond(
+      answer === "refusal"
+        ? {
+            status: 502,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: {
+                kind: "metadata_guess_failed",
+                message: "the test refuses",
+              },
+            }),
+          }
+        : { status: 502, contentType: "text/plain", body: "Bad gateway" },
+    );
+  };
+  await page.setRequestInterception(true);
+  page.on("request", answerVerify);
+  const alertHeading = async () =>
+    (await page.waitForSelector('[role="alert"] strong'))?.evaluate(
+      (heading) => heading.textContent,
+    );
+  try {
+    await verifyAll();
+    expect(await alertHeading()).toBe("Math PDF Reader refused");
+    await (await byRole("button", "Dismiss")).click();
+    await page.waitForSelector('[role="alert"]', { hidden: true });
+    answer = "proxy";
+    await verifyAll();
+    expect(await alertHeading()).toBe("Math PDF Reader answered HTTP 502");
+    await (await byRole("button", "Dismiss")).click();
+    await page.waitForSelector('[role="alert"]', { hidden: true });
+  } finally {
+    page.off("request", answerVerify);
+    await page.setRequestInterception(false);
+  }
   await downed.stop();
-  await page.keyboard.down("Control");
-  await page.keyboard.down("Shift");
-  await page.keyboard.press("p");
-  await page.keyboard.up("Shift");
-  await page.keyboard.up("Control");
-  await page.keyboard.type("Verify All Sources");
-  await page.keyboard.press("Enter");
-  await shows('[role="alert"] strong', "The bucket did not answer");
+  await verifyAll();
+  expect(await alertHeading()).toBe("Math PDF Reader did not answer");
   await shot("action-bucket-down");
+});
+
+test("a refused index export names the command that forgets an item", async () => {
+  const lost = await startBucket();
+  try {
+    await page.goto(`${lost.origin}/`);
+    await page.waitForSelector(row("lattices"));
+    const folder = join(lost.root, "problems");
+    const pdf = readdirSync(folder).find((name) => name.endsWith(".pdf"));
+    if (pdf === undefined) {
+      throw new Error("problems holds no PDF");
+    }
+    rmSync(join(folder, pdf));
+    await fetch(`${lost.origin}/api/bulk/tags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keys: ["lattices"], add: ["codes"], remove: [] }),
+    });
+
+    const refused = await page.waitForSelector(
+      '[role="status"][aria-label^="The index export is not updated"]',
+    );
+    expect(await refused?.evaluate((status) => status.textContent)).toBe(
+      "The index export is not updated: it lists problems, whose PDFs are gone. Rebuild them from Needs Re-fetch, or forget them with `just forget <key>`.",
+    );
+  } finally {
+    await lost.stop();
+  }
+});
+
+test("the window's failure page says Math PDF Reader is not serving, with the reason", async () => {
+  const failure = pathToFileURL(
+    join(import.meta.dir, "..", "desktop/src/index.html"),
+  );
+  failure.hash = encodeURIComponent(
+    "Math PDF Reader could not serve http://127.0.0.1:8770: Address in use.",
+  );
+  await page.goto(failure.href);
+
+  expect(await page.title()).toBe("Math PDF Reader");
+  expect(await page.$eval("#failure h1", (heading) => heading.textContent)).toBe(
+    "Math PDF Reader is not serving",
+  );
+  expect(await page.$eval("#report", (report) => report.textContent)).toBe(
+    "Math PDF Reader could not serve http://127.0.0.1:8770: Address in use.",
+  );
 });
 
 test("an extraction past its time limit shows the limit and that nothing was written", async () => {

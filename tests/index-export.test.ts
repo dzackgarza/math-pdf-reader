@@ -1,6 +1,3 @@
-// The index export and its maintenance commands (`pdf-bucket export-index`, `import-index`,
-// `rebuild-cache`, `forget`) over the configured data root, $XDG_DATA_HOME/pdf-bucket, and the
-// running server's rewrite of the export after every change.
 import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
@@ -44,10 +41,8 @@ import {
   writeOrganization,
 } from "./store";
 
-// A collection's own fields as a new one has them.
 const PLAIN = { description: "", pinned: false, keepOffline: false };
 
-// Every capture and restore runs a server or a pikepdf command in its own process.
 setDefaultTimeout(30_000);
 
 function fixture(name: string): Uint8Array<ArrayBuffer> {
@@ -64,8 +59,6 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-// The publisher side: committed fixture PDFs served over HTTP. `/revised/notes.pdf` now
-// serves different bytes than were captured from it, and `/gone/` serves nothing.
 const served: Record<string, Uint8Array<ArrayBuffer>> = {
   "/notes/lecture-notes.pdf": lectureNotes,
   "/pdf/2401.00001": problemSet,
@@ -96,7 +89,6 @@ function temporaryDirectory(label: string): string {
   return mkdtempSync(join(tmpdir(), `pdf-bucket-index-${label}-`));
 }
 
-// A scratch XDG data home: the maintenance commands work on its `pdf-bucket` data root.
 function dataHome() {
   const home = temporaryDirectory("data");
   const root = join(home, "pdf-bucket");
@@ -165,7 +157,6 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
 
   const { exitCode, outcomes } = await rebuildCache(home, exportFile);
 
-  // Two PDFs could not be restored.
   expect(exitCode).toBe(1);
   const restored = await listItems(root, [
     "2401.00001",
@@ -211,7 +202,6 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
     },
     { key: "ten-page-notes", status: "present" },
   ]);
-  // The restored files carry the provenance recorded at capture, unchanged.
   expect(restored.map(({ key, provenance }) => ({ key, provenance }))).toEqual(
     exported.items
       .filter((item) =>
@@ -226,7 +216,6 @@ test("rebuilding re-downloads each missing PDF into its key and reports dead and
   ]);
   expect(existsSync(join(root, "long-notes", "long-notes.pdf"))).toBe(false);
   expect(existsSync(join(root, "revised", "revised.pdf"))).toBe(false);
-  // A present PDF is never downloaded again.
   expect(requested).not.toContain("/teaching/ten-page-notes.pdf");
 });
 
@@ -244,7 +233,6 @@ test("an export imported into an empty store and rebuilt there exports byte for 
     "2401.00001",
     at("/pdf/2401.00001"),
   );
-  // Never filed: the store has no filing entry for it, and the import must not add one.
   await capture(
     original.root,
     tenPageNotes,
@@ -395,7 +383,6 @@ test("the running server rewrites the index export after a capture, a filing cha
     extractionsManifest: EXTRACTIONS_MANIFEST,
     indexExport: exportFile,
   });
-  // The export lands after the response; its content, not its timing, is the claim.
   const exported = async (done: (index: IndexExport) => boolean) => {
     for (;;) {
       const index = readIndexExport(exportFile);
@@ -450,7 +437,6 @@ test("the running server rewrites the index export after a capture, a filing cha
   expect(afterDelete.items).toEqual([]);
 });
 
-// A server over ROOT that rewrites EXPORT_FILE.
 function serve(root: string, exportFile: string) {
   return serveBucket({
     root,
@@ -460,7 +446,6 @@ function serve(root: string, exportFile: string) {
   });
 }
 
-// The export at FILE once DONE holds for it; the export lands after the response.
 async function exportedWhen(
   file: string,
   done: (index: IndexExport) => boolean,
@@ -474,8 +459,6 @@ async function exportedWhen(
   }
 }
 
-// The export at FILE once DONE holds for it, or the latest one once MS pass: a rewrite that
-// never comes fails the test instead of hanging it.
 async function exportedWithin(
   file: string,
   done: (index: IndexExport) => boolean,
@@ -531,7 +514,6 @@ test("an item deleted in the app stays removed for an export written after the a
   await exportedWhen(exportFile, (index) => index.items.length === 2);
   await first.stop();
 
-  // The app deletes one item and quits before it rewrites this export.
   const second = await serve(
     root,
     join(temporaryDirectory("other-export"), "index.json"),
@@ -670,7 +652,6 @@ test("a stored PDF whose check fails is neither forgotten nor not found: the ope
   const stored = join(root, "lattices", "lattices.pdf");
   unlinkSync(stored);
   symlinkSync(stored, stored);
-  // ELOOP is errno 40 on Linux: the message carries the operating system's own answer.
   const failedCheck = {
     error: {
       kind: "store_failed",
@@ -706,9 +687,11 @@ test("`pdf-bucket forget` drops a missing item and writes the export without it"
   await capture(root, problemSet, "2401.00001", at("/pdf/2401.00001"));
   await exportIndex(home, exportFile);
   unlinkSync(join(root, "2401.00001", "2401.00001.pdf"));
-  expect(
-    (await bucketCommand(home, ["export-index", exportFile])).exitCode,
-  ).toBe(1);
+  const refused = await bucketCommand(home, ["export-index", exportFile]);
+  expect(refused.exitCode).toBe(1);
+  expect(refused.stderr).toContain(
+    "run `just rebuild-cache`, or `just forget <key>` for an item removed on purpose",
+  );
 
   const forgotten = await bucketCommand(home, [
     "forget",
@@ -796,7 +779,6 @@ test("the export carries reading sessions and extraction records, and imports in
     files: [{ name: "lattices.extraction/content_list.json", sizeBytes: 3 }],
   });
 
-  // The app starts at login on the wiped root and saves a preference: its filing holds nothing.
   const restored = dataHome();
   const app = await serve(
     restored.root,
@@ -836,8 +818,6 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
     "lattices.pdf",
     at("/notes/lecture-notes.pdf"),
   );
-  // The app trashed the document directory of a key it recorded as removed, and stopped before
-  // its filing went.
   writeOrganization(root, {
     version: 2,
     collections: [],
@@ -885,8 +865,6 @@ test("a new capture under a key removed earlier starts unfiled, even when the re
   expect([item?.tags, item?.notes]).toEqual([[], []]);
 });
 
-// Captures lecture notes as lattices.pdf over a server that rewrites EXPORT_FILE, tags them
-// "old", and loses their PDF after that server quits.
 async function lostLattices(root: string, exportFile: string) {
   const first = await serve(root, exportFile);
   await captureOver(first, lectureNotes, "lattices.pdf");
@@ -904,7 +882,6 @@ async function lostLattices(root: string, exportFile: string) {
   unlinkSync(join(root, "lattices", "lattices.pdf"));
 }
 
-// The key a different PDF offered as lattices.pdf takes while "lattices" is held.
 const heldAside = `lattices--${sha256(problemSet).slice(0, 12)}`;
 
 test("a new capture never takes the key of a lost PDF that the index export still lists", async () => {

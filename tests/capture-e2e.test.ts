@@ -13,6 +13,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -60,13 +61,29 @@ function sha256(bytes: Uint8Array): string {
 
 async function startBucket() {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-store-"));
+  const extensions = mkdtempSync(join(tmpdir(), "pdf-bucket-e2e-extensions-"));
   const app = await serveBucket({
     root,
     zoteroUrl: closedPortUrl(),
     extractionsManifest: EXTRACTIONS_MANIFEST,
+    extensions,
   });
   return {
     root,
+    extensions,
+    provision: (version: string) => {
+      for (const build of ["chrome-mv3", "firefox-mv2"]) {
+        mkdirSync(join(extensions, build), { recursive: true });
+        writeFileSync(
+          join(extensions, build, "manifest.json"),
+          JSON.stringify({ version }),
+        );
+      }
+    },
+    unprovision: () => {
+      rmSync(extensions, { recursive: true, force: true });
+      mkdirSync(extensions);
+    },
     port: Number(new URL(app.origin).port),
     origin: app.origin,
     files: () =>
@@ -318,7 +335,9 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       await Bun.sleep(50);
     }
   };
-  const openStatus = async (state: "ready" | "unreachable") => {
+  const openStatus = async (
+    state: "ready" | "unreachable" | "stale" | "checking",
+  ) => {
     const status = `${extensionOrigin}/popup.html`;
     if (engine === "chrome") {
       await page.goto(status);
@@ -354,6 +373,46 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       await Bun.sleep(50);
     }
   };
+  const toolbarTitle = async () =>
+    z
+      .string()
+      .parse(
+        await page.evaluate(
+          engine === "chrome"
+            ? "chrome.action.getTitle({})"
+            : "browser.browserAction.getTitle({})",
+        ),
+      );
+  const details = async () =>
+    z
+      .record(z.string(), z.string())
+      .parse(
+        await page.$$eval("#connection-details dt", (terms) =>
+          Object.fromEntries(
+            terms.map((term) => [
+              term.textContent,
+              term.nextElementSibling?.textContent,
+            ]),
+          ),
+        ),
+      );
+  const statusPageReloadsChrome = async () => {
+    const restarted = new Promise<void>((resolve) => {
+      const created = (target: Target) => {
+        if (target.type() === "service_worker") {
+          browser.off("targetcreated", created);
+          resolve();
+        }
+      };
+      browser.on("targetcreated", created);
+    });
+    const opener = await browser.newPage();
+    void opener.goto(`${extensionOrigin}/popup.html`).catch(() => undefined);
+    await restarted;
+    if (!opener.isClosed()) {
+      await opener.close().catch(() => undefined);
+    }
+  };
 
   const provenance = async (key: string) =>
     (await listItems(bucket.root, [key]))[0]?.provenance;
@@ -381,6 +440,7 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     await bucket.stop();
     await browser.close();
     rmSync(downloads, { recursive: true, force: true });
+    rmSync(bucket.extensions, { recursive: true, force: true });
     if (extension !== null) {
       rmSync(dirname(extension), { recursive: true, force: true });
     }
@@ -411,6 +471,64 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       await page.$eval("#last-capture a", (link) => link.getAttribute("href")),
     ).toBe(`${bucket.origin}/read/2401.00001`);
     expect(await badge()).toBe("ON");
+  });
+
+  test("the status page and the badge name Math PDF Reader, and the status page says no build of this extension is provisioned", async () => {
+    await openStatus("ready");
+
+    expect(await page.title()).toBe("Math PDF Reader");
+    expect(await details()).toMatchObject({
+      Address: bucket.origin,
+      Provisioned:
+        "none: Math PDF Reader offers no build of this extension, so it cannot replace this one when it changes",
+    });
+    expect(await toolbarTitle()).toBe(
+      "Math PDF Reader: PDF links open in the app",
+    );
+  });
+
+  test("a build other than the provisioned one shows OLD with its replacement and refuses a PDF link, which is stored once the provisioned build is the loaded one", async () => {
+    const own = z
+      .object({ version: z.string() })
+      .parse(
+        JSON.parse(readFileSync(join(extension ?? "", "manifest.json"), "utf8")),
+      ).version;
+    bucket.provision("0.0.1");
+    try {
+      if (engine === "chrome") {
+        await statusPageReloadsChrome();
+      }
+      await openStatus("stale");
+      await shotCapturePage("status-stale");
+
+      const stale = `Math PDF Reader was provisioned with version 0.0.1 of this extension, which is version ${own}; it captures nothing until it is replaced: `;
+      const replacement =
+        engine === "chrome"
+          ? "Chromium loads this extension from another directory; load it unpacked from the installed app's extensions/chrome-mv3"
+          : "Firefox installs it from Math PDF Reader at its next add-on update check, within a few minutes";
+      expect(await details()).toEqual({
+        Address: bucket.origin,
+        "This build": own,
+        Provisioned: "0.0.1",
+        Replacement: replacement,
+      });
+      expect(await badge()).toBe("OLD");
+      expect(await toolbarTitle()).toBe(`${stale}${replacement}`);
+
+      const before = bucket.files();
+      await followLinkToFailure("/abs/2401.00001");
+      expect(await page.title()).toBe("Math PDF Reader");
+      expect(await text("#details")).toContain(`${stale}${replacement}`);
+      expect(bucket.files()).toEqual(before);
+
+      bucket.provision(own);
+      expect(await captureInPlace("/abs/2401.00001")).toBe(
+        `${bucket.origin}/read/2401.00001`,
+      );
+      expect(bucket.files()).toContain("2401.00001/2401.00001.pdf");
+    } finally {
+      bucket.unprovision();
+    }
   });
 
   test("Send tabs stores the PDF a tab's page names and closes that tab; a tab whose page names none stays and is listed", async () => {
@@ -853,6 +971,33 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
 
     expect(await text("#bucket-origin")).toBe(bucket.origin);
     expect(await badge()).toBe("!");
+  });
+
+  test("while Math PDF Reader has not answered, the status page says it is checking Math PDF Reader", async () => {
+    await bucket.stop();
+    const silent = Bun.serve({
+      hostname: "127.0.0.1",
+      port: bucket.port,
+      fetch: () => new Promise<Response>(() => undefined),
+    });
+    try {
+      await openStatus("checking");
+      expect(await text("#connection-heading")).toBe(
+        "Checking Math PDF Reader…",
+      );
+    } finally {
+      await silent.stop(true);
+    }
+  });
+
+  test("with Math PDF Reader stopped, the status page says to open it from the application menu", async () => {
+    await bucket.stop();
+    await openStatus("unreachable");
+
+    expect(await details()).toMatchObject({
+      Address: bucket.origin,
+      "Start it": "Open Math PDF Reader from the application menu",
+    });
   });
 
   test("with the bucket stopped, a PDF link that opens a new tab leaves a tab with the failure", async () => {
