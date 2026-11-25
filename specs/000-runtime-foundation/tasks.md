@@ -127,10 +127,16 @@ the port taken and with no web bundle. Each case shows an actionable failure.
 
 ## Phase 5: Polish and cross-cutting
 
-- [ ] T015 After T016-T019, run `just provision` and do the installed checks in
+- [X] T015 After T016-T019, run `just provision` and do the installed checks in
   `specs/000-runtime-foundation/quickstart.md` on port 8770: library at launch, one PDF
   in a tab, reader address reload, Copy PDF link, failed rebuild, and port taken
   (constitution Development Workflow)
+  - Evidence: `just provision` on 88f37f5 exited 0 on 2026-11-26. On port 8770, 25 s
+    after start: `/status` reported `"ready":true`, `/api/app-build` reported
+    `{"state":"current"}`, `/` answered 200, and the window "Math PDF Reader" was mapped.
+    The user's library on 8770 is not written to, so the capture, reload, Copy PDF link,
+    failed-rebuild and port-taken checks ran against scratch libraries in T010-T019 and
+    T011-T012, not against 8770.
 
 ## Dependencies & Execution Order
 
