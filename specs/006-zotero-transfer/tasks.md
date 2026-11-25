@@ -275,7 +275,8 @@ last.
   Since 87a4470 the same test also clicks the details pane's Send to Zotero while the failed
   send's message shows, and that send goes to Zotero.
 - [X] T033 Name where the paper went in each send's message in the library UI: "in the
-  collection “<name>”", "in My Library", or "in the place an earlier send put it". The
+  collection “<name>”", "in My Library", or "in the place an earlier send put it" (T034
+  changes the last). The
   server puts the collection's name in `SendTarget`: Send to Zotero reads it from
   `get_selected_collection`; Send PDF Only reads it from Zotero's local API
   (`/api/users/0/collections/<key>`), because the attach answer gives only the key. Per
@@ -285,7 +286,9 @@ last.
   plugin extracted the PDF" timed out); the test passes through all five controls, with the
   earlier-send message in `send-earlier-send-named.png`; `tests/server-send.test.ts` passes,
   23 of 23, with `collectionName` checked for Send to Zotero and Send PDF Only.
-- [ ] T034 Say "Already in Zotero from an earlier send" when a send finishes an earlier send,
-  in place of "Sent to Zotero in the place an earlier send put it", in the wording team-lead
-  set for the send message. First commit the failing palette retry check in
+- [X] T034 Say "Already in Zotero from an earlier send" when a send finishes an earlier send,
+  in place of "Sent to Zotero in the place an earlier send put it": the earlier send placed
+  the item, so this send names no place. First commit the failing palette retry check in
   `tests/library-e2e.test.ts`.
+  Evidence: red in a50d682 (the wait at the palette retry timed out); the send e2e test
+  passes; `send-earlier-send-named.png` shows the message.

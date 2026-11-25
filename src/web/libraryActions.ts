@@ -573,20 +573,20 @@ function outcomeLine(outcome: ExtractionOutcome): string {
   }
 }
 
-function placeOf(target: SendTarget): string {
+function sentTo(target: SendTarget, what: string): string {
   switch (target.kind) {
     case "collection":
-      return `in the collection “${target.collectionName}”`;
+      return `${what} in the collection “${target.collectionName}”`;
     case "library":
-      return "in My Library";
+      return `${what} in My Library`;
     case "earlier_send":
-      return "in the place an earlier send put it";
+      return "Already in Zotero from an earlier send";
   }
 }
 
 function reportChain(context: ActionContext, answer: SendAndExtractResponse): void {
   const { extractions } = answer;
-  const sent = `Sent to Zotero ${placeOf(answer.send.target)}`;
+  const sent = sentTo(answer.send.target, "Sent to Zotero");
   if (extractions.length === 0) {
     context.notify(`${sent} with the Markdown the item already had`);
     return;
@@ -617,8 +617,8 @@ export function sendToZotero(
       const { target } = await context.api.call(SendResponseSchema, "POST", path);
       context.notify(
         way === "pdf_only"
-          ? `Sent the PDF to Zotero as a standalone attachment ${placeOf(target)}`
-          : `Sent to Zotero ${placeOf(target)}`,
+          ? sentTo(target, "Sent the PDF to Zotero as a standalone attachment")
+          : sentTo(target, "Sent to Zotero"),
       );
     })
     .then(

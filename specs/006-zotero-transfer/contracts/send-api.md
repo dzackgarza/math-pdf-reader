@@ -48,7 +48,8 @@ saves the send record and removes the item from the library. If that read fails,
 answers the Zotero error, and the record shows that the PDF is in Zotero.
 
 The library UI's message names the target: "in the collection “<name>”", "in My
-Library", or "in the place an earlier send put it".
+Library", or, for a send that finishes an earlier send, "Already in Zotero from an earlier
+send".
 
 ## Sends in the library UI (`src/web/libraryActions.ts`)
 
