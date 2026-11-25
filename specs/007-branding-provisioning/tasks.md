@@ -35,6 +35,15 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
 - [ ] T003 [P] [US1] Name the dialogs and the tray items "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:32,154,383-384` (FR-001, US1/AC1). Source has it; no
   test.
+  - Open: the tray menu labels are read over the session bus by
+    `test_the_tray_item_and_its_menu_name_math_pdf_reader` in `tests/desktop_workflow.py`.
+    Its second run (2026-11-25) failed on the menu: the dbusmenu layout's root carries
+    libdbusmenu's placeholder label "Label Empty", which the test read as an item. The test
+    now reads only the root's children; it has not run since. The dialog titles have no
+    test: a tauri-plugin-dialog dialog is a separate GTK toplevel, which WebDriver does not
+    see, headless Weston gives no client a list of toplevel titles, and the AT-SPI registry
+    does not start in the test's private namespace ("Could not activate remote peer
+    'org.a11y.atspi.Registry': unit failed" in the run's output).
 - [X] T004 [P] [US1] Name the launcher and autostart entry `Name=Math PDF Reader` in
   `desktop/pdf-bucket-desktop.desktop` (FR-001, US1/AC1).
   - Evidence: `tests/launch.test.ts` "provisioning for a launch" runs the real
@@ -218,26 +227,33 @@ that is not `[X]` maps to a task here.
   `tests/bucket.ts:62-81` to take that directory. Per FR-008, SC-005, US3/AC3-AC4
   (missing).
   - Open: "a build other than the provisioned one shows OLD" passes in Firefox (T018-T020,
-    T022). In Chrome it times out at 30 s before the stale status page is shown; the
-    output does not say whether the extension's reload or the stale status is what never
-    comes.
+    T022). In Chrome it fails at its labelled step "service worker restart after
+    runtime.reload" (run 2026-11-25): the status page that called `runtime.reload` closed,
+    one service worker target (`background.js`) is listed, and Puppeteer reports no
+    service worker target created after the reload. The suite attaches to the worker at
+    its start, and Puppeteer's `TargetManager` says an attached session keeps a service
+    worker from being destroyed. The output does not show whether the old worker stays or a
+    new one is not reported.
 - [ ] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the
   manifest `name` in `tests/extension-manifest.test.ts`, and the titles of the library,
   failure, popup and capture pages; assert the window title in `tests/desktop_workflow.py`.
   Covers T002-T006, T008. Per FR-001, SC-001, US1/AC1 (missing).
-  - Open: the dialog titles and the tray item labels (T003) have no test. Over the
-    private session bus of `tests/desktop_workflow.py`, `busctl tree` on the app's bus
-    name exited 1, so the tray's StatusNotifierItem could not be read.
-- [ ] T032 Give the tray icon the title and tooltip "Math PDF Reader" in
+  - Open: as T003. The earlier `busctl tree` exit 1 was on other connections of the app
+    (`:1.1` timed out, `:1.12` has no introspection); the connection that holds
+    `/org/ayatana/NotificationItem/tray_icon_tray_app_main` answers.
+- [X] T032 Give the tray icon the title and tooltip "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:390-405`; today `TrayIconBuilder::with_id("main")` sets
   neither, so the tray host shows an undetermined name. Per FR-001, US1/AC1 (partial).
   - Open: the app sets GLib's application name to "Math PDF Reader" before it builds the
     tray, which libappindicator (it imports `g_get_application_name`) uses as the
     StatusNotifierItem Title when none is set. tray-icon's `title` is a label beside the
-    icon and its `tooltip` does nothing on Linux, so neither is set. No test reads the
-    Title (see T031).
+    icon and its `tooltip` does nothing on Linux, so neither is set.
+  - Evidence: `test_the_tray_item_and_its_menu_name_math_pdf_reader` in
+    `tests/desktop_workflow.py` reads the StatusNotifierItem `Title` of the release app
+    over its session bus with `busctl get-property`; `Title` is "Math PDF Reader" (run
+    2026-11-25: the Title assertion passed, the later menu assertion failed, see T003).
 - [X] T033 Remove the visible compatibility identifiers given as commands: the popup's
   "Start it: `gtk-launch pdf-bucket-desktop`" (`src/extension/entrypoints/popup/main.ts:76`),
   and "`pdf-bucket forget <key>`" in `src/web/components/StatusBar.tsx:55` and
@@ -262,9 +278,19 @@ that is not `[X]` maps to a task here.
     titled Math PDF Reader"), `OrganizationScreen.tsx` (the collection cards test),
     `desktop/src/index.html` (the failure page test), the popup heading and label and the
     badge title (tests/capture-e2e.test.ts), the Firefox replacement (the stale test), and
-    the port failure report in lib.rs (tests/desktop_workflow.py).
-  - Open: renamed without a test: background.ts's "lost" download failure, and lib.rs's
-    "does not serve" dialog, library folder failure and server stopped/failed reports.
+    the port failure report in lib.rs (tests/desktop_workflow.py), the library folder
+    failure in lib.rs (`test_a_library_folder_that_cannot_be_made_shows_math_pdf_reader_is_not_serving`
+    in tests/desktop_workflow.py, pass 2026-11-25).
+  - Open, not reached by a test:
+    - lib.rs's server stopped/failed reports: they show when `axum::serve`'s task ends,
+      which happens only on a listener error or a panic; nothing a test does from outside
+      the process ends it.
+    - lib.rs's "does not serve" dialog: it shows only when the server stops before the
+      app's own page loads, so it needs the stop above; it is also a dialog (see T003).
+    - background.ts's "lost" download failure: it shows after a download's delivery
+      began in more than `MAX_DELIVERIES` service workers that Chrome stopped before the
+      server answered. The test server answers as soon as the PDF is stored, and the
+      Chrome suite cannot yet see a service worker restart (T030).
 
 ## Dependencies
 

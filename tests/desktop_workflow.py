@@ -1488,3 +1488,133 @@ def test_a_port_already_taken_shows_math_pdf_reader_is_not_serving_in_its_window
             )
             == "Math PDF Reader"
         )
+
+
+def bus(*arguments: str) -> str:
+    """busctl on the session bus the test gives the app (dbus-run-session's); fails with its
+    output and the bus address when it exits non-zero."""
+    run = subprocess.run(
+        ["busctl", "--user", *arguments], capture_output=True, text=True, check=False
+    )
+    if run.returncode != 0:
+        pytest.fail(
+            f"busctl {' '.join(arguments)} on {os.environ.get('DBUS_SESSION_BUS_ADDRESS')} "
+            f"exited {run.returncode}: {run.stdout}{run.stderr}"
+        )
+    return run.stdout
+
+
+def menu_labels(layout: Script) -> list[str]:
+    """The labels of the items under a com.canonical.dbusmenu layout `(ia{sv}av)`, depth first.
+
+    The layout's root is not an item: it carries libdbusmenu's placeholder label "Label Empty",
+    which no tray host shows. A separator has no label.
+    """
+    assert isinstance(layout, list)
+    children = layout[2]
+    assert isinstance(children, list)
+    labels: list[str] = []
+    for child in children:
+        assert isinstance(child, dict)
+        item = child["data"]
+        assert isinstance(item, list) and isinstance(item[1], dict)
+        label = item[1].get("label", {})
+        assert isinstance(label, dict)
+        if isinstance(label.get("data"), str):
+            labels.append(label["data"])
+        labels += menu_labels(item)
+    return labels
+
+
+def test_the_tray_item_and_its_menu_name_math_pdf_reader(
+    app: webdriver.WebKitGTK,
+) -> None:
+    """A tray host reads the app's StatusNotifierItem Title and its menu from the session bus.
+
+    libappindicator exports the item under /org/ayatana/NotificationItem/ on one of the app's
+    connections; the others time out or have no introspection, so only that one is read.
+    """
+    entries = json.loads(bus("--json=short", "list"))
+    items = [
+        (entry["name"], path)
+        for entry in entries
+        if entry["name"].startswith(":")
+        and (entry.get("process") or "").startswith("pdf-bucket-des")
+        for path in subprocess.run(
+            ["busctl", "--user", "--list", "tree", entry["name"]],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=40,
+        ).stdout.split()
+        if path.startswith("/org/ayatana/NotificationItem/")
+        and not path.endswith("/Menu")
+    ]
+    assert len(items) == 1, items
+    name, path = items[0]
+
+    title = json.loads(
+        bus(
+            "--json=short",
+            "get-property",
+            name,
+            path,
+            "org.kde.StatusNotifierItem",
+            "Title",
+        )
+    )
+    menu = json.loads(
+        bus(
+            "--json=short",
+            "get-property",
+            name,
+            path,
+            "org.kde.StatusNotifierItem",
+            "Menu",
+        )
+    )
+    layout = json.loads(
+        bus(
+            "--json=short",
+            "--",
+            "call",
+            name,
+            menu["data"],
+            "com.canonical.dbusmenu",
+            "GetLayout",
+            "iias",
+            "0",
+            "-1",
+            "1",
+            "label",
+        )
+    )
+
+    assert title["data"] == "Math PDF Reader"
+    assert menu_labels(layout["data"][1]) == [
+        "Show Math PDF Reader",
+        "Quit Math PDF Reader",
+    ]
+
+
+def test_a_library_folder_that_cannot_be_made_shows_math_pdf_reader_is_not_serving(
+    data_home: Path, tmp_path: Path
+) -> None:
+    """The library folder is `$XDG_DATA_HOME/pdf-bucket`; a file in its place stops the start."""
+    folder = data_home / "pdf-bucket"
+    folder.write_text("not a folder")
+    with ExitStack() as stack:
+        driver = open_window(stack, data_home, tmp_path)
+        WebDriverWait(driver, 60).until(
+            lambda d: d.execute_script(
+                "return !document.getElementById('failure').hidden"
+            )
+        )
+
+        assert driver.title == "Math PDF Reader"
+        assert driver.find_element(By.CSS_SELECTOR, "#failure h1").text == (
+            "Math PDF Reader is not serving"
+        )
+        assert driver.find_element(By.ID, "report").text.startswith(
+            f"Math PDF Reader could not make its library folder {folder}: "
+        )
