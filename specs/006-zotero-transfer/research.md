@@ -14,8 +14,8 @@
   (`placeStandalone` in the addon's `src/attach.ts`).
 - **Alternatives considered**: A collection picker in the bucket. The spec names the citation
   store's own selection, and the mockup table puts no Zotero section in settings.
-- **Open question for the owner**: With no collection selected, use the library root, as
-  Send PDF Only does now, or refuse the send? The plan uses the library root.
+- **No collection selected**: Use the library root, as Send PDF Only does, and name that
+  target in the send's answer (T031).
 
 ## Proof boundary for Zotero failures (US2, SC-003)
 
@@ -36,4 +36,5 @@
   So the user cannot send a paper that has an extraction to a Zotero item without its
   Markdown.
 - **Status**: FR-003 does not forbid this. US1 says "with or without extraction output".
-  Recorded as a question for the owner. No task changes this behaviour.
+  It is intended: the roadmap Decision Log records the user's decision of 2026-10-07 that
+  Send PDF Only refuses an item with notes or Markdown. No task changes this behaviour.

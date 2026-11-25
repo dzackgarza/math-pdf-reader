@@ -1,14 +1,3 @@
-// The send against a real running Zotero with the local write API: each paper becomes its own
-// Zotero item, even when several papers were captured from one listing page or imported from
-// one folder; Send PDF Only stores a PDF as a standalone attachment; and Send to Zotero and
-// Extract sends, then tries the configured plugins in order and attaches the first one's Markdown.
-//
-// MUTATING: the send writes into the Zotero library.
-// Every item a send reports as created is trashed in `afterAll`, with its attachments; an item
-// the library already held is never touched. Zotero being unreachable is a failure.
-// A send files its item in the collection selected in Zotero, and an item the library already
-// held would gain that collection, which the cleanup does not undo. So the run needs the library
-// root selected in Zotero's pane, and fails before any send otherwise.
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,7 +13,6 @@ import {
 import { EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 
 const ZOTERO_URL = "http://127.0.0.1:23119";
-// A send asks remote translators and metadata services, and attaches a full PDF.
 const REMOTE_TIMEOUT_MS = 180_000;
 
 const createdItemKeys: string[] = [];
@@ -65,7 +53,6 @@ async function arxivPdf(id: string): Promise<Blob> {
 
 type Bucket = Awaited<ReturnType<typeof serveBucket>>;
 
-// Sends every item in the bucket; answers the Zotero item key of each send.
 async function sendAll(bucket: Bucket): Promise<string[]> {
   const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
   const keys = library.items.map((item) => item.id);
@@ -107,7 +94,6 @@ test(
       const form = new FormData();
       form.set("pdf", new File([paper.bytes], `${paper.key}.pdf`, { type: "application/pdf" }));
       form.set("pdf_url", paper.pdfUrl);
-      // The text of a listing page's PDF link.
       form.set("title_hint", "pdf");
       const captured = await bucket.request("/capture-bytes", { method: "POST", body: form });
       CaptureResponseSchema.parse(await captured.json());
@@ -147,7 +133,6 @@ test(
   REMOTE_TIMEOUT_MS,
 );
 
-// What Zotero's local API answers for the item KEY: its type, its parent, and its title.
 async function zoteroItem(
   key: string,
 ): Promise<{ itemType: string; parentItem?: string; title: string }> {
@@ -161,7 +146,6 @@ async function zoteroItem(
   return data;
 }
 
-// Zotero's child items of KEY: each one's type, title and, for an attachment, media type.
 type ZoteroChild = { itemType: string; title: string; contentType?: string };
 
 async function zoteroChildren(key: string): Promise<ZoteroChild[]> {
@@ -202,7 +186,6 @@ test(
       zoteroUrl: ZOTERO_URL,
       extractionsManifest: EXTRACTIONS_MANIFEST,
     });
-    // A download link that names no paper and expires, as a shadow library's does.
     await captureOne(bucket, "k3-surfaces", "https://download.example.org/get.php?md5=0f3a&key=X1");
 
     const response = await bucket.request("/api/items/k3-surfaces/zotero/pdf-only", {
@@ -237,6 +220,8 @@ test(
         plugins: ["fail", "markdown", "record"].map((mode) => ({
           id: mode,
           name: `Fixture extractor (${mode})`,
+          source_kind: "document_structure",
+          authoritative: true,
           command: ["sh", extractor, mode, "$pdf", "$output"],
           accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
         })),
@@ -262,7 +247,6 @@ test(
     if (answer.send.created) {
       createdItemKeys.push(answer.send.itemKey);
     }
-    // The chain stops at the first success: `record` never runs.
     expect(answer.extractions.map((outcome) => [outcome.plugin_id, outcome.status])).toEqual([
       ["fail", "failed"],
       ["markdown", "succeeded"],
@@ -273,7 +257,6 @@ test(
     expect(
       children.filter((child) => child.title === markdown).map((child) => child.itemType),
     ).toEqual(["attachment"]);
-    // The PDF went first, to the same item, and stays its only PDF.
     expect(children.filter((child) => child.contentType === "application/pdf")).toHaveLength(1);
     const library = LibraryPayloadSchema.parse(await (await bucket.request("/api/library")).json());
     expect(library.items).toEqual([]);
@@ -320,7 +303,6 @@ test(
   REMOTE_TIMEOUT_MS,
 );
 
-// The keys of the PDFs the Zotero item KEY holds.
 async function zoteroPdfKeys(key: string): Promise<string[]> {
   const response = await fetch(`${ZOTERO_URL}/api/users/0/items/${key}/children`);
   if (!response.ok) {
@@ -332,8 +314,6 @@ async function zoteroPdfKeys(key: string): Promise<string[]> {
     .map((child) => child.key);
 }
 
-// Sends the fixture FILE, captured from the paper's PDF URL into a bucket of its own; answers
-// the PDF keys of the Zotero item the send names.
 async function sendCopy(file: string): Promise<string[]> {
   const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-live-"));
   const bucket = await serveBucket({
@@ -367,12 +347,10 @@ test(
     const plain = await sendCopy("arxiv-2609.21174v1.pdf");
     expect(plain).toHaveLength(1);
 
-    // The bucket's copy has a highlight, Zotero's has none: the bucket's copy replaces it.
     const highlighted = await sendCopy("arxiv-2609.21174v1-highlighted.pdf");
     expect(highlighted).toHaveLength(1);
     expect(highlighted).not.toEqual(plain);
 
-    // Zotero's copy has the highlight now, the bucket's has none: Zotero's copy stays.
     expect(await sendCopy("arxiv-2609.21174v1.pdf")).toEqual(highlighted);
   },
   3 * REMOTE_TIMEOUT_MS,

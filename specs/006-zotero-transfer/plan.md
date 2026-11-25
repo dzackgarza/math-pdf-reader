@@ -161,7 +161,7 @@ collection before the import and pass its key. When no collection is selected, u
 library root. That is what the addon already does for a standalone attachment. When no
 Zotero window is open, the addon refuses with a conflict, and the send shows it as
 `zotero_failed`. The send must also file an existing item it finds (`existing: true`) in
-that collection. See [research.md](research.md) for the open question on this rule.
+that collection.
 
 ### Required proofs
 
@@ -191,7 +191,7 @@ that collection. See [research.md](research.md) for the open question on this ru
   force an attachment failure after item creation. Date: 2026-11-25.
 - Decision: For Send to Zotero, use the library root when no collection is selected, as the
   addon does for standalone attachments. Rationale: both sends then behave the same way.
-  Pending confirmation by the repository owner. Date: 2026-11-25.
+  The send's answer names the target. Date: 2026-11-25.
 
 ## Complexity Tracking
 

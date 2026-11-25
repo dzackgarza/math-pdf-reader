@@ -117,15 +117,17 @@ Each browser needs one setup step after running the private extension recipe:
 
 ## Commands
 
-```bash
-just                # list recipes
-just run            # desktop app from source (`tauri dev`), serving the configured bucket
-just build          # web bundle and desktop binary
-just provision      # build, install and start the app
-just export-index   # write the index export
-just rebuild-cache  # re-download missing PDFs from the export
-just test-push      # push gate: the Python and Bun suites, then provision
-just test-desktop   # the desktop workflow through the release app (CI runs it with test-ci)
-```
+| Command | What it does |
+| --- | --- |
+| `just` | list recipes |
+| `just run` | desktop app from source (`tauri dev`), serving the configured bucket |
+| `just build` | web bundle and desktop binary |
+| `just provision` | build, install and start the app |
+| `just export-index` | write the index export |
+| `just rebuild-cache` | re-download missing PDFs from the export |
+| `just test-push` | push gate: the Python and Bun suites, then provision |
+| `just test-desktop` | the desktop workflow through the release app (CI runs it with test-ci) |
+
+`just build` sets `NO_STRIP`: the strip that linuxdeploy bundles cannot read the `.relr.dyn` sections of current distribution libraries, and the AppImage build fails without it (tauri-apps/tauri issue 8929; Tauri's AppImage guide).
 
 Agents: read `AGENTS.md` first.

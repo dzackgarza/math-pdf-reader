@@ -67,12 +67,13 @@ inspect the Zotero item.
   Evidence: `server/src/send.rs:242-253`, `:395-397`; `tests/server-send.test.ts:764` (no
   plugin runs, `extractions` is empty, one `/attach` carries the bytes of `<key>.md` as
   `<ZoteroKey>_extracted.md`).
-- [ ] T008 [US1] Send to Zotero and Extract with no extraction sends the PDF first, then runs
+- [X] T008 [US1] Send to Zotero and Extract with no extraction sends the PDF first, then runs
   the configured chain up to the first success and attaches that Markdown to the same item, in
   `server/src/send.rs` and `server/src/extractions.rs`. Per FR-003, SC-002 and US1/AC5.
-  Code: `server/src/send.rs:395-407`, `server/src/extractions.rs:380-391`. Live
-  `tests/server-send-live.ts:209` asserts the chain order, `performed` and the Markdown child.
-  It does not read the PDF child of the same item.
+  Evidence: `server/src/send.rs:395-407`, `server/src/extractions.rs:380-391`. Live
+  `tests/server-send-live.ts:226` asserts the chain order, `performed`, the Markdown child and
+  one PDF child on the same item (`:279`); it passed against Zotero 8 with addon 3.11.2.
+  `tests/server-send.test.ts:746` proves that the PDF goes before any plugin runs.
 - [X] T009 [US1] Send PDF Only stores the PDF as a standalone attachment and needs no
   extraction. It refuses a paper whose notes or Markdown an attachment cannot hold. In
   `server/src/send.rs` and `server/src/zotero.rs`. Per FR-004, SC-005 and US1/AC4.
@@ -154,6 +155,12 @@ inspect the Zotero item.
 - [ ] T019 After the last runtime change, run `just provision` and follow
   `specs/006-zotero-transfer/quickstart.md` on port 8770. Per the constitution's Development
   Workflow.
+  Done: `just provision` installed the build with the selected-collection step; the app on
+  8770 answers; the quickstart's tier 1 and `just test-zotero-live` pass.
+  Open: the quickstart's installed-app steps need the owner. They capture into the owner's own
+  bucket, send a test item from it into the owner's Zotero library outside the live suite's
+  cleanup, select a collection and quit Zotero in its window, and save with the Zotero
+  Connector in a browser.
 
 ## Dependencies & Execution Order
 
@@ -187,10 +194,9 @@ last.
   its key in `collection_keys`, and file an existing item in that collection. With no
   collection selected, use the library root, as Send PDF Only does. First commit a failing
   test in `tests/server-send.test.ts` that asserts the stub received that collection key. Per
-  FR-005, US1/AC2 and T006 (missing). The open question in `research.md` decides the
-  no-selection case.
-  Evidence: see T006. The no-selection case uses the library root, the plan's choice; the
-  owner has not yet confirmed it (`research.md` open question).
+  FR-005, US1/AC2 and T006 (missing). With no collection selected, the item goes to the
+  library root (`research.md`).
+  Evidence: see T006. The no-selection case uses the library root.
 - [X] T022 Add an implicit-write audit to `tests/server-send.test.ts` with the T020 stub.
   Capture a PDF, open `/read/<key>`, save an annotation, run an extraction, file the item in a
   collection, tag it, add a note and run Retrieve metadata. Assert that the stub received only
@@ -212,9 +218,11 @@ last.
   Evidence: `tests/server-send.test.ts:727` (each outcome `failed`, `performed` is
   `["fields", "pdf"]`, the item's only child is the PDF); `:746` (a failed PDF attach stops the
   send before any plugin runs, so the paper has no extraction).
-- [ ] T025 Extend the live test at `tests/server-send-live.ts:209` to read the item's children
+- [X] T025 Extend the live test at `tests/server-send-live.ts:226` to read the item's children
   and assert one `application/pdf` attachment beside `<ZoteroKey>_extracted.md`. Per US1/AC5,
   SC-002 and T008 (partial).
+  Evidence: `tests/server-send-live.ts:279`; passed against the live Zotero (item PLNUGAQU, trashed
+  by the suite's cleanup).
 - [X] T026 Add a test of Send to Zotero and Extract on a paper that already has Markdown, with
   the T020 stub, to `tests/server-send.test.ts`. Assert no plugin runs, `extractions` is empty,
   and one `/attach` carries the bytes of `<root>/<key>/<key>.md` as `<ZoteroKey>_extracted.md`.

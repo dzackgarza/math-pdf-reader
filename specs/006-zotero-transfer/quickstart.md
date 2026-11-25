@@ -9,12 +9,15 @@ bun test tests/server-capture.test.ts -t "citation tags"
 
 Expected: each send against a closed Zotero port answers `zotero_unavailable` and keeps the
 item unsent; refusals answer without contacting Zotero; reader pages carry `citation_title`,
-`citation_author` and `citation_pdf_url`.
+`citation_author` and `citation_pdf_url`. Against the loopback write API
+(`tests/zotero-stub.ts`), only a send writes to Zotero, a send files the item in the selected
+collection, and each failed send keeps the local paper.
 
 ## Live suite (writes to the real Zotero library)
 
-Run only with Zotero 8 and the local write API addon running. The suite moves every item it
-creates to Zotero's trash.
+Run only with Zotero 8 and the local write API addon running, and with My Library (not a
+collection) selected in Zotero's pane: the suite fails before any send otherwise. The suite
+moves every item it creates to Zotero's trash.
 
 ```bash
 just test-zotero-live
