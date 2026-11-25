@@ -259,7 +259,7 @@ function Sources({
       {matches !== null && (
         <div className="space-y-2 rounded-md border border-line bg-surface/40 p-2 text-xs">
           {matches.matches.length === 0 ? (
-            <p className="text-muted">No arXiv result met the {matches.threshold.toLocaleString(undefined, { style: "percent" })} match threshold.</p>
+            <p className="text-muted">arXiv has no paper with the words of this title.</p>
           ) : (
             <>
               <p className="font-medium text-muted">Possible arXiv matches</p>

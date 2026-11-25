@@ -7,7 +7,7 @@
 ## Summary
 
 Make extraction source-aware and make arXiv discovery actionable. The server will
-enforce provider eligibility and authoritative-output rules, while a confident arXiv
+enforce provider eligibility and authoritative-output rules, while a user-chosen arXiv
 match will support an explicit promotion transition: the arXiv PDF replaces the
 captured PDF under its existing key, captured provenance remains in historical
 lineage, and recovery/extraction operate on the arXiv source. Filing and reading
@@ -113,7 +113,7 @@ Promotion has one durable lineage record:
 
 ```text
 captured paper (PDF, original URL and hash, filing, reading state)
-  -> candidate selected (confidence >= 0.80)
+  -> candidate chosen by the user from the ranked discovery results
   -> source fetched and verified as an arXiv PDF
   -> replacement PDF and provenance staged under the existing key
   -> document directory exchanged atomically

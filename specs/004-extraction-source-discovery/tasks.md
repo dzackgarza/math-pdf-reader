@@ -64,11 +64,11 @@ ineligible extraction is rejected/hidden, and failures cannot masquerade as auth
 
 ## Phase 4: User Story 2 - Discover and promote an arXiv version (Priority: P1)
 
-**Goal**: A confident arXiv match can be chosen as an explicit replacement. Its PDF
+**Goal**: An arXiv candidate that the user chooses is an explicit replacement. Its PDF
 becomes the paper under the same key. The captured PDF leaves the active store on
 success, while its provenance remains as historical lineage.
 
-**Independent Test**: Capture a non-arXiv fixture, discover a confident candidate, promote it,
+**Independent Test**: Capture a non-arXiv fixture, discover candidates, choose one, promote it,
 then verify the library contains one paper at the existing key with the arXiv PDF,
 durable historical lineage, arXiv eligibility, and retained filing and reading state.
 
@@ -212,7 +212,7 @@ and repository QC.
 
 - [X] T060 Add the required `source_kind` and `authoritative` fields to the plugin fixture in `tests/extraction.test.ts` so the eligibility contract test passes per T010, FR-001, and SC-001 (partial)
 - [X] T061 Guard `null` from `readIndexExport` in `tests/server-sources.test.ts` so `tsc` and `just test-commit` pass, then rerun the focused checks and `just test-commit` per T038, T039, and the constitution Development Workflow (partial)
-- [ ] T062 Start the app through `scripts/launch`, verify on port 8770 that arXiv search shows the 0.80 threshold, explicit promotion replaces the PDF under its existing key, filing and reading state remain, and arXiv source extraction produces its authoritative artifact per T040, T048, T057, and the constitution Development Workflow (missing)
+- [ ] T062 Start the app through `scripts/launch`, verify on port 8770 that arXiv search shows ranked candidates with their scores, explicit promotion replaces the PDF under its existing key, filing and reading state remain, and arXiv source extraction produces its authoritative artifact per T040, T048, T057, and the constitution Development Workflow (missing)
   - On port 8770, replacement of a disposable linked pair using the real arXiv PDF 1706.03762v7 retained its key, tag and reading position. A repeat returned the same item. The installed extractor produced Markdown and the source archive. Fresh discovery from the installed app returned HTTP 429 from arXiv. The fixture-backed browser test covers discovery through replacement.
 - [X] T063 Notify the index exporter when an extraction is placed, so the export carries the extraction's `sourceKind` and `authoritative` instead of a stale record, proven by a test that fails before the fix and passes after per FR-008, FR-011, and the plan Archive Contract (missing; found by T062)
 - [X] T064 Neutralize the `\input`/`\include` targets an arXiv source package does not ship before `latexpand` flattens it, so a paper whose source pulls in a system package (for example `\input{xy}` for xypic) converts instead of failing per the plan Archive Contract conversion-failure path (partial; found by T062)
@@ -228,4 +228,4 @@ and repository QC.
 - [X] T071 Replace `webkit2gtk-driver` with `webkitgtk-webdriver` in the `ci-setup` recipe in `justfile`. The CI image has no install candidate for the old package, so Push QC fails in setup and no QC gate runs. Per T039 and the constitution Development Workflow (partial).
 - [X] T072 Show the promoted paper's arXiv URL and historical capture URL in `src/web/components/InspectorPanel.tsx` on the one current item, per FR-019, FR-007 and FR-013 (missing).
 - [X] T073 Refuse discovery for a placeholder title with an explicit error that tells the user to set the title, in `search_candidates` in `server/src/arxiv.rs` and the discovery controls in `src/web/components/InspectorPanel.tsx`, per FR-018 (missing). The running library holds items titled "View PDF", "None" and bare file names.
-- [ ] T074 Apply the answer to the spec's open question on title-only matches in `score` in `server/src/arxiv.rs`, with a test in `tests/server-sources.test.ts`, per FR-006 (partial; blocked on the open question).
+- [X] T074 Apply the answer to the spec's open question on title-only matches in `score` in `server/src/arxiv.rs`, with a test in `tests/server-sources.test.ts`, per FR-006 (partial; blocked on the open question).

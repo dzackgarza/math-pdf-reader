@@ -23,7 +23,7 @@ bun test tests/server-sources.test.ts
 cargo test -p pdf-bucket arxiv::tests
 ```
 
-The integration scenario must capture a non-arXiv fixture, discover a confident candidate,
+The integration scenario must capture a non-arXiv fixture, discover candidates, choose one,
 explicitly promote it, verify the same key now serves the arXiv PDF and is
 arXiv-eligible, verify the captured PDF has left the active store and its
 provenance survives in the new PDF's lineage, and verify low-confidence, malformed,

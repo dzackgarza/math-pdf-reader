@@ -29,19 +29,21 @@ The user can discover likely arXiv versions of papers whose captured URL is not
 arXiv, using paper metadata and a confidence-ranked result list.
 
 **Independent Test**: Match known papers, near matches, and papers with no match; then
-promote one confident match and verify that the arXiv PDF replaces the captured paper
+promote the candidate the user chooses and verify that the arXiv PDF replaces the captured paper
 under its existing key, with the filing and reading state retained.
 
 **Acceptance Scenarios**:
 1. **Given** metadata with a strong arXiv match, **When** discovery runs, **Then**
    the candidate and confidence are shown.
-2. **Given** several candidates, **When** discovery runs, **Then** candidates are
-   ranked and the confidence threshold is visible.
-3. **Given** no sufficiently confident match, **When** discovery runs, **Then** no
-   arXiv source extraction is enabled.
-4. **Given** a sufficiently confident arXiv alternative for a captured paper, **When**
-   the user reviews the candidate, **Then** the arXiv version is offered as the
-   preferred source and replacement or re-fetch is offered as the primary recovery.
+2. **Given** several candidates, **When** discovery runs, **Then** every candidate
+   is shown, ranked by confidence, with its score and the reasons for it, including
+   candidates whose metadata agrees only in part.
+3. **Given** no arXiv result for the paper's metadata, **When** discovery runs,
+   **Then** the application says so and offers no replacement.
+4. **Given** arXiv candidates for a captured paper, **When** the user chooses one,
+   **Then** that arXiv version replaces the captured PDF. The user is the arbiter of
+   whether a candidate is the paper; the application never replaces a PDF without
+   that choice.
 
 ### User Story 3 - Use source artifacts or true OCR (Priority: P1)
 
@@ -88,9 +90,11 @@ with expected source-backed content.
 - **FR-004**: The application MUST search for likely arXiv matches using available
   paper metadata.
 - **FR-005**: Discovery MUST return ranked candidates and confidence information.
-- **FR-006**: Source extraction MUST require a sufficiently confident arXiv match.
-- **FR-006a**: The promotion threshold MUST be a documented value of 0.80, and the
-  threshold MUST be returned with discovery results.
+- **FR-006**: Discovery MUST rank every candidate found from the available metadata
+  (title, authors, abstract) and MUST NOT hide a candidate for a low score. Promotion
+  MUST replace the PDF only with the candidate the user chooses, and only when
+  discovery offers that candidate for the paper. Source extraction MUST use the arXiv
+  version that the PDF URL names.
 - **FR-007**: The application MUST distinguish original provenance from discovered
   source provenance.
 - **FR-008**: An arXiv-source extraction MUST preserve the LaTeX source itself as
@@ -106,7 +110,7 @@ with expected source-backed content.
 - **FR-012**: Extraction providers MUST be invoked through their declared command
   contracts, and the application MUST NOT import provider SDKs or hold provider
   credentials.
-- **FR-013**: A sufficiently confident discovered arXiv alternative MUST replace
+- **FR-013**: A discovered arXiv alternative MUST replace
   the captured paper only after the user explicitly chooses promotion. The arXiv
   PDF becomes the current document under the same key. The old captured PDF and
   its extraction MUST leave the active store after success. Filing and reading
@@ -134,11 +138,9 @@ with expected source-backed content.
 
 ## Open Questions
 
-- [NEEDS CLARIFICATION: Can a title alone make a match confident? The source now
-  scores a title-only item on the title alone, so an exact title match scores 1.0 and
-  can be promoted. Alternatives: (a) keep this; (b) require authors or an abstract
-  before a match can pass 0.80; (c) allow a title-only match only when the normalized
-  titles are identical and the arXiv entry is the only result.]
+- Resolved by the owner: the application ranks the candidates that the available
+  metadata finds; the user is the arbiter and chooses the replacement, usually from
+  several candidates. No score threshold gates a candidate.
 
 ### Key Entities
 - **Extraction Job**: Requested provider operation and status.
@@ -157,7 +159,7 @@ with expected source-backed content.
   within 10 seconds of the request completing.
 - **SC-005**: 100% of provider acceptance tests reject generic PDF text dumps as the
   authoritative or structured extraction.
-- **SC-006**: 100% of confident arXiv-alternative tests offer explicit replacement.
+- **SC-006**: 100% of arXiv-alternative tests offer explicit replacement of the candidate the user chooses.
   Success leaves one current paper under its existing key with the arXiv PDF,
   historical capture provenance, and retained filing and reading state. A failed
   promotion leaves the captured paper intact.
@@ -165,5 +167,4 @@ with expected source-backed content.
 ## Assumptions
 - The application may use paper title, authors, abstract, and provenance URL as
   discovery inputs.
-- A confidence threshold is required before source extraction is enabled.
 - Provider credentials remain outside the application.

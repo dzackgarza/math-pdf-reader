@@ -18,7 +18,6 @@ use crate::imports::find_arxiv_pdf_at;
 use crate::state::Shared;
 use crate::store::{stage_file, ResolvedMetadata, StageFailure, Upload};
 
-const MATCH_THRESHOLD: f64 = 0.8;
 /// The arXiv API terms of use (https://info.arxiv.org/help/api/tou.html) ask for no more than
 /// one request every three seconds.
 const MIN_PRODUCTION_INTERVAL_SECONDS: i64 = 3;
@@ -78,13 +77,6 @@ fn validate_promotion(
     config: &crate::contract::AppConfig,
 ) -> AppResult<()> {
     validate_arxiv_config(config)?;
-    if candidate.score < MATCH_THRESHOLD {
-        return Err(AppError::invalid(format!(
-            "arXiv candidate score {:.0}% is below the {:.0}% promotion threshold",
-            candidate.score * 100.0,
-            MATCH_THRESHOLD * 100.0
-        )));
-    }
     let pdf_url = url::Url::parse(&candidate.pdf_url)
         .map_err(|error| AppError::invalid(format!("invalid arXiv PDF URL: {error}")))?;
     const ARXIV_PDF: &str = "https://arxiv.org/pdf/";
@@ -305,7 +297,7 @@ fn score(
             ],
         ),
     };
-    let (score, mut reasons) = if authors.is_empty() && abstract_.is_none() {
+    let (score, reasons) = if authors.is_empty() && abstract_.is_none() {
         (
             title_score,
             vec![format!("title {:.0}%", title_score * 100.0)],
@@ -313,9 +305,6 @@ fn score(
     } else {
         (score, reasons)
     };
-    if score < MATCH_THRESHOLD {
-        reasons.clear();
-    }
     (
         score,
         reasons
@@ -349,9 +338,6 @@ fn candidate(
 ) -> Option<ArxivMatch> {
     let (id, version) = identifier(&entry.id)?;
     let (score, reasons) = score(title, authors, abstract_, &entry);
-    if score < MATCH_THRESHOLD {
-        return None;
-    }
     let authors = entry
         .authors
         .into_iter()
@@ -554,10 +540,7 @@ async fn search_candidates(state: &Shared, key: &str) -> AppResult<ArxivSearchRe
     }
     matches.sort_by(|left, right| right.score.total_cmp(&left.score));
     matches.truncate(MAX_RESULTS);
-    Ok(ArxivSearchResponse {
-        threshold: MATCH_THRESHOLD,
-        matches,
-    })
+    Ok(ArxivSearchResponse { matches })
 }
 
 async fn search(
@@ -759,7 +742,7 @@ async fn promote(
                 && candidate.pdf_url == requested.pdf_url
         })
         .ok_or_else(|| {
-            AppError::invalid("the arXiv candidate is not a sufficiently confident discovery match")
+            AppError::invalid("arXiv discovery does not offer this candidate for the paper. Search arXiv again and choose a listed result.")
         })?;
     let download_url = format!(
         "{}{}",
@@ -875,44 +858,28 @@ mod tests {
     }
 
     #[test]
-    fn exact_structured_metadata_is_a_match_even_when_publication_year_differs() {
-        let candidate = candidate(
-            entry(),
-            "Moduli of surfaces with an anti-canonical cycle",
-            &[
-                "Mark Gross".to_string(),
-                "Paul Hacking".to_string(),
-                "Sean Keel".to_string(),
-            ],
+    fn more_agreeing_metadata_ranks_a_candidate_higher() {
+        let title = "Moduli of surfaces with an anti-canonical cycle";
+        let score = |authors: &[&str], abstract_: Option<&str>| {
+            let authors: Vec<String> = authors.iter().map(|author| author.to_string()).collect();
+            let candidate =
+                candidate(entry(), title, &authors, abstract_).expect("the entry has an arXiv ID");
+            assert_eq!(String::from(candidate.id), "1211.6367");
+            assert_eq!(String::from(candidate.version), "5");
+            assert!(!candidate.reasons.is_empty());
+            candidate.score
+        };
+        let exact = score(
+            &["Mark Gross", "Paul Hacking", "Sean Keel"],
             Some("We prove a global Torelli theorem for pairs."),
-        )
-        .expect("exact metadata should match");
-        assert_eq!(String::from(candidate.id), "1211.6367");
-        assert_eq!(String::from(candidate.version), "5");
-        assert!(candidate.score >= MATCH_THRESHOLD);
-    }
-
-    #[test]
-    fn unrelated_authors_keep_a_title_collision_below_threshold() {
-        assert!(candidate(
-            entry(),
-            "Moduli of surfaces with an anti-canonical cycle",
-            &["Someone Else".to_string()],
-            None,
-        )
-        .is_none());
-    }
-
-    #[test]
-    fn near_title_and_author_metadata_remains_a_confident_match() {
-        let candidate = candidate(
-            entry(),
-            "Moduli of surfaces with an anti-canonical cycle",
-            &["Paul Hacking".to_string(), "Mark Gross".to_string()],
-            None,
-        )
-        .expect("a near title with matching authors should match");
-        assert!(candidate.score >= MATCH_THRESHOLD);
+        );
+        let some_authors = score(&["Paul Hacking", "Mark Gross"], None);
+        let other_authors = score(&["Someone Else"], None);
+        assert!(exact > some_authors, "{exact} > {some_authors}");
+        assert!(
+            some_authors > other_authors,
+            "{some_authors} > {other_authors}"
+        );
     }
 
     #[test]

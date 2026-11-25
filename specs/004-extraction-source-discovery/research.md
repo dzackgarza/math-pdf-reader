@@ -11,7 +11,7 @@ and would couple the app to provider credentials and release cycles.
 
 ## Decision: Treat arXiv LaTeX as a source-backed replacement target
 
-**Rationale**: A confident arXiv match provides a stronger extraction path than a generic
+**Rationale**: An arXiv version of the paper provides a stronger extraction path than a generic
 PDF text layer. Promotion is an explicit replacement action: the arXiv PDF becomes
 the paper's current document and its LaTeX source can become authoritative.
 
@@ -34,7 +34,7 @@ The old PDF remains intact when validation, fetch, or publication fails.
 ## Decision: Require server-side validation of promotion candidates
 
 **Rationale**: The browser is not trusted to preserve the search response. The server must
-recheck the confidence threshold, arXiv host/path, candidate identifier, and fetched PDF
+recheck that its own discovery offers the candidate, the arXiv host/path, candidate identifier, and fetched PDF
 before creating the promoted representation.
 
 **Alternatives considered**: Trusting the posted candidate or accepting arbitrary URLs would

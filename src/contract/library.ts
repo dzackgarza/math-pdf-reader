@@ -368,7 +368,7 @@ export const GuessMetadataResponseSchema = GuessMetadataResultSchema.extend({
 });
 
 // A deterministic arXiv API candidate for an item's structured metadata. The score is in
-// [0, 1]; the server returns only candidates at or above its configured threshold.
+// [0, 1] and ranks the candidates; the user decides which candidate, if any, is the paper.
 export const ArxivMatchSchema = z.strictObject({
   id: NonEmptySchema,
   version: NonEmptySchema,
@@ -383,7 +383,6 @@ export const ArxivMatchSchema = z.strictObject({
 });
 
 export const ArxivSearchResponseSchema = z.strictObject({
-  threshold: z.number().min(0).max(1),
   matches: z.array(ArxivMatchSchema),
 });
 

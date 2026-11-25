@@ -302,7 +302,7 @@ test("arXiv promotion rejects a candidate whose PDF is not hosted by arXiv", asy
   );
 });
 
-test("a forged confidence score cannot promote an unrelated arXiv candidate", async () => {
+test("promotion refuses an arXiv entry that discovery does not offer for the paper", async () => {
   served.set("/pdf/1234.5678", problemSet);
   const config = loadAppConfig(CONFIG_PATH);
   const localArxiv = {
@@ -322,19 +322,32 @@ test("a forged confidence score cannot promote an unrelated arXiv candidate", as
     authors: ["Other Author"],
     year: 2024,
   });
-  const response = await request("POST", "/api/items/unrelated/arxiv/promote", {
-    id: "1234.5678",
-    version: "1",
-    title: "Entirely unrelated",
-    authors: ["Other Author"],
-    abstract: null,
-    year: 2024,
-    score: 1,
-    absUrl: at("/abs/1234.5678"),
-    pdfUrl: "https://arxiv.org/pdf/1234.5678v1",
-    reasons: ["title 100%"],
-  });
-  expect(response.status).toBe(400);
+  // arXiv's search for this title selects nothing, so a request that names an arXiv entry
+  // and claims its fields cannot replace the PDF.
+  searchedEntries = [
+    {
+      id: "http://arxiv.org/abs/1234.5678v1",
+      title: "Promotion Notes",
+      authors: ["An Author"],
+    },
+  ];
+  try {
+    const response = await request("POST", "/api/items/unrelated/arxiv/promote", {
+      id: "1234.5678",
+      version: "1",
+      title: "Entirely unrelated",
+      authors: ["Other Author"],
+      abstract: null,
+      year: 2024,
+      score: 1,
+      absUrl: at("/abs/1234.5678"),
+      pdfUrl: "https://arxiv.org/pdf/1234.5678v1",
+      reasons: ["title 100%"],
+    });
+    expect(response.status).toBe(400);
+  } finally {
+    searchedEntries = undefined;
+  }
   expect((await library()).items).toHaveLength(1);
 });
 

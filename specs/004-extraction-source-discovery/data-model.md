@@ -39,7 +39,7 @@ One ranked arXiv discovery result.
 | identifier/version | Must identify the arXiv paper/version |
 | metadata | Title, authors, abstract, and year as available |
 | PDF URL | Must be an arXiv PDF URL |
-| confidence | Number in `[0, 1]`; promotion requires the configured threshold |
+| confidence | Number in `[0, 1]`; ranks the candidates; the user chooses which one to promote |
 | reasons | Non-empty explanation of the score |
 
 ## Source Lineage
@@ -65,7 +65,7 @@ for its arXiv identifier/version returns the same item.
 ```text
 captured non-arXiv item
   -> discovery candidates
-  -> confident candidate selected
+  -> candidate chosen by the user
   -> promotion requested
   -> source fetched and verified as PDF
   -> arXiv PDF and lineage replace the current paper at the same key

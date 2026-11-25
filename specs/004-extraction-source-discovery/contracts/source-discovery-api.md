@@ -4,8 +4,8 @@
 
 `POST /api/items/{key}/arxiv`
 
-Returns ranked candidates with a visible threshold. Candidates below the threshold are not
-returned.
+Returns every candidate that the arXiv API returns for the paper's title terms, up to
+five, ranked by score, each with its reasons. No score hides a candidate; the user chooses.
 
 Errors use the repository error contract (`{ error: { kind, message } }`, `ApiError` in
 `src/contract/library.ts`):
@@ -83,5 +83,5 @@ endpoints that serve an arXiv-shaped fixture. Production requests still require 
 ## Extraction Eligibility
 
 The extraction manifest and server expose arXiv LaTeX only when the selected item has
-eligible arXiv source provenance or a persisted confident promotion lineage. Non-arXiv items
+eligible arXiv source provenance or a persisted promotion lineage. Non-arXiv items
 expose only configured OCR/document-structure providers.
