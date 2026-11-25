@@ -29,3 +29,23 @@ The client is `server/src/zotero.rs`. Calls: `GET /version`, `POST /write` with
 Retrieve metadata, which saves nothing). Also `POST /attach`, and reads of
 `/api/users/0/items/<key>/children` and `/file/view/url`. FR-005 adds
 `get_selected_collection` and `collection_keys` on `import_from_url`.
+
+## Send target
+
+Each `SendResponse` names where the item is in Zotero after the send, in `target`:
+
+| `target.kind` | When |
+| --- | --- |
+| `collection` | A collection is selected in Zotero's pane; `collectionKey` is its key. |
+| `library` | The library root, or another row that is not a collection, is selected. |
+| `earlier_send` | The send finishes an earlier send and files nothing. |
+
+## Proof notes for `tests/server-send.test.ts`
+
+- Zotero is a closed port, a replay of Zotero without the write API, or the loopback stub
+  `tests/zotero-stub.ts`. No test writes to a real library.
+- A send that contacts a closed Zotero port answers `503 zotero_unavailable`. So a `409`
+  refusal against a closed port proves the send refused before the health check.
+- A request under another host name, with `Sec-Fetch-Site: same-origin`, is what a page on a
+  domain that resolves to 127.0.0.1 sends (DNS rebinding). `fetch()` writes the `Host` header
+  from the URL, so the test sends it through `node:http`.

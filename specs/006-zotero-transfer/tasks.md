@@ -252,3 +252,11 @@ last.
   the T020 stub. Per the edge case "A selected collection may be unavailable", FR-005 and T017
   (missing). Depends on T021.
   Evidence: see T017.
+- [ ] T031 Name the send's target in its answer. `SendResponse` in
+  `src/contract/library.ts` gets `target`: `{ kind: "collection", collectionKey }` for the
+  collection selected in Zotero, `{ kind: "library" }` for the library root, and
+  `{ kind: "earlier_send" }` when the send finishes an earlier send and files nothing. Send to
+  Zotero takes it from `get_selected_collection`; Send PDF Only takes it from the attach
+  answer's `collection_key`. First commit failing tests in `tests/server-send.test.ts`. Per
+  FR-005, the edge case "A selected collection may be unavailable" and the Decision Log entry
+  for the library root (`plan.md`).

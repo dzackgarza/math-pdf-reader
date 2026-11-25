@@ -1,7 +1,3 @@
-// The send action at the bucket's HTTP boundary, and the guard in front of every
-// state-changing route. Zotero is a closed port, a replay of Zotero without the write API, or a
-// loopback stand-in for the write API (tests/zotero-stub.ts) that keeps what the requests make,
-// so no test here writes to a real library.
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -70,7 +66,6 @@ async function capture(
   ).toMatchObject({ key, existing: false });
 }
 
-// A send that created ABCD2345 and attached the PDF, as the filing document records it.
 const SENT: ZoteroRecord = {
   itemKey: "ABCD2345",
   sentAt: "2026-09-23T18:00:00.000Z",
@@ -111,7 +106,6 @@ async function errorKind(response: Response): Promise<string> {
 const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 
-// What the user has of a paper locally: the PDF its URL serves, the stored file, and its filing.
 async function localPaper(bucket: Bucket, key: string) {
   const served = await bucket.request(`/pdf/${key}.pdf`);
   const filed = await item(bucket, key);
@@ -124,8 +118,6 @@ async function localPaper(bucket: Bucket, key: string) {
   };
 }
 
-// The paper is still the user's after a failed send: the same PDF at its URL and on disk, the
-// same filing, and its reader page opens.
 async function expectPaperKept(
   bucket: Bucket,
   key: string,
@@ -166,7 +158,6 @@ test("a second send of an item already in Zotero is refused without contacting Z
     method: "POST",
   });
 
-  // A send that reached for the closed Zotero port would answer 503.
   expect(await errorKind(response)).toBe("already_sent");
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
@@ -194,7 +185,6 @@ test("an extraction made after the send is owed to Zotero, and a later send goes
     method: "POST",
   });
 
-  // Not refused: the send went to attach the Markdown to ABCD2345, and Zotero was down.
   expect(await errorKind(response)).toBe("zotero_unavailable");
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
@@ -224,7 +214,6 @@ test("a note added after the send is owed to Zotero, and a later send goes to ad
     method: "POST",
   });
 
-  // Not refused: the send went to add the note to ABCD2345, and Zotero was down.
   expect(await errorKind(response)).toBe("zotero_unavailable");
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "sent",
@@ -233,8 +222,6 @@ test("a note added after the send is owed to Zotero, and a later send goes to ad
   });
 });
 
-// What Zotero's own HTTP server answered on 2026-09-25 to a path no endpoint serves, as it
-// does for the write API's paths when the local-write-api addon is not installed.
 function zoteroWithoutWriteApi(): string {
   const server = Bun.serve({
     port: 0,
@@ -294,10 +281,6 @@ test("a web page on another site cannot send an item or delete it", async () => 
   });
 });
 
-// A request to the bucket's socket under another host name, as a page on a domain that
-// resolves to 127.0.0.1 (DNS rebinding) sends it: the browser counts the page and the bucket as
-// one origin, so the request carries `Sec-Fetch-Site: same-origin`. fetch() writes the Host
-// header from the URL, so the request goes through node:http, which sends the one given.
 function requestAs(
   bucket: Bucket,
   host: string,
@@ -401,7 +384,6 @@ test("Send PDF Only refuses an item with notes or Markdown, which a standalone P
     method: "POST",
   });
 
-  // Refused before the health check: a request that reached for the closed port would answer 503.
   expect(ApiErrorSchema.parse(await response.json()).error).toMatchObject({
     kind: "pdf_only_refused",
     message:
@@ -427,7 +409,6 @@ test("Send PDF Only while Zotero is not running says to start Zotero and records
   });
 });
 
-// A Send PDF Only that stored the PDF as the standalone attachment QRST2345.
 const STANDALONE: ZoteroRecord = {
   itemKey: "QRST2345",
   sentAt: "2026-09-23T18:00:00.000Z",
@@ -478,8 +459,6 @@ test("a standalone PDF in Zotero owes nothing more, and every send of it is refu
   ]);
 });
 
-// A bucket over the loopback write API, whose extraction plugins are the fixture extractor in
-// the given modes, by plugin id; the send's extraction chain is those plugins in that order.
 async function stubbedBucket(
   chain: Record<string, string> = { markdown: "markdown" },
 ): Promise<{ bucket: Bucket; zotero: ZoteroStub }> {
@@ -533,7 +512,6 @@ async function json(
   });
 }
 
-// Files the paper in a new collection, tags it and adds a note, as the library does.
 async function file(bucket: Bucket, key: string): Promise<void> {
   const collection = await (
     await json(bucket, "POST", "/api/collections", { name: "Quadratic forms" })
@@ -599,7 +577,6 @@ test("capture, reading, annotation, extraction, filing, Retrieve Metadata and de
   expect(deleted.status).toBe(200);
 
   expect((await item(bucket, "lattices"))?.extraction.status).not.toBe("none");
-  // Retrieve Metadata, after each capture and when asked, only asks Zotero to resolve a URL.
   expect(zotero.writes()).toEqual([
     "resolve_url",
     "resolve_url",
@@ -623,7 +600,9 @@ test("Send to Zotero files the new Zotero item in the collection selected in Zot
   const response = await send(bucket, "lattices");
 
   expect(response.status).toBe(200);
-  const sent = SendResponseSchema.parse(await response.json());
+  const body: unknown = await response.json();
+  expect(body).toMatchObject({ target: { kind: "collection", collectionKey: "LATT2345" } });
+  const sent = SendResponseSchema.parse(body);
   expect(sent.created).toBe(true);
   expect(zotero.items.get(sent.itemKey)?.collections).toEqual(["LATT2345"]);
 });
@@ -643,8 +622,9 @@ test("Send to Zotero files a work Zotero already holds in the selected collectio
   const response = await send(bucket, "lattices");
 
   expect(response.status).toBe(200);
-  const sent = SendResponseSchema.parse(await response.json());
-  expect(sent).toMatchObject({ itemKey: "HELD2345", created: false });
+  const body: unknown = await response.json();
+  expect(body).toMatchObject({ target: { kind: "collection", collectionKey: "LATT2345" } });
+  expect(SendResponseSchema.parse(body)).toMatchObject({ itemKey: "HELD2345", created: false });
   expect(zotero.items.get("HELD2345")?.collections).toEqual([
     "OLDC2345",
     "LATT2345",
@@ -659,9 +639,40 @@ test("Send to Zotero with the library root selected in Zotero files the item in 
   const response = await send(bucket, "lattices");
 
   expect(response.status).toBe(200);
-  const sent = SendResponseSchema.parse(await response.json());
+  const body: unknown = await response.json();
+  expect(body).toMatchObject({ target: { kind: "library" } });
+  const sent = SendResponseSchema.parse(body);
   expect(zotero.items.get(sent.itemKey)?.collections).toEqual([]);
   expect(zotero.writes()).toContain("get_selected_collection");
+});
+
+async function sendPdfOnly(bucket: Bucket, key: string): Promise<Response> {
+  return bucket.request(`/api/items/${key}/zotero/pdf-only`, { method: "POST" });
+}
+
+test("Send PDF Only names the collection selected in Zotero that holds the standalone PDF", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  zotero.selection = { kind: "collection", key: "LATT2345", name: "Lattices" };
+  await capture(bucket, "lattices");
+
+  const response = await sendPdfOnly(bucket, "lattices");
+
+  expect(response.status).toBe(200);
+  const body: unknown = await response.json();
+  expect(body).toMatchObject({ target: { kind: "collection", collectionKey: "LATT2345" } });
+  expect(SendResponseSchema.parse(body).itemKey).toBe(zotero.standalone[0]?.key ?? "");
+});
+
+test("Send PDF Only with the library root selected in Zotero names the library root", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  zotero.selection = { kind: "library_root" };
+  await capture(bucket, "lattices");
+
+  const response = await sendPdfOnly(bucket, "lattices");
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ target: { kind: "library" } });
+  expect(zotero.standalone).toHaveLength(1);
 });
 
 test("Send to Zotero with no Zotero window open says so and makes no Zotero item", async () => {
@@ -712,7 +723,9 @@ test("a send whose PDF attach fails keeps the Zotero item, and the next send att
   const retried = await send(bucket, "lattices");
 
   expect(retried.status).toBe(200);
-  expect(SendResponseSchema.parse(await retried.json())).toMatchObject({
+  const retriedBody: unknown = await retried.json();
+  expect(retriedBody).toMatchObject({ target: { kind: "earlier_send" } });
+  expect(SendResponseSchema.parse(retriedBody)).toMatchObject({
     itemKey,
     created: false,
     performed: ["pdf", "notes"],
@@ -755,7 +768,6 @@ test("Send to Zotero and Extract attaches the PDF before any plugin runs", async
     method: "POST",
   });
 
-  // The PDF attach failed, so the chain never started: the paper still has no extraction.
   expect(await errorKind(response)).toBe("zotero_failed");
   expect((await item(bucket, "lattices"))?.extraction).toEqual({ status: "none" });
   expect(zotero.writes().filter((write) => write === "attach")).toHaveLength(1);
