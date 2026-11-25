@@ -28,7 +28,7 @@ The client is `server/src/zotero.rs`. Calls: `GET /version`, `POST /write` with
 `import_from_url`, `update_item_fields`, `attach_note`, `trash_item`, and `resolve_url` (for
 Retrieve metadata, which saves nothing). Also `POST /attach`, and reads of
 `/api/users/0/items/<key>/children` and `/file/view/url`. FR-005 adds
-`get_selected_collection` and `collection_keys` on `import_from_url`.
+`get_selected_collection` and `collection_keys` on `import_from_url`, and reads the `collection_key` of a standalone attach answer for the send target.
 
 ## Send target
 

@@ -1,5 +1,3 @@
-// The library API contract: what `/api/library` and the filing mutations send and accept.
-// Shared by the server and the library UI, so it imports nothing server-side.
 import { z } from "zod";
 import {
   ImportMethodSchema,
@@ -29,9 +27,6 @@ export const AdvancedSearchSettingsSchema = z.strictObject({
 
 const NameSchema = TrimmedSchema;
 
-// A collection: its name, its parent (a subcollection), a description, whether it is pinned
-// to the front of the collections, and whether its items stay in the bucket after a send to
-// Zotero (Keep offline).
 export const CollectionSchema = z.strictObject({
   id: NonEmptySchema,
   name: NameSchema,
@@ -39,10 +34,10 @@ export const CollectionSchema = z.strictObject({
   description: z.string(),
   pinned: z.boolean(),
   keepOffline: z.boolean(),
-});
+}).describe(
+  "A collection: its name, its parent (for a subcollection), a description, whether it is pinned to the front of the collections, and whether its items stay in the bucket after a send to Zotero (Keep offline).",
+);
 
-// A filing change that concerns a collection, for its recent activity: its creation, items
-// filed into it, items in it tagged, Keep offline switched.
 export const ActivitySchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("created"),
@@ -68,10 +63,10 @@ export const ActivitySchema = z.discriminatedUnion("kind", [
     collectionId: NonEmptySchema,
     on: z.boolean(),
   }),
-]);
+]).describe(
+  "A filing change that concerns a collection, for its recent activity: its creation, items filed into it, items in it tagged, or Keep offline switched.",
+);
 
-// One condition of a saved search (a smart collection). `text` is the filter bar's search;
-// the others test one field of the item.
 const TextRule = z.strictObject({
   field: z.literal("text"),
   operator: z.literal("matches"),
@@ -92,7 +87,6 @@ const isRule = <F extends string>(field: F) =>
     value: TrimmedSchema,
   });
 export const READING_STATES = ["unread", "reading", "finished"] as const;
-// Whether an item's PDF can still be fetched from where it came from.
 export const AVAILABILITIES = ["cached", "offline"] as const;
 export const RuleSchema = z.discriminatedUnion("field", [
   TextRule,
@@ -100,9 +94,7 @@ export const RuleSchema = z.discriminatedUnion("field", [
   containsRule("author"),
   isRule("tag"),
   isRule("topic"),
-  // The value is a collection id; the rule holds for its subcollections too.
   isRule("collection"),
-  // The value is a source domain, as the table's Source column shows it.
   isRule("source"),
   z.strictObject({
     field: z.literal("added"),
@@ -119,22 +111,23 @@ export const RuleSchema = z.discriminatedUnion("field", [
     operator: z.enum(IS_OPERATORS),
     value: z.enum(AVAILABILITIES),
   }),
-]);
+]).describe(
+  "One condition of a saved search (a smart collection). `text` is the filter bar's search; the others test one field of the item. A `collection` value is a collection id, and the rule holds for its subcollections too. A `source` value is a source domain, as the table's Source column shows it. A `status` value says whether the item's PDF can still be fetched from where it came from.",
+);
 
 export const RULE_FIELDS = RuleSchema.options.map(
   (option) => option.shape.field.value,
 );
 
-// A saved search: its rules, all of which or any of which an item must meet.
 export const SavedSearchSchema = z.strictObject({
   id: NonEmptySchema,
   name: NameSchema,
   match: z.enum(["all", "any"]),
   rules: z.array(RuleSchema).min(1),
-});
+}).describe(
+  "A saved search: its rules, all of which or any of which an item must meet.",
+);
 
-// How far an item has been read: never opened, or the page the reader last showed out of the
-// document's page count.
 export const ReadingSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("unread") }),
   z.strictObject({
@@ -143,7 +136,9 @@ export const ReadingSchema = z.discriminatedUnion("status", [
     pages: z.int().min(1),
     viewedAt: z.iso.datetime({ offset: true }),
   }),
-]);
+]).describe(
+  "How far an item has been read: never opened, or the page the reader last showed out of the document's page count.",
+);
 
 export const ReadingRequestSchema = z
   .strictObject({
@@ -156,8 +151,6 @@ export const ReadingRequestSchema = z
     "page lies beyond the page count",
   );
 
-// Whether a URL still serves the captured PDF: never checked; the same bytes (accessible);
-// other bytes (changed); or no PDF at all (dead), with the HTTP status or network error.
 export const SOURCE_RESULTS = ["accessible", "changed", "dead"] as const;
 
 const checkedAs = <S extends (typeof SOURCE_RESULTS)[number]>(status: S) =>
@@ -172,15 +165,18 @@ export const SourceCheckSchema = z.discriminatedUnion("status", [
   checkedAs("accessible"),
   checkedAs("changed"),
   checkedAs("dead"),
-]);
+]).describe(
+  "Whether a URL still serves the captured PDF: never checked; the same bytes (accessible); other bytes (changed); or no PDF at all (dead), with the HTTP status or network error.",
+);
 
 const HttpUrlSchema = z.url({ protocol: /^https?$/ });
 
-// Another URL that serves the same PDF; Rebuild tries mirrors after the PDF URL.
 export const MirrorSchema = z.strictObject({
   url: HttpUrlSchema,
   check: SourceCheckSchema,
-});
+}).describe(
+  "Another URL that serves the same PDF; Rebuild tries mirrors after the PDF URL.",
+);
 
 export const MirrorRequestSchema = z.strictObject({ url: HttpUrlSchema });
 
@@ -199,17 +195,12 @@ export const ItemNoteSchema = z.strictObject({
   dateModified: z.iso.datetime({ offset: true }),
 });
 
-// A file an extraction plugin left beside the stored PDF: `name` is the Markdown's file
-// name, or an artifact's path inside `<key>.extraction/`.
 const ArtifactSchema = z.strictObject({
   name: NonEmptySchema,
   path: NonEmptySchema,
   sizeBytes: z.number().int().nonnegative(),
 });
 
-// An item's extraction, derived from the files beside its PDF and never stored elsewhere:
-// `<key>.md` is the Markdown and marks a complete extraction (the runner writes it last);
-// `<key>.extraction/` holds the further artifacts. No Markdown means no extraction.
 export const ExtractionSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("none") }),
   z.strictObject({
@@ -219,19 +210,16 @@ export const ExtractionSchema = z.discriminatedUnion("status", [
     markdown: ArtifactSchema,
     files: z.array(ArtifactSchema),
   }),
-  // A Markdown whose `<key>.extraction/metadata.json` is missing or invalid: its source kind
-  // is unknown, so the library shows the reason and the user re-runs the extraction.
   z.strictObject({
     status: z.literal("unlabelled"),
     reason: NonEmptySchema,
     markdown: ArtifactSchema,
     files: z.array(ArtifactSchema),
   }),
-]);
+]).describe(
+  "An item's extraction, derived from the files beside its PDF and never stored elsewhere: `<key>.md` is the Markdown and marks a complete extraction (the runner writes it last); `<key>.extraction/` holds the further artifacts. No Markdown means no extraction. An artifact's `name` is the Markdown's file name, or its path inside `<key>.extraction/`. `unlabelled` is a Markdown whose `<key>.extraction/metadata.json` is missing or invalid: its source kind is unknown, so the library shows the reason and the user runs the extraction again.",
+);
 
-// The steps of a send once the Zotero item exists: set its URL and access date, attach the
-// bucket's PDF, attach the extraction Markdown when the item has one, and add each of the
-// item's notes as a Zotero child note. `notes` is owed while any note has no `note` step.
 export const SEND_STEPS = ["fields", "pdf", "markdown", "notes"] as const;
 
 export const SendStepSchema = z.discriminatedUnion("step", [
@@ -246,26 +234,26 @@ export const SendStepSchema = z.discriminatedUnion("step", [
     noteId: NonEmptySchema,
     noteKey: NonEmptySchema,
   }),
-]);
+]).describe(
+  "A step of a send once the Zotero item exists: set its URL and access date (`fields`), attach the bucket's PDF (`pdf`), attach the extraction Markdown when the item has one (`markdown`), and add each of the item's notes as a Zotero child note (`note`). The `notes` step is owed while any note has no `note` step.",
+);
 
-// How a send made its Zotero item: by one of the write API's methods, or as a standalone
-// attachment ("Send PDF Only"), the PDF with no parent item, which owes only the `pdf` step.
 export const SendMethodSchema = z.enum([
   ...ImportMethodSchema.options,
   "standalone_attachment",
-]);
+]).describe(
+  "How a send made its Zotero item: by one of the write API's methods, or as a standalone attachment (Send PDF Only), the PDF with no parent item, which owes only the `pdf` step.",
+);
 
-// The Zotero item a send goes to (for a standalone attachment, the attachment), and the steps
-// done on it so far.
 export const ZoteroRecordSchema = z.strictObject({
   itemKey: NonEmptySchema,
   sentAt: z.iso.datetime({ offset: true }),
   method: SendMethodSchema,
   steps: z.array(SendStepSchema),
-});
+}).describe(
+  "The Zotero item a send goes to (for a standalone attachment, the attachment), and the steps done on it so far.",
+);
 
-// `pending` lists the steps still owed: a send that failed part way, or an extraction made
-// after the send, leaves steps a later send completes.
 export const ZoteroStatusSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("unsent") }),
   z.strictObject({
@@ -273,31 +261,35 @@ export const ZoteroStatusSchema = z.discriminatedUnion("status", [
     record: ZoteroRecordSchema,
     pending: z.array(z.enum(SEND_STEPS)),
   }),
-]);
+]).describe(
+  "Whether an item is in Zotero. `pending` lists the steps still owed: a send that failed part way, or an extraction made after the send, leaves steps that a later send completes.",
+);
 
-// The answer to a send: the Zotero item and the steps this send performed.
-// `created`: this send made the Zotero item; false when it finished an earlier send, or the
-// write API found the work already in Zotero and the send went to that item.
-// `kept`: the item stays in the bucket because a collection holding it keeps its items offline.
+export const SendTargetSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("collection"), collectionKey: NonEmptySchema }),
+  z.strictObject({ kind: z.literal("library") }),
+  z.strictObject({ kind: z.literal("earlier_send") }),
+]).describe(
+  "Where a send put the item in Zotero: the collection selected in Zotero's pane (`collection`), the library root when the selected row is not a collection (`library`), or nowhere new, because the send finished an earlier send (`earlier_send`).",
+);
+
 export const SendResponseSchema = z.strictObject({
   itemKey: NonEmptySchema,
   created: z.boolean(),
   performed: z.array(z.enum(SEND_STEPS)),
   kept: z.boolean(),
-});
+  target: SendTargetSchema,
+}).describe(
+  "The answer to a send: the Zotero item, the steps this send performed, and where the item is in Zotero. `created`: this send made the Zotero item; false when it finished an earlier send, or the write API found the work already in Zotero and the send went to that item. `kept`: the item stays in the bucket because a collection holding it keeps its items offline.",
+);
 
-// The answer to "Send to Zotero and Extract": the send, made before any extraction, and each
-// plugin of the configured chain tried after it, in order, up to the first that extracted the
-// PDF, whose Markdown the send's `performed` then lists. An item with Markdown already tries no
-// plugin, and its send attaches that Markdown. The item leaves the bucket once the chain has
-// ended, as a send's does, unless `send.kept`.
 export const SendAndExtractResponseSchema = z.strictObject({
   send: SendResponseSchema,
   extractions: z.array(ExtractionOutcomeSchema),
-});
+}).describe(
+  "The answer to Send to Zotero and Extract: the send, made before any extraction, and each plugin of the configured chain tried after it, in order, up to the first that extracted the PDF, whose Markdown the send's `performed` then lists. An item with Markdown already tries no plugin, and its send attaches that Markdown. The item leaves the bucket once the chain has ended, as a send's does, unless `send.kept`.",
+);
 
-// Where an item's title came from: a manual edit, Zotero's resolution of its URL ("Retrieve
-// metadata"), an inference, the PDF, the capture hint, or the file name.
 export const TITLE_SOURCES = [
   "manual",
   "resolver",
@@ -307,16 +299,15 @@ export const TITLE_SOURCES = [
   "filename",
 ] as const;
 
-export const TitleSourceSchema = z.enum(TITLE_SOURCES);
+export const TitleSourceSchema = z.enum(TITLE_SOURCES).describe(
+  "Where an item's title came from: a manual edit, Zotero's resolution of its URL (Retrieve metadata), an inference, the PDF, the capture hint, or the file name.",
+);
 
-// The library item: title, url, tags, collections, notes and dates carry the same meaning
-// as in a reference-manager item; provenance, file and extraction are the bucket's own.
 export const BucketItemSchema = z.strictObject({
   id: NonEmptySchema,
   title: NonEmptySchema,
   titleSource: TitleSourceSchema,
   authors: z.array(NonEmptySchema),
-  // From "Retrieve metadata"; null when it gave none.
   year: z.int().nullable(),
   abstract: NonEmptySchema.nullable(),
   tags: z.array(NonEmptySchema),
@@ -335,7 +326,9 @@ export const BucketItemSchema = z.strictObject({
   }),
   extraction: ExtractionSchema,
   zotero: ZoteroStatusSchema,
-});
+}).describe(
+  "The library item: title, url, tags, collections, notes and dates have the same meaning as in a reference-manager item; provenance, file and extraction are the bucket's own. `year` comes from Retrieve metadata and is null when it gave none.",
+);
 
 export const RetrieveMetadataResponseSchema = z.strictObject({
   outcome: RetrieveMetadataOutcomeSchema,
@@ -367,8 +360,6 @@ export const GuessMetadataResponseSchema = GuessMetadataResultSchema.extend({
   item: BucketItemSchema,
 });
 
-// A deterministic arXiv API candidate for an item's structured metadata. The score is in
-// [0, 1] and ranks the candidates; the user decides which candidate, if any, is the paper.
 export const ArxivMatchSchema = z.strictObject({
   id: NonEmptySchema,
   version: NonEmptySchema,
@@ -380,36 +371,35 @@ export const ArxivMatchSchema = z.strictObject({
   absUrl: z.url(),
   pdfUrl: z.url(),
   reasons: z.array(NonEmptySchema).min(1),
-});
+}).describe(
+  "A deterministic arXiv API candidate for an item's structured metadata. The score is in [0, 1] and ranks the candidates; the user decides which candidate, if any, is the paper.",
+);
 
 export const ArxivSearchResponseSchema = z.strictObject({
   matches: z.array(ArxivMatchSchema),
 });
 
-// The result of replacing one paper's PDF with a confident arXiv candidate.
 export const ArxivPromotionResponseSchema = z.strictObject({
   key: NonEmptySchema,
   originalKey: NonEmptySchema,
   existing: z.boolean(),
   missing: z.boolean(),
   sourceLineage: SourceLineageSchema,
-});
+}).describe(
+  "The result of replacing one paper's PDF with a confident arXiv candidate.",
+);
 
-// An item the index export holds whose PDF the store has lost: what Rebuild needs to fetch it
-// again and what the library shows of it meanwhile.
 export const MissingItemSchema = z.strictObject({
   key: NonEmptySchema,
   title: NonEmptySchema,
   authors: z.array(NonEmptySchema),
   provenance: ProvenanceSchema,
   mirrors: z.array(HttpUrlSchema),
-});
+}).describe(
+  "An item the index export holds whose PDF the store has lost: what Rebuild needs to fetch it again and what the library shows of it meanwhile.",
+);
 
-// A reading session, as the reader reports it while a PDF is open: when it opened, the last
-// moment it was read (idle time excluded), and each page read, with the seconds spent on it in
-// stretches of at least MIN_PAGE_SECONDS; a page scrolled past in less is not read.
 export const MIN_PAGE_SECONDS = 5;
-// Minutes without input after which the reader stops counting time as reading.
 export const READER_IDLE_MINUTES = 10;
 
 export const ReadingSessionReportSchema = z.strictObject({
@@ -425,32 +415,34 @@ export const ReadingSessionReportSchema = z.strictObject({
       }),
     )
     .min(1),
-});
+}).describe(
+  "A reading session, as the reader reports it while a PDF is open: when it opened, the last moment it was read (idle time excluded), and each page read, with the seconds spent on it in stretches of at least MIN_PAGE_SECONDS; a page scrolled past in less is not read. After READER_IDLE_MINUTES without input, the reader stops counting time as reading.",
+);
 
-// A stored session carries the item as it was when read, so the timeline outlives the item.
 export const ReadingSessionSchema = ReadingSessionReportSchema.extend({
   item: z.strictObject({
     title: NonEmptySchema,
     authors: z.array(NonEmptySchema),
     year: z.int().nullable(),
     abstract: NonEmptySchema.nullable(),
-    // Where the PDF came from.
     pdfUrl: z.url(),
   }),
-});
+}).describe(
+  "A stored reading session. It carries the item as it was when read, so the timeline outlives the item; `pdfUrl` is where the PDF came from.",
+);
 
-// The colours of the library and the reader: the system's light or dark setting, or one of
-// the two always.
 export const THEMES = ["system", "light", "dark"] as const;
-export const ThemeSchema = z.enum(THEMES);
+export const ThemeSchema = z.enum(THEMES).describe(
+  "The colours of the library and the reader: the system's light or dark setting, or always one of the two.",
+);
 
-// How the app behaves: whether the reader opens a PDF with its outline showing, the theme, and
-// whether the reader draws the PDF's pages in dark page colours while the theme is dark.
 export const PreferencesSchema = z.strictObject({
   outlineOnOpen: z.boolean(),
   theme: ThemeSchema,
   readerNightMode: z.boolean(),
-});
+}).describe(
+  "How the app behaves: whether the reader opens a PDF with its outline showing, the theme, and whether the reader draws the PDF's pages in dark page colours while the theme is dark.",
+);
 
 export const LibraryPayloadSchema = z.strictObject({
   items: z.array(BucketItemSchema),
@@ -459,19 +451,13 @@ export const LibraryPayloadSchema = z.strictObject({
   savedSearches: z.array(SavedSearchSchema),
   activity: z.array(ActivitySchema),
   preferences: PreferencesSchema,
-  // Files named `<key>.pdf` in the root that the store cannot read (torn, foreign, without
-  // the bucket's provenance): the library lists every other item and names these.
   unreadable: z.array(
     z.strictObject({ file: NonEmptySchema, message: NonEmptySchema }),
   ),
-});
+}).describe(
+  "The library. `unreadable` names the files `<key>.pdf` in the root that the store cannot read (torn, foreign, without the bucket's provenance); the library lists every other item.",
+);
 
-// What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL
-// or a mirror and matched the recorded original; every URL was tried and none served it; or
-// the rebuild failed in the bucket itself (the store could not write the PDF).
-// A restored PDF's metadata: the title and authors "Retrieve metadata" gave, recorded again; none to
-// record, since the item's title was read from the PDF; or a recording that failed, which
-// leaves the PDF restored with the title it carries.
 export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
   z.strictObject({ key: NonEmptySchema, status: z.literal("present") }),
   z.strictObject({
@@ -501,23 +487,23 @@ export const RebuildOutcomeSchema = z.discriminatedUnion("status", [
       }),
     ),
   }),
-]);
+]).describe(
+  "What Rebuild did for one item: its PDF was there; it was downloaded again from the PDF URL or a mirror and matched the recorded original; every URL was tried and none served it; or the rebuild failed in the bucket itself (the store could not write the PDF). A restored PDF's metadata: the title and authors Retrieve metadata gave, recorded again; none to record, since the item's title was read from the PDF; or a recording that failed, which leaves the PDF restored with the title it carries.",
+);
 
-// Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF. With
-// `open_reader`, the stored item's reader opens in the desktop window, as after a capture.
 export const ImportUrlRequestSchema = z.strictObject({
   url: HttpUrlSchema,
   open_reader: z.boolean(),
-});
-// A new PDF runs "Retrieve metadata" in the background, as a captured one does.
+}).describe(
+  "Import URL: a PDF URL, or a page whose Highwire `citation_pdf_url` names the PDF. With `open_reader`, the stored item's reader opens in the desktop window, as after a capture.",
+);
 export const ImportUrlResponseSchema = z.strictObject({
   key: NonEmptySchema,
   existing: z.boolean(),
-});
+}).describe(
+  "The answer to Import URL. A new PDF runs Retrieve metadata in the background, as a captured one does.",
+);
 
-// Add Folder: one outcome per file directly inside the folder whose name ends in `.pdf`, in
-// name order: stored under a new key, already held, not a PDF (no `%PDF-` header), or failed
-// in the store. One file's failure never discards the others'.
 export const FolderImportRequestSchema = z.strictObject({
   path: NonEmptySchema,
 });
@@ -542,7 +528,9 @@ export const FolderImportResponseSchema = z.strictObject({
       }),
     ]),
   ),
-});
+}).describe(
+  "Add Folder: one outcome per file directly inside the folder whose name ends in `.pdf`, in name order: stored under a new key, already held, not a PDF (no `%PDF-` header), or failed in the store. One file's failure never discards the others'.",
+);
 
 export const API_ERROR_KINDS = [
   "invalid_request",
@@ -552,10 +540,8 @@ export const API_ERROR_KINDS = [
   "unknown_mirror",
   "unknown_saved_search",
   "unknown_plugin",
-  // The bucket was given no signed Firefox build to offer.
   "unknown_extension_build",
   "already_sent",
-  // "Send PDF Only" for an item with notes or Markdown, which a standalone attachment cannot hold.
   "pdf_only_refused",
   "provenance_mismatch",
   "no_pdf_at_url",
@@ -563,29 +549,18 @@ export const API_ERROR_KINDS = [
   "folder_check_failed",
   "metadata_guess_failed",
   "zotero_failed",
-  // Zotero's health check failed before a Zotero action: Zotero is not running, or it has no
-  // local write API.
   "zotero_unavailable",
   "storage_check_failed",
-  // The store could not do its work: a write failed, or its pikepdf command failed.
   "store_failed",
-  // A PDF the store cannot read (torn, encrypted, not a PDF inside).
   "unreadable_pdf",
-  // Bytes that carry no `%PDF-` header in their first 1024 bytes.
   "not_a_pdf",
-  // A reader save whose If-Match names bytes the stored file no longer holds (HTTP 412).
   "stale_pdf",
-  // A plugin that exited 0 without writing what its contract names.
   "plugin_contract_broken",
-  // A fault in the bucket itself.
   "internal",
   "cross_origin_request",
   "unsupported_media_type",
-  // The assistant pane's OpenCode server did not start or did not answer.
   "ai_unavailable",
-  // arXiv discovery on a title that names no paper (a page label, "None", the file name).
   "placeholder_title",
-  // The arXiv API refused a discovery request (HTTP 429 or 503) or could not be reached.
   "arxiv_unavailable",
 ] as const;
 
@@ -594,29 +569,30 @@ export const ApiErrorSchema = z.strictObject({
     kind: z.enum(API_ERROR_KINDS),
     message: NonEmptySchema,
   }),
-});
+}).describe(
+  "An API error. `unknown_extension_build`: the bucket was given no signed Firefox build to offer. `pdf_only_refused`: Send PDF Only for an item with notes or Markdown, which a standalone attachment cannot hold. `zotero_unavailable`: Zotero's health check failed before a Zotero action, because Zotero is not running or has no local write API. `store_failed`: a store write or its pikepdf command failed. `unreadable_pdf`: a PDF the store cannot read (torn, encrypted, not a PDF inside). `not_a_pdf`: bytes with no `%PDF-` header in their first 1024 bytes. `stale_pdf`: a reader save whose If-Match names bytes the stored file no longer holds (HTTP 412). `plugin_contract_broken`: a plugin that exited 0 without writing what its contract names. `internal`: a fault in the bucket itself. `ai_unavailable`: the assistant pane's OpenCode server did not start or did not answer. `placeholder_title`: arXiv discovery on a title that names no paper (a page label, None, the file name). `arxiv_unavailable`: the arXiv API refused a discovery request (HTTP 429 or 503) or could not be reached.",
+);
 
-// Request bodies.
 export const NoteRequestSchema = z.strictObject({ note: TrimmedSchema });
-// A filing change to every item listed: `remove` is taken away first, then `add` goes after
-// what each item keeps. Either array may be empty.
 const BulkKeysSchema = z.array(NonEmptySchema).min(1);
 export const BulkTagsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
   add: z.array(TrimmedSchema),
   remove: z.array(TrimmedSchema),
-});
+}).describe(
+  "A tag change to every item listed: `remove` is taken away first, then `add` goes after what each item keeps. Either array may be empty.",
+);
 export const BulkCollectionsRequestSchema = z.strictObject({
   keys: BulkKeysSchema,
   add: z.array(NonEmptySchema),
   remove: z.array(NonEmptySchema),
-});
+}).describe(
+  "A collection change to every item listed: `remove` is taken away first, then `add` goes after what each item keeps. Either array may be empty.",
+);
 export const NewCollectionRequestSchema = z.strictObject({
   name: NameSchema,
   parentId: NonEmptySchema.optional(),
 });
-// A partial update names at least one field: the refinement checks it in TypeScript, and the
-// `minProperties` it carries into the JSON Schema checks it in the server.
 function changingSomething<T extends z.ZodObject>(update: T) {
   return update
     .refine(
@@ -625,7 +601,6 @@ function changingSomething<T extends z.ZodObject>(update: T) {
     )
     .meta({ minProperties: 1 });
 }
-// Any of a collection's own fields; the others stay as they are.
 export const CollectionUpdateRequestSchema = changingSomething(
   z
     .strictObject({
@@ -635,10 +610,13 @@ export const CollectionUpdateRequestSchema = changingSomething(
       keepOffline: z.boolean(),
     })
     .partial(),
+).describe(
+  "Any of a collection's own fields; the others stay as they are. At least one field: the refinement checks it in TypeScript, and `minProperties` checks it in the server.",
 );
-// Any of the preferences; the others stay as they are.
 export const PreferencesUpdateRequestSchema = changingSomething(
   PreferencesSchema.partial(),
+).describe(
+  "Any of the preferences; the others stay as they are. At least one field: the refinement checks it in TypeScript, and `minProperties` checks it in the server.",
 );
 export const NewSavedSearchRequestSchema = SavedSearchSchema.omit({ id: true });
 export const SavedSearchUpdateRequestSchema = SavedSearchSchema.omit({
@@ -650,7 +628,6 @@ export const SettingsSchema = z.strictObject({
   organizationFile: NonEmptySchema,
 });
 
-// The collection and every collection below it.
 export function collectionSubtree(
   collections: Collection[],
   id: string,
@@ -670,7 +647,6 @@ export function collectionSubtree(
   return subtree;
 }
 
-// Topics are tags in this namespace; the library shows them without the prefix.
 export const TOPIC_PREFIX = "topic:";
 
 export type Provenance = z.infer<typeof ProvenanceSchema>;
@@ -725,8 +701,7 @@ export type ArxivPromotionResponse = z.infer<
   typeof ArxivPromotionResponseSchema
 >;
 
-// The session-storage key under which the library page keeps its current view (the address's
-// hash, e.g. `#/unfiled`); the reader's Library button returns to that view.
 export const LIBRARY_VIEW_KEY = "pdf-bucket.library-view";
-// The same key as a schema, so the server's reader page gets it from the generated contract.
-export const LibraryViewKeySchema = z.literal(LIBRARY_VIEW_KEY);
+export const LibraryViewKeySchema = z.literal(LIBRARY_VIEW_KEY).describe(
+  "The session-storage key under which the library page keeps its current view (the address's hash, for example `#/unfiled`); the reader's Library button returns to that view. It is a schema so that the server's reader page gets it from the generated contract.",
+);

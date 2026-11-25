@@ -1,14 +1,3 @@
-//! The send action: the Zotero local write API makes or finds the Zotero item for the item's PDF
-//! URL, then the send sets its URL and access date,
-//! leaves the item one PDF (the bucket's copy, with its annotations, or the item's own PDF when that
-//! has as many annotations), attaches the extraction Markdown,
-//! adds each of the item's notes as a Zotero child note, and records the Zotero key in the filing
-//! document after each step. Once every step is done the item leaves the bucket, since Zotero
-//! holds it now, unless a collection holding it (or holding a collection that holds it) keeps
-//! its items offline. "Send to Zotero and Extract" sends, then runs the configured chain of
-//! extraction plugins and attaches the Markdown the first success places. "Send PDF Only" puts
-//! the stored PDF in Zotero as a standalone attachment, for a PDF Zotero cannot identify by its
-//! URL. Deleting an item moves its PDF to the desktop trash and drops its filing.
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::post;
@@ -18,7 +7,7 @@ use crate::app::origin;
 use crate::contract::{
     ApiErrorErrorKind, Extraction, ExtractionOutcome, ImportMethod, ItemNote, LibraryPayload,
     Organization, Provenance, SendAndExtractResponse, SendMethod, SendResponse,
-    SendResponsePerformedItem, SendStep, Timestamp, ZoteroRecord, ZoteroStatus,
+    SendResponsePerformedItem, SendStep, SendTarget, Timestamp, ZoteroRecord, ZoteroStatus,
     ZoteroStatusSentPendingItem,
 };
 use crate::error::{AppError, AppResult};
@@ -30,7 +19,6 @@ use crate::reader::pdf_url_path;
 use crate::state::Shared;
 use crate::zotero::note_html;
 
-/// A step of a send once the Zotero item exists.
 #[derive(Clone, Copy)]
 enum Step<'a> {
     Fields,
@@ -39,7 +27,6 @@ enum Step<'a> {
     Note(&'a ItemNote),
 }
 
-/// The steps as the contract lists them: one `notes` for all of an item's notes.
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
     Fields,
@@ -69,8 +56,6 @@ impl Step<'_> {
     }
 }
 
-/// A standalone PDF in Zotero owes only its PDF; an item under a Zotero item owes its fields, its
-/// PDF, its Markdown once extracted, and each of its notes.
 fn steps_owed<'a>(
     method: SendMethod,
     extraction: &Extraction,
@@ -130,9 +115,6 @@ pub fn zotero_status(
     }
 }
 
-/// The URL the write API identifies the item by: its PDF URL, which names this one paper where
-/// the page it was captured from may list many. A PDF with no web URL (a folder import's
-/// `file:` URL) goes by the bucket's own URL for its stored copy.
 pub fn import_url(origin: &str, provenance: &Provenance, key: &str) -> String {
     if provenance.pdf_url.starts_with("http://") || provenance.pdf_url.starts_with("https://") {
         return provenance.pdf_url.clone();
@@ -144,10 +126,8 @@ async fn find_or_create(
     state: &Shared,
     origin: &str,
     indexed: &IndexedItem,
-) -> AppResult<(ZoteroRecord, bool)> {
+) -> AppResult<(ZoteroRecord, bool, SendTarget)> {
     let stored = &indexed.stored;
-    // The item goes in the collection selected in Zotero's pane, or in the library root when
-    // the selected row is not a collection, as a standalone attachment does.
     let collection = state.zotero.selected_collection().await?;
     let imported = state
         .zotero
@@ -169,11 +149,9 @@ async fn find_or_create(
         },
         steps: Vec::new(),
     };
-    Ok((record, !imported.existing))
+    Ok((record, !imported.existing, target_of(collection)))
 }
 
-/// Attaches the bucket's stored PDF, which carries the reader's annotations and the provenance,
-/// to the item; answers the attachment's key.
 async fn attach_copy(state: &Shared, item_key: &str, indexed: &IndexedItem) -> AppResult<String> {
     let bytes = tokio::fs::read(&indexed.path).await?;
     let name = format!("{}.pdf", indexed.stored.key.as_str());
@@ -183,20 +161,12 @@ async fn attach_copy(state: &Shared, item_key: &str, indexed: &IndexedItem) -> A
         .await
 }
 
-/// The annotations on a Zotero PDF: the larger of its annotation items and the annotations in
-/// its file. Zotero's reader imports a file's annotations as items when it opens the PDF
-/// (zotero/zotero, reader.js, `Zotero.PDFWorker.import`), so the items include the file's once
-/// the PDF was opened, and the file holds all of them until it is.
 async fn zotero_annotations(state: &Shared, attachment_key: &str) -> AppResult<u64> {
     let items = state.zotero.annotation_items(attachment_key).await?;
     let file = state.zotero.attachment_file(attachment_key).await?;
     Ok(items.max(state.store.annotations(&file).await?))
 }
 
-/// Leaves the Zotero item one PDF, as a work holds one: the bucket's copy when the item holds
-/// none, or when it has more annotations than the item's PDF, which then goes to Zotero's trash;
-/// otherwise the item's own PDF. An item with several PDFs is refused. Answers the kept PDF's
-/// attachment key.
 async fn one_pdf(state: &Shared, item_key: &str, indexed: &IndexedItem) -> AppResult<String> {
     let held = state.zotero.pdfs(item_key).await?;
     let zotero_pdf = match held.as_slice() {
@@ -238,7 +208,6 @@ async fn perform(
         Step::Pdf => SendStep::Pdf {
             attachment_key: attached(one_pdf(state, item_key, indexed).await?),
         },
-        // Named as the extraction loop names a Markdown child, which marks an item extracted.
         Step::Markdown => {
             let name = format!("{item_key}_extracted.md");
             let parsed = layout::Key::parse(key).expect("an indexed key is a key");
@@ -276,16 +245,20 @@ async fn save(state: &Shared, key: &str, record: &ZoteroRecord) -> AppResult<Org
         .await
 }
 
-/// What `send_steps` did: the Zotero record, whether it made the Zotero item, and the steps.
 struct Sent {
     record: ZoteroRecord,
     created: bool,
     performed: Vec<Kind>,
+    target: SendTarget,
 }
 
-/// Does the item's pending steps on its Zotero item, finding or making the item first when the
-/// item has none, and records each step in the filing document as it is done. The caller holds
-/// the item's send lock.
+fn target_of(collection: Option<String>) -> SendTarget {
+    match collection {
+        Some(key) => SendTarget::Collection(non_empty(&key)),
+        None => SendTarget::Library,
+    }
+}
+
 async fn send_steps(state: &Shared, origin: &str, key: &str) -> AppResult<Sent> {
     let indexed = state.require(key).await?;
     let filed = filing_of(
@@ -295,8 +268,8 @@ async fn send_steps(state: &Shared, origin: &str, key: &str) -> AppResult<Sent> 
     );
     let notes = filed.notes;
     state.zotero.require_ready().await?;
-    let (mut record, created) = match filed.zotero {
-        Some(record) => (record, false),
+    let (mut record, created, target) = match filed.zotero {
+        Some(record) => (record, false, SendTarget::EarlierSend),
         None => find_or_create(state, origin, &indexed).await?,
     };
     save(state, key, &record).await?;
@@ -312,6 +285,7 @@ async fn send_steps(state: &Shared, origin: &str, key: &str) -> AppResult<Sent> 
         record,
         created,
         performed: kinds(&performed),
+        target,
     })
 }
 
@@ -327,8 +301,6 @@ fn performed_steps(kinds: &[Kind]) -> Vec<SendResponsePerformedItem> {
         .collect()
 }
 
-/// The item leaves the bucket, since Zotero holds it now, unless a collection keeps it offline;
-/// answers whether it stays.
 async fn leave(state: &Shared, key: &str) -> AppResult<bool> {
     let kept = kept_offline(&state.organizations.read().await?, key);
     if !kept {
@@ -361,13 +333,10 @@ async fn send_item(state: Shared, origin: String, key: String) -> AppResult<Send
         created: sent.created,
         performed: performed_steps(&sent.performed),
         kept,
+        target: sent.target,
     })
 }
 
-/// "Send to Zotero and Extract": the send first, so the PDF is in Zotero whatever the plugins
-/// do; then, unless the item already has Markdown, the configured chain of plugins; then the
-/// Markdown the chain placed, if it placed any. The item stays in the bucket until the chain
-/// ends. A send standalone attachment holds no Markdown, so it is refused.
 async fn send_and_extract_item(
     state: Shared,
     origin: String,
@@ -412,14 +381,12 @@ async fn send_and_extract_item(
             created: sent.created,
             performed: performed_steps(&sent.performed),
             kept,
+            target: sent.target,
         },
         extractions,
     })
 }
 
-/// "Send PDF Only": the stored PDF as a standalone attachment in Zotero, with no parent item,
-/// for a PDF whose URL Zotero cannot identify; the user files it under an item in Zotero. An
-/// item with notes or Markdown is refused, since an attachment holds neither.
 async fn send_pdf_only_item(state: Shared, key: String) -> AppResult<SendResponse> {
     let _one_at_a_time = state.sends.async_lock(key.clone()).await;
     let indexed = state.require(&key).await?;
@@ -456,12 +423,11 @@ async fn send_pdf_only_item(state: Shared, key: String) -> AppResult<SendRespons
     }
     state.zotero.require_ready().await?;
     let bytes = tokio::fs::read(&indexed.path).await?;
-    let attachment = non_empty(
-        &state
-            .zotero
-            .attach_standalone(&format!("{key}.pdf"), &indexed.stored.title.text, &bytes)
-            .await?,
-    );
+    let attached = state
+        .zotero
+        .attach_standalone(&format!("{key}.pdf"), &indexed.stored.title.text, &bytes)
+        .await?;
+    let attachment = non_empty(&attached.attachment_key);
     let record = ZoteroRecord {
         item_key: attachment.clone(),
         sent_at: Timestamp::now(),
@@ -477,11 +443,10 @@ async fn send_pdf_only_item(state: Shared, key: String) -> AppResult<SendRespons
         created: true,
         performed: vec![SendResponsePerformedItem::Pdf],
         kept,
+        target: target_of(attached.details.collection_key),
     })
 }
 
-/// Each send runs as its own task: a client that disconnects mid-send drops only its wait for
-/// the answer, and the send still records each step Zotero has done.
 async fn send(
     State(state): State<Shared>,
     Path(key): Path<String>,

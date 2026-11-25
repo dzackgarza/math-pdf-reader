@@ -1,9 +1,3 @@
-//! The Zotero local write API: the endpoints the local-write-api addon adds to Zotero's own
-//! HTTP server (`GET /version`, its health check; `POST /write` with an `operation`;
-//! `POST /attach`), and the reads of Zotero's own local API (`/api/users/0/...`) the send makes
-//! to keep one PDF on an item. The send action is the only caller that writes to Zotero; Retrieve metadata
-//! only asks it to resolve a URL, which saves nothing. Every action checks Zotero's health
-//! first, then waits for Zotero's answer as long as Zotero takes, as the Zotero Connector does.
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,7 +17,6 @@ use crate::contract::{
 };
 use crate::error::{AppError, AppResult};
 
-/// What `GET /version` answers when the write API runs.
 #[derive(Deserialize)]
 struct Version {
     healthy: bool,
@@ -32,11 +25,8 @@ struct Version {
     capabilities: Vec<String>,
 }
 
-/// The capability of a write API whose `import_from_url` takes `store_attachments`. The send
-/// attaches the bucket's own copy, so the import must store no PDF of its own.
 const IMPORT_STORE_ATTACHMENTS: &str = "import_store_attachments";
 
-/// `get_selected_collection`'s answer when a collection is selected.
 #[derive(Deserialize)]
 struct Selected {
     details: SelectedDetails,
@@ -53,7 +43,6 @@ struct Refusal {
     error: String,
 }
 
-/// The item `import_from_url` made or found. `existing`: the library already held the work.
 #[derive(Deserialize)]
 pub struct Imported {
     pub item_key: String,
@@ -61,7 +50,6 @@ pub struct Imported {
     pub method: ImportMethod,
 }
 
-/// A CSL-JSON name: a person's parts, or an institution's name as one literal.
 #[derive(Deserialize)]
 pub struct CslName {
     pub given: Option<String>,
@@ -74,7 +62,6 @@ pub struct CslName {
     pub literal: Option<String>,
 }
 
-/// A CSL-JSON date part: Zotero writes the year as a string, the month and day as numbers.
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum CslDatePart {
@@ -88,7 +75,6 @@ pub struct CslDate {
     pub date_parts: Vec<Vec<CslDatePart>>,
 }
 
-/// The CSL-JSON fields of a resolved item that the bucket records.
 #[derive(Deserialize)]
 pub struct Csl {
     pub title: Option<String>,
@@ -110,15 +96,12 @@ struct UnidentifiedDetails {
     attempts: Vec<RetrieveMetadataOutcomeUnidentifiedAttemptsItem>,
 }
 
-/// The answer `resolve_url` gives when no method identified the source (422).
 #[derive(Deserialize)]
 struct Unidentified {
     stage: String,
     details: UnidentifiedDetails,
 }
 
-/// What `resolve_url` made of a URL: the method that identified it and the item's CSL-JSON,
-/// or each method's attempt when none identified it.
 pub enum Resolution {
     Resolved {
         method: ImportMethod,
@@ -145,6 +128,17 @@ struct Attached {
 }
 
 #[derive(Deserialize)]
+pub struct StandaloneAttached {
+    pub attachment_key: String,
+    pub details: StandaloneDetails,
+}
+
+#[derive(Deserialize)]
+pub struct StandaloneDetails {
+    pub collection_key: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct NoteAttached {
     note_key: String,
 }
@@ -154,7 +148,6 @@ struct Trashed {
     details: UpdatedItem,
 }
 
-/// A child item as Zotero's local API answers it. A note has no media type.
 #[derive(Deserialize)]
 struct Child {
     key: String,
@@ -168,16 +161,10 @@ struct ChildData {
     content_type: Option<String>,
 }
 
-/// update_item_fields merges the fields into the item's API JSON, where Zotero reads a
-/// date-time only in the API's ISO 8601 UTC form `YYYY-MM-DDTHH:MM:SSZ` and drops any other.
 pub fn zotero_date_time(timestamp: &crate::contract::Timestamp) -> String {
     timestamp.instant().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
-/// A plain-text bucket note as the HTML a Zotero note holds: special characters escaped, a
-/// blank line starts a paragraph, a single line break stays a line break; the paragraph and
-/// line-break rules of Zotero's own `Zotero.Utilities.text2html(str, false)` (zotero/utilities,
-/// utilities.js).
 pub fn note_html(text: &str) -> String {
     let escaped = html_escape::encode_text(text);
     let paragraphs: Vec<String> = escaped
@@ -221,7 +208,6 @@ pub struct ZoteroWriteApi {
 }
 
 impl ZoteroWriteApi {
-    /// Must run on a tokio runtime: the health check repeats on a task started here.
     pub fn start(base_url: &str) -> Arc<Self> {
         let (health, _) = watch::channel(ZoteroHealth::Checking);
         let zotero = Arc::new(Self {
@@ -243,8 +229,6 @@ impl ZoteroWriteApi {
         self.health.subscribe()
     }
 
-    /// Asks the write API's health check whether Zotero can take a request, and publishes the
-    /// answer when it differs from the last one.
     pub async fn check(&self) -> ZoteroHealth {
         let health = match self.client.get(self.url("/version")).send().await {
             Err(error) if error.is_connect() => {
@@ -304,7 +288,6 @@ impl ZoteroWriteApi {
         }
     }
 
-    /// Fails with `zotero_unavailable` unless the health check finds Zotero ready.
     pub async fn require_ready(&self) -> AppResult<()> {
         match self.check().await {
             ZoteroHealth::Unavailable { message } => Err(AppError::api(
@@ -329,7 +312,6 @@ impl ZoteroWriteApi {
         ))
     }
 
-    /// Sends the request and answers its status and body.
     async fn exchange(&self, request: RequestBuilder) -> AppResult<(StatusCode, Bytes)> {
         let response: Response = request
             .send()
@@ -343,8 +325,6 @@ impl ZoteroWriteApi {
         Ok((status, answer))
     }
 
-    /// Sends the request and parses a 2xx answer as `T`. Any other status is Zotero's
-    /// failure: the addon's JSON refusal when it gave one, otherwise the status and body.
     async fn answer<T: DeserializeOwned>(
         &self,
         what: &str,
@@ -362,11 +342,6 @@ impl ZoteroWriteApi {
             .await
     }
 
-    /// The item for the source at `url`: the write API identifies the source by its own
-    /// methods, and answers the library's item for that work when it already holds one. A new
-    /// item gets no attachment: the send attaches the bucket's copy.
-    /// `collection`, when given, is a collection the item goes in: a new item is made there, and
-    /// an item the library already held gains it.
     pub async fn import_from_url(
         &self,
         url: &str,
@@ -381,9 +356,6 @@ impl ZoteroWriteApi {
         self.post("/write", &body).await
     }
 
-    /// The key of the collection selected in Zotero's pane, or `None` when the selected row is
-    /// not a collection (the library root, a saved search). With no Zotero window open the
-    /// write API refuses with a conflict, which is Zotero's failure here.
     pub async fn selected_collection(&self) -> AppResult<Option<String>> {
         let what = "get_selected_collection";
         let body = json!({ "operation": what });
@@ -400,7 +372,6 @@ impl ZoteroWriteApi {
         Err(refused(what, status, &answer))
     }
 
-    /// The metadata Zotero's methods resolve for the source at `url`, without saving an item.
     pub async fn resolve_url(&self, url: &str) -> AppResult<Resolution> {
         let what = "resolve_url";
         let body = json!({ "operation": what, "url": url });
@@ -445,7 +416,6 @@ impl ZoteroWriteApi {
         Ok(())
     }
 
-    /// Stores the bytes as a child attachment of the item; answers the attachment's key.
     pub async fn attach_bytes(
         &self,
         item_key: &str,
@@ -465,26 +435,20 @@ impl ZoteroWriteApi {
             .attachment_key)
     }
 
-    /// Stores the bytes as a standalone attachment, with no parent item, in the collection
-    /// selected in Zotero (the library root when none is); answers the attachment's key.
     pub async fn attach_standalone(
         &self,
         file_name: &str,
         title: &str,
         bytes: &[u8],
-    ) -> AppResult<String> {
+    ) -> AppResult<StandaloneAttached> {
         let body = json!({
             "title": title,
             "file_name": file_name,
             "file_bytes_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
         });
-        Ok(self
-            .post::<Attached>("/attach", &body)
-            .await?
-            .attachment_key)
+        self.post("/attach", &body).await
     }
 
-    /// Adds a child note holding `html` to the item; answers the note's key.
     pub async fn attach_note(&self, item_key: &str, html: &str) -> AppResult<String> {
         let body = json!({
             "operation": "attach_note",
@@ -494,7 +458,6 @@ impl ZoteroWriteApi {
         Ok(self.post::<NoteAttached>("/write", &body).await?.note_key)
     }
 
-    /// Moves the item, with its children, to Zotero's trash.
     pub async fn trash_item(&self, item_key: &str) -> AppResult<()> {
         let body = json!({ "operation": "trash_item", "item_key": item_key });
         let trashed: Trashed = self.post("/write", &body).await?;
@@ -507,7 +470,6 @@ impl ZoteroWriteApi {
         Ok(())
     }
 
-    /// A 2xx answer of Zotero's own local API to `GET path`; any other status is Zotero's failure.
     async fn read(&self, path: &str) -> AppResult<Response> {
         let response = self
             .client
@@ -526,7 +488,6 @@ impl ZoteroWriteApi {
         Err(refused(path, status, &answer))
     }
 
-    /// The attachment keys of the PDFs the item holds, outside the trash.
     pub async fn pdfs(&self, item_key: &str) -> AppResult<Vec<String>> {
         let path = format!("/api/users/0/items/{item_key}/children");
         let answer = self
@@ -546,7 +507,6 @@ impl ZoteroWriteApi {
             .collect())
     }
 
-    /// The number of annotation items Zotero holds on the PDF attachment: its `Total-Results`.
     pub async fn annotation_items(&self, attachment_key: &str) -> AppResult<u64> {
         let path = format!("/api/users/0/items/{attachment_key}/children?itemType=annotation");
         let response = self.read(&path).await?;
@@ -564,7 +524,6 @@ impl ZoteroWriteApi {
             })
     }
 
-    /// The file of the PDF attachment on this machine.
     pub async fn attachment_file(&self, attachment_key: &str) -> AppResult<PathBuf> {
         let path = format!("/api/users/0/items/{attachment_key}/file/view/url");
         let answer = self
