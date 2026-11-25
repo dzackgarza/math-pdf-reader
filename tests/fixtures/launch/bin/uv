@@ -1,2 +1,5 @@
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$RECORD/uv"
+if [[ "$*" == *amo_signed.py* ]]; then
+    exit 2
+fi

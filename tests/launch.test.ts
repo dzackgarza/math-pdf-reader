@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -251,5 +252,100 @@ describe("provisioning for a launch", () => {
 
     expect(run.exitCode).toBe(3);
     expect(scratch.stamp()).toBeNull();
+  });
+});
+
+describe("extension provisioning", () => {
+  const committed = (scratch: Scratch) => {
+    for (const command of [
+      ["git", "add", "-A"],
+      ["git", "-c", "user.name=test", "-c", "user.email=test@localhost", "-c", "core.hooksPath=/dev/null", "commit", "-qm", "build input"],
+    ]) {
+      const run = Bun.spawnSync(command, { cwd: scratch.repo, env: scratch.env });
+      if (run.exitCode !== 0) throw new Error(`${command.join(" ")} failed: ${run.stderr}`);
+    }
+    return scratch;
+  };
+  const extensions = (scratch: Scratch) => join(scratch.data, "pdf-bucket-app/extensions");
+  const chromiumLoads = (scratch: Scratch) => {
+    const profile = join(scratch.config, "chromium/Default");
+    mkdirSync(profile, { recursive: true });
+    writeFileSync(join(profile, "Preferences"), JSON.stringify({}));
+    writeFileSync(
+      join(profile, "Secure Preferences"),
+      JSON.stringify({ extensions: { settings: { capture: { path: join(extensions(scratch), "chrome-mv3") } } } }),
+    );
+  };
+  const firefoxPolicy = (scratch: Scratch, present: boolean) => {
+    const policies = mkdtempSync(join(tmpdir(), "pdf-bucket-policies-"));
+    if (present) {
+      const policy = Bun.spawnSync([join(scratch.repo, "scripts/firefox-policy.sh")], { cwd: scratch.repo, env: scratch.env });
+      writeFileSync(join(policies, "policies.json"), policy.stdout);
+    }
+    return policies;
+  };
+  const provisionExtensions = (scratch: Scratch, policies: string) =>
+    Bun.spawnSync(
+      [
+        "unshare",
+        "--user",
+        "--map-root-user",
+        "--mount",
+        "bash",
+        "-c",
+        'mount --bind "$0" /etc/firefox/policies && exec scripts/provision-extensions.sh',
+        policies,
+      ],
+      { cwd: scratch.repo, env: scratch.env, stdout: "pipe", stderr: "pipe" },
+    );
+
+  test("with both browsers ready it installs both builds, and with the input unchanged it builds nothing", () => {
+    const scratch = committed(scratchCheckout());
+    chromiumLoads(scratch);
+    const policies = firefoxPolicy(scratch, true);
+
+    const first = provisionExtensions(scratch, policies);
+    const builds = scratch.recorded("bunx").length;
+    const second = provisionExtensions(scratch, policies);
+
+    expect(first.exitCode).toBe(0);
+    expect(existsSync(join(extensions(scratch), "chrome-mv3/manifest.json"))).toBe(true);
+    expect(readFileSync(join(extensions(scratch), "firefox.xpi"), "utf8")).toBe("signed\n");
+    expect(second.exitCode).toBe(0);
+    expect(scratch.recorded("bunx")).toHaveLength(builds);
+  });
+
+  test("a Chromium that does not load the build stops only the Chrome build: Firefox's is signed and installed", () => {
+    const scratch = committed(scratchCheckout());
+
+    const run = provisionExtensions(scratch, firefoxPolicy(scratch, true));
+
+    expect(run.exitCode).toBe(1);
+    expect(readFileSync(join(extensions(scratch), "firefox.xpi"), "utf8")).toBe("signed\n");
+    expect(existsSync(join(extensions(scratch), "firefox-mv2/manifest.json"))).toBe(true);
+  });
+
+  test("a Firefox without the add-on policy stops only the Firefox build: Chrome's is installed", () => {
+    const scratch = committed(scratchCheckout());
+    chromiumLoads(scratch);
+
+    const run = provisionExtensions(scratch, firefoxPolicy(scratch, false));
+
+    expect(run.exitCode).toBe(1);
+    expect(existsSync(join(extensions(scratch), "chrome-mv3/manifest.json"))).toBe(true);
+    expect(existsSync(join(extensions(scratch), "firefox.xpi"))).toBe(false);
+  });
+
+  test("uncommitted extension input is refused with its paths, and nothing is built", () => {
+    const scratch = committed(scratchCheckout());
+    chromiumLoads(scratch);
+    appendFileSync(join(scratch.repo, "src/extension/bucket-status.ts"), "\n");
+
+    const run = provisionExtensions(scratch, firefoxPolicy(scratch, true));
+
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr.toString()).toContain("src/extension/bucket-status.ts");
+    expect(scratch.recorded("bunx")).toEqual([]);
+    expect(existsSync(extensions(scratch))).toBe(false);
   });
 });
