@@ -79,13 +79,14 @@ inspect the Zotero item.
   Evidence: `server/src/send.rs:423-481`, `server/src/zotero.rs:470-485`; live
   `tests/server-send-live.ts:180` (attachment with no parent, `performed: ["pdf"]`);
   `tests/server-send.test.ts:384`, `:416`, `:438`.
-- [ ] T010 [US1] Offer the three sends as explicit controls: the inspector button and its menu,
+- [X] T010 [US1] Offer the three sends as explicit controls: the inspector button and its menu,
   the row and tab context menus, and the palette. In `src/web/components/InspectorPanel.tsx`,
   `src/web/components/ItemContextMenu.tsx`, `src/web/commands.ts` and
   `src/web/libraryActions.ts`. Per FR-001.
-  Code: `InspectorPanel.tsx:796-836`, `ItemContextMenu.tsx:91-93`, `commands.ts:54-56`,
-  `libraryActions.ts:627-660`. `tests/library-e2e.test.ts:927` only hovers the menu entry. No
-  test sends from the UI.
+  Evidence: `InspectorPanel.tsx:796-836`, `ItemContextMenu.tsx:91-93`, `commands.ts:54-56`,
+  `libraryActions.ts:627-660`; `tests/library-e2e.test.ts:3162` sends from the details menu
+  (and Extract), the row context menu (PDF Only), the tab context menu and the palette (Send to
+  Zotero), and reads the result in Zotero; `:3134` sends from the details button.
 
 ## Phase 3: User Story 2 - Handle transfer failure (P1)
 
@@ -96,11 +97,12 @@ inspect the Zotero item.
 - [X] T011 [US2] With Zotero unavailable, a send answers `zotero_unavailable`, records no Zotero
   item and keeps the item in the library, in `server/src/send.rs`. Per FR-006 and US2/AC1 (server).
   Evidence: `server/src/send.rs:289-302`; `tests/server-send.test.ts:139`, `:250`, `:416`.
-- [ ] T012 [US2] Show the failure reason in the inspector and keep the paper openable, in
+- [X] T012 [US2] Show the failure reason in the inspector and keep the paper openable, in
   `src/web/components/InspectorPanel.tsx` and `src/web/libraryActions.ts`. Per FR-006, SC-003
   and US2/AC1 (UI).
-  Code: `SendNotice` (`InspectorPanel.tsx:663-676`), `sendToZotero` (`libraryActions.ts:648-656`).
-  No test asserts the alert. `scripts/library_screenshots.py` records the screenshots only.
+  Evidence: `SendNotice` (`InspectorPanel.tsx:663-676`), `sendToZotero`
+  (`libraryActions.ts:648-656`); `tests/library-e2e.test.ts:3134` (the alert from the inspector
+  button, the row context menu and the palette; the button enabled again; Open shows the paper).
 - [X] T013 [US2] After each failed send (`zotero_unavailable`, `zotero_failed`, `already_sent`,
   `pdf_only_refused`), keep the PDF bytes, the reader page and the filing unchanged. Per SC-003
   and FR-006.
@@ -116,10 +118,12 @@ inspect the Zotero item.
   PDF. `tests/server-send.test.ts:688`: the PDF attach fails (502, `pending` holds `pdf`, the
   same item key); the next send performs `["pdf", "notes"]` with one `import_from_url` in all
   and leaves one PDF child.
-- [ ] T015 [US2] When every plugin in the chain fails, keep the PDF in Zotero, attach no
+- [X] T015 [US2] When every plugin in the chain fails, keep the PDF in Zotero, attach no
   Markdown, and report each failure, in `server/src/send.rs` and `src/web/libraryActions.ts`.
   Per US2/AC3 and SC-002.
-  Code: `server/src/send.rs:395-407`, `reportChain` (`libraryActions.ts:611-623`). No test.
+  Evidence: `server/src/send.rs:395-407`, `reportChain` (`libraryActions.ts:611-623`);
+  `tests/server-send.test.ts:727` (server); `tests/library-e2e.test.ts:3162` (the alert lists
+  "Sent to Zotero, but no plugin extracted the PDF" and each plugin's exit code).
 - [X] T016 [US2] When Zotero rejects an incomplete record (`422` from `import_from_url`), answer
   `502 zotero_failed` with Zotero's reason and record no Zotero item, in `server/src/zotero.rs`.
   Per the edge case "reject a duplicate or incomplete record" and FR-006.
@@ -228,11 +232,12 @@ last.
   reason and `zotero.status` `unsent`. Per the edge case "reject a duplicate or incomplete
   record" and T016 (missing).
   Evidence: `tests/server-send.test.ts:788` (see T016).
-- [ ] T029 Add a library UI test to `tests/library-e2e.test.ts`. Press **Send to Zotero** in
+- [X] T029 Add a library UI test to `tests/library-e2e.test.ts`. Press **Send to Zotero** in
   the inspector against a closed Zotero port. Assert the `role="alert"` text "Zotero is not
   running: start Zotero", the button enabled again and the reader opening the paper. Repeat
   through the row context menu and the palette command "Send Selected PDF to Zotero". Per
   FR-001, FR-006, US2/AC1, T010 and T012 (missing).
+  Evidence: `tests/library-e2e.test.ts:3134` (see T012).
 - [X] T030 Make the send's answer to an unavailable selected collection explicit in
   `server/src/send.rs`. When no Zotero window is open, the addon refuses with a conflict. Show
   it as `zotero_failed` with a message that names the cause, and record no item. Cover it with

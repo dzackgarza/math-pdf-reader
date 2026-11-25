@@ -53,6 +53,7 @@ import {
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { SCRATCH_DATA_HOME } from "./preload";
 import { readOrganization, recordMetadata } from "./store";
+import { zoteroStub } from "./zotero-stub";
 
 setDefaultTimeout(30_000);
 
@@ -3116,3 +3117,137 @@ test("the list and the reader's assistant pane show whether a PDF has an extract
     await bucket.stop();
   }
 });
+
+const inspectorAlert = 'aside[aria-label="Item details"] [role="alert"]';
+// The details pane's own Send to Zotero button.
+const inspectorSend = () => byRole("button", "Send to Zotero");
+const runCommand = async (name: string) => {
+  await page.keyboard.down("Control");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("p");
+  await page.keyboard.up("Shift");
+  await page.keyboard.up("Control");
+  await page.keyboard.type(name);
+  await page.keyboard.press("Enter");
+};
+
+test("a send while Zotero is not running shows why in the details, from every control, and the paper still opens", async () => {
+  await openLibrary();
+  await page.click(row("lattices"));
+  await (await inspectorSend()).click();
+  await shows(inspectorAlert, "Zotero is not running: start Zotero");
+  await shot("send-zotero-not-running");
+  expect(
+    await (await inspectorSend()).evaluate(
+      (button) => (button as HTMLButtonElement).disabled,
+    ),
+  ).toBe(false);
+  await (await byRole("button", "Open")).click();
+  await shownReader("lattices");
+  await page.click('[role="tab"]:first-of-type');
+
+  await page.click(row("problems"), { button: "right" });
+  await (await menuItem("Send to Zotero")).click();
+  await page.click(row("problems"));
+  await shows(inspectorAlert, "Zotero is not running: start Zotero");
+
+  await page.click(row("notes"));
+  await runCommand("Send Selected PDF to Zotero");
+  await shows(inspectorAlert, "Zotero is not running: start Zotero");
+  expect(await rowKeys()).toEqual(
+    expect.arrayContaining(["lattices", "problems", "notes"]),
+  );
+});
+
+test("each send control sends its way: the details menu, the row and tab context menus and the palette", async () => {
+  const zotero = zoteroStub();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-ui-"));
+  const manifest = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-send-ui-manifest-")),
+    "extractions.json",
+  );
+  writeFileSync(
+    manifest,
+    JSON.stringify({
+      plugins: ["quota", "broken"].map((id) => ({
+        id,
+        name: `Failing extractor ${id}`,
+        source_kind: "document_structure",
+        authoritative: true,
+        command: [
+          "sh",
+          join(fixtures, "plugins/extractor.sh"),
+          "fail",
+          "$pdf",
+          "$output",
+        ],
+        accepted_inputs: [{ kind: "pdf", id: "pdf", label: "PDF", limits: [] }],
+      })),
+    }),
+  );
+  const config = loadAppConfig(CONFIG_PATH);
+  const app = await serveBucket({
+    root,
+    zoteroUrl: zotero.url,
+    extractionsManifest: manifest,
+    config: {
+      ...config,
+      plugins: { ...config.plugins, send_extraction_chain: ["quota", "broken"] },
+    },
+  });
+  try {
+    for (const [key, bytes, linkText] of CAPTURES.slice(0, 4)) {
+      const form = new FormData();
+      form.set("pdf", new File([bytes], `${key}.pdf`));
+      form.set("pdf_url", published(`/~author/${key}.pdf`));
+      form.set("title_hint", linkText);
+      expect(
+        (await app.request("/capture-bytes", { method: "POST", body: form })).ok,
+      ).toBe(true);
+    }
+    await page.goto(`${app.origin}/`);
+    await page.waitForSelector(row("lattices"));
+
+    // The details menu: Send to Zotero and Extract, with every plugin failing.
+    await page.click(row("lattices"));
+    await page.click('button[aria-label="Other sends"]');
+    await (await menuItem("Send to Zotero and Extract")).click();
+    await shows('[role="alert"]', "Sent to Zotero, but no plugin extracted the PDF");
+    await shows('[role="alert"]', "quota: exited with code 3");
+    await shows('[role="alert"]', "broken: exited with code 3");
+    await shot("send-extract-all-failed");
+    await page.waitForSelector(row("lattices"), { hidden: true });
+
+    // The row context menu: Send PDF Only, a standalone attachment.
+    await page.click(row("problems"), { button: "right" });
+    await (await menuItem("Send PDF Only to Zotero")).click();
+    await page.waitForSelector(row("problems"), { hidden: true });
+
+    // The tab context menu: Send to Zotero.
+    await page.click(row("notes"), { count: 2 });
+    await shownReader("notes");
+    await page.click(tab("notes"), { button: "right" });
+    await (await menuItem("Send to Zotero")).click();
+    await page.waitForSelector(tab("notes"), { hidden: true });
+    await page.waitForSelector(row("notes"), { hidden: true });
+
+    // The palette: Send Selected PDF to Zotero.
+    await page.click(row("reading"));
+    await runCommand("Send Selected PDF to Zotero");
+    await page.waitForSelector(row("reading"), { hidden: true });
+
+    const items = [...zotero.items.values()];
+    expect(items.map((held) => held.url).sort()).toEqual(
+      ["lattices", "notes", "reading"].map((key) => published(`/~author/${key}.pdf`)).sort(),
+    );
+    for (const held of items) {
+      expect(
+        zotero.children(held.key).map((child) => child.data.contentType),
+      ).toEqual(["application/pdf"]);
+    }
+    expect(zotero.standalone.map((child) => child.data.filename)).toHaveLength(1);
+  } finally {
+    await app.stop();
+    zotero.stop();
+  }
+}, 120_000);
