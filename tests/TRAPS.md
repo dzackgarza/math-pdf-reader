@@ -35,3 +35,12 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 
 - **A synthetic pointer event reaches EmbedPDF's page handlers only when dispatched at the element under the point.** EmbedPDF binds page pointer handling to an interaction provider `div` _inside_ the drawn page box (page-sized, `position:relative`), not to the box itself; an event dispatched on the box bubbles past the provider, so a synthetic pen stroke selected nothing and the highlight count stayed at zero.
   Dispatch at the element the platform would hit-test: `S.elementFromPoint(x, y)` (`Reader.pen_event`).
+
+- **The store trashes PDFs with send2trash, which uses `$XDG_DATA_HOME/Trash` for a file on the home file system.** A suite run with the user's data home would put every PDF a test deletes or sends into the user's own Trash.
+  `tests/preload.ts` points `XDG_DATA_HOME` and `XDG_CACHE_HOME` at folders inside the run's scratch folder.
+
+- **Bun's `Bun.spawn` and `Bun.spawnSync` do not see a change to `process.env` unless `env: process.env` is passed.** A child started without it gets the environment the test process started with, so the run's `TMPDIR` does not reach it and its files land outside the scratch folder.
+  Pass `env` to every spawn in the preload; `tests/test-scratch.test.ts` fails when a file escapes.
+
+- **Every test file makes its folders with `mkdtempSync(join(tmpdir(), ...))` and removes none of them.** The preload sets `TMPDIR` to one folder per test process (`pdf-bucket-test-run-<pid>-*`), removes it after the last test file, and at start removes the folders of runs whose process is gone.
+  Screenshots meant for review go under `SCREENSHOT_ROOT` from the preload, the system temporary folder, so they stay after the run.

@@ -53,14 +53,14 @@ import {
   ReadingRequestSchema,
 } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
-import { SCRATCH_DATA_HOME } from "./preload";
+import { SCRATCH_DATA_HOME, SCREENSHOT_ROOT } from "./preload";
 import { readOrganization, recordMetadata } from "./store";
 import { refusal, zoteroStub } from "./zotero-stub";
 
 setDefaultTimeout(30_000);
 
 const fixtures = join(import.meta.dir, "fixtures");
-const screenshots = join(tmpdir(), "pdf-bucket-library-e2e");
+const screenshots = join(SCREENSHOT_ROOT, "pdf-bucket-library-e2e");
 const viewport = { width: 1400, height: 900 };
 
 const fixture = (file: string) =>
