@@ -164,7 +164,7 @@ pub struct Store {
     pub(crate) inner: Arc<Inner>,
 }
 
-// Where a new file goes: onto a free path only, or over the file there.
+/// Where a new file goes: onto a free path only, or over the file there.
 #[derive(Clone, Copy)]
 enum Placement {
     New,
@@ -1253,7 +1253,7 @@ impl Store {
                 continue;
             }
             if current_record.provenance == old_lineage.original_provenance {
-                let restored = layout::document_dir(root, &preferred_key);
+                let restored = layout::document_dir(root, preferred_key);
                 if !restored.try_exists()? {
                     std::fs::rename(&hidden, restored)?;
                     std::fs::File::open(root)?.sync_all()?;
@@ -1270,8 +1270,8 @@ impl Store {
                         && lineage.discovered_source_url == old_lineage.discovered_source_url
                 });
             if committed {
-                transfer_paper_artifacts_to(root, &hidden, &preferred_key, &original_key)?;
-                self.retire_linked_metadata(&preferred_key, &preferred_record.provenance)
+                transfer_paper_artifacts_to(root, &hidden, preferred_key, original_key)?;
+                self.retire_linked_metadata(preferred_key, &preferred_record.provenance)
                     .await?;
                 trash_all(vec![hidden]).await?;
             }
@@ -1415,7 +1415,7 @@ impl Store {
             let [(key, hidden_pdf)] = matching.as_slice() else {
                 continue;
             };
-            let current_pdf = layout::pdf_path(root, &key);
+            let current_pdf = layout::pdf_path(root, key);
             if !current_pdf.try_exists()? {
                 continue;
             }
@@ -1446,7 +1446,7 @@ impl Store {
                         && lineage.original_provenance == hidden_record.provenance
                 });
             if committed {
-                transfer_paper_artifacts(root, &hidden, &key)?;
+                transfer_paper_artifacts(root, &hidden, key)?;
             } else if !precommit {
                 return Err(AppError::store_failed(format!(
                     "{} does not match the current paper",
