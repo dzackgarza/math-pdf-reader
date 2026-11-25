@@ -13,6 +13,7 @@ import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
+  SendResponseSchema,
   type ZoteroRecord,
 } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
@@ -571,3 +572,76 @@ test("capture, reading, annotation, extraction, filing, Retrieve Metadata and de
   expect(zotero.items.size).toBe(0);
   expect(zotero.standalone).toEqual([]);
 }, 30_000);
+
+const LATTICES_URL = "https://www.math.example.edu/~author/lattices.pdf";
+
+async function send(bucket: Bucket, key: string): Promise<Response> {
+  return bucket.request(`/api/items/${key}/zotero`, { method: "POST" });
+}
+
+test("Send to Zotero files the new Zotero item in the collection selected in Zotero", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  zotero.selection = { kind: "collection", key: "LATT2345", name: "Lattices" };
+  await capture(bucket, "lattices");
+
+  const response = await send(bucket, "lattices");
+
+  expect(response.status).toBe(200);
+  const sent = SendResponseSchema.parse(await response.json());
+  expect(sent.created).toBe(true);
+  expect(zotero.items.get(sent.itemKey)?.collections).toEqual(["LATT2345"]);
+});
+
+test("Send to Zotero files a work Zotero already holds in the selected collection", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  zotero.items.set("HELD2345", {
+    key: "HELD2345",
+    url: LATTICES_URL,
+    collections: ["OLDC2345"],
+    fields: {},
+    deleted: false,
+  });
+  zotero.selection = { kind: "collection", key: "LATT2345", name: "Lattices" };
+  await capture(bucket, "lattices");
+
+  const response = await send(bucket, "lattices");
+
+  expect(response.status).toBe(200);
+  const sent = SendResponseSchema.parse(await response.json());
+  expect(sent).toMatchObject({ itemKey: "HELD2345", created: false });
+  expect(zotero.items.get("HELD2345")?.collections).toEqual([
+    "OLDC2345",
+    "LATT2345",
+  ]);
+});
+
+test("Send to Zotero with the library root selected in Zotero files the item in no collection", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  zotero.selection = { kind: "library_root" };
+  await capture(bucket, "lattices");
+
+  const response = await send(bucket, "lattices");
+
+  expect(response.status).toBe(200);
+  const sent = SendResponseSchema.parse(await response.json());
+  expect(zotero.items.get(sent.itemKey)?.collections).toEqual([]);
+  expect(zotero.writes()).toContain("get_selected_collection");
+});
+
+test("Send to Zotero with no Zotero window open says so and makes no Zotero item", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  zotero.selection = { kind: "no_window" };
+  await capture(bucket, "lattices");
+
+  const response = await send(bucket, "lattices");
+
+  expect(response.status).toBe(502);
+  expect(ApiErrorSchema.parse(await response.json()).error).toEqual({
+    kind: "zotero_failed",
+    message:
+      "Zotero refused get_selected_collection (409 Conflict): No Zotero window is open, so no collection is selected.",
+  });
+  expect(zotero.writes()).not.toContain("import_from_url");
+  expect(zotero.items.size).toBe(0);
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+});
