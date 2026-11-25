@@ -46,11 +46,19 @@ pub struct Serving {
 
 /// Binds HOST:PORT (port 0 picks a free one) and serves the bucket on the current runtime. The
 /// port is bound before this returns, so a caller that loads the origin next finds it answering.
+///
+/// The root is never made here: a root that is missing, or that the operating system cannot
+/// stat, has nothing to migrate or recover, and `GET /status` reports it. The desktop app makes
+/// its library folder before it calls this.
 pub async fn serve(config: BucketConfig, host: &str, port: u16) -> std::io::Result<Serving> {
-    tokio::fs::create_dir_all(&config.root).await?;
-    layout::migrate(&config.root)?;
+    let root_is_directory = tokio::fs::metadata(&config.root)
+        .await
+        .is_ok_and(|metadata| metadata.is_dir());
+    if root_is_directory {
+        layout::migrate(&config.root)?;
+    }
     let state = AppState::new(config);
-    {
+    if root_is_directory {
         let _locked = state
             .organizations
             .lock()
