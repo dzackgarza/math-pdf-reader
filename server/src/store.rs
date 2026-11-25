@@ -1520,35 +1520,6 @@ impl Store {
         let stdout = self.inner.python.run(&args).await.map_err(page_failure)?;
         String::from_utf8(stdout).map_err(AppError::internal)
     }
-
-    /// The lines of KEY's extraction that PAGE (from 1) of its PDF most likely covers, or None
-    /// when the page's words match nowhere in it.
-    pub async fn locate(&self, key: &str, page: u64) -> AppResult<Option<ExtractionLines>> {
-        let _key = self.lock(&self.existing_key(key)?).await;
-        let key = self.existing_key(key)?;
-        let args = [
-            "locate".to_string(),
-            "--page".to_string(),
-            page.to_string(),
-            "--".to_string(),
-            layout::pdf_path(self.root(), &key)
-                .to_string_lossy()
-                .into_owned(),
-            layout::markdown_path(self.root(), &key)
-                .to_string_lossy()
-                .into_owned(),
-        ];
-        self.inner.python.json(&args).await.map_err(page_failure)
-    }
-}
-
-/// What `pdfbucket locate` answers: a range of lines of the extraction, counted from 1, and the
-/// nearest heading at or before it.
-#[derive(serde::Deserialize)]
-pub struct ExtractionLines {
-    pub first: u64,
-    pub last: u64,
-    pub heading: Option<String>,
 }
 
 /// A failed page command: a page the PDF lacks is the caller's mistake, the rest the store's.
