@@ -143,18 +143,26 @@ captures and names its replacement.
   `src/extension/entrypoints/background.ts:68-74,85-89,174-179` (FR-008, SC-005,
   US3/AC3). Source has it; no test (`tests/bucket.ts` gives every e2e server an empty
   extensions directory).
+  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
+    (see T030).
 - [ ] T019 [US3] Show This build, Provisioned and Replacement in the popup of a stale
   build, in `src/extension/entrypoints/popup/main.ts:63-70` and
   `src/extension/bucket-status.ts:99` (FR-008, US3/AC3). Source has it; no test.
+  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
+    (see T030).
 - [ ] T020 [US3] Show the badge `OLD` with the replacement as its title for a stale
   build in `src/extension/bucket-status.ts` (FR-007, FR-008, US3/AC3). Source has it; no
   test.
+  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
+    (see T030).
 - [X] T021 [US3] Run the server and report `null` for each browser that has no
   provisioned build (US3/AC2, server half)
   - Evidence: `server/src/extensions.rs:50-66`; `tests/server-status.test.ts:22-40`
     expects `extensions: { chrome: null, firefox: null }` from a server given no builds.
 - [ ] T022 [US3] After the matching build replaces a stale one, the same PDF navigation
   stores the PDF and opens the reader (US3/AC4, SC-005). No test of the replacement.
+  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
+    (see T030).
 
 ## Phase 5: Convergence
 
@@ -232,15 +240,21 @@ that is not `[X]` maps to a task here.
   (missing).
   - Open: "a build other than the provisioned one shows OLD" passes in Firefox (T018-T020,
     T022). In Chrome it fails at its labelled step "service worker restart after
-    runtime.reload" (run 2026-11-25): the status page that called `runtime.reload` closed,
-    one service worker target (`background.js`) is listed, and Puppeteer reports no
-    service worker target created after the reload. The suite attaches to the worker at
-    its start, and Puppeteer's `TargetManager` says an attached session keeps a service
-    worker from being destroyed. A probe run that detached that session before the reload
-    and logged the browser's CDP `Target.targetCreated` and `Target.targetDestroyed`
-    events failed at the same step: the status page was destroyed, the old service worker
-    target was not, and no service worker target was created in 8 s. The attached session
-    is not the cause; the step's diagnostics keep the CDP target events.
+    runtime.reload" (run 2026-11-25): the status page that called `runtime.reload`
+    closed, and no service worker target of the extension was created, in Puppeteer's
+    targets or in the browser's CDP target events, also with the suite's debug session
+    detached first.
+  - Blocked (Chrome): in Chromium 156 an unpacked extension that Puppeteer loaded does not
+    come back after `chrome.runtime.reload()` (tests/TRAPS.md, capture suite). A
+    standalone probe with the installed `chrome-mv3` build, loaded by `enableExtensions`
+    and by `--load-extension`, headless and headful under `xvfb-run`, found no service
+    worker target, no target of the extension in `Target.getTargets`,
+    `net::ERR_BLOCKED_BY_CLIENT` for its popup page, and no Chromium log line for it. The
+    timeout is not an extension defect a test can expose. It is unblocked by a Chromium
+    that reloads a test-loaded unpacked extension, or by a check in the user's own
+    Chrome: provision a new version while the old unpacked build is loaded, and see
+    `OLD`, the popup's This build, Provisioned and Replacement, a refused PDF link, and a
+    stored PDF after the new build is loaded.
 - [ ] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the

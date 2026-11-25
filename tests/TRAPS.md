@@ -75,6 +75,8 @@ Behaviour of the tools the suites use that makes a test pass or fail for the wro
 
 - **The capture page is web-accessible, so a web page can frame it with any PDF URL.** Only a frame the extension itself sent there gets its PDF captured.
 
+- **In Chromium 156 an unpacked extension that Puppeteer loaded does not come back after `chrome.runtime.reload()`.** Before the reload its service worker answers; after it, no `service_worker` target exists, CDP `Target.getTargets` lists no target of the extension, and its `chrome-extension://<id>/popup.html` fails with `net::ERR_BLOCKED_BY_CLIENT`. With `--vmodule=*extension*=1` Chromium logs no line for the extension at all. This holds for the installed `chrome-mv3` build loaded by `enableExtensions` and by `--load-extension` (with `--disable-features=DisableLoadExtensionCommandLineSwitch`), headless and headful under `xvfb-run`. So the suite cannot show anything the extension does after it reloads itself: a stale build's self-reload, its replacement text after the reload, and a capture by the replacing build. A wait for the worker's restart times out; that is not a defect in the extension.
+
 - **Chrome stops a service worker whose `fetch()` response takes more than 30 s.** A slow store can hold the server's answer past that; the emptied downloads folder shows that a later worker delivered the capture. A page load or a followed PDF link starts a worker.
 
 - **Invariant 4 counts a GET response as a PDF beyond `application/pdf`.** A generic or missing type on a `.pdf` path, the legacy PDF type, and whitespace before the parameters all count.
