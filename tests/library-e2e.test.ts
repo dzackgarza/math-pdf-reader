@@ -1109,6 +1109,43 @@ test("Delete and Enter on a focused button act on that button, not on the select
   await page.waitForSelector(`${unfiled}[aria-pressed="false"]`);
 });
 
+test("a Next Page press survives the zoom refit that a viewport resize brings before the press's scroll is drawn", async () => {
+  await page.goto(`${bucket.origin}/read/reading#page=1`);
+  await readerLoaded("reading");
+  await scrollSettled("reading");
+  await page.evaluate(
+    async (css, next) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const zoom = (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides();
+      const button = viewer?.shadowRoot?.querySelector(next);
+      if (zoom === undefined || !(button instanceof HTMLButtonElement)) {
+        throw new Error(`${css} has no zoom plugin or Next Page button`);
+      }
+      button.click();
+      zoom.requestZoom(zoom.getState().zoomLevel);
+    },
+    viewerOf("reading"),
+    "[data-epdf-i='bucket-page-controls'] button[aria-label='Next Page']",
+  );
+  await scrollSettled("reading");
+  const shown = await page.evaluate(async (css) => {
+    const viewer = document.querySelector<EmbedPdfContainer>(css);
+    const scroll = (await viewer?.registry)
+      ?.getPlugin<ScrollPlugin>("scroll")
+      ?.provides();
+    if (scroll === undefined) {
+      throw new Error(`${css} has no scroll plugin`);
+    }
+    return {
+      page: scroll.getCurrentPage(),
+      top: scroll.getMetrics().visiblePages[0],
+    };
+  }, viewerOf("reading"));
+  expect(shown).toEqual({ page: 2, top: 2 });
+});
+
 test("wheel reading keeps its position as pages render", async () => {
   await page.goto(`${bucket.origin}/read/reading#page=1`);
   await readerLoaded("reading");
