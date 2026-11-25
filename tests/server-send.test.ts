@@ -3,6 +3,7 @@
 // loopback stand-in for the write API (tests/zotero-stub.ts) that keeps what the requests make,
 // so no test here writes to a real library.
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
@@ -13,12 +14,13 @@ import {
   ApiErrorSchema,
   type BucketItem,
   LibraryPayloadSchema,
+  SendAndExtractResponseSchema,
   SendResponseSchema,
   type ZoteroRecord,
 } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { unfiled, writeOrganization } from "./store";
-import { type ZoteroStub, zoteroStub } from "./zotero-stub";
+import { refusal, type ZoteroStub, zoteroStub } from "./zotero-stub";
 
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
 const problemSet = join(import.meta.dir, "fixtures/problem-set.pdf");
@@ -106,10 +108,39 @@ async function item(
 async function errorKind(response: Response): Promise<string> {
   return ApiErrorSchema.parse(await response.json()).error.kind;
 }
+const sha256 = (bytes: Uint8Array) =>
+  createHash("sha256").update(bytes).digest("hex");
+
+// What the user has of a paper locally: the PDF its URL serves, the stored file, and its filing.
+async function localPaper(bucket: Bucket, key: string) {
+  const served = await bucket.request(`/pdf/${key}.pdf`);
+  const filed = await item(bucket, key);
+  return {
+    served: sha256(new Uint8Array(await served.arrayBuffer())),
+    stored: sha256(readFileSync(join(bucket.root, key, `${key}.pdf`))),
+    collections: filed?.collections,
+    tags: filed?.tags,
+    notes: filed?.notes.map((note) => note.note),
+  };
+}
+
+// The paper is still the user's after a failed send: the same PDF at its URL and on disk, the
+// same filing, and its reader page opens.
+async function expectPaperKept(
+  bucket: Bucket,
+  key: string,
+  before: Awaited<ReturnType<typeof localPaper>>,
+): Promise<void> {
+  expect(await localPaper(bucket, key)).toEqual(before);
+  expect((await bucket.request(`/read/${key}`)).status).toBe(200);
+}
+
 
 test("a send while Zotero is not running says to start Zotero and records no Zotero item", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
+  await file(bucket, "lattices");
+  const before = await localPaper(bucket, "lattices");
 
   const response = await bucket.request("/api/items/lattices/zotero", {
     method: "POST",
@@ -122,12 +153,14 @@ test("a send while Zotero is not running says to start Zotero and records no Zot
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "unsent",
   });
+  await expectPaperKept(bucket, "lattices", before);
 });
 
 test("a second send of an item already in Zotero is refused without contacting Zotero", async () => {
   const bucket = await emptyBucket();
   await capture(bucket, "lattices");
   recordSent(bucket, "lattices");
+  const before = await localPaper(bucket, "lattices");
 
   const response = await bucket.request("/api/items/lattices/zotero", {
     method: "POST",
@@ -140,6 +173,7 @@ test("a second send of an item already in Zotero is refused without contacting Z
     record: SENT,
     pending: [],
   });
+  await expectPaperKept(bucket, "lattices", before);
 });
 
 test("an extraction made after the send is owed to Zotero, and a later send goes to attach it", async () => {
@@ -361,6 +395,7 @@ test("Send PDF Only refuses an item with notes or Markdown, which a standalone P
     join(bucket.root, "lattices", "lattices.md"),
     "# Lattices and Quadratic Forms\n",
   );
+  const before = await localPaper(bucket, "lattices");
 
   const response = await bucket.request("/api/items/lattices/zotero/pdf-only", {
     method: "POST",
@@ -375,6 +410,7 @@ test("Send PDF Only refuses an item with notes or Markdown, which a standalone P
   expect((await item(bucket, "lattices"))?.zotero).toEqual({
     status: "unsent",
   });
+  await expectPaperKept(bucket, "lattices", before);
 });
 
 test("Send PDF Only while Zotero is not running says to start Zotero and records nothing", async () => {
@@ -645,3 +681,135 @@ test("Send to Zotero with no Zotero window open says so and makes no Zotero item
   expect(zotero.items.size).toBe(0);
   expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
 });
+
+const attachesPdf = (request: { path: string; body: Record<string, unknown> | null }) =>
+  request.path === "/attach" && String(request.body?.file_name).endsWith(".pdf");
+
+test("a send whose PDF attach fails keeps the Zotero item, and the next send attaches only the PDF", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  await capture(bucket, "lattices");
+  await file(bucket, "lattices");
+  zotero.refuse = (request) =>
+    attachesPdf(request)
+      ? refusal(500, "attach_file_to_item", "Disk full", request.body)
+      : null;
+  const before = await localPaper(bucket, "lattices");
+
+  const failed = await send(bucket, "lattices");
+
+  expect(failed.status).toBe(502);
+  expect(ApiErrorSchema.parse(await failed.json()).error).toEqual({
+    kind: "zotero_failed",
+    message: "Zotero refused attach_file_to_item (500 Internal Server Error): Disk full",
+  });
+  const [itemKey] = zotero.items.keys();
+  const owed = (await item(bucket, "lattices"))?.zotero;
+  expect(owed).toMatchObject({ status: "sent", record: { itemKey } });
+  expect(owed?.status === "sent" && owed.pending).toContain("pdf");
+  await expectPaperKept(bucket, "lattices", before);
+
+  zotero.refuse = null;
+  const retried = await send(bucket, "lattices");
+
+  expect(retried.status).toBe(200);
+  expect(SendResponseSchema.parse(await retried.json())).toMatchObject({
+    itemKey,
+    created: false,
+    performed: ["pdf", "notes"],
+  });
+  expect(zotero.writes().filter((write) => write === "import_from_url")).toHaveLength(1);
+  expect(
+    zotero.children(itemKey).filter((child) => child.data.contentType === "application/pdf"),
+  ).toHaveLength(1);
+  expect(await item(bucket, "lattices")).toBeUndefined();
+}, 30_000);
+
+test("Send to Zotero and Extract with every plugin failing sends the PDF and no Markdown", async () => {
+  const { bucket, zotero } = await stubbedBucket({ quota: "fail", broken: "fail" });
+  await capture(bucket, "lattices");
+
+  const response = await bucket.request("/api/items/lattices/zotero/extracted", {
+    method: "POST",
+  });
+
+  expect(response.status).toBe(200);
+  const sent = SendAndExtractResponseSchema.parse(await response.json());
+  expect(sent.extractions.map((outcome) => [outcome.plugin_id, outcome.status])).toEqual([
+    ["quota", "failed"],
+    ["broken", "failed"],
+  ]);
+  expect(sent.send.performed).toEqual(["fields", "pdf"]);
+  const children = zotero.children(sent.send.itemKey);
+  expect(children.map((child) => child.data.contentType)).toEqual(["application/pdf"]);
+}, 30_000);
+
+test("Send to Zotero and Extract attaches the PDF before any plugin runs", async () => {
+  const { bucket, zotero } = await stubbedBucket({ markdown: "markdown" });
+  await capture(bucket, "lattices");
+  zotero.refuse = (request) =>
+    attachesPdf(request)
+      ? refusal(500, "attach_file_to_item", "Disk full", request.body)
+      : null;
+
+  const response = await bucket.request("/api/items/lattices/zotero/extracted", {
+    method: "POST",
+  });
+
+  // The PDF attach failed, so the chain never started: the paper still has no extraction.
+  expect(await errorKind(response)).toBe("zotero_failed");
+  expect((await item(bucket, "lattices"))?.extraction).toEqual({ status: "none" });
+  expect(zotero.writes().filter((write) => write === "attach")).toHaveLength(1);
+}, 30_000);
+
+test("Send to Zotero and Extract on a paper with Markdown attaches that Markdown and runs no plugin", async () => {
+  const { bucket, zotero } = await stubbedBucket({ markdown: "record" });
+  await capture(bucket, "lattices");
+  const markdown = "# Lattices and Quadratic Forms\n\nThe user's own extraction.\n";
+  writeFileSync(join(bucket.root, "lattices", "lattices.md"), markdown);
+
+  const response = await bucket.request("/api/items/lattices/zotero/extracted", {
+    method: "POST",
+  });
+
+  expect(response.status).toBe(200);
+  const sent = SendAndExtractResponseSchema.parse(await response.json());
+  expect(sent.extractions).toEqual([]);
+  expect(sent.send.performed).toContain("markdown");
+  const attached = zotero.requests.filter(
+    (request) =>
+      request.path === "/attach" && request.body?.file_name === `${sent.send.itemKey}_extracted.md`,
+  );
+  expect(attached).toHaveLength(1);
+  expect(
+    Buffer.from(String(attached[0]?.body?.file_bytes_base64), "base64").toString("utf8"),
+  ).toBe(markdown);
+}, 30_000);
+
+test("a send of a source Zotero cannot identify gives Zotero's reason and records no Zotero item", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  await capture(bucket, "lattices");
+  const unidentified = readFileSync(
+    join(import.meta.dir, "fixtures/zotero/resolve-unidentified.json"),
+    "utf8",
+  );
+  zotero.refuse = (request) =>
+    request.body?.operation === "import_from_url"
+      ? new Response(unidentified.replaceAll("resolve_url", "import_from_url"), {
+          status: 422,
+          headers: { "Content-Type": "application/json" },
+        })
+      : null;
+  const before = await localPaper(bucket, "lattices");
+
+  const response = await send(bucket, "lattices");
+
+  expect(response.status).toBe(502);
+  const error = ApiErrorSchema.parse(await response.json()).error;
+  expect(error.kind).toBe("zotero_failed");
+  expect(error.message).toStartWith(
+    `Zotero refused import_from_url (422 Unprocessable Entity): ${JSON.parse(unidentified).error}`,
+  );
+  expect((await item(bucket, "lattices"))?.zotero).toEqual({ status: "unsent" });
+  expect(zotero.items.size).toBe(0);
+  await expectPaperKept(bucket, "lattices", before);
+}, 30_000);

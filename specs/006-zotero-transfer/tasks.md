@@ -26,11 +26,11 @@ covers it.
 - [X] T001 Run the write API health check before every Zotero action and answer
   `503 zotero_unavailable` with the reason, in `server/src/zotero.rs` and `server/src/send.rs`.
   Serves FR-006 and US2/AC1.
-  Evidence: `server/src/zotero.rs:237-306`, `server/src/send.rs:291`, `:451`;
-  `tests/server-send.test.ts:101` (not running) and `:207` (no addon).
+  Evidence: `server/src/zotero.rs:248-317`, `server/src/send.rs:297`, `:457`;
+  `tests/server-send.test.ts:139` (not running) and `:250` (no addon).
 - [X] T002 Refuse a send from a page on another site or another host name, so only the
   bucket's own pages and non-browser clients can send, in `server/src/guard.rs`. Serves FR-001.
-  Evidence: `server/src/send.rs:523-529` behind the guard; `tests/server-send.test.ts:230`, `:290`.
+  Evidence: `server/src/send.rs:529-535` behind the guard; `tests/server-send.test.ts:273`, `:333`.
 
 ## Phase 2: User Story 1 - Send a paper deliberately (P1, MVP)
 
@@ -45,40 +45,40 @@ inspect the Zotero item.
   Per FR-001, FR-002, SC-001, US1/AC1 and US3/AC2.
   Evidence: only `server/src/send.rs` calls `import_from_url`, `attach_bytes`,
   `attach_standalone`, `set_url_and_access_date`, `attach_note` or `trash_item`;
-  `server/src/titles.rs:79` calls only `resolve_url`. `tests/server-send.test.ts:519` captures,
+  `server/src/titles.rs:79` calls only `resolve_url`. `tests/server-send.test.ts:556` captures,
   reads, annotates, extracts, files, records reading, runs Retrieve metadata and deletes against
   the stub, and asserts that Zotero received only `resolve_url` and holds no item.
 - [X] T004 [US1] Send to Zotero finds or makes the Zotero item for the PDF URL, then attaches
   one PDF, in `server/src/send.rs`. Per FR-003, SC-002 and US1/AC2 (citation and PDF).
-  Evidence: `server/src/send.rs:143-167`, `:194-213`, `:283-310`, `:334-359`; live
+  Evidence: `server/src/send.rs:143-173`, `:200-219`, `:289-316`, `:340-365`; live
   `tests/server-send-live.ts:267` (one "Full Text PDF" child), `:69` and `:106` (one item per
   paper).
 - [X] T005 [US1] Use the existing Zotero item for a work Zotero already holds. Keep one PDF:
   the copy that has more annotations. In `server/src/send.rs`. Per the edge case "The citation
   store may reject a duplicate".
-  Evidence: `server/src/send.rs:184-213`; live `tests/server-send-live.ts:346`.
+  Evidence: `server/src/send.rs:190-219`; live `tests/server-send-live.ts:346`.
 - [X] T006 [US1] File the item that Send to Zotero makes or finds in Zotero's selected
   collection, in `server/src/zotero.rs` and `server/src/send.rs`. Per FR-005 and US1/AC2.
   Evidence: `server/src/zotero.rs:370-403` (`import_from_url` with `collection_keys`,
-  `selected_collection`), `server/src/send.rs:151-160`; `tests/server-send.test.ts:582` (new
-  item), `:595` (held item gains the collection), `:618` (library root).
-- [ ] T007 [US1] Send to Zotero and Extract attaches the paper's existing Markdown, in
+  `selected_collection`), `server/src/send.rs:151-160`; `tests/server-send.test.ts:618` (new
+  item), `:631` (held item gains the collection), `:654` (library root).
+- [X] T007 [US1] Send to Zotero and Extract attaches the paper's existing Markdown, in
   `server/src/send.rs`. Per FR-003 and US1/AC3.
-  Code: `server/src/send.rs:236-247`, `:389-391`. `tests/server-send.test.ts:136` shows only
-  that Markdown is owed while Zotero is down. No test sees a Markdown attachment from an
-  existing extraction.
+  Evidence: `server/src/send.rs:242-253`, `:395-397`; `tests/server-send.test.ts:764` (no
+  plugin runs, `extractions` is empty, one `/attach` carries the bytes of `<key>.md` as
+  `<ZoteroKey>_extracted.md`).
 - [ ] T008 [US1] Send to Zotero and Extract with no extraction sends the PDF first, then runs
   the configured chain up to the first success and attaches that Markdown to the same item, in
   `server/src/send.rs` and `server/src/extractions.rs`. Per FR-003, SC-002 and US1/AC5.
-  Code: `server/src/send.rs:389-401`, `server/src/extractions.rs:380-391`. Live
+  Code: `server/src/send.rs:395-407`, `server/src/extractions.rs:380-391`. Live
   `tests/server-send-live.ts:209` asserts the chain order, `performed` and the Markdown child.
   It does not read the PDF child of the same item.
 - [X] T009 [US1] Send PDF Only stores the PDF as a standalone attachment and needs no
   extraction. It refuses a paper whose notes or Markdown an attachment cannot hold. In
   `server/src/send.rs` and `server/src/zotero.rs`. Per FR-004, SC-005 and US1/AC4.
-  Evidence: `server/src/send.rs:417-475`, `server/src/zotero.rs:430-445`; live
+  Evidence: `server/src/send.rs:423-481`, `server/src/zotero.rs:470-485`; live
   `tests/server-send-live.ts:180` (attachment with no parent, `performed: ["pdf"]`);
-  `tests/server-send.test.ts:341`, `:371`, `:393`.
+  `tests/server-send.test.ts:384`, `:416`, `:438`.
 - [ ] T010 [US1] Offer the three sends as explicit controls: the inspector button and its menu,
   the row and tab context menus, and the palette. In `src/web/components/InspectorPanel.tsx`,
   `src/web/components/ItemContextMenu.tsx`, `src/web/commands.ts` and
@@ -95,37 +95,42 @@ inspect the Zotero item.
 
 - [X] T011 [US2] With Zotero unavailable, a send answers `zotero_unavailable`, records no Zotero
   item and keeps the item in the library, in `server/src/send.rs`. Per FR-006 and US2/AC1 (server).
-  Evidence: `server/src/send.rs:283-296`; `tests/server-send.test.ts:101`, `:207`, `:371`.
+  Evidence: `server/src/send.rs:289-302`; `tests/server-send.test.ts:139`, `:250`, `:416`.
 - [ ] T012 [US2] Show the failure reason in the inspector and keep the paper openable, in
   `src/web/components/InspectorPanel.tsx` and `src/web/libraryActions.ts`. Per FR-006, SC-003
   and US2/AC1 (UI).
   Code: `SendNotice` (`InspectorPanel.tsx:663-676`), `sendToZotero` (`libraryActions.ts:648-656`).
   No test asserts the alert. `scripts/library_screenshots.py` records the screenshots only.
-- [ ] T013 [US2] After each failed send (`zotero_unavailable`, `zotero_failed`, `already_sent`,
+- [X] T013 [US2] After each failed send (`zotero_unavailable`, `zotero_failed`, `already_sent`,
   `pdf_only_refused`), keep the PDF bytes, the reader page and the filing unchanged. Per SC-003
   and FR-006.
-  Code: the send writes the store only in `leave` after all steps succeed
-  (`server/src/send.rs:326-332`). The tests assert the Zotero status only, not the PDF or the
-  reader page. No test produces `zotero_failed`.
-- [ ] T014 [US2] Retry after a PDF attachment failure: use the recorded Zotero item, perform
+  Evidence: the send writes the store only in `leave` after all steps succeed
+  (`server/src/send.rs:332-338`). `expectPaperKept` (`tests/server-send.test.ts:129`) checks
+  the SHA-256 of the served and the stored PDF, the reader page and the filing after
+  `zotero_unavailable` (`:139`), `already_sent` (`:159`), `pdf_only_refused` (`:384`) and
+  `zotero_failed` (`:688`, `:788`).
+- [X] T014 [US2] Retry after a PDF attachment failure: use the recorded Zotero item, perform
   only the owed steps, and leave exactly one PDF child, in `server/src/send.rs`. Per US2/AC2
   and the edge case "Attachment transfer may fail after citation creation".
-  Code: `server/src/send.rs:292-304` records the key before the steps; `:194-213` keeps one PDF.
-  No test.
+  Evidence: `server/src/send.rs:298-310` records the key before the steps; `:200-219` keeps one
+  PDF. `tests/server-send.test.ts:688`: the PDF attach fails (502, `pending` holds `pdf`, the
+  same item key); the next send performs `["pdf", "notes"]` with one `import_from_url` in all
+  and leaves one PDF child.
 - [ ] T015 [US2] When every plugin in the chain fails, keep the PDF in Zotero, attach no
   Markdown, and report each failure, in `server/src/send.rs` and `src/web/libraryActions.ts`.
   Per US2/AC3 and SC-002.
-  Code: `server/src/send.rs:389-401`, `reportChain` (`libraryActions.ts:611-623`). No test.
-- [ ] T016 [US2] When Zotero rejects an incomplete record (`422` from `import_from_url`), answer
+  Code: `server/src/send.rs:395-407`, `reportChain` (`libraryActions.ts:611-623`). No test.
+- [X] T016 [US2] When Zotero rejects an incomplete record (`422` from `import_from_url`), answer
   `502 zotero_failed` with Zotero's reason and record no Zotero item, in `server/src/zotero.rs`.
   Per the edge case "reject a duplicate or incomplete record" and FR-006.
-  Code: `server/src/zotero.rs:337-347`, `server/src/error.rs:77`. No test.
+  Evidence: `server/src/zotero.rs:348-358`, `server/src/error.rs:77`; `tests/server-send.test.ts:788`
+  (`502 zotero_failed` with the write API's reason, status `unsent`, no Zotero item).
 - [X] T017 [US2] When the selected collection is unavailable, make the send's target explicit,
   in `server/src/send.rs`. Per the edge case "A selected collection may be unavailable" and
   FR-005. Depends on T006.
   Evidence: `server/src/zotero.rs:387-403` passes the write API's `409` through as
   `zotero_failed`, and `server/src/send.rs:151` reads the selection before any import;
-  `tests/server-send.test.ts:631` (the message names the closed window, no item is made).
+  `tests/server-send.test.ts:667` (the message names the closed window, no item is made).
 
 ## Phase 4: User Story 3 - Use the user's connector (P2)
 
@@ -172,7 +177,7 @@ last.
   test asks, with the addon's documented JSON (addon `openapi.yaml`). It also answers the
   `/api/users/0/items/<key>/children` reads. Prerequisite for T003, T014, T015 and T016
   (missing).
-  Evidence: `tests/zotero-stub.ts:106`; used by `tests/server-send.test.ts:446`.
+  Evidence: `tests/zotero-stub.ts:106`; used by `tests/server-send.test.ts:483`.
 - [X] T021 CRITICAL: Pass Zotero's selected collection to `import_from_url` in
   `server/src/zotero.rs` and `server/src/send.rs`. Read it with `get_selected_collection`, send
   its key in `collection_keys`, and file an existing item in that collection. With no
@@ -187,35 +192,42 @@ last.
   collection, tag it, add a note and run Retrieve metadata. Assert that the stub received only
   `resolve_url` and `GET /version`. Per FR-002, SC-001, US1/AC1 and US3/AC2 (partial: the code
   holds, no proof).
-  Evidence: `tests/server-send.test.ts:519` (see T003).
-- [ ] T023 Add a partial-failure retry test to `tests/server-send.test.ts` with the T020 stub.
+  Evidence: `tests/server-send.test.ts:556` (see T003).
+- [X] T023 Add a partial-failure retry test to `tests/server-send.test.ts` with the T020 stub.
   `import_from_url` succeeds and `/attach` fails. Assert `502 zotero_failed`, `zotero.status`
   `sent` with `pending` containing `pdf` and the recorded item key, and an unchanged PDF at
   `/pdf/<key>.pdf`. Then let `/attach` succeed and send again. Assert one `import_from_url` in
   total, one PDF child and the item gone from the library. Per US2/AC2, FR-006 and T014
   (missing).
-- [ ] T024 Add an all-plugins-fail test for `/zotero/extracted` to `tests/server-send.test.ts`
+  Evidence: `tests/server-send.test.ts:688` (see T014).
+- [X] T024 Add an all-plugins-fail test for `/zotero/extracted` to `tests/server-send.test.ts`
   with the T020 stub and a manifest of failing fixture plugins
   (`tests/fixtures/plugins/extractor.sh fail`). Assert a `/attach` of the PDF before the first
   plugin runs, no `/attach` of a Markdown file, every outcome `failed`, and `performed` without
   `markdown`. Per US2/AC3, US1/AC5 and T015 (missing).
+  Evidence: `tests/server-send.test.ts:727` (each outcome `failed`, `performed` is
+  `["fields", "pdf"]`, the item's only child is the PDF); `:746` (a failed PDF attach stops the
+  send before any plugin runs, so the paper has no extraction).
 - [ ] T025 Extend the live test at `tests/server-send-live.ts:209` to read the item's children
   and assert one `application/pdf` attachment beside `<ZoteroKey>_extracted.md`. Per US1/AC5,
   SC-002 and T008 (partial).
-- [ ] T026 Add a test of Send to Zotero and Extract on a paper that already has Markdown, with
+- [X] T026 Add a test of Send to Zotero and Extract on a paper that already has Markdown, with
   the T020 stub, to `tests/server-send.test.ts`. Assert no plugin runs, `extractions` is empty,
   and one `/attach` carries the bytes of `<root>/<key>/<key>.md` as `<ZoteroKey>_extracted.md`.
   Per FR-003, US1/AC3 and T007 (missing).
-- [ ] T027 Assert the local paper after each failure in the send tests in
+  Evidence: `tests/server-send.test.ts:764` (see T007).
+- [X] T027 Assert the local paper after each failure in the send tests in
   `tests/server-send.test.ts`. After `zotero_unavailable`, `zotero_failed`, `already_sent` and
   `pdf_only_refused`, the SHA-256 of `/pdf/<key>.pdf` and of `<root>/<key>/<key>.pdf` is
   unchanged, `/read/<key>` answers 200, and the filing is unchanged. Per SC-003, FR-006 and T013
   (partial).
-- [ ] T028 Add a test of Zotero's refusal of an unidentified source to
+  Evidence: `tests/server-send.test.ts:129`, used at `:139`, `:159`, `:384`, `:688`, `:788` (see T013).
+- [X] T028 Add a test of Zotero's refusal of an unidentified source to
   `tests/server-send.test.ts`. The T020 stub answers `import_from_url` with `422` in the shape of
   `tests/fixtures/zotero/resolve-unidentified.json`. Assert `502 zotero_failed` with Zotero's
   reason and `zotero.status` `unsent`. Per the edge case "reject a duplicate or incomplete
   record" and T016 (missing).
+  Evidence: `tests/server-send.test.ts:788` (see T016).
 - [ ] T029 Add a library UI test to `tests/library-e2e.test.ts`. Press **Send to Zotero** in
   the inspector against a closed Zotero port. Assert the `role="alert"` text "Zotero is not
   running: start Zotero", the button enabled again and the reader opening the paper. Repeat

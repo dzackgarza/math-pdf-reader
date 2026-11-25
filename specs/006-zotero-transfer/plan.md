@@ -124,25 +124,25 @@ loopback stub of the write API in the Bun tests, the same method that
 ### Send to Zotero (`POST /api/items/<key>/zotero`)
 
 1. Refuse with `409 already_sent` when a record exists and no step is owed
-   (`send.rs:342-350`). No Zotero request is sent.
-2. Run the health check (`zotero.rs:297`). Failure gives `503 zotero_unavailable`.
+   (`send.rs:348-356`). No Zotero request is sent.
+2. Run the health check (`zotero.rs:308`). Failure gives `503 zotero_unavailable`.
 3. Use the recorded Zotero item. When there is none, call `import_from_url` with the PDF
-   URL and `store_attachments: false` (`send.rs:143-167`). Record the Zotero key at once
-   (`send.rs:296`).
-4. Perform each owed step and record it after Zotero answers (`send.rs:299-304`): `fields`,
-   `pdf` (one PDF, `send.rs:194-213`), `markdown` when the paper has an extraction, and one
+   URL and `store_attachments: false` (`send.rs:143-173`). Record the Zotero key at once
+   (`send.rs:302`).
+4. Perform each owed step and record it after Zotero answers (`send.rs:305-310`): `fields`,
+   `pdf` (one PDF, `send.rs:200-219`), `markdown` when the paper has an extraction, and one
    `notes` step for each note.
 5. Remove the item from the bucket unless a Keep offline collection holds it
-   (`send.rs:326-332`).
+   (`send.rs:332-338`).
 
 A failure in step 4 leaves the record with the remaining steps owed. The next send uses the
 same Zotero item and performs only those steps. That is the US2/AC2 retry path.
 
 ### Send to Zotero and Extract (`POST /api/items/<key>/zotero/extracted`)
 
-Run the send steps first (`send.rs:389`). If the paper has no Markdown, run
+Run the send steps first (`send.rs:395`). If the paper has no Markdown, run
 `plugins.send_extraction_chain` up to the first success (`extractions.rs:380-391`). Then
-perform the `markdown` step (`send.rs:394-401`). The answer lists each plugin outcome.
+perform the `markdown` step (`send.rs:400-407`). The answer lists each plugin outcome.
 `reportChain` (`libraryActions.ts:611-623`) shows a notice for a success and an error report
 when every plugin fails.
 
