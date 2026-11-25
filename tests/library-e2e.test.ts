@@ -190,6 +190,7 @@ test("arXiv replacement keeps the current PDF on failure and shows the new PDF o
         abs_url: endpoint("/abs/"),
         pdf_url: endpoint("/pdf/"),
         e_print_url: endpoint("/e-print/"),
+        request_interval_seconds: 0,
       },
     },
   });

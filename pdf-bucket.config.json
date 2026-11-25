@@ -39,6 +39,7 @@
     "api_url": "https://export.arxiv.org/api/query",
     "abs_url": "https://arxiv.org/abs/",
     "pdf_url": "https://arxiv.org/pdf/",
-    "e_print_url": "https://arxiv.org/e-print/"
+    "e_print_url": "https://arxiv.org/e-print/",
+    "request_interval_seconds": 3
   }
 }

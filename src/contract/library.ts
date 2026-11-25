@@ -586,6 +586,8 @@ export const API_ERROR_KINDS = [
   "ai_unavailable",
   // arXiv discovery on a title that names no paper (a page label, "None", the file name).
   "placeholder_title",
+  // The arXiv API refused a discovery request (HTTP 429 or 503) or could not be reached.
+  "arxiv_unavailable",
 ] as const;
 
 export const ApiErrorSchema = z.strictObject({

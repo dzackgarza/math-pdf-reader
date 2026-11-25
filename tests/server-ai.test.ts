@@ -597,6 +597,7 @@ test("arXiv replacement routes each reader page to the current edition's chat", 
     abs_url: at("/abs/"),
     pdf_url: at("/pdf/"),
     e_print_url: at("/e-print/"),
+    request_interval_seconds: 0,
   };
   const app = await storedBucket(
     "true",
@@ -772,6 +773,7 @@ test.each([
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     };
     const gateName =
       action === "session"

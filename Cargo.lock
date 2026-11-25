@@ -3378,6 +3378,7 @@ dependencies = [
  "futures",
  "hex",
  "html-escape",
+ "httpdate",
  "jsonschema",
  "lockable",
  "lol_html",

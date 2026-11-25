@@ -35,6 +35,9 @@ export const AppConfigSchema = z.strictObject({
     abs_url: z.url(),
     pdf_url: z.url(),
     e_print_url: z.url(),
+    // The pause between the end of one arXiv API request and the start of the next. The arXiv
+    // API terms of use ask for at least 3 s; only a local fixture endpoint may use less.
+    request_interval_seconds: z.number().int().nonnegative(),
   }),
   // `just rebuild-cache`: downloads at once, and how long one may take before its URL is dead.
   rebuild: z.strictObject({

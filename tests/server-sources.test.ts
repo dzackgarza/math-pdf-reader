@@ -282,6 +282,7 @@ test("a forged confidence score cannot promote an unrelated arXiv candidate", as
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -318,6 +319,7 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library, item } = await bucket(
@@ -434,6 +436,7 @@ test("a long paper key can be replaced without exceeding filesystem name limits"
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -464,6 +467,7 @@ test("explicit retry consolidates a linked legacy arXiv pair", async () => {
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library, item } = await bucket(
@@ -583,6 +587,7 @@ test.each(["BEFORE", "AFTER"] as const)(
         abs_url: at("/abs/"),
         pdf_url: at("/pdf/"),
         e_print_url: at("/e-print/"),
+        request_interval_seconds: 0,
       },
     };
     const gate = join(
@@ -721,6 +726,7 @@ test("simultaneous promotions from separate server processes reuse one preferred
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -768,6 +774,7 @@ test("promotion lineage is recoverable from the preferred PDF without the filing
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, item } = await bucket(null, localArxiv);
@@ -822,6 +829,7 @@ test("saving a preferred PDF preserves its source lineage when the editor omits 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, app, request, capture, item } = await bucket(null, localArxiv);
@@ -879,6 +887,7 @@ test("rebuilding a lost preferred PDF restores its lineage", async () => {
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const exportFile = join(
@@ -949,6 +958,7 @@ test("deleting a preferred item removes its retained promotion record", async ()
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -986,6 +996,7 @@ test("forgetting a missing preferred item removes its retained promotion record"
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const exportFile = join(
@@ -1048,6 +1059,7 @@ test("reusing a deleted original key does not link the new PDF to the old promot
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, item } = await bucket(null, localArxiv);
@@ -1080,6 +1092,7 @@ test("a preferred PDF with inconsistent lineage is reported without hiding other
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -1123,6 +1136,7 @@ test("a damaged promotion recovery record does not hide other papers", async () 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -1176,6 +1190,7 @@ test("a failed preferred-source fetch leaves the original item usable", async ()
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, item, library } = await bucket(
@@ -1251,6 +1266,7 @@ test("a missing replaced PDF requires recovery and cannot be promoted again", as
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -1297,6 +1313,7 @@ test("promotion refuses a PDF redirect to a different origin", async () => {
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -1339,6 +1356,7 @@ test("filing read failure prevents publication of a preferred item", async () =>
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -1376,6 +1394,7 @@ test("replacement does not touch a different paper directory named after the arX
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture } = await bucket(null, localArxiv);
@@ -1421,6 +1440,7 @@ test("replacement keeps a paper artifact added before publication", async () => 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-gate-")), "before");
@@ -1467,6 +1487,7 @@ test("replacement does not overwrite a PDF changed by another writer", async () 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-gate-")), "before");
@@ -1516,6 +1537,7 @@ test("library reads during promotion see only complete representations", async (
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const gate = join(mkdtempSync(join(tmpdir(), "pdf-bucket-gate-")), "before");
@@ -1567,6 +1589,7 @@ test.each(["BEFORE", "AFTER"] as const)(
         abs_url: at("/abs/"),
         pdf_url: at("/pdf/"),
         e_print_url: at("/e-print/"),
+        request_interval_seconds: 0,
       },
     };
     const gate = join(
@@ -1636,6 +1659,7 @@ test.each(["CREATED", "PENDING", "BEFORE", "AFTER"] as const)(
         abs_url: at("/abs/"),
         pdf_url: at("/pdf/"),
         e_print_url: at("/e-print/"),
+        request_interval_seconds: 0,
       },
     };
     const gate = join(
@@ -1733,6 +1757,7 @@ test("a preferred PDF lost before its first export remains rebuildable after res
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const exportFile = join(
@@ -1831,6 +1856,7 @@ test("a missing promotion reserves its key even before the export can record it"
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const exportDir = mkdtempSync(join(tmpdir(), "pdf-bucket-reserved-export-"));
@@ -1919,6 +1945,7 @@ test("metadata recording failure rolls back a newly captured preferred PDF", asy
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(null, localArxiv);
@@ -1966,6 +1993,7 @@ test("lineage persistence failure never publishes a preferred PDF", async () => 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, library } = await bucket(
@@ -2021,6 +2049,7 @@ test("a metadata failure never publishes the preferred PDF", async () => {
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture } = await bucket(null, localArxiv);
@@ -2073,6 +2102,7 @@ test("promotion preserves a distinct arXiv item even when its original bytes mat
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture, item, library } = await bucket(
@@ -2115,6 +2145,7 @@ test("a promoted item is eligible for version-matched arXiv source extraction", 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const manifest = join(
@@ -2201,6 +2232,7 @@ test("discovery refuses a placeholder title and tells the user to set the title"
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture } = await bucket(null, localArxiv);
@@ -2237,6 +2269,7 @@ test("an arXiv refusal or an unreachable API is an explicit arXiv error, not an 
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   });
   const refused = await bucket(null, arxiv(at("/api/query")));
@@ -2324,6 +2357,7 @@ test("known arXiv papers rank in the accepted results on the 20-paper corpus", a
       abs_url: at("/abs/"),
       pdf_url: at("/pdf/"),
       e_print_url: at("/e-print/"),
+      request_interval_seconds: 0,
     },
   };
   const { root, request, capture } = await bucket(null, localArxiv);

@@ -19,6 +19,9 @@ use crate::state::Shared;
 use crate::store::{stage_file, ResolvedMetadata, StageFailure, Upload};
 
 const MATCH_THRESHOLD: f64 = 0.8;
+/// The arXiv API terms of use (https://info.arxiv.org/help/api/tou.html) ask for no more than
+/// one request every three seconds.
+const MIN_PRODUCTION_INTERVAL_SECONDS: i64 = 3;
 /// Link and page labels that a capture records as a title when the page names no paper.
 const PAGE_LABELS: [&str; 9] = [
     "view pdf",
@@ -47,6 +50,14 @@ fn validate_arxiv_config(config: &crate::contract::AppConfig) -> AppResult<()> {
         let fixture_host = cfg!(feature = "arxiv-fixtures")
             && url.scheme() == "http"
             && url.host_str() == Some("127.0.0.1");
+        if production_host
+            && config.arxiv.request_interval_seconds < MIN_PRODUCTION_INTERVAL_SECONDS
+        {
+            return Err(AppError::invalid(format!(
+                "the arXiv request interval is {} s; the arXiv API asks for at least {MIN_PRODUCTION_INTERVAL_SECONDS} s",
+                config.arxiv.request_interval_seconds
+            )));
+        }
         if !(production_host || fixture_host)
             || url.path() != path
             || !url.username().is_empty()
@@ -303,6 +314,87 @@ fn placeholder(item: &crate::contract::StoredItem) -> bool {
     names.contains(&title)
 }
 
+/// When the last arXiv API request ended. Holding the lock through a request keeps the
+/// requests of this process one at a time and the configured interval apart.
+static LAST_API_REQUEST: tokio::sync::Mutex<Option<tokio::time::Instant>> =
+    tokio::sync::Mutex::const_new(None);
+
+fn arxiv_unavailable(message: String) -> AppError {
+    AppError::api(
+        StatusCode::SERVICE_UNAVAILABLE,
+        ApiErrorErrorKind::ArxivUnavailable,
+        message,
+    )
+}
+
+/// When the refusal says to retry: `Retry-After` as delay seconds or an HTTP date (RFC 9110
+/// section 10.2.3).
+fn retry_after(response: &reqwest::Response) -> Option<String> {
+    let value = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim();
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(format!("{seconds} s"));
+    }
+    httpdate::parse_http_date(value)
+        .ok()
+        .map(httpdate::fmt_http_date)
+}
+
+async fn query_api(
+    config: &crate::contract::AppConfig,
+    query: &[(&str, String)],
+) -> AppResult<String> {
+    let mut last = LAST_API_REQUEST.lock().await;
+    let interval =
+        std::time::Duration::from_secs(config.arxiv.request_interval_seconds.unsigned_abs());
+    if let Some(ended) = *last {
+        tokio::time::sleep_until(ended + interval).await;
+    }
+    let result = fetch_feed(config, query).await;
+    *last = Some(tokio::time::Instant::now());
+    result
+}
+
+async fn fetch_feed(
+    config: &crate::contract::AppConfig,
+    query: &[(&str, String)],
+) -> AppResult<String> {
+    let response = Client::builder()
+        .user_agent("Math PDF Reader arXiv lookup")
+        .build()
+        .map_err(AppError::internal)?
+        .get(&config.arxiv.api_url)
+        .query(query)
+        .send()
+        .await
+        .map_err(|error| {
+            arxiv_unavailable(format!(
+                "arXiv could not be reached: {}. Try the search again later.",
+                error.without_url()
+            ))
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        let when = match retry_after(&response) {
+            Some(when) => format!("arXiv asks to retry after {when}."),
+            None => "Try the search again later.".to_string(),
+        };
+        return Err(arxiv_unavailable(format!(
+            "arXiv refused the search (HTTP {status}). {when}"
+        )));
+    }
+    response.text().await.map_err(|error| {
+        arxiv_unavailable(format!(
+            "arXiv's answer could not be read: {}. Try the search again later.",
+            error.without_url()
+        ))
+    })
+}
+
 async fn search_candidates(state: &Shared, key: &str) -> AppResult<ArxivSearchResponse> {
     validate_arxiv_config(&state.config.app)?;
     let indexed = state.require(key).await?;
@@ -319,28 +411,17 @@ async fn search_candidates(state: &Shared, key: &str) -> AppResult<ArxivSearchRe
     }
     let escaped_title = item.title.text.replace('"', "\\\"");
     let query = format!("ti:\"{escaped_title}\"");
-    let response = Client::builder()
-        .user_agent("Math PDF Reader arXiv lookup")
-        .build()
-        .map_err(AppError::internal)?
-        .get(&state.config.app.arxiv.api_url)
-        .query(&[
+    let response = query_api(
+        &state.config.app,
+        &[
             ("search_query", query),
             ("start", "0".to_string()),
             ("max_results", "10".to_string()),
             ("sortBy", "relevance".to_string()),
             ("sortOrder", "descending".to_string()),
-        ])
-        .send()
-        .await
-        .map_err(|error| AppError::internal(format!("arXiv API request failed: {error}")))?
-        .error_for_status()
-        .map_err(|error| AppError::internal(format!("arXiv API returned an error: {error}")))?
-        .text()
-        .await
-        .map_err(|error| {
-            AppError::internal(format!("arXiv API response could not be read: {error}"))
-        })?;
+        ],
+    )
+    .await?;
     let feed: Feed = from_str(&response).map_err(|error| {
         AppError::internal(format!(
             "arXiv API response was not valid Atom XML: {error}"
