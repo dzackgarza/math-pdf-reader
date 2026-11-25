@@ -7,7 +7,7 @@ The reader uses these loopback routes. `<origin>` is `http://127.0.0.1:<port>`.
 | `GET /read/{key}` | 200 HTML reader page; 404 `unknown_item` for a key with no stored PDF | `server/src/app.rs` `read` |
 | `GET /pdf/{key}.pdf` | 200 `application/pdf`, `ETag` = SHA-256 of the bytes, `X-Pdf-Edition` = base64url JSON of the item's provenance; byte ranges supported | `server/src/app.rs` `pdf` |
 | `PUT /api/items/{key}/pdf` | body: the exported PDF; header `If-Match` required | `server/src/library.rs` `replace_pdf` |
-| `PUT /api/items/{key}/reading` | body `ReadingRequest` `{page, pages, edition}` | `server/src/library.rs` `reading` |
+| `PUT /api/items/{key}/reading` | body `ReadingRequest` `{page, pages, zoom, edition}` | `server/src/library.rs` `reading` |
 
 ## Reader page
 

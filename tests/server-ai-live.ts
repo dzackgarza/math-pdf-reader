@@ -1,6 +1,3 @@
-// The real provider inspects the stored PDF, then reads a new app-produced extraction.
-// This uses a private bucket and assistant server; it does not open or change a chat in the
-// provisioned app. The configured provider must be reachable.
 import { expect, test } from "bun:test";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import {
@@ -91,8 +88,6 @@ test("the assistant inspects the original PDF with the shell and discovers a new
     zoteroUrl: closedPortUrl(),
     extractionsManifest: manifestPath,
     config,
-    // The private assistant links the user's provider logins. Its own data remains under the
-    // scratch bucket's index-export directory.
     env: { XDG_DATA_HOME: join(process.env.HOME!, ".local", "share") },
   });
   try {
@@ -206,6 +201,7 @@ test("the assistant inspects the original PDF with the shell and discovers a new
       body: JSON.stringify({
         page: 2,
         pages: 210,
+        zoom: "automatic",
         edition: displayed.provenance,
       }),
     });

@@ -216,6 +216,11 @@ impl Ai {
 
     /// The config layered over the user's own OpenCode config (providers, models): the assistant,
     /// the model, and the one origin it may fetch from.
+    ///
+    /// The reader agent's permissions deny everything first, so the tools of the user's own MCP
+    /// servers and plugins, which this file cannot name, are denied too; later rules win. Reads
+    /// inside the paper Location use Location-relative resources, and the external-directory rule
+    /// confines absolute reads to the store.
     fn layered_config(&self, bucket_origin: &str) -> String {
         let data_root = self.data_root.display();
         let config = json!({
@@ -228,12 +233,8 @@ impl Ai {
                     "mode": "primary",
                     "system": SYSTEM,
                     "permissions": [
-                        // Everything is denied first, so the tools of the user's own MCP servers and
-                        // plugins, which this file cannot name, are denied too; later rules win.
                         { "action": "*", "resource": "*", "effect": "deny" },
                         { "action": "external_directory", "resource": format!("{data_root}/*"), "effect": "allow" },
-                        // Reads inside the paper Location use Location-relative resources. The
-                        // external-directory rule above confines absolute reads to the store.
                         { "action": "read", "resource": "*", "effect": "allow" },
                         { "action": "shell", "resource": "*", "effect": "allow" },
                         { "action": "glob", "resource": "*", "effect": "allow" },
@@ -272,10 +273,11 @@ impl Ai {
         Ok(())
     }
 
+    /// Starts the private server under `setpriv --pdeathsig TERM` (util-linux): the kernel sends
+    /// it SIGTERM when this process ends, however it ends, so a quit or a crash of the app leaves
+    /// no server behind.
     fn spawn(&self, password: &str, log: std::fs::File) -> AppResult<Child> {
         let base = self.opencode_dir();
-        // setpriv (util-linux) has the kernel send the server SIGTERM when this process ends,
-        // however it ends, so a quit or a crash of the app leaves no server behind.
         let mut command = Command::new("setpriv");
         command
             .args(["--pdeathsig", "TERM", "--"])
@@ -302,7 +304,8 @@ impl Ai {
 
     /// The password of a private server that answers, started now unless one already does. A
     /// server this process started for another bucket origin is replaced: its config allows
-    /// fetches only from that origin.
+    /// fetches only from that origin. A server that answers when this process started none was
+    /// left by an earlier run of the app, which started it for this bucket.
     async fn running(&self, bucket_origin: &str) -> AppResult<String> {
         let password = self.password().await?;
         let mut started = self.started.lock().await;
@@ -314,7 +317,6 @@ impl Ai {
             return Ok(password);
         }
         if started.is_none() && self.answers(&password).await {
-            // A server left by an earlier run of the app: it was started for this bucket.
             return Ok(password);
         }
         *started = None;
@@ -513,7 +515,9 @@ impl Ai {
 }
 
 /// `POST /api/ai/session`: starts the private server when it is not running and answers the
-/// addresses that open KEY's chat in a frame.
+/// addresses that open KEY's chat in a frame. The requested paper is checked before the private
+/// server starts; a replacement may commit while that server starts, so the edition is selected
+/// again under the chat lock.
 async fn open_session(
     State(state): State<Shared>,
     headers: HeaderMap,
@@ -521,8 +525,6 @@ async fn open_session(
 ) -> AppResult<Json<AiSession>> {
     let request: AiSessionRequest = parse_body(&body)?;
     let key = request.key.to_string();
-    // Check the requested paper before starting the private server. Replacement may commit
-    // while that server starts, so select the edition again under the chat lock below.
     state.require(&key).await?;
     #[cfg(feature = "arxiv-fixtures")]
     selected_edition_gate("PDF_BUCKET_TEST_AI_SESSION_SELECTED").await?;
@@ -557,6 +559,9 @@ async fn open_session(
 }
 
 /// The last page reported by the reader and a bounded search hint from its text layer.
+/// Extraction and metadata are current files in the paper directory, not page aliases. A text
+/// layer that cannot be read is a source failure when the item left the store (a concurrent
+/// deletion or a damaged replacement); otherwise the hint names the failure.
 async fn shown(state: &Shared, key: &str) -> AppResult<Option<(u32, String)>> {
     let indexed = state.require(key).await?;
     let item = bucket_item(&indexed, &state.organizations.read().await?)?;
@@ -564,6 +569,7 @@ async fn shown(state: &Shared, key: &str) -> AppResult<Option<(u32, String)>> {
         page,
         pages,
         viewed_at,
+        ..
     } = item.reading
     else {
         return Ok(None);
@@ -574,11 +580,9 @@ async fn shown(state: &Shared, key: &str) -> AppResult<Option<(u32, String)>> {
          the page shown now may differ.",
         viewed_at.as_str()
     );
-    // Extraction and metadata are current files in the paper directory, not page aliases.
     let hint = match state.store.text(key, Some(page)).await {
         Ok(text) => text,
         Err(error) => {
-            // A concurrent deletion or damaged replacement is a source failure.
             state.require(key).await?;
             sentences.push_str(&format!(" Page search hint unavailable: {error}"));
             return Ok(Some((page, sentences)));

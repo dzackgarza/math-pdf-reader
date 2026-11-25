@@ -563,6 +563,7 @@ test("capture, reading, annotation, extraction, filing, Retrieve Metadata and de
       await json(bucket, "PUT", "/api/items/lattices/reading", {
         page: 1,
         pages: 2,
+        zoom: "automatic",
         edition: (await item(bucket, "lattices"))?.provenance,
       })
     ).status,

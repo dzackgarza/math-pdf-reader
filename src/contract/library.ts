@@ -128,22 +128,32 @@ export const SavedSearchSchema = z.strictObject({
   "A saved search: its rules, all of which or any of which an item must meet.",
 );
 
+export const ZoomLevelSchema = z
+  .union([z.number().positive(), z.enum(["automatic", "fit-page", "fit-width"])])
+  .describe(
+    "The reader's zoom: a scale factor, or one of EmbedPDF's zoom modes, which fit the page or its width to the window.",
+  );
+
 export const ReadingSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("unread") }),
   z.strictObject({
     status: z.literal("viewed"),
     page: z.int().min(1),
     pages: z.int().min(1),
+    zoom: ZoomLevelSchema.optional().describe(
+      "The zoom the reader last showed. Records made before the reader reported its zoom have none; the reader then opens at its default zoom.",
+    ),
     viewedAt: z.iso.datetime({ offset: true }),
   }),
 ]).describe(
-  "How far an item has been read: never opened, or the page the reader last showed out of the document's page count.",
+  "How far an item has been read: never opened, or the page and zoom the reader last showed, with the document's page count.",
 );
 
 export const ReadingRequestSchema = z
   .strictObject({
     page: z.int().min(1),
     pages: z.int().min(1),
+    zoom: ZoomLevelSchema,
     edition: ProvenanceSchema,
   })
   .refine(
@@ -654,6 +664,7 @@ export function collectionSubtree(
 export const TOPIC_PREFIX = "topic:";
 
 export type Provenance = z.infer<typeof ProvenanceSchema>;
+export type RecordedZoom = z.infer<typeof ZoomLevelSchema>;
 export type AdvancedSearchSettings = z.infer<
   typeof AdvancedSearchSettingsSchema
 >;

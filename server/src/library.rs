@@ -265,6 +265,9 @@ async fn replace_pdf(
     }
 }
 
+/// The reader's page and zoom for KEY. `page <= pages` is the one check JSON Schema cannot state;
+/// `ReadingRequestSchema` refines the same. The page is also the assistant's context: the record
+/// is kept even when the assistant cannot be told.
 async fn reading(
     State(state): State<Shared>,
     headers: HeaderMap,
@@ -272,7 +275,6 @@ async fn reading(
     body: Bytes,
 ) -> Payload {
     let request: ReadingRequest = parse_body(&body)?;
-    // The one check JSON Schema cannot state; ReadingRequestSchema refines the same.
     if request.page > request.pages {
         return Err(AppError::invalid("page lies beyond the page count"));
     }
@@ -288,6 +290,7 @@ async fn reading(
     let reading = Reading::Viewed {
         page: request.page,
         pages: request.pages,
+        zoom: Some(request.zoom),
         viewed_at: Timestamp::now(),
     };
     let captured_at = indexed.stored.provenance.captured_at;
@@ -299,7 +302,6 @@ async fn reading(
         .await?;
     drop(locked);
     let payload = Json(state.payload_of(organization).await?);
-    // The reader's page is also the assistant's context; the page is recorded either way.
     if let Err(failure) =
         crate::ai::announce_view(&state, &key, &request.edition, &origin(&headers)?).await
     {

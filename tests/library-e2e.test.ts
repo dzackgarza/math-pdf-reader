@@ -348,6 +348,7 @@ const markViewed = async (key: string, pageNumber: number, pages: number) => {
   await api("PUT", `/api/items/${key}/reading`, {
     page: pageNumber,
     pages,
+    zoom: "automatic",
     edition: item.provenance,
   });
 };
@@ -2384,6 +2385,8 @@ test("the reader records a change of zoom with the page shown, and opens again a
       .catch(() => undefined);
   await page.goto(`${bucket.origin}/read/reading`);
   await readerLoaded("reading");
+  await new Promise((settled) => setTimeout(settled, 2000));
+  expect(reports).toEqual([]);
   const paged = reported(
     (report) => z.object({ page: z.literal(4) }).safeParse(report).success,
   );

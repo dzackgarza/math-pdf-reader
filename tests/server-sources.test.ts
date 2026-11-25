@@ -1,5 +1,3 @@
-// Source checks, mirror URLs and rebuilding lost PDFs, through the real server and store
-// against a local publisher whose responses the tests change.
 import { afterAll, expect, setDefaultTimeout, test } from "bun:test";
 import {
   chmodSync,
@@ -49,14 +47,11 @@ const lectureNotes = fixture("lecture-notes.pdf");
 const problemSet = fixture("problem-set.pdf");
 const outlinedNotes = fixture("outlined-notes.pdf");
 type FeedEntry = { id: string; title: string; authors: string[] };
-// Known arXiv papers, each with the title and authors a capture recorded for it: abbreviated,
-// reordered or partial authors, TeX or none, a subtitle dropped or punctuated differently.
 const discoveryCorpus: (FeedEntry & {
   captured: { title: string; authors: string[] };
 })[] = JSON.parse(
   readFileSync(join(import.meta.dir, "fixtures/arxiv-corpus.json"), "utf8"),
 );
-// Papers that share words and authors with the corpus.
 const distractors: FeedEntry[] = JSON.parse(
   readFileSync(join(import.meta.dir, "fixtures/arxiv-distractors.json"), "utf8"),
 );
@@ -64,8 +59,6 @@ const xml = (text: string) =>
   text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const tokens = (text: string) =>
   text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token !== "");
-// The entries an arXiv API `search_query` selects: every `ti:` clause, a word or a quoted
-// phrase, must occur in the title.
 function selected(entries: FeedEntry[], query: string): FeedEntry[] {
   const clauses = [...query.matchAll(/ti:(?:"([^"]*)"|(\S+))/g)].map(
     (clause) => tokens(clause[1] ?? clause[2]).join(" "),
@@ -85,14 +78,10 @@ const feedOf = (entries: FeedEntry[]) =>
     )
     .join("")}</feed>`;
 
-// The publisher: what each path serves right now; a path with nothing serves 404.
 const served = new Map<string, Uint8Array<ArrayBuffer>>();
 let atomFeed: string | undefined;
-// When set, the arXiv API answers each query with the entries of this set it selects.
 let searchedEntries: FeedEntry[] | undefined;
-// When each arXiv API request arrived, in milliseconds since the epoch.
 const apiRequests: number[] = [];
-// A refusal the arXiv API answers instead of a feed, when set.
 let apiRefusal: { status: number; headers: Record<string, string> } | undefined;
 let pdfRedirect: string | undefined;
 const publisher = Bun.serve({
@@ -322,8 +311,6 @@ test("promotion refuses an arXiv entry that discovery does not offer for the pap
     authors: ["Other Author"],
     year: 2024,
   });
-  // arXiv's search for this title selects nothing, so a request that names an arXiv entry
-  // and claims its fields cannot replace the PDF.
   searchedEntries = [
     {
       id: "http://arxiv.org/abs/1234.5678v1",
@@ -409,6 +396,7 @@ test("confident arXiv replacement keeps one filed paper and is idempotent", asyn
       await request("PUT", "/api/items/000-original/reading", {
         page: 1,
         pages: 2,
+        zoom: "automatic",
         edition: originalBefore,
       })
     ).status,
@@ -1271,6 +1259,7 @@ test("a failed preferred-source fetch leaves the original item usable", async ()
       await request("PUT", "/api/items/original-failure/reading", {
         page: 1,
         pages: 2,
+        zoom: "automatic",
         edition: originalEdition,
       })
     ).status,
@@ -2360,8 +2349,8 @@ test("an arXiv refusal or an unreachable API is an explicit arXiv error, not an 
 
 test("discovery with the production configuration keeps its arXiv API requests 3 s apart", async () => {
   const config = loadAppConfig(CONFIG_PATH);
-  // The arXiv API terms of use ask for at most one request every 3 s.
-  const interval = 3;
+  const arxivTermsSecondsBetweenRequests = 3;
+  const interval = arxivTermsSecondsBetweenRequests;
   const { root, request, capture } = await bucket(null, {
     ...config,
     arxiv: {
@@ -2427,8 +2416,6 @@ test("discovery lists every ranked arXiv candidate, and the user can promote a l
     const search = ArxivSearchResponseSchema.parse(
       await (await request("POST", "/api/items/arbiter/arxiv")).json(),
     );
-    // No author agrees, so neither candidate is a confident match; both are still offered,
-    // ranked, each with its score and the reasons for it.
     expect(search.matches.map((match) => match.id)).toEqual([
       "2611.70001",
       "2611.70002",
@@ -2508,7 +2495,6 @@ test("an item the export holds whose PDF is gone needs re-fetching; Rebuild rest
   await request("POST", "/api/items/moved/mirrors", {
     url: at("/mirror/moved.pdf"),
   });
-  // The export is written after each change; wait for the one that holds the mirror.
   let exported = readIndexExport(exportFile);
   while (
     exported?.items.find((entry) => entry.key === "moved")?.filing.mirrors

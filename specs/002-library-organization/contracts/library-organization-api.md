@@ -6,7 +6,7 @@ schemas in `src/contract/library.ts`. Errors use `ApiErrorSchema` with an `error
 | Method and path | Body | Effect | Errors |
 | --- | --- | --- | --- |
 | `GET /api/library` | none | the `LibraryPayload` | none |
-| `PUT /api/items/{key}/reading` | `page`, `pages`, `edition` | records the last viewed page; not a filing change | 400 page out of range, 404 unknown item |
+| `PUT /api/items/{key}/reading` | `page`, `pages`, `zoom`, `edition` | records the last viewed page and zoom; not a filing change | 400 page out of range, 404 unknown item |
 | `PATCH /api/items/{key}/metadata` | bibliographic fields | writes them into the PDF | 404 unknown item |
 | `POST /api/bulk/tags` | `keys`, `add`, `remove` | tag delta on each item | 400 `invalid_request` (blank, untrimmed, no keys), 404 `unknown_item` |
 | `POST /api/bulk/collections` | `keys`, `add`, `remove` | collection delta on each item; logs `filed` | 400 `unknown_collection`, 404 `unknown_item` |

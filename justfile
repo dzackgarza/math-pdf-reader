@@ -67,7 +67,7 @@ test-capture:
 test-zotero-live:
     @ZOTERO_LIVE=1 bun test ./tests/server-send-live.ts --timeout 180000
 
-[doc("Verify the configured assistant can inspect a PDF and read newly added Markdown with its shell.")]
+[doc("Verify the configured assistant can inspect a PDF and read newly added Markdown with its shell, in a private app and assistant server; the configured provider must be reachable.")]
 test-assistant-live:
     @bun test ./tests/server-ai-live.ts --timeout 660000
 

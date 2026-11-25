@@ -229,13 +229,17 @@ const readPage = async (
   return app.request("/api/items/long-notes/reading", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page, pages: 200, edition: displayed }),
+    body: JSON.stringify({
+      page,
+      pages: 200,
+      zoom: "automatic",
+      edition: displayed,
+    }),
   });
 };
 
-test("a failed text hint preserves the page report and permits opening the chat", async () => {
+test("a failed text hint (a page with a multiplication sign, printed by an ASCII-only subprocess) preserves the page report and permits opening the chat", async () => {
   const assistant = fakeAssistant();
-  // The PDF page contains a multiplication sign. An ASCII-only subprocess cannot print it.
   const app = await storedBucket(
     "true",
     undefined,
@@ -322,8 +326,6 @@ test("the view gives a raw-page search hint without an extraction catalog", asyn
   await app.stop();
 });
 
-// A stand-in for the private OpenCode server: it answers what the bucket asks of it and keeps
-// the instruction entries it is given. The bucket treats a server that answers as its own.
 function fakeAssistant() {
   const entries: Record<string, unknown> = {};
   const locations: Record<string, string> = {};
