@@ -1,14 +1,8 @@
-// Where each open PDF is, and the reader's own moves to a place, which record no jump.
-
 import { useCallback } from "react";
 import type { Position } from "./documentStorage";
 import type { Capabilities, ReaderHost } from "./readerHost";
 
 export function usePositions(host: ReaderHost, caps: () => Capabilities) {
-  // Where KEY is now. The viewport's top-left corner lies in the first page it shows; the page
-  // coordinates of that corner are the visible part's offset in the page, less the gap above or
-  // beside the page, in page units. EmbedPDF's scrollToPage adds the viewport's gap to the place
-  // these coordinates name (plugin-scroll's getScrollPositionForPage), so they hold it less.
   const positionOf = useCallback(
     (key: string): Position => {
       const { scroll, zoom, viewport } = caps();
@@ -28,8 +22,6 @@ export function usePositions(host: ReaderHost, caps: () => Capabilities) {
     [caps],
   );
 
-  // Where KEY is, shown or not. EmbedPDF shows no page of a PDF that is not the active one, so the
-  // reader keeps the position of the active PDF at each scroll, read while EmbedPDF still shows it.
   const placeOf = useCallback(
     (key: string): Position => {
       const parked = host.parked.get(key);
@@ -40,7 +32,6 @@ export function usePositions(host: ReaderHost, caps: () => Capabilities) {
     [host, caps, positionOf],
   );
 
-  // Moves KEY to POSITION; the move records no jump.
   const restore = useCallback(
     (key: string, position: Position) => {
       const { scroll, zoom } = caps();
@@ -53,7 +44,7 @@ export function usePositions(host: ReaderHost, caps: () => Capabilities) {
         scroll.forDocument(key).scrollToPage({
           pageNumber: position.pageNumber,
           pageCoordinates: { x: position.x, y: position.y },
-          behavior: "instant",
+          behavior: "auto",
         });
       } finally {
         host.moving = false;
@@ -62,8 +53,6 @@ export function usePositions(host: ReaderHost, caps: () => Capabilities) {
     [caps, host],
   );
 
-  // EmbedPDF's zoom plugin gates a PDF's viewport until its first zoom, which waits for the
-  // viewport to have a size; a zoom asked for before then is dropped.
   const restoreOnceSized = useCallback(
     (key: string, position: Position) => {
       const { viewport } = caps();
@@ -81,7 +70,6 @@ export function usePositions(host: ReaderHost, caps: () => Capabilities) {
     [caps, restore],
   );
 
-  // Scrolls KEY's PDF to the top of PAGE, a move of the reader's own that records no jump.
   const scrollToStart = useCallback(
     (key: string, page: number) => {
       host.moving = true;

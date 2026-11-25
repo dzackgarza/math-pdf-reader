@@ -71,6 +71,21 @@ of `@embedpdf/react-pdf-viewer` 2.15.1.
   viewport has a size and the pages a layout, the reader asks for the current zoom, which
   releases the gate. A zoom asked for before the gate opens is dropped, so a restore waits
   for the gate (`restoreOnceSized`).
+- The zoom that releases the gate also asks the viewport to scroll to the place it keeps, and
+  the viewport applies that scroll at the next animation frame, once the pages are in the DOM.
+  A restore moves with `scrollToPage` at behavior `auto`, not `instant`: EmbedPDF ends an
+  instant page change at once, so the zoom's later scroll to the top reports page 1 between
+  the asked page and its return. An `auto` page change stays open until the viewport's scroll
+  activity ends, and while it is open EmbedPDF keeps the asked page as the current page and
+  reports no other (plugin-scroll's `commitMetrics`). The PDF then reports only the page it
+  opens at (T038 in `specs/003-reader-annotations/tasks.md`).
+- The reader's own moves to a place (`restore`, `scrollToStart`) record no jump in the
+  back/forward history.
+- A position's page coordinates are the visible part's offset in the page less the gap above
+  or beside the page, in page units: EmbedPDF's `scrollToPage` adds the viewport's gap to the
+  place the coordinates name (plugin-scroll's `getScrollPositionForPage`).
+- EmbedPDF shows no page of a PDF that is not the active one, so the place of an inactive PDF
+  is the position it had at its last scroll while it was active (`parked`).
 - A page change starts before the viewport moves, so at its start the position is still the
   one the jump leaves; that position goes into the PDF's back/forward history. A smooth page
   change may never report its end.
