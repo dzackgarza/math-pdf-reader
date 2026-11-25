@@ -27,6 +27,7 @@ outlined-notes.pdf ("A change of basis..."), clear of a highlight drawn over tha
 
 from __future__ import annotations
 
+import configparser
 import json
 import os
 import socket
@@ -131,8 +132,46 @@ def open_window(
         log_output=subprocess.STDOUT,
     )
     driver = webdriver.WebKitGTK(options=options, service=service)
+    stack.callback(exited, app_processes(service))
     stack.callback(driver.quit)
     return driver
+
+
+def app_processes(service: webdriver.WebKitGTKService) -> list[int]:
+    """The processes WebKitWebDriver started for the session: the app."""
+    assert service.process is not None
+    tasks = Path(f"/proc/{service.process.pid}/task")
+    started = [
+        int(pid)
+        for task in tasks.iterdir()
+        for pid in (task / "children").read_text().split()
+    ]
+    assert started, f"WebKitWebDriver {service.process.pid} started no app"
+    return started
+
+
+def exited(processes: list[int]) -> None:
+    """Wait until the app is gone, so its port is free for the next test's app.
+
+    The driver's quit can return before the app has exited, and the app holds the bucket's port
+    until it has. A dead process that is not yet reaped no longer holds it.
+    """
+    deadline = time.monotonic() + 30
+    for pid in processes:
+        while running(pid):
+            assert time.monotonic() < deadline, (
+                f"the app {pid} did not exit after the driver quit"
+            )
+            time.sleep(0.1)
+
+
+def running(pid: int) -> bool:
+    """Whether a process exists and is not a zombie (state Z in /proc/<pid>/stat)."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except FileNotFoundError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
 
 
 @pytest.fixture
@@ -1597,14 +1636,28 @@ def test_the_tray_item_and_its_menu_name_math_pdf_reader(
     ]
 
 
+def activated_program(service: str) -> str:
+    """The program that D-Bus activation starts for a service file under /usr/share/dbus-1."""
+    entry = configparser.ConfigParser(interpolation=None)
+    path = Path("/usr/share/dbus-1") / service
+    assert entry.read(path), f"{path} does not exist; at-spi2-core installs it"
+    return entry["D-BUS Service"]["exec"].split()[0]
+
+
 def accessibility_bus(stack: ExitStack) -> str:
     """Start the AT-SPI bus and registry on the test's session bus; return the AT-SPI bus address.
 
     A desktop session starts the registry through a systemd user unit, which the test's private
     namespace does not have. The session bus also starts the bus launcher itself, by D-Bus
     activation, when `GetAddress` names `org.a11y.Bus`.
+
+    The programs are where at-spi2-core's D-Bus service files say they are: /usr/lib on Arch,
+    /usr/libexec on Debian and Ubuntu.
     """
-    for program in ("/usr/lib/at-spi-bus-launcher", "/usr/lib/at-spi2-registryd"):
+    for program in (
+        activated_program("services/org.a11y.Bus.service"),
+        activated_program("accessibility-services/org.a11y.atspi.Registry.service"),
+    ):
         started = subprocess.Popen(
             [program, *(["--launch-immediately"] if "launcher" in program else [])],
             stdout=subprocess.DEVNULL,
