@@ -110,9 +110,10 @@ No new module is added.
 - **Shortcut scope.** EmbedPDF's shortcuts listen on `document`. `Reader.tsx:138-155`
   disables every shortcut category while the Library is shown. `tabs.tsx:204` adds
   capture-phase keys for tab stepping and close.
-- **URL (FR-006).** The standalone page writes `#page=N` (`main.tsx:49`). In the library
-  window `tabs.tsx` passes no `onPage` to `Reader`, so the address does not follow the
-  reader.
+- **URL (FR-006).** The standalone page writes `#page=N` (`reader/main.tsx`). In the
+  library window `tabs.tsx` passes `onPage` to `Reader`, and `windowAddress.ts` writes
+  `/read/<key>#page=N` while a PDF's tab shows and the library route while the Library
+  shows (contracts/reader-control.md, Window address).
 - **Saves (FR-007).** `DocumentStorage` PUTs the exported bytes with `If-Match`
   (`documentStorage.ts:154`); a 412 sets the conflict (`:171`), which `Reader.tsx:222-245`
   shows with "Save my copy over it" and "Discard my copy".

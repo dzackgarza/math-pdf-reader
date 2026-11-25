@@ -50,8 +50,9 @@ behaviour through its real path are both named below it.
 - [X] T012 [US2] Write `#page=N` into the standalone reader address and open at it, per
   FR-006 (standalone page)
   - Evidence: `src/web/reader/main.tsx:38-49`. Test `tests/library-e2e.test.ts:1110` (`:1163-1170`).
-- [ ] T013 [US2] Make the library window address follow the shown reader and its page in
+- [X] T013 [US2] Make the library window address follow the shown reader and its page in
   `src/web/tabs.tsx`, per FR-006 (tab mode)
+  - Evidence: `src/web/windowAddress.ts` (`showReaderAddress`, `showLibraryAddress`, `useLibraryLocation`), `src/web/tabs.tsx` (`onPage` passed to `Reader`; the `shown` effect), `src/web/main.tsx` (router hook). Test `tests/library-e2e.test.ts:1516`: red on the unfixed code (expected `/read/notes#page=1`, received `/#/unfiled`), green after; `:2450` (Timeline) now checks `/read/reading` while the tab shows and `/#/timeline` after the Library tab. Run 2026-11-25.
 
 ## Phase 4: User Story 3 - Persist reader work (P3)
 
@@ -82,7 +83,8 @@ behaviour through its real path are both named below it.
   - Evidence: test `tests/library-e2e.test.ts:1439` (opens `notes` at page 3 and 150% and `reading` at page 5 and 80%, switches notes, reading, Library, notes, reading; `showsPage` and `zoomOf` after each switch; each switch timed from the tab click to `showsPage`, logged as `reader switch timing`, and fails above 2 s). Source: the reader host (`src/web/reader/documents.ts` `activate`) and EmbedPDF's per-document scroll and zoom state. Run 2026-11-25, pass; switches 107 to 607 ms.
 - [X] T021 Add an end-to-end test in `tests/library-e2e.test.ts` that opens a PDF from the library row, then shows a second by its tab, and checks that the selected tab, the shown PDF and its page agree after each step, per US2/AC2, SC-002 (missing).
   - Evidence: test `tests/library-e2e.test.ts:1475` (from a library row and from a tab: exactly one active tab, the viewer's active document and the shown page agree after each step; the library rows then show `4 / 10` and `6 / 10`). Source: `src/web/tabs.tsx` `show`, `src/web/reader/documents.ts` `activate`. Run 2026-11-25, pass.
-- [ ] T022 Pass `onPage` from `src/web/tabs.tsx` to `Reader` and write the shown reader's address and page into the library window with `history.replaceState`, restoring the library route when the Library tab is shown, with a test in `tests/library-e2e.test.ts`, per FR-006 (partial).
+- [X] T022 Pass `onPage` from `src/web/tabs.tsx` to `Reader` and write the shown reader's address and page into the library window with `history.replaceState`, restoring the library route when the Library tab is shown, with a test in `tests/library-e2e.test.ts`, per FR-006 (partial).
+  - Evidence: `src/web/windowAddress.ts` (`showReaderAddress`, `showLibraryAddress`, `useLibraryLocation`), `src/web/tabs.tsx` (`onPage` passed to `Reader`; the `shown` effect), `src/web/main.tsx` (router hook). Test `tests/library-e2e.test.ts:1516`: red on the unfixed code (expected `/read/notes#page=1`, received `/#/unfiled`), green after; `:2450` (Timeline) now checks `/read/reading` while the tab shows and `/#/timeline` after the Library tab. Run 2026-11-25.
 - [ ] T024 Add `zoom` to `ReadingSchema` and `ReadingRequestSchema` in `src/contract/library.ts:138-156`, store it in `server/src/library.rs` `reading`, send it from `src/web/reader/documentStorage.ts:266-282`, and open at it in `src/web/reader/viewer.ts:59`, with an API test in `tests/library-api.test.ts` and a reload test in `tests/library-e2e.test.ts`, per FR-008, FR-009, US3/AC3 and the Key Entity Reading Record "page, zoom" (partial).
 - [ ] T025 Record the library window's open tab keys, their order and the shown tab, and reopen them after a window reload in `src/web/tabs.tsx` and `src/web/reader/documents.ts`, with a reload test in `tests/library-e2e.test.ts`, per FR-009 and US3/AC3 (missing). A reload of the library window now shows no reader tabs.
 - [X] T026 Time each switch in the T019 test from the tab selection to `showsPage` and fail above 2 s, writing the times to the test log, per SC-005 (missing).

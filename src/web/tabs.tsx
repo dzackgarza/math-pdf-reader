@@ -1,10 +1,3 @@
-// The window's tabs: the Library tab, always first and never closed, and one tab per PDF the
-// reader holds (reader/Reader.tsx). The window has one reader, whose EmbedPDF document manager
-// holds every awake PDF; the PDF tabs show what it holds, and showing one activates it there. A
-// tab that sleeps holds a bookmark, and showing it opens its PDF again where it was. Opening a
-// PDF that has a tab shows that tab. A capture anywhere opens its PDF here too: the bucket's
-// `open-reader` event (server/src/events.rs); the title Retrieve metadata gives the PDF
-// afterwards (`metadata`) retitles its tab.
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as Tabs from "@radix-ui/react-tabs";
 import { FileText, Library, Moon, X } from "lucide-react";
@@ -18,18 +11,16 @@ import { keybindings, matchesShortcut } from "./keyboardShortcuts";
 import { Reader } from "./reader/Reader";
 import type { ReaderControl, ReaderProjection, TabEntry } from "./reader/readerHost";
 import { type ItemMenu, type ReaderExtraction, ReaderTabsContext } from "./readerTabs";
+import { showLibraryAddress, showReaderAddress } from "./windowAddress";
 
 declare global {
   interface WindowEventMap {
-    // The desktop app's tray Quit (desktop/src-tauri/src/follow-open-events.js): the app quits
-    // once every promise handed to waitUntil settles, and asks first when one rejects.
     "pdf-bucket-quit": CustomEvent<{ waitUntil(settled: Promise<void>): void }>;
   }
 }
 
 const LIBRARY_TAB = "library";
 
-// The key of the item a reader URL shows.
 function readerKey(url: string): string {
   return decodeURIComponent(new URL(url).pathname.slice("/read/".length));
 }
@@ -39,8 +30,6 @@ const TAB_CLASSES =
 const TAB_STATE_CLASSES =
   "border-transparent text-muted hover:bg-ink/[0.04] hover:text-ink data-[state=active]:border-line data-[state=active]:bg-panel data-[state=active]:font-medium data-[state=active]:text-ink";
 
-// A PDF tab's context menu, drawn when it opens: the tab's ENTRIES and then its item's menu, or
-// the entries alone before the library has loaded and once it holds no item for the tab.
 function TabMenu({
   itemMenu,
   itemKey,
@@ -62,24 +51,27 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   const [libraryShown, setLibraryShown] = useState(true);
   const aiPane = useAiPane();
   const [extractionView, setView] = useState<ReaderExtraction | null>(null);
-  // A function is a state value here, not an updater.
   const setExtractionView = useCallback((view: ReaderExtraction | null) => setView(() => view), []);
-  // The tab shown: the Library, or the reader's active PDF.
   const shown = libraryShown || projection.active === null ? LIBRARY_TAB : projection.active;
-  useEffect(() => {
-    if (shown === LIBRARY_TAB) {
-      // View-mode pen highlighting applies only to a visible PDF. Return tablet clicks
-      // to WebKit when the Library is shown, even though the reader remains mounted.
-      window.dispatchEvent(new CustomEvent("bucket-stylus-mode", { detail: "inactive" }));
-    }
-  }, [shown]);
   const stateRef = useRef({ projection, shown });
   stateRef.current = { projection, shown };
+  const pages = useRef(new Map<string, number>());
+  useEffect(() => {
+    if (shown === LIBRARY_TAB) {
+      showLibraryAddress();
+      window.dispatchEvent(new CustomEvent("bucket-stylus-mode", { detail: "inactive" }));
+    } else {
+      showReaderAddress(shown, pages.current.get(shown));
+    }
+  }, [shown]);
+  const onPage = useCallback((key: string, page: number) => {
+    pages.current.set(key, page);
+    if (stateRef.current.shown === key) {
+      showReaderAddress(key, page);
+    }
+  }, []);
 
-  // The reader mounts when the first PDF opens, once the library has set the page's theme, which
-  // the viewer starts from, and stays mounted.
   const [readerMounted, setReaderMounted] = useState(false);
-  // The reader's control, once it is mounted; opens asked for before then wait for it.
   const control = useRef<ReaderControl | null>(null);
   const waiting = useRef<[string, string][]>([]);
   const onControl = useCallback((given: ReaderControl) => {
@@ -95,8 +87,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     return control.current;
   }, []);
 
-  // The library's item menu, which the library gives again at each of its renders; a tab's menu
-  // reads it when it opens.
   const itemMenu = useRef<ItemMenu | null>(null);
   const setItemMenu = useCallback((menu: ItemMenu | null) => {
     itemMenu.current = menu;
@@ -129,8 +119,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     [],
   );
 
-  // A tab whose PDF cannot settle asks first, as a browser's beforeunload prompt does: the
-  // dialog names the failure, and Close Without Saving drops what the reader could not save.
   const [closeRequest, setCloseRequest] = useState<ConfirmRequest | null>(null);
   const close = useCallback(
     (key: string) => {
@@ -148,7 +136,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     [closeReader, show, reader],
   );
 
-  // A PDF that cannot settle stays awake and is shown: it names the failure.
   const sleep = useCallback(
     (key: string) => {
       reader()
@@ -158,7 +145,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     [reader, show],
   );
 
-  // Quitting waits for every open PDF to settle; one that cannot rejects the quit's wait.
   useEffect(() => {
     const quitting = (event: WindowEventMap["pdf-bucket-quit"]) => {
       event.detail.waitUntil(
@@ -170,7 +156,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // The tab Ctrl+Tab (STEP 1) or Ctrl+Shift+Tab (STEP -1) shows, wrapping around.
     const stepping = (step: 1 | -1) => {
       const { projection: current, shown: from } = stateRef.current;
       const order = [LIBRARY_TAB, ...current.tabs.map((tab) => tab.key)];
@@ -221,7 +206,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // A PDF tab's own menu entries, which its item's menu follows.
   const tabEntries = (tab: TabEntry) => (
     <>
       <ContextMenu.Item disabled={tab.asleep} onSelect={() => sleep(tab.key)} className={MENU_ITEM}>
@@ -305,9 +289,6 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
             </ContextMenu.Root>
           ))}
         </Tabs.List>
-        {/* The Library and the reader fill the same box and the one hidden is only invisible:
-            EmbedPDF lays out its pages from its container's size, and a container under
-            display: none has none, so a PDF opened while the Library shows would stay blank. */}
         <div className="flex min-h-0 flex-1">
           <div className="relative min-h-0 min-w-0 flex-1">
           <Tabs.Content
@@ -327,6 +308,7 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
                 inTab
                 onControl={onControl}
                 onProjection={setProjection}
+                onPage={onPage}
               />
             )}
           </div>

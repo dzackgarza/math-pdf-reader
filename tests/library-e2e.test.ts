@@ -2473,7 +2473,14 @@ test("the Timeline shows a reading session with the pages read for at least five
   await shot("timeline");
   await page.click('[data-timeline-key="reading"] a');
   await shownReader("reading");
-  expect(new URL(page.url()).hash).toBe("#/timeline");
+  expect(new URL(page.url()).pathname).toBe("/read/reading");
+  await (await byRole("tab", "Library")).click();
+  await page.waitForSelector('select[aria-label="Shortest reading"]', {
+    visible: true,
+  });
+  expect(new URL(page.url()).pathname + new URL(page.url()).hash).toBe(
+    "/#/timeline",
+  );
 });
 
 test("the grid view shows each PDF's first page, and a double-click opens the reader in a tab", async () => {
