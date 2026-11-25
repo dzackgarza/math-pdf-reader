@@ -233,6 +233,66 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   let downloads: string;
   let extension: string | null = null;
   let page: Page;
+  const workerConsole: string[] = [];
+  const pageConsole: string[] = [];
+
+  const followWorker = async (target: Target) => {
+    if (target.type() !== "service_worker") {
+      return;
+    }
+    const worker = await target.worker();
+    if (worker === null) {
+      return;
+    }
+    workerConsole.push(`[started ${target.url()}]`);
+    worker.on("console", (message) =>
+      workerConsole.push(`${message.type()}: ${message.text()}`),
+    );
+    worker.on("error", (error) => workerConsole.push(`error: ${String(error)}`));
+  };
+  const followPage = (tab: Page) => {
+    tab.on("console", (message) =>
+      pageConsole.push(`${tab.url()} ${message.type()}: ${message.text()}`),
+    );
+    tab.on("pageerror", (error) =>
+      pageConsole.push(`${tab.url()} pageerror: ${String(error)}`),
+    );
+  };
+  const step = async <T>(
+    label: string,
+    work: Promise<T>,
+    state: () => Promise<string> = async () => "",
+  ): Promise<T> => {
+    const limit = 8_000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), limit);
+    });
+    const outcome = await Promise.race([
+      work.then((value) => ({ value })),
+      timedOut,
+    ]);
+    clearTimeout(timer);
+    if (outcome !== "timeout") {
+      return outcome.value;
+    }
+    const seen = await state().catch((error: unknown) => `(unreadable: ${String(error)})`);
+    throw new Error(
+      [
+        `step "${label}" did not finish in ${limit} ms`,
+        `state: ${seen}`,
+        `service workers: ${browser
+          .targets()
+          .filter((target) => target.type() === "service_worker")
+          .map((target) => target.url())
+          .join(", ") || "(none)"}`,
+        "service worker console:",
+        ...(workerConsole.length > 0 ? workerConsole : ["(empty)"]),
+        "page console:",
+        ...(pageConsole.length > 0 ? pageConsole : ["(empty)"]),
+      ].join("\n"),
+    );
+  };
 
   const shot = async (name: string) => {
     await page.screenshot({ path: join(screenshots, `${engine}-${name}.png`) });
@@ -340,13 +400,36 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
   ) => {
     const status = `${extensionOrigin}/popup.html`;
     if (engine === "chrome") {
-      await page.goto(status);
-    } else {
-      if (!(await documentUrl()).startsWith(extensionOrigin)) {
-        await scriptNavigate(`${extensionOrigin}/capture.html`);
-      }
-      await scriptNavigate(status);
+      const fetched = page.waitForResponse(
+        (response) => response.url() === `${bucket.origin}/status`,
+        { timeout: 0 },
+      );
+      await step("status page load", page.goto(status), async () => page.url());
+      await step(
+        "status fetch",
+        fetched.then((response) => response.status()),
+        async () => page.url(),
+      );
+      await step(
+        `${state} status page`,
+        page.waitForSelector(`#connection[data-state="${state}"]`, {
+          timeout: 0,
+        }),
+        async () =>
+          z
+            .string()
+            .parse(
+              await page.evaluate(
+                "`data-state=${document.querySelector('#connection')?.dataset.state} text=${document.querySelector('#connection')?.textContent}`",
+              ),
+            ),
+      );
+      return;
     }
+    if (!(await documentUrl()).startsWith(extensionOrigin)) {
+      await scriptNavigate(`${extensionOrigin}/capture.html`);
+    }
+    await scriptNavigate(status);
     await page.waitForSelector(`#connection[data-state="${state}"]`);
   };
   const flipCaptureSwitch = async () => {
@@ -407,8 +490,13 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       browser.on("targetcreated", created);
     });
     const opener = await browser.newPage();
+    followPage(opener);
     void opener.goto(`${extensionOrigin}/popup.html`).catch(() => undefined);
-    await restarted;
+    await step(
+      "service worker restart after runtime.reload",
+      restarted,
+      async () => (opener.isClosed() ? "status page closed" : opener.url()),
+    );
     if (!opener.isClosed()) {
       await opener.close().catch(() => undefined);
     }
@@ -433,6 +521,11 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       downloads,
     );
     page = await browser.newPage();
+    if (engine === "chrome") {
+      await Promise.all(browser.targets().map(followWorker));
+      browser.on("targetcreated", (target: Target) => void followWorker(target));
+      followPage(page);
+    }
   }, 60_000);
 
   afterAll(async () => {
