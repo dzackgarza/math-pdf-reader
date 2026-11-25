@@ -80,7 +80,7 @@ fn steps_owed<'a>(
         return vec![Step::Pdf];
     }
     let mut steps = vec![Step::Fields, Step::Pdf];
-    if let Extraction::Extracted { .. } = extraction {
+    if let Extraction::Extracted { .. } | Extraction::Unlabelled { .. } = extraction {
         steps.push(Step::Markdown);
     }
     steps.extend(notes.iter().map(Step::Note));
@@ -388,7 +388,7 @@ async fn send_and_extract_item(
     }
     let mut sent = send_steps(&state, &origin, &key).await?;
     let extractions = match indexed.extraction {
-        Extraction::Extracted { .. } => Vec::new(),
+        Extraction::Extracted { .. } | Extraction::Unlabelled { .. } => Vec::new(),
         Extraction::None => extract_by_chain(&state, &key).await?,
     };
     if extractions
@@ -435,7 +435,7 @@ async fn send_pdf_only_item(state: Shared, key: String) -> AppResult<SendRespons
         1 => held.push("a note".to_string()),
         count => held.push(format!("{count} notes")),
     }
-    if let Extraction::Extracted { .. } = indexed.extraction {
+    if let Extraction::Extracted { .. } | Extraction::Unlabelled { .. } = indexed.extraction {
         held.push("an extraction's Markdown".to_string());
     }
     if !held.is_empty() {

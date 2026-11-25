@@ -1,6 +1,6 @@
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import { type Cell, flexRender, type Table } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp, Eye, FileText, Inbox, LoaderCircle, RotateCcw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, FileText, Inbox, LoaderCircle, RotateCcw } from "lucide-react";
 import prettyBytes from "pretty-bytes";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import type { BucketItem } from "../../contract/library";
@@ -79,6 +79,18 @@ function ExtractionBadge({ item, extracting }: { item: BucketItem; extracting: b
   }
   if (item.extraction.status === "none") {
     return <span className="text-faint">None</span>;
+  }
+  if (item.extraction.status === "unlabelled") {
+    return (
+      <span
+        data-extraction
+        title={`Unlabelled: ${item.extraction.reason}; re-run the extraction`}
+        className="inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning"
+      >
+        <AlertTriangle aria-hidden className="h-3 w-3" />
+        Unlabelled
+      </span>
+    );
   }
   return (
     <span

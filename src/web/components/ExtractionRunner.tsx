@@ -167,6 +167,12 @@ export default function ExtractionRunner({ item, plugins, attempt, onRun }: Item
   }
   return (
     <div className="w-full space-y-2">
+      {item.extraction.status === "unlabelled" && (
+        <p role="alert" className="flex items-center gap-2 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
+          <AlertTriangle aria-hidden className="h-4 w-4 shrink-0" />
+          This extraction has no source label ({item.extraction.reason}). Run the extraction again.
+        </p>
+      )}
       <RunControls
         item={item}
         plugins={plugins.plugins}

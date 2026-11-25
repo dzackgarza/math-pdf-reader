@@ -777,6 +777,10 @@ test("the export carries reading sessions and extraction records, and imports in
     join(original.root, "lattices.extraction/content_list.json"),
     "[1]",
   );
+  writeFileSync(
+    join(original.root, "lattices.extraction/metadata.json"),
+    JSON.stringify({ sourceKind: "ocr", authoritative: true }),
+  );
   writeFileSync(join(original.root, "lattices.md"), "# Lattices\n");
   const exportFile = join(temporaryDirectory("export"), "index.json");
   await exportIndex(original.home, exportFile);
@@ -785,8 +789,8 @@ test("the export carries reading sessions and extraction records, and imports in
   expect(exported?.sessions).toEqual(sessions.sessions);
   expect(exported?.items[0]?.extraction).toEqual({
     status: "extracted",
-    sourceKind: "document_structure",
-    authoritative: false,
+    sourceKind: "ocr",
+    authoritative: true,
     markdown: { name: "lattices.md", sizeBytes: 11 },
     files: [{ name: "lattices.extraction/content_list.json", sizeBytes: 3 }],
   });

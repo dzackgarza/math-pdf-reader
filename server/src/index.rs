@@ -13,8 +13,9 @@ use walkdir::WalkDir;
 use crate::config::EXTRACTION_METADATA;
 use crate::contract::{
     Extraction, ExtractionExtractedFilesItem, ExtractionExtractedMarkdown,
-    ExtractionExtractedSourceKind, NonEmpty, PdfRecord, ReadOutcomeList, ReadOutcomeListItem,
-    SourceLineage, StoredItem, StoredItemTitle,
+    ExtractionExtractedSourceKind, ExtractionUnlabelledFilesItem, ExtractionUnlabelledMarkdown,
+    NonEmpty, PdfRecord, ReadOutcomeList, ReadOutcomeListItem, SourceLineage, StoredItem,
+    StoredItemTitle,
 };
 use crate::error::{AppError, AppResult};
 use crate::layout::{self, pdf_key, Key};
@@ -125,34 +126,55 @@ fn extraction_for(root: &Path, key: &Key) -> AppResult<Extraction> {
                     .expect("walkdir yields paths under its root")
                     .to_string_lossy()
                     .into_owned();
-                let (name, path, size_bytes) = artifact(entry.path(), relative)?;
-                files.push(ExtractionExtractedFilesItem {
-                    name: nonempty(name),
-                    path: nonempty(path),
-                    size_bytes,
-                });
+                files.push(artifact(entry.path(), relative)?);
             }
         }
     }
-    files.sort_by(|a, b| a.path.cmp(&b.path));
+    files.sort_by(|a, b| a.1.cmp(&b.1));
     let name = format!("{key}.md");
     let (name, path, size_bytes) = artifact(&markdown, name)?;
-    let metadata = std::fs::read(directory.join(EXTRACTION_METADATA))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<ExtractionMetadata>(&bytes).ok())
-        .unwrap_or(ExtractionMetadata {
-            source_kind: ExtractionExtractedSourceKind::DocumentStructure,
-            authoritative: false,
-        });
-    Ok(Extraction::Extracted {
-        source_kind: metadata.source_kind,
-        authoritative: metadata.authoritative,
-        markdown: ExtractionExtractedMarkdown {
-            name: nonempty(name),
-            path: nonempty(path),
-            size_bytes,
+    let label = match std::fs::read(directory.join(EXTRACTION_METADATA)) {
+        Ok(bytes) => serde_json::from_slice::<ExtractionMetadata>(&bytes)
+            .map_err(|error| format!("{EXTRACTION_METADATA} is invalid: {error}")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(format!("{EXTRACTION_METADATA} is missing"))
+        }
+        Err(error) => Err(format!("{EXTRACTION_METADATA} is unreadable: {error}")),
+    };
+    Ok(match label {
+        Ok(metadata) => Extraction::Extracted {
+            source_kind: metadata.source_kind,
+            authoritative: metadata.authoritative,
+            markdown: ExtractionExtractedMarkdown {
+                name: nonempty(name),
+                path: nonempty(path),
+                size_bytes,
+            },
+            files: files
+                .into_iter()
+                .map(|(name, path, size_bytes)| ExtractionExtractedFilesItem {
+                    name: nonempty(name),
+                    path: nonempty(path),
+                    size_bytes,
+                })
+                .collect(),
         },
-        files,
+        Err(reason) => Extraction::Unlabelled {
+            reason: nonempty(reason),
+            markdown: ExtractionUnlabelledMarkdown {
+                name: nonempty(name),
+                path: nonempty(path),
+                size_bytes,
+            },
+            files: files
+                .into_iter()
+                .map(|(name, path, size_bytes)| ExtractionUnlabelledFilesItem {
+                    name: nonempty(name),
+                    path: nonempty(path),
+                    size_bytes,
+                })
+                .collect(),
+        },
     })
 }
 

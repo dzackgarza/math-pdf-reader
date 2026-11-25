@@ -76,6 +76,12 @@ export const ExtractionRecordSchema = z.discriminatedUnion("status", [
     markdown: ExtractionFileRecordSchema,
     files: z.array(ExtractionFileRecordSchema),
   }),
+  z.strictObject({
+    status: z.literal("unlabelled"),
+    reason: NonEmptySchema,
+    markdown: ExtractionFileRecordSchema,
+    files: z.array(ExtractionFileRecordSchema),
+  }),
 ]);
 
 // A stored item as the export holds it: what its PDF carries, its filing, and its extraction.

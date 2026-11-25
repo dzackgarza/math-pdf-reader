@@ -13,7 +13,8 @@ use tokio::sync::{watch, Notify, Semaphore};
 use crate::contract::{
     AppConfigRebuild, ExportedItem, ExportedItemTitle, Extraction, ExtractionRecord,
     ExtractionRecordExtractedFilesItem, ExtractionRecordExtractedMarkdown,
-    ExtractionRecordExtractedSourceKind, IndexExport, IndexExportState, MissingItem, Organization,
+    ExtractionRecordExtractedSourceKind, ExtractionRecordUnlabelledFilesItem,
+    ExtractionRecordUnlabelledMarkdown, IndexExport, IndexExportState, MissingItem, Organization,
     RebuildOutcome, Timestamp,
 };
 use crate::error::{AppError, AppResult};
@@ -75,6 +76,26 @@ fn extraction_record(key: &str, extraction: &Extraction) -> ExtractionRecord {
             files: files
                 .iter()
                 .map(|file| ExtractionRecordExtractedFilesItem {
+                    name: format!("{key}.extraction/{}", *file.name)
+                        .try_into()
+                        .expect("an artifact name is not empty"),
+                    size_bytes: file.size_bytes,
+                })
+                .collect(),
+        },
+        Extraction::Unlabelled {
+            reason,
+            markdown,
+            files,
+        } => ExtractionRecord::Unlabelled {
+            reason: reason.clone(),
+            markdown: ExtractionRecordUnlabelledMarkdown {
+                name: markdown.name.clone(),
+                size_bytes: markdown.size_bytes,
+            },
+            files: files
+                .iter()
+                .map(|file| ExtractionRecordUnlabelledFilesItem {
                     name: format!("{key}.extraction/{}", *file.name)
                         .try_into()
                         .expect("an artifact name is not empty"),

@@ -162,7 +162,9 @@ function ExtractionStrip({
           ? "Extracting… the assistant continues to read the raw PDF"
           : state.status === "extracted"
             ? "Extracted: the assistant reads the extraction"
-            : "No extraction: the assistant reads the raw PDF"}
+            : state.status === "unlabelled"
+              ? `Unlabelled extraction (${state.reason}): the assistant reads it, but its source kind is unknown; re-run the extraction`
+              : "No extraction: the assistant reads the raw PDF"}
       </p>
       <ExtractionRunner {...extraction} />
     </section>
@@ -193,7 +195,9 @@ export function AiPane({ itemKey, pane, onChange, extraction }: PaneProps) {
                 ? "Extracting"
                 : extraction.state.status === "extracted"
                   ? "Extracted"
-                  : "No extraction"
+                  : extraction.state.status === "unlabelled"
+                    ? "Unlabelled extraction"
+                    : "No extraction"
             }
             className="mt-2 flex h-6 w-6 items-center justify-center text-muted"
           >
@@ -205,7 +209,7 @@ export function AiPane({ itemKey, pane, onChange, extraction }: PaneProps) {
             ) : (
               <FileText
                 aria-hidden
-                className={`h-4 w-4 ${extraction.state.status === "extracted" ? "text-filed" : "text-faint"}`}
+                className={`h-4 w-4 ${extraction.state.status === "extracted" ? "text-filed" : extraction.state.status === "unlabelled" ? "text-warning" : "text-faint"}`}
               />
             )}
           </span>

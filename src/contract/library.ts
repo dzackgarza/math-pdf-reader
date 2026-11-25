@@ -219,6 +219,14 @@ export const ExtractionSchema = z.discriminatedUnion("status", [
     markdown: ArtifactSchema,
     files: z.array(ArtifactSchema),
   }),
+  // A Markdown whose `<key>.extraction/metadata.json` is missing or invalid: its source kind
+  // is unknown, so the library shows the reason and the user re-runs the extraction.
+  z.strictObject({
+    status: z.literal("unlabelled"),
+    reason: NonEmptySchema,
+    markdown: ArtifactSchema,
+    files: z.array(ArtifactSchema),
+  }),
 ]);
 
 // The steps of a send once the Zotero item exists: set its URL and access date, attach the
