@@ -100,10 +100,13 @@ captures and names its replacement.
 
 **Independent Test**: quickstart.md US3.
 
-- [ ] T016 [US3] Keep extension provisioning a separate explicit recipe that does nothing
+- [X] T016 [US3] Keep extension provisioning a separate explicit recipe that does nothing
   when its input is unchanged: `justfile:43-45`, `scripts/provision-extensions.sh:12-18`;
   `scripts/provision.sh` builds no extension (FR-006, US2/AC3, US3/AC1). Source has it;
   no test.
+  - Evidence: `tests/launch.test.ts` "with both browsers ready it installs both builds,
+    and with the input unchanged it builds nothing" (no second `wxt build`);
+    "provisioning for a launch" sees no `wxt` call from `scripts/provision.sh`.
 - [X] T017 [US3] Report each provisioned extension version at `/status` and serve the
   signed Firefox build with its update manifest (FR-007, FR-008, US3/AC1)
   - Evidence: `server/src/extensions.rs:50-70,87-116`, `server/src/app.rs:375-397`;
@@ -165,17 +168,23 @@ that is not `[X]` maps to a task here.
 - [ ] T027 Report a missing extension provisioning in the extension: when `/status`
   gives `null` for the browser, `checkBucket` in `src/extension/bucket-status.ts:66-70`
   treats the build as current and the popup says nothing. Per FR-007, US3/AC2 (partial).
-- [ ] T028 Refuse extension provisioning when the extension input is not committed, and
+- [X] T028 Refuse extension provisioning when the extension input is not committed, and
   name the paths, in `scripts/provision-extensions.sh`. The version is the commit count
   (`wxt.config.ts:24-27`), so uncommitted input reuses the installed version:
   `scripts/amo_signed.py` returns the earlier signed package, Firefox keeps the old code,
   Chromium sees no newer version, and `extension-fingerprint` records the new input. Per
   US3/AC1, FR-007 (partial).
-- [ ] T029 Provision each browser's build without a dependency on the other browser's
+  - Evidence: `scripts/provision-extensions.sh:11-15`; `tests/launch.test.ts`
+    "uncommitted extension input is refused with its paths, and nothing is built", red at
+    8f9c5a2.
+- [X] T029 Provision each browser's build without a dependency on the other browser's
   setup: the Chromium load check at `scripts/provision-extensions.sh:42-46` runs before
   Firefox signing and stops it. Add a test with substitutes for `bunx`, `web-ext` and
   `uv` that an unchanged extension input builds nothing (T016) and that each browser's
   precondition stops only that browser. Per FR-006, US3/AC1 (partial).
+  - Evidence: `scripts/provision-extensions.sh:37-70`; `tests/launch.test.ts` "a Chromium
+    that does not load the build stops only the Chrome build" (red at 8f9c5a2) and "a
+    Firefox without the add-on policy stops only the Firefox build".
 - [ ] T030 Test a stale build in `tests/capture-e2e.test.ts` for Chrome and Firefox: give
   the server an extensions directory whose manifests name another version; assert badge
   `OLD`, the popup's This build, Provisioned and Replacement, and that a PDF navigation

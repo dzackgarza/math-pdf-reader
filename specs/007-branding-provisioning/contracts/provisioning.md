@@ -28,12 +28,17 @@ or installs an extension.
 
 ## `just _provision-extensions`
 
+It builds, installs and signs the extensions, and neither rebuilds nor restarts the app.
+
 | Condition | Effect |
 | --- | --- |
+| extension input not committed | exit 1, listing the uncommitted paths; nothing built (the version counts commits) |
 | extension input hash equals `extension-fingerprint` | prints "browser extensions are already provisioned"; exit 0; nothing built |
-| Firefox policy missing | exit 1 with the instruction `just firefox-policy` |
-| Chromium does not load `extensions/chrome-mv3` | exit 1 with the load instruction |
+| Chromium does not load `extensions/chrome-mv3` | `chrome-mv3` installed; the load instruction; the Firefox build goes on; exit 1 |
+| Firefox policy missing | the instruction `just firefox-policy`; nothing signed for Firefox; the Chrome build goes on; exit 1 |
 | otherwise | build both, install `chrome-mv3`, get or make the AMO unlisted signature, install `firefox.xpi` and `firefox-mv2`, write `extension-fingerprint` |
+
+`extension-fingerprint` is written only when both browsers' builds are installed.
 
 ## `GET /status` (extension fields)
 
