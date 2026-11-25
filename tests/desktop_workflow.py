@@ -1516,7 +1516,13 @@ def test_keys_reach_the_reader_opened_from_the_library_before_any_click_in_it(
 def port_holders(port: int) -> str:
     """Every socket on `port` in the test's network namespace (/proc/net/tcp and tcp6), with its
     TCP state, the processes whose descriptors hold it, whether each is in the test's network
-    namespace, and each one's chain of parents."""
+    namespace, each one's chain of parents and the state and wait channel of each of its threads;
+    then every process of the test's user whose descriptors could not be read, with the error and
+    its State, PPid and Uid.
+
+    The descriptors are read per thread (/proc/<pid>/task/<tid>/fd): a thread-group leader that has
+    exited shows no descriptors under /proc/<pid>/fd while its other threads still hold them.
+    """
 
     def command(pid: str) -> str:
         try:
@@ -1548,26 +1554,67 @@ def port_holders(port: int) -> str:
     ]
     if not sockets:
         return f"no socket on port {port} in the test's namespace {own}"
+
+    def status(process: Path) -> str:
+        try:
+            lines = (process / "status").read_text().splitlines()
+        except OSError as error:
+            return f"(status unreadable: {error})"
+        return ", ".join(
+            line for line in lines if line.split(":")[0] in ("State", "PPid", "Uid")
+        )
+
+    def threads(process: Path) -> list[str]:
+        described = []
+        for task in sorted((process / "task").iterdir()):
+            try:
+                state = (task / "stat").read_text().rsplit(")", 1)[1].split()[0]
+                wchan = (task / "wchan").read_text()
+            except OSError as error:
+                described.append(f"{task.name} ({error})")
+                continue
+            described.append(f"{task.name} {state} {wchan}")
+        return described
+
+    user = str(os.getuid())
     owners: dict[str, list[str]] = {inode: [] for *_, inode in sockets}
+    unreadable: list[str] = []
     for process in Path("/proc").iterdir():
         if not process.name.isdigit():
             continue
+        links: set[str] = set()
+        errors: list[str] = []
         try:
-            links = {os.readlink(fd) for fd in (process / "fd").iterdir()}
+            tasks = list((process / "task").iterdir())
+        except OSError as error:
+            tasks = []
+            errors.append(str(error))
+        for task in tasks:
+            try:
+                links |= {os.readlink(fd) for fd in (task / "fd").iterdir()}
+            except OSError as error:
+                errors.append(f"task {task.name}: {error}")
+        try:
             namespace = os.readlink(process / "ns/net")
-        except OSError:
-            continue
+        except OSError as error:
+            namespace = f"(unreadable: {error})"
+        if errors and f"Uid:\t{user}\t" in status(process):
+            unreadable.append(
+                f"pid {process.name} ({command(process.name)}) {status(process)}: {errors}"
+            )
         for inode, held in owners.items():
             if f"socket:[{inode}]" in links:
                 held.append(
                     f"pid {process.name} ({command(process.name)}), "
                     f"{'in' if namespace == own else 'outside'} the test's namespace, "
+                    f"{status(process)}, threads {threads(process)}, "
                     f"parents {parents(process.name)}"
                 )
-    return "; ".join(
+    holders = "; ".join(
         f"{table} {local} state {state} inode {inode} held by {owners[inode] or 'no readable process'}"
         for table, local, state, inode in sockets
     )
+    return f"{holders}; unreadable processes of uid {user}: {unreadable or 'none'}"
 
 
 def test_a_port_already_taken_shows_math_pdf_reader_is_not_serving_in_its_window(
