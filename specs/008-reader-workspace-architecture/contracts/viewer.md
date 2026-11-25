@@ -84,6 +84,13 @@ of `@embedpdf/react-pdf-viewer` 2.15.1.
   asked, so the restore's lands after the zoom's, and the scroll plugin reports a page only
   from where the viewport is: the PDF reports only the page it opens at (T038 in
   `specs/003-reader-annotations/tasks.md`).
+- From the moment an instant scroll is asked, the viewport's scroll metrics name the place it
+  asked for (clamped to the scroll range), not the place the last scroll event reported. The
+  zoom plugin computes the scroll of each zoom from those metrics, and it refits a fitted
+  zoom 150 ms after each viewport resize; a refit that came before the next frame drew a Next
+  Page press's scroll computed from the old place, and its own scroll request, applied after
+  the press's, put the reader back on the old page (CI run 45674719272). Smooth requests are
+  not followed: their metrics come from the scroll events along the way.
 - The reader's own moves to a place (`restore`, `scrollToStart`) record no jump in the
   back/forward history.
 - A position's page coordinates are the visible part's offset in the page less the gap above

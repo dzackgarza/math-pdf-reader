@@ -435,6 +435,23 @@ function releaseZoomGate(caps: Capabilities, documentId: string) {
   });
 }
 
+function scrollMetricsFollowRequests(registry: PluginRegistry, documentId: string) {
+  const viewport = registry.getPlugin<ViewportPlugin>(ViewportPlugin.id);
+  if (viewport === null) {
+    throw new Error("the reader has no viewport plugin");
+  }
+  viewport.onScrollRequest(documentId, ({ x, y, behavior }) => {
+    if (behavior !== "instant") {
+      return;
+    }
+    const metrics = viewport.provides().forDocument(documentId).getMetrics();
+    viewport.setViewportScrollMetrics(documentId, {
+      scrollLeft: Math.max(0, Math.min(x, metrics.scrollWidth - metrics.clientWidth)),
+      scrollTop: Math.max(0, Math.min(y, metrics.scrollHeight - metrics.clientHeight)),
+    });
+  });
+}
+
 export function connectViewer(registry: PluginRegistry, context: ViewerContext) {
   const { host, storageOf, positionOf, scopeShortcuts, changed, isShown } = context;
   const pageControlStyle = document.createElement("style");
@@ -521,6 +538,7 @@ export function connectViewer(registry: PluginRegistry, context: ViewerContext) 
     context.sleepDrowsy();
   });
   viewport.onViewportChange(({ documentId }) => releaseZoomGate(found, documentId));
+  documents.onDocumentOpened(({ id }) => scrollMetricsFollowRequests(registry, id));
   documents.onDocumentOrderChanged(changed);
   documents.onDocumentClosed(changed);
   for (const resolve of host.whenReady.splice(0)) {
