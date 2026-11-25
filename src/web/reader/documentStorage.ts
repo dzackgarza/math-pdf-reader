@@ -263,11 +263,24 @@ export class DocumentStorage {
     if (this.page === this.recordedPage && this.zoom === this.recordedZoom) {
       return;
     }
-    this.pendingRecord = setTimeout(() => {
-      this.recordedPage = this.page;
-      this.recordedZoom = this.zoom;
-      fetch(`/api/items/${encodeURIComponent(this.key)}/reading`, {
+    this.pendingRecord = setTimeout(() => this.sendRecord(false), RECORD_PAUSE_MS);
+  }
+
+  leaving(): void {
+    if (this.pendingRecord === null) {
+      return;
+    }
+    clearTimeout(this.pendingRecord);
+    this.sendRecord(true);
+  }
+
+  private sendRecord(keepalive: boolean): void {
+    this.pendingRecord = null;
+    this.recordedPage = this.page;
+    this.recordedZoom = this.zoom;
+    fetch(`/api/items/${encodeURIComponent(this.key)}/reading`, {
         method: "PUT",
+        keepalive,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           ReadingRequestSchema.parse({
@@ -289,7 +302,6 @@ export class DocumentStorage {
             failed: true,
           }),
         );
-    }, RECORD_PAUSE_MS);
   }
 
   dispose(): void {

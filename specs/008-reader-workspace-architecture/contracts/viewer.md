@@ -113,3 +113,7 @@ jumped between.
   over it.
 - **Dispose.** When the document leaves the manager, its session reports and stops, and no
   save is left. A page or zoom change waiting to be recorded is still recorded.
+
+## Leaving the page
+
+A page or zoom change is recorded after a 1 s pause. When the page unloads (`pagehide`), each open PDF sends its waiting record at once, as a `keepalive` request, so a reload or a navigation made in that second does not lose the change.

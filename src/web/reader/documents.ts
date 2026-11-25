@@ -435,8 +435,19 @@ export function useControl(
         event.preventDefault();
       }
     };
+    const hidden = () => {
+      for (const held of host.held.values()) {
+        if (held.status === "open") {
+          held.storage.leaving();
+        }
+      }
+    };
     window.addEventListener("beforeunload", leaving);
-    return () => window.removeEventListener("beforeunload", leaving);
+    window.addEventListener("pagehide", hidden);
+    return () => {
+      window.removeEventListener("beforeunload", leaving);
+      window.removeEventListener("pagehide", hidden);
+    };
   }, [host]);
 }
 
