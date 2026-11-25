@@ -36,3 +36,9 @@ Under FR-003 they display what the reader reports and hold no document lifecycle
 | `GET /pdf/<key>.pdf` | 200, `ETag`, `X-Pdf-Edition` | 404 |
 | `PUT /api/items/<key>/pdf` with `If-Match` | 200, new `ETag` | 412 stale, 428 no tag, 409 provenance, 400 not a PDF |
 | `PUT /api/items/<key>/reading` `{page, pages, edition}` | 200 | 400, 404 |
+
+## Library view key
+
+`LibraryViewKeySchema` (`src/contract/library.ts`) is a schema, not a plain constant, so
+that the server's reader page gets the session-storage key from the generated contract
+and the library page and the reader page cannot use different keys.

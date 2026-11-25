@@ -703,5 +703,5 @@ export type ArxivPromotionResponse = z.infer<
 
 export const LIBRARY_VIEW_KEY = "pdf-bucket.library-view";
 export const LibraryViewKeySchema = z.literal(LIBRARY_VIEW_KEY).describe(
-  "The session-storage key under which the library page keeps its current view (the address's hash, for example `#/unfiled`); the reader's Library button returns to that view. It is a schema so that the server's reader page gets it from the generated contract.",
+  "The session-storage key under which the library page keeps its current view (the address's hash, for example `#/unfiled`); the reader's Library button returns to that view.",
 );
