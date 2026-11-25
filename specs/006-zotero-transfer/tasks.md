@@ -40,14 +40,14 @@ extraction output.
 **Independent Test**: Capture, read, extract and file a paper with no send, then send it and
 inspect the Zotero item.
 
-- [ ] T003 [US1] Prove that capture, reading, extraction, filing and Retrieve metadata make no
+- [X] T003 [US1] Prove that capture, reading, extraction, filing and Retrieve metadata make no
   Zotero write, in a new test against a recording write API stub in `tests/server-send.test.ts`.
   Per FR-001, FR-002, SC-001, US1/AC1 and US3/AC2.
-  Code: only `server/src/send.rs` calls `import_from_url`, `attach_bytes`, `attach_standalone`,
-  `set_url_and_access_date`, `attach_note` or `trash_item`. `server/src/titles.rs:79` calls only
-  `resolve_url`, which saves nothing. No test asserts the absence of writes. Every capture,
-  extraction and library test uses a closed Zotero port, so a write attempt fails without
-  failing the test.
+  Evidence: only `server/src/send.rs` calls `import_from_url`, `attach_bytes`,
+  `attach_standalone`, `set_url_and_access_date`, `attach_note` or `trash_item`;
+  `server/src/titles.rs:79` calls only `resolve_url`. `tests/server-send.test.ts:519` captures,
+  reads, annotates, extracts, files, records reading, runs Retrieve metadata and deletes against
+  the stub, and asserts that Zotero received only `resolve_url` and holds no item.
 - [X] T004 [US1] Send to Zotero finds or makes the Zotero item for the PDF URL, then attaches
   one PDF, in `server/src/send.rs`. Per FR-003, SC-002 and US1/AC2 (citation and PDF).
   Evidence: `server/src/send.rs:143-167`, `:194-213`, `:283-310`, `:334-359`; live
@@ -163,12 +163,13 @@ last.
 
 ## Phase 6: Convergence
 
-- [ ] T020 Add a loopback stub of the Zotero write API for tier-1 tests in
+- [X] T020 Add a loopback stub of the Zotero write API for tier-1 tests in
   `tests/zotero-stub.ts`. It answers `GET /version` from `tests/fixtures/zotero/version.json`.
   It records each `/write` operation and `/attach` body, and answers or fails each one as the
   test asks, with the addon's documented JSON (addon `openapi.yaml`). It also answers the
   `/api/users/0/items/<key>/children` reads. Prerequisite for T003, T014, T015 and T016
   (missing).
+  Evidence: `tests/zotero-stub.ts:106`; used by `tests/server-send.test.ts:446`.
 - [ ] T021 CRITICAL: Pass Zotero's selected collection to `import_from_url` in
   `server/src/zotero.rs` and `server/src/send.rs`. Read it with `get_selected_collection`, send
   its key in `collection_keys`, and file an existing item in that collection. With no
@@ -176,11 +177,12 @@ last.
   test in `tests/server-send.test.ts` that asserts the stub received that collection key. Per
   FR-005, US1/AC2 and T006 (missing). The open question in `research.md` decides the
   no-selection case.
-- [ ] T022 Add an implicit-write audit to `tests/server-send.test.ts` with the T020 stub.
+- [X] T022 Add an implicit-write audit to `tests/server-send.test.ts` with the T020 stub.
   Capture a PDF, open `/read/<key>`, save an annotation, run an extraction, file the item in a
   collection, tag it, add a note and run Retrieve metadata. Assert that the stub received only
   `resolve_url` and `GET /version`. Per FR-002, SC-001, US1/AC1 and US3/AC2 (partial: the code
   holds, no proof).
+  Evidence: `tests/server-send.test.ts:519` (see T003).
 - [ ] T023 Add a partial-failure retry test to `tests/server-send.test.ts` with the T020 stub.
   `import_from_url` succeeds and `/attach` fails. Assert `502 zotero_failed`, `zotero.status`
   `sent` with `pending` containing `pdf` and the recorded item key, and an unchanged PDF at

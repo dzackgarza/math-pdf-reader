@@ -1,13 +1,14 @@
-// The send action's own rules at the bucket's HTTP boundary, and the guard in front of every
-// state-changing route. Zotero is a closed port here (or a replay of Zotero without the write API), so
-// the health check before any request to Zotero fails loudly instead of writing to a real
-// library; the Zotero write path itself is proved by the evidence run in docs/m3.md.
+// The send action at the bucket's HTTP boundary, and the guard in front of every
+// state-changing route. Zotero is a closed port, a replay of Zotero without the write API, or a
+// loopback stand-in for the write API (tests/zotero-stub.ts) that keeps what the requests make,
+// so no test here writes to a real library.
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CaptureResponseSchema } from "../src/contract/capture";
+import { CONFIG_PATH, loadAppConfig } from "../src/contract/config";
 import {
   ApiErrorSchema,
   type BucketItem,
@@ -16,8 +17,11 @@ import {
 } from "../src/contract/library";
 import { closedPortUrl, EXTRACTIONS_MANIFEST, serveBucket } from "./bucket";
 import { unfiled, writeOrganization } from "./store";
+import { type ZoteroStub, zoteroStub } from "./zotero-stub";
 
 const lectureNotes = join(import.meta.dir, "fixtures/lecture-notes.pdf");
+const problemSet = join(import.meta.dir, "fixtures/problem-set.pdf");
+const extractor = join(import.meta.dir, "fixtures/plugins/extractor.sh");
 
 const zoteroUrl = closedPortUrl();
 type Bucket = {
@@ -40,11 +44,15 @@ async function emptyBucket(): Promise<Bucket> {
   };
 }
 
-async function capture(bucket: Bucket, key: string): Promise<void> {
+async function capture(
+  bucket: Bucket,
+  key: string,
+  pdf: string = lectureNotes,
+): Promise<void> {
   const form = new FormData();
   form.set(
     "pdf",
-    new File([readFileSync(lectureNotes)], `${key}.pdf`, {
+    new File([readFileSync(pdf)], `${key}.pdf`, {
       type: "application/pdf",
     }),
   );
@@ -432,3 +440,134 @@ test("a standalone PDF in Zotero owes nothing more, and every send of it is refu
     "already_sent",
   ]);
 });
+
+// A bucket over the loopback write API, whose extraction plugins are the fixture extractor in
+// the given modes, by plugin id; the send's extraction chain is those plugins in that order.
+async function stubbedBucket(
+  chain: Record<string, string> = { markdown: "markdown" },
+): Promise<{ bucket: Bucket; zotero: ZoteroStub }> {
+  const zotero = zoteroStub();
+  const root = mkdtempSync(join(tmpdir(), "pdf-bucket-send-"));
+  const manifestPath = join(
+    mkdtempSync(join(tmpdir(), "pdf-bucket-manifest-")),
+    "extractions.json",
+  );
+  writeFileSync(
+    manifestPath,
+    JSON.stringify({
+      plugins: Object.entries(chain).map(([id, mode]) => ({
+        id,
+        name: `Fixture extractor (${mode})`,
+        source_kind: "document_structure",
+        authoritative: true,
+        command: ["sh", extractor, mode, "$pdf", "$output"],
+        accepted_inputs: [
+          { kind: "pdf", id: "pdf", label: "PDF", limits: [] },
+        ],
+      })),
+    }),
+  );
+  const config = loadAppConfig(CONFIG_PATH);
+  const app = await serveBucket({
+    root,
+    zoteroUrl: zotero.url,
+    extractionsManifest: manifestPath,
+    config: {
+      ...config,
+      plugins: { ...config.plugins, send_extraction_chain: Object.keys(chain) },
+    },
+  });
+  return {
+    bucket: { root, origin: app.origin, request: app.request },
+    zotero,
+  };
+}
+
+async function json(
+  bucket: Bucket,
+  method: string,
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  return bucket.request(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// Files the paper in a new collection, tags it and adds a note, as the library does.
+async function file(bucket: Bucket, key: string): Promise<void> {
+  const collection = await (
+    await json(bucket, "POST", "/api/collections", { name: "Quadratic forms" })
+  ).json();
+  await json(bucket, "POST", "/api/bulk/collections", {
+    keys: [key],
+    add: [collection.id],
+    remove: [],
+  });
+  await json(bucket, "POST", "/api/bulk/tags", {
+    keys: [key],
+    add: ["topic:Lattices"],
+    remove: [],
+  });
+  await json(bucket, "POST", `/api/items/${key}/notes`, {
+    note: "Section 3 proves the bound.",
+  });
+}
+
+test("capture, reading, annotation, extraction, filing, Retrieve Metadata and delete write nothing to Zotero", async () => {
+  const { bucket, zotero } = await stubbedBucket();
+  await capture(bucket, "lattices");
+  await capture(bucket, "problems", problemSet);
+
+  expect((await bucket.request("/read/lattices")).status).toBe(200);
+  const served = await bucket.request("/pdf/lattices.pdf");
+  const bytes = new Uint8Array(await served.arrayBuffer());
+  const annotated = new Uint8Array([
+    ...bytes,
+    ...new TextEncoder().encode("\n% an incremental update\n"),
+  ]);
+  const saved = await bucket.request("/api/items/lattices/pdf", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/pdf",
+      "If-Match": served.headers.get("ETag") ?? "",
+    },
+    body: annotated,
+  });
+  expect(saved.status).toBe(200);
+  const extracted = await bucket.request(
+    "/api/items/lattices/extractions/markdown",
+    { method: "POST" },
+  );
+  expect(extracted.status).toBe(200);
+  await file(bucket, "lattices");
+  expect(
+    (
+      await json(bucket, "PUT", "/api/items/lattices/reading", {
+        page: 1,
+        pages: 2,
+        edition: (await item(bucket, "lattices"))?.provenance,
+      })
+    ).status,
+  ).toBe(200);
+  const retrieved = await bucket.request("/api/items/lattices/metadata", {
+    method: "POST",
+  });
+  expect(retrieved.status).toBe(200);
+  const deleted = await bucket.request("/api/items/problems", {
+    method: "DELETE",
+  });
+  expect(deleted.status).toBe(200);
+
+  expect((await item(bucket, "lattices"))?.extraction.status).not.toBe("none");
+  // Retrieve Metadata, after each capture and when asked, only asks Zotero to resolve a URL.
+  expect(zotero.writes()).toEqual([
+    "resolve_url",
+    "resolve_url",
+    "resolve_url",
+  ]);
+  expect(zotero.items.size).toBe(0);
+  expect(zotero.standalone).toEqual([]);
+}, 30_000);
