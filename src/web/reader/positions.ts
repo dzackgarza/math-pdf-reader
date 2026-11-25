@@ -34,23 +34,28 @@ export function usePositions(host: ReaderHost, caps: () => Capabilities) {
 
   const restore = useCallback(
     (key: string, position: Position) => {
-      const { scroll, zoom } = caps();
+      const { scroll, zoom, viewport } = caps();
       const scope = zoom.forDocument(key);
       if (scope.getState().zoomLevel !== position.zoom) {
         scope.requestZoom(position.zoom);
       }
-      host.moving = true;
-      try {
-        scroll.forDocument(key).scrollToPage({
-          pageNumber: position.pageNumber,
-          pageCoordinates: { x: position.x, y: position.y },
-          behavior: "auto",
+      const place = scroll
+        .forDocument(key)
+        .getRectPositionForPage(position.pageNumber - 1, {
+          origin: { x: position.x, y: position.y },
+          size: { width: 0, height: 0 },
         });
-      } finally {
-        host.moving = false;
+      if (place === null) {
+        throw new Error(`${key} has no page ${position.pageNumber} to restore`);
       }
+      const gap = viewport.getViewportGap();
+      viewport.forDocument(key).scrollTo({
+        x: place.origin.x + gap,
+        y: place.origin.y + gap,
+        behavior: "instant",
+      });
     },
-    [caps, host],
+    [caps],
   );
 
   const restoreOnceSized = useCallback(

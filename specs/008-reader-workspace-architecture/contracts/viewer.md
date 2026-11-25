@@ -73,12 +73,17 @@ of `@embedpdf/react-pdf-viewer` 2.15.1.
   for the gate (`restoreOnceSized`).
 - The zoom that releases the gate also asks the viewport to scroll to the place it keeps, and
   the viewport applies that scroll at the next animation frame, once the pages are in the DOM.
-  A restore moves with `scrollToPage` at behavior `auto`, not `instant`: EmbedPDF ends an
-  instant page change at once, so the zoom's later scroll to the top reports page 1 between
-  the asked page and its return. An `auto` page change stays open until the viewport's scroll
-  activity ends, and while it is open EmbedPDF keeps the asked page as the current page and
-  reports no other (plugin-scroll's `commitMetrics`). The PDF then reports only the page it
-  opens at (T038 in `specs/003-reader-annotations/tasks.md`).
+  A restore therefore does not use `scrollToPage`: it starts a page change that names the
+  asked page as current at once, and an instant one ends at once, so the zoom's later scroll
+  to the top reports page 1 between the asked page and its return. A page change that is not
+  instant ends only when the viewport reports that its scroll activity stopped, and on
+  WebKitGTK that report can fail to come, or never comes when the viewport is already at the
+  place. A restore instead asks the viewport itself for an instant scroll to the page's place
+  (plugin-scroll's `getRectPositionForPage` plus the viewport's gap, the same place
+  `scrollToPage` computes). The viewport applies its scroll requests in the order they were
+  asked, so the restore's lands after the zoom's, and the scroll plugin reports a page only
+  from where the viewport is: the PDF reports only the page it opens at (T038 in
+  `specs/003-reader-annotations/tasks.md`).
 - The reader's own moves to a place (`restore`, `scrollToStart`) record no jump in the
   back/forward history.
 - A position's page coordinates are the visible part's offset in the page less the gap above
