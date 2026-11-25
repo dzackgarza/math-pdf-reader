@@ -1513,6 +1513,52 @@ test("a PDF shown from its library row or from its tab is the one tab selected, 
   await agree("notes", 4);
 }, 60_000);
 
+test("while a PDF's tab shows, the window's address is that PDF's reader at the page shown; the Library tab gives back the library's own address and view", async () => {
+  const addressBecomes = async (wanted: string) => {
+    await page
+      .waitForFunction(
+        (text) => window.location.pathname + window.location.hash === text,
+        { timeout: 5000 },
+        wanted,
+      )
+      .catch(() => undefined);
+    const url = new URL(page.url());
+    expect(url.pathname + url.hash).toBe(wanted);
+  };
+  await page.goto(`${bucket.origin}/#/unfiled`);
+  await page.waitForSelector(row("notes"));
+  await page.click(row("notes"), { count: 2 });
+  await shownReader("notes");
+  await addressBecomes("/read/notes#page=1");
+  await goToPage("notes", 4);
+  await addressBecomes("/read/notes#page=4");
+
+  await (await byRole("tab", "Library")).click();
+  await addressBecomes("/#/unfiled");
+  await page.click(row("reading"));
+  await page.keyboard.press("Enter");
+  await shownReader("reading");
+  await addressBecomes("/read/reading#page=1");
+  await page.click(`${tab("notes")} [role="tab"]`);
+  await shownReader("notes");
+  await addressBecomes("/read/notes#page=4");
+  await shot("tabs-address");
+
+  await (await byRole("tab", "Library")).click();
+  await addressBecomes("/#/unfiled");
+  await page.waitForSelector(`${row("reading")}[aria-selected="true"]`, {
+    visible: true,
+  });
+  expect(
+    await page.$eval('button[aria-label="Unfiled"]', (button) =>
+      button.getAttribute("aria-pressed"),
+    ),
+  ).toBe("true");
+  await page.click('button[aria-label="Unread"]');
+  await addressBecomes("/#/unread");
+  await page.waitForSelector('button[aria-label="Unread"][aria-pressed="true"]');
+}, 60_000);
+
 test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the viewer, and wakes at the same place and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
   const captureTab = async (source: string, ordinal: string) => {
     const form = new FormData();
