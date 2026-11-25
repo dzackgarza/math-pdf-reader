@@ -1504,8 +1504,9 @@ def bus(*arguments: str) -> str:
     return run.stdout
 
 
-def menu_labels(layout: Script) -> list[str]:
-    """The labels of the items under a com.canonical.dbusmenu layout `(ia{sv}av)`, depth first.
+def menu_items(layout: Script) -> list[tuple[int, str]]:
+    """The ids and labels of the items under a com.canonical.dbusmenu layout `(ia{sv}av)`, depth
+    first.
 
     The layout's root is not an item: it carries libdbusmenu's placeholder label "Label Empty",
     which no tray host shows. A separator has no label.
@@ -1513,29 +1514,29 @@ def menu_labels(layout: Script) -> list[str]:
     assert isinstance(layout, list)
     children = layout[2]
     assert isinstance(children, list)
-    labels: list[str] = []
+    items: list[tuple[int, str]] = []
     for child in children:
         assert isinstance(child, dict)
         item = child["data"]
-        assert isinstance(item, list) and isinstance(item[1], dict)
+        assert isinstance(item, list) and isinstance(item[0], int)
+        assert isinstance(item[1], dict)
         label = item[1].get("label", {})
         assert isinstance(label, dict)
         if isinstance(label.get("data"), str):
-            labels.append(label["data"])
-        labels += menu_labels(item)
-    return labels
+            items.append((item[0], label["data"]))
+        items += menu_items(item)
+    return items
 
 
-def test_the_tray_item_and_its_menu_name_math_pdf_reader(
-    app: webdriver.WebKitGTK,
-) -> None:
-    """A tray host reads the app's StatusNotifierItem Title and its menu from the session bus.
+def tray() -> tuple[str, str, str, list[tuple[int, str]]]:
+    """The app's StatusNotifierItem as a tray host finds it: its connection, its Title, its menu's
+    object path and the menu's items.
 
     libappindicator exports the item under /org/ayatana/NotificationItem/ on one of the app's
     connections; the others time out or have no introspection, so only that one is read.
     """
     entries = json.loads(bus("--json=short", "list"))
-    items = [
+    found = [
         (entry["name"], path)
         for entry in entries
         if entry["name"].startswith(":")
@@ -1550,29 +1551,11 @@ def test_the_tray_item_and_its_menu_name_math_pdf_reader(
         if path.startswith("/org/ayatana/NotificationItem/")
         and not path.endswith("/Menu")
     ]
-    assert len(items) == 1, items
-    name, path = items[0]
-
-    title = json.loads(
-        bus(
-            "--json=short",
-            "get-property",
-            name,
-            path,
-            "org.kde.StatusNotifierItem",
-            "Title",
-        )
-    )
-    menu = json.loads(
-        bus(
-            "--json=short",
-            "get-property",
-            name,
-            path,
-            "org.kde.StatusNotifierItem",
-            "Menu",
-        )
-    )
+    assert len(found) == 1, found
+    name, path = found[0]
+    item = "org.kde.StatusNotifierItem"
+    title = json.loads(bus("--json=short", "get-property", name, path, item, "Title"))
+    menu = json.loads(bus("--json=short", "get-property", name, path, item, "Menu"))
     layout = json.loads(
         bus(
             "--json=short",
@@ -1589,12 +1572,211 @@ def test_the_tray_item_and_its_menu_name_math_pdf_reader(
             "label",
         )
     )
+    return name, title["data"], menu["data"], menu_items(layout["data"][1])
 
-    assert title["data"] == "Math PDF Reader"
-    assert menu_labels(layout["data"][1]) == [
+
+def test_the_tray_item_and_its_menu_name_math_pdf_reader(
+    app: webdriver.WebKitGTK,
+) -> None:
+    """A tray host reads the app's StatusNotifierItem Title and its menu from the session bus."""
+    _, title, _, items = tray()
+
+    assert title == "Math PDF Reader"
+    assert [label for _, label in items] == [
         "Show Math PDF Reader",
         "Quit Math PDF Reader",
     ]
+
+
+def accessibility_bus(stack: ExitStack) -> str:
+    """Start the AT-SPI bus and registry on the test's session bus; return the AT-SPI bus address.
+
+    A desktop session starts the registry through a systemd user unit, which the test's private
+    namespace does not have. The session bus also starts the bus launcher itself, by D-Bus
+    activation, when `GetAddress` names `org.a11y.Bus`.
+    """
+    for program in ("/usr/lib/at-spi-bus-launcher", "/usr/lib/at-spi2-registryd"):
+        started = subprocess.Popen(
+            [program, *(["--launch-immediately"] if "launcher" in program else [])],
+            stdout=subprocess.DEVNULL,
+        )
+        stack.callback(started.terminate)
+    address = json.loads(
+        bus(
+            "--json=short",
+            "call",
+            "org.a11y.Bus",
+            "/org/a11y/bus",
+            "org.a11y.Bus",
+            "GetAddress",
+        )
+    )["data"][0]
+    assert isinstance(address, str)
+    deadline = time.monotonic() + 10
+    while (
+        "org.a11y.atspi.Registry"
+        not in subprocess.run(
+            ["busctl", f"--address={address}", "--list", "list"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+    ):
+        assert time.monotonic() < deadline, "the AT-SPI registry took no name"
+        time.sleep(0.1)
+    return address
+
+
+def accessible(address: str, name: str, path: str, method: str) -> Script:
+    """One org.a11y.atspi.Accessible call on the AT-SPI bus."""
+    run = subprocess.run(
+        [
+            "busctl",
+            f"--address={address}",
+            "--json=short",
+            "call",
+            name,
+            path,
+            "org.a11y.atspi.Accessible",
+            method,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    if run.returncode != 0:
+        pytest.fail(
+            f"{method} on {name} {path} exited {run.returncode}: {run.stdout}{run.stderr}"
+        )
+    return json.loads(run.stdout)["data"][0]
+
+
+def accessible_name(address: str, name: str, path: str) -> str:
+    """The Name property of an accessible object on the AT-SPI bus."""
+    run = subprocess.run(
+        [
+            "busctl",
+            f"--address={address}",
+            "--json=short",
+            "get-property",
+            name,
+            path,
+            "org.a11y.atspi.Accessible",
+            "Name",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    if run.returncode != 0:
+        pytest.fail(
+            f"Name of {name} {path} exited {run.returncode}: {run.stdout}{run.stderr}"
+        )
+    value = json.loads(run.stdout)["data"]
+    assert isinstance(value, str)
+    return value
+
+
+def toplevels(address: str) -> list[tuple[str, str, list[str]]]:
+    """Each application's toplevel windows as AT-SPI reports them: name, role name, and the names
+    of the window's descendants."""
+
+    def descendants(name: str, path: str, depth: int) -> list[str]:
+        children = accessible(address, name, path, "GetChildren")
+        assert isinstance(children, list)
+        names: list[str] = []
+        for child in children:
+            assert isinstance(child, list)
+            child_name, child_path = child
+            assert isinstance(child_name, str) and isinstance(child_path, str)
+            names.append(accessible_name(address, child_name, child_path))
+            if depth > 0:
+                names += descendants(child_name, child_path, depth - 1)
+        return names
+
+    applications = accessible(
+        address,
+        "org.a11y.atspi.Registry",
+        "/org/a11y/atspi/accessible/root",
+        "GetChildren",
+    )
+    assert isinstance(applications, list)
+    windows: list[tuple[str, str, list[str]]] = []
+    for application in applications:
+        assert isinstance(application, list)
+        app_name, app_path = application
+        assert isinstance(app_name, str) and isinstance(app_path, str)
+        children = accessible(address, app_name, app_path, "GetChildren")
+        assert isinstance(children, list)
+        for window in children:
+            assert isinstance(window, list)
+            window_name, window_path = window
+            assert isinstance(window_name, str) and isinstance(window_path, str)
+            role = accessible(address, window_name, window_path, "GetRoleName")
+            assert isinstance(role, str)
+            windows.append(
+                (
+                    accessible_name(address, window_name, window_path),
+                    role,
+                    descendants(window_name, window_path, 6),
+                )
+            )
+    return windows
+
+
+def test_a_quit_a_reader_cannot_save_asks_in_a_dialog_titled_math_pdf_reader(
+    data_home: Path, tmp_path: Path
+) -> None:
+    """The tray's Quit, with a reader whose save fails, asks before quitting in a dialog.
+
+    The dialog is a GTK toplevel outside the webview, so it is read the way a screen reader reads
+    it: through AT-SPI. The failed save is a `pdf-bucket-quit` listener whose promise rejects,
+    as a reader's save that fails hands over.
+    """
+    with ExitStack() as stack:
+        address = accessibility_bus(stack)
+        driver = open_window(stack, data_home, tmp_path)
+        WebDriverWait(driver, 60).until(lambda d: d.current_url.startswith(ORIGIN))
+        driver.execute_script(
+            "window.addEventListener('pdf-bucket-quit', (event) =>"
+            " event.detail.waitUntil(Promise.reject(new Error('the disk is full'))))"
+        )
+        name, _, menu, items = tray()
+        quit_item = next(
+            item for item, label in items if label == "Quit Math PDF Reader"
+        )
+        bus(
+            "--",
+            "call",
+            name,
+            menu,
+            "com.canonical.dbusmenu",
+            "Event",
+            "isvu",
+            str(quit_item),
+            "clicked",
+            "s",
+            "",
+            "0",
+        )
+
+        deadline = time.monotonic() + 20
+        windows = toplevels(address)
+        while not any(role in ("alert", "dialog") for _, role, _ in windows):
+            if time.monotonic() > deadline:
+                pytest.fail(f"no dialog on the AT-SPI bus {address}: {windows}")
+            time.sleep(0.5)
+            windows = toplevels(address)
+        dialogs = [window for window in windows if window[1] in ("alert", "dialog")]
+
+        assert len(dialogs) == 1, windows
+        title, _, text = dialogs[0]
+        assert title == "Math PDF Reader", windows
+        assert any(
+            "A reader could not save: Error: the disk is full" in line for line in text
+        ), windows
 
 
 def test_a_library_folder_that_cannot_be_made_shows_math_pdf_reader_is_not_serving(

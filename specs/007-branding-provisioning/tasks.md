@@ -40,10 +40,14 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
     `com.canonical.dbusmenu` `GetLayout` and finds the items "Show Math PDF Reader" and
     "Quit Math PDF Reader" (pass 2026-11-25). The layout's root is not an item: it carries
     libdbusmenu's placeholder label "Label Empty".
-  - Open: the dialog titles have no test: a tauri-plugin-dialog dialog is a separate GTK toplevel, which WebDriver does not
-    see, headless Weston gives no client a list of toplevel titles, and the AT-SPI registry
-    does not start in the test's private namespace ("Could not activate remote peer
-    'org.a11y.atspi.Registry': unit failed" in the run's output).
+  - Evidence (quit dialog): `test_a_quit_a_reader_cannot_save_asks_in_a_dialog_titled_math_pdf_reader`
+    in `tests/desktop_workflow.py` starts the AT-SPI registry on the test's session bus,
+    presses the tray's Quit item over dbusmenu while a reader's save fails, and reads the
+    dialog through AT-SPI: one alert or dialog toplevel named "Math PDF Reader" that holds
+    "A reader could not save: Error: the disk is full" (pass 2026-11-25).
+  - Open: the `report` dialog (`desktop/src-tauri/src/lib.rs:29-35`) has no test. It shows
+    when the window cannot be shown or hidden, a link cannot be handed to the system
+    opener, or the tray names an unknown item; no test input makes any of these fail.
 - [X] T004 [P] [US1] Name the launcher and autostart entry `Name=Math PDF Reader` in
   `desktop/pdf-bucket-desktop.desktop` (FR-001, US1/AC1).
   - Evidence: `tests/launch.test.ts` "provisioning for a launch" runs the real
@@ -243,7 +247,7 @@ that is not `[X]` maps to a task here.
   manifest `name` in `tests/extension-manifest.test.ts`, and the titles of the library,
   failure, popup and capture pages; assert the window title in `tests/desktop_workflow.py`.
   Covers T002-T006, T008. Per FR-001, SC-001, US1/AC1 (missing).
-  - Open: as T003. The earlier `busctl tree` exit 1 was on other connections of the app
+  - Open: as T003 (the `report` dialog). The earlier `busctl tree` exit 1 was on other connections of the app
     (`:1.1` timed out, `:1.12` has no introspection); the connection that holds
     `/org/ayatana/NotificationItem/tray_icon_tray_app_main` answers.
 - [X] T032 Give the tray icon the title and tooltip "Math PDF Reader" in
@@ -292,8 +296,9 @@ that is not `[X]` maps to a task here.
       app's own page loads, so it needs the stop above; it is also a dialog (see T003).
     - background.ts's "lost" download failure: it shows after a download's delivery
       began in more than `MAX_DELIVERIES` service workers that Chrome stopped before the
-      server answered. The test server answers as soon as the PDF is stored, and the
-      Chrome suite cannot yet see a service worker restart (T030).
+      server answered. A server that delays its answer would hold a delivery open, but the
+      Chrome suite sees no service worker restart, not even in the browser's CDP target
+      events (T030).
 
 ## Dependencies
 
