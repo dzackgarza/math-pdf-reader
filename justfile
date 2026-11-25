@@ -143,7 +143,7 @@ desktop-rust-checks:
 # miss Puppeteer's 30 s launch limit. The qc jobs run this recipe as their setup_recipe.
 ci-setup:
     sudo apt-get update
-    sudo apt-get install -y pandoc texlive-extra-utils libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev weston webkit2gtk-driver direnv
+    sudo apt-get install -y pandoc texlive-extra-utils libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev weston webkitgtk-webdriver direnv
     sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
     direnv allow .
     echo "DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)" >> "$GITHUB_ENV"
