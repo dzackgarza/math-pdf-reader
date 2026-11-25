@@ -27,8 +27,11 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
 
 **Independent Test**: Open each surface and read its name (quickstart.md US1).
 
-- [ ] T002 [P] [US1] Name the window and the product "Math PDF Reader" in
-  `desktop/src-tauri/tauri.conf.json` (FR-001, US1/AC1). Source has it; no test.
+- [X] T002 [P] [US1] Name the window and the product "Math PDF Reader" in
+  `desktop/src-tauri/tauri.conf.json` (FR-001, US1/AC1).
+  - Evidence: tests/desktop_workflow.py "a port already taken" reads the Tauri window
+    title "Math PDF Reader" and the page title of the provisioned build (green after just
+    provision).
 - [ ] T003 [P] [US1] Name the dialogs and the tray items "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:32,154,383-384` (FR-001, US1/AC1). Source has it; no
   test.
