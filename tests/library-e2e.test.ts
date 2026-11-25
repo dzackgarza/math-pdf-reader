@@ -768,6 +768,35 @@ const zoomOf = async (key: string) =>
       return zoom.getState().zoomLevel;
     }, viewerOf(key)),
   );
+const zoomTo = async (key: string, level: number) => {
+  await page.evaluate(
+    async (css, wanted) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const zoom = (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides();
+      if (zoom === undefined) {
+        throw new Error(`${css} has no zoom plugin`);
+      }
+      zoom.requestZoom(wanted);
+    },
+    viewerOf(key),
+    level,
+  );
+  await page.waitForFunction(
+    async (css, wanted) => {
+      const viewer = document.querySelector<EmbedPdfContainer>(css);
+      const zoom = (await viewer?.registry)
+        ?.getPlugin<ZoomPlugin>("zoom")
+        ?.provides();
+      return zoom?.getState().currentZoomLevel === wanted;
+    },
+    {},
+    viewerOf(key),
+    level,
+  );
+  await scrollSettled(key);
+};
 const shownReader = async (key: string) => {
   await page.waitForSelector(`${tab(key)}[data-state="active"]`);
   await page.waitForSelector(readerOf(key), { visible: true });
@@ -1406,6 +1435,83 @@ test("each PDF opens in its own tab after the Library tab, which keeps its selec
   await page.waitForSelector(row("problems"), { visible: true });
   expect(await openTabKeys()).toEqual([]);
 });
+
+test("two open PDFs keep their own page and zoom through switches between them and the Library, and each switch shows its PDF within 2 s", async () => {
+  const at = {
+    notes: { page: 3, zoom: 1.5 },
+    reading: { page: 5, zoom: 0.8 },
+  } as const;
+  const keys = ["notes", "reading"] as const;
+  await openLibrary();
+  for (const key of keys) {
+    await (await byRole("tab", "Library")).click();
+    await page.click(row(key), { count: 2 });
+    await shownReader(key);
+    await zoomTo(key, at[key].zoom);
+    await goToPage(key, at[key].page);
+  }
+  const switches: { to: string; milliseconds: number }[] = [];
+  const switchTo = async (key: (typeof keys)[number]) => {
+    const started = performance.now();
+    await page.click(`${tab(key)} [role="tab"]`);
+    await shownReader(key);
+    await showsPage(key, at[key].page);
+    switches.push({ to: key, milliseconds: performance.now() - started });
+    expect(await zoomOf(key)).toBe(at[key].zoom);
+  };
+  await switchTo("notes");
+  await switchTo("reading");
+  await (await byRole("tab", "Library")).click();
+  await page.waitForSelector(row("notes"), { visible: true });
+  await switchTo("notes");
+  await switchTo("reading");
+  await shot("tabs-switched");
+  console.info("reader switch timing", switches);
+  for (const { milliseconds } of switches) {
+    expect(milliseconds).toBeLessThan(2000);
+  }
+}, 60_000);
+
+test("a PDF shown from its library row or from its tab is the one tab selected, the one PDF the viewer shows, at its own page, and the library rows show the pages left", async () => {
+  const agree = async (key: string, pageNumber: number) => {
+    expect(
+      await page.$$eval('[data-tab-key][data-state="active"]', (tabs) =>
+        tabs.map((element) => element.getAttribute("data-tab-key")),
+      ),
+    ).toEqual([key]);
+    await shownReader(key);
+    await showsPage(key, pageNumber);
+  };
+  const readingCell = (key: string, text: string) =>
+    page.waitForFunction(
+      (css, wanted) =>
+        document.querySelector(`${css} [data-reading]`)?.textContent === wanted,
+      {},
+      row(key),
+      text,
+    );
+  await openLibrary();
+  await page.click(row("notes"), { count: 2 });
+  await agree("notes", 1);
+  await goToPage("notes", 4);
+
+  await (await byRole("tab", "Library")).click();
+  await page.click(row("reading"));
+  await page.keyboard.press("Enter");
+  await agree("reading", 1);
+  await goToPage("reading", 6);
+
+  await page.click(`${tab("notes")} [role="tab"]`);
+  await agree("notes", 4);
+  await page.click(`${tab("reading")} [role="tab"]`);
+  await agree("reading", 6);
+
+  await (await byRole("tab", "Library")).click();
+  await readingCell("notes", "4 / 10");
+  await readingCell("reading", "6 / 10");
+  await page.click(row("notes"), { count: 2 });
+  await agree("notes", 4);
+}, 60_000);
 
 test("past five PDF tabs the one shown longest ago sleeps, its PDF closed in the viewer, and wakes at the same place and zoom when shown; Sleep Tab in a tab's menu puts that tab to sleep, showing the tab to its right in place of the one shown", async () => {
   const captureTab = async (source: string, ordinal: string) => {

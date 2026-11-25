@@ -21,24 +21,28 @@ behaviour through its real path are both named below it.
 
 ## Phase 2: User Story 1 - Work with multiple papers (P1)
 
-- [ ] T004 [US1] Add an end-to-end test in `tests/library-e2e.test.ts` that opens two
+- [X] T004 [US1] Add an end-to-end test in `tests/library-e2e.test.ts` that opens two
   awake PDFs at distinct pages and zooms, switches between them, and checks each page and
   zoom, per US1/AC1, US1/AC2, FR-005, SC-001
+  - Evidence: test `tests/library-e2e.test.ts:1439` (opens `notes` at page 3 and 150% and `reading` at page 5 and 80%, switches notes, reading, Library, notes, reading; `showsPage` and `zoomOf` after each switch; each switch timed from the tab click to `showsPage`, logged as `reader switch timing`, and fails above 2 s). Source: the reader host (`src/web/reader/documents.ts` `activate`) and EmbedPDF's per-document scroll and zoom state. Run 2026-11-25, pass; switches 107 to 607 ms.
 - [X] T005 [US1] Sleep the tab shown longest ago past five awake tabs and wake it at its
   page, place and zoom in `src/web/reader/documents.ts` and `src/web/reader/positions.ts`,
   per US1/AC3, FR-005, FR-009 (reactivation)
   - Evidence: `src/web/reader/documents.ts:35`, `:304-318`; `src/web/reader/positions.ts:51`, `:87`. Test `tests/library-e2e.test.ts:1413` (`:1483-1492`: closed in the manager, zoom and scroll restored); run 2026-11-25, pass.
 - [X] T006 [US1] Offer Sleep Tab in the tab menu in `src/web/tabs.tsx`, per FR-005
   - Evidence: `src/web/tabs.tsx:152-155`, `:227-228`. Test `tests/library-e2e.test.ts:1413` (`:1505`).
-- [ ] T007 [US1] Time each switch in the T004 test and fail above 2 s, per SC-005
+- [X] T007 [US1] Time each switch in the T004 test and fail above 2 s, per SC-005
+  - Evidence: test `tests/library-e2e.test.ts:1439` (opens `notes` at page 3 and 150% and `reading` at page 5 and 80%, switches notes, reading, Library, notes, reading; `showsPage` and `zoomOf` after each switch; each switch timed from the tab click to `showsPage`, logged as `reader switch timing`, and fails above 2 s). Source: the reader host (`src/web/reader/documents.ts` `activate`) and EmbedPDF's per-document scroll and zoom state. Run 2026-11-25, pass; switches 107 to 607 ms.
 
 ## Phase 3: User Story 2 - One coherent reader (P2)
 
-- [ ] T008 [US2] Check in the T004 test that a Library round trip keeps each reader's
+- [X] T008 [US2] Check in the T004 test that a Library round trip keeps each reader's
   page and zoom, per US2/AC1 and the edge case "a library view may be visible while a
   reader remains loaded"
-- [ ] T010 [US2] Add an end-to-end test that activates a PDF from the library and from
+  - Evidence: test `tests/library-e2e.test.ts:1439` (opens `notes` at page 3 and 150% and `reading` at page 5 and 80%, switches notes, reading, Library, notes, reading; `showsPage` and `zoomOf` after each switch; each switch timed from the tab click to `showsPage`, logged as `reader switch timing`, and fails above 2 s). Source: the reader host (`src/web/reader/documents.ts` `activate`) and EmbedPDF's per-document scroll and zoom state. Run 2026-11-25, pass; switches 107 to 607 ms.
+- [X] T010 [US2] Add an end-to-end test that activates a PDF from the library and from
   its tab and checks that the selected tab, the shown PDF and its page agree, per US2/AC2, SC-002
+  - Evidence: test `tests/library-e2e.test.ts:1475` (from a library row and from a tab: exactly one active tab, the viewer's active document and the shown page agree after each step; the library rows then show `4 / 10` and `6 / 10`). Source: `src/web/tabs.tsx` `show`, `src/web/reader/documents.ts` `activate`. Run 2026-11-25, pass.
 - [X] T011 [US2] Settle the save before a reader closes and keep the reading record
   apart from the reader, per US2/AC3, FR-008 and the edge case "closing a reader must not
   delete the paper or its reading record"
@@ -74,9 +78,12 @@ behaviour through its real path are both named below it.
 
 ## Phase 5: Convergence
 
-- [ ] T019 Add an end-to-end test in `tests/library-e2e.test.ts` that opens two awake PDFs, sets page 3 at 150% in one and page 5 at 80% in the other, switches A, B, Library, A, B, and checks each page and zoom with `showsPage` and `zoomOf`, per US1/AC1, US1/AC2, US2/AC1, FR-005, SC-001 (partial). The code relies on EmbedPDF per-document state; no test switches between two awake PDFs.
-- [ ] T021 Add an end-to-end test in `tests/library-e2e.test.ts` that opens a PDF from the library row, then shows a second by its tab, and checks that the selected tab, the shown PDF and its page agree after each step, per US2/AC2, SC-002 (missing).
+- [X] T019 Add an end-to-end test in `tests/library-e2e.test.ts` that opens two awake PDFs, sets page 3 at 150% in one and page 5 at 80% in the other, switches A, B, Library, A, B, and checks each page and zoom with `showsPage` and `zoomOf`, per US1/AC1, US1/AC2, US2/AC1, FR-005, SC-001 (partial). The code relies on EmbedPDF per-document state; no test switches between two awake PDFs.
+  - Evidence: test `tests/library-e2e.test.ts:1439` (opens `notes` at page 3 and 150% and `reading` at page 5 and 80%, switches notes, reading, Library, notes, reading; `showsPage` and `zoomOf` after each switch; each switch timed from the tab click to `showsPage`, logged as `reader switch timing`, and fails above 2 s). Source: the reader host (`src/web/reader/documents.ts` `activate`) and EmbedPDF's per-document scroll and zoom state. Run 2026-11-25, pass; switches 107 to 607 ms.
+- [X] T021 Add an end-to-end test in `tests/library-e2e.test.ts` that opens a PDF from the library row, then shows a second by its tab, and checks that the selected tab, the shown PDF and its page agree after each step, per US2/AC2, SC-002 (missing).
+  - Evidence: test `tests/library-e2e.test.ts:1475` (from a library row and from a tab: exactly one active tab, the viewer's active document and the shown page agree after each step; the library rows then show `4 / 10` and `6 / 10`). Source: `src/web/tabs.tsx` `show`, `src/web/reader/documents.ts` `activate`. Run 2026-11-25, pass.
 - [ ] T022 Pass `onPage` from `src/web/tabs.tsx` to `Reader` and write the shown reader's address and page into the library window with `history.replaceState`, restoring the library route when the Library tab is shown, with a test in `tests/library-e2e.test.ts`, per FR-006 (partial).
 - [ ] T024 Add `zoom` to `ReadingSchema` and `ReadingRequestSchema` in `src/contract/library.ts:138-156`, store it in `server/src/library.rs` `reading`, send it from `src/web/reader/documentStorage.ts:266-282`, and open at it in `src/web/reader/viewer.ts:59`, with an API test in `tests/library-api.test.ts` and a reload test in `tests/library-e2e.test.ts`, per FR-008, FR-009, US3/AC3 and the Key Entity Reading Record "page, zoom" (partial).
 - [ ] T025 Record the library window's open tab keys, their order and the shown tab, and reopen them after a window reload in `src/web/tabs.tsx` and `src/web/reader/documents.ts`, with a reload test in `tests/library-e2e.test.ts`, per FR-009 and US3/AC3 (missing). A reload of the library window now shows no reader tabs.
-- [ ] T026 Time each switch in the T019 test from the tab selection to `showsPage` and fail above 2 s, writing the times to the test log, per SC-005 (missing).
+- [X] T026 Time each switch in the T019 test from the tab selection to `showsPage` and fail above 2 s, writing the times to the test log, per SC-005 (missing).
+  - Evidence: test `tests/library-e2e.test.ts:1439` (opens `notes` at page 3 and 150% and `reading` at page 5 and 80%, switches notes, reading, Library, notes, reading; `showsPage` and `zoomOf` after each switch; each switch timed from the tab click to `showsPage`, logged as `reader switch timing`, and fails above 2 s). Source: the reader host (`src/web/reader/documents.ts` `activate`) and EmbedPDF's per-document scroll and zoom state. Run 2026-11-25, pass; switches 107 to 607 ms.
