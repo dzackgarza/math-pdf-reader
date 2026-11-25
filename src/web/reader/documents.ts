@@ -1,15 +1,9 @@
-// The PDFs the reader holds: opening one into EmbedPDF's document manager, showing, closing,
-// putting to sleep and waking it, and what the reader offers whoever shows it.
-//
-// Sleep: EmbedPDF's document manager has no suspend, so a PDF put to sleep settles its saves, is
-// closed, and leaves a bookmark (its title, exact position and place among the tabs); waking it
-// opens the stored PDF again at that position and place.
-
 import { useCallback, useEffect } from "react";
 import {
   type BucketItem,
   LibraryPayloadSchema,
   type Preferences,
+  type SavedTab,
 } from "../../contract/library";
 import { request, requestError } from "../useLibraryApi";
 import {
@@ -17,6 +11,7 @@ import {
   entityTag,
   pdfEdition,
   type Position,
+  viewerZoom,
 } from "./documentStorage";
 import type {
   Bookmark,
@@ -28,16 +23,11 @@ import type {
   ReaderProjection,
 } from "./readerHost";
 
-// How many PDFs stay open in the manager. Past it, the PDFs shown longest ago sleep, which frees
-// their PDFium documents, and showing one opens it again where it was. Firefox's tab unloader
-// picks the tabs it unloads the same way, by the time each was last shown
-// (browser/components/tabbrowser/TabUnloader.sys.mjs).
 const AWAKE_READERS = 5;
 
 type Loaded = {
   item: BucketItem;
   preferences: Preferences;
-  // The stored PDF's bytes and their entity tag.
   bytes: ArrayBuffer;
   tag: string;
   edition: BucketItem["provenance"];
@@ -62,7 +52,6 @@ async function load(key: string): Promise<Loaded> {
   };
 }
 
-// What the reader's document operations read and announce.
 type Context = {
   host: ReaderHost;
   caps: () => Capabilities;
@@ -73,7 +62,6 @@ type Context = {
   setNightMode: (on: boolean) => void;
 };
 
-// KEY, whose bytes LOADED holds, opens in EmbedPDF's manager unless the reader stopped LOADING it.
 async function openLoaded(
   context: Context,
   key: string,
@@ -103,9 +91,6 @@ async function openLoaded(
         stage: "task-resolved",
         pending: scope.getState().hasPendingChanges,
       });
-      // EmbedPDF writes an annotation edit into its document asynchronously, and raises the
-      // edit's committed event (which schedules the save) before it clears hasPendingChanges.
-      // Once that flag is clear, every edit made so far has scheduled its save.
       await new Promise<void>((resolve) => {
         if (!scope.getState().hasPendingChanges) {
           resolve();
@@ -171,7 +156,6 @@ async function openLoaded(
 export function useDocuments(context: Context) {
   const { host, caps, changed, projection, storageOf, placeOf } = context;
 
-  // The tab that takes KEY's place: the one after it, or the one before the last.
   const neighbour = useCallback(
     (key: string): string | null => {
       const tabs = projection().tabs;
@@ -183,7 +167,6 @@ export function useDocuments(context: Context) {
     [projection],
   );
 
-  // Shows KEY, which the reader holds.
   const activate = useCallback(
     (key: string) => {
       const held = host.held.get(key);
@@ -199,8 +182,6 @@ export function useDocuments(context: Context) {
     [host, caps, changed],
   );
 
-  // Opens KEY, or shows it when the reader holds it. PAGE opens it at that page; a PDF that
-  // sleeps opens where it was.
   const open = useCallback(
     (key: string, title: string, page?: number) => {
       host.titles.set(key, title);
@@ -211,7 +192,7 @@ export function useDocuments(context: Context) {
       const bookmark = host.bookmarks.get(key);
       host.bookmarks.delete(key);
       const openAt: OpenAt =
-        bookmark !== undefined
+        bookmark !== undefined && bookmark.position !== null
           ? { position: bookmark.position }
           : page !== undefined
             ? { page }
@@ -250,7 +231,6 @@ export function useDocuments(context: Context) {
     [host, activate, changed, context],
   );
 
-  // EmbedPDF closes KEY's PDF, and shows NEXT first when NEXT is open.
   const closeShown = useCallback(
     (key: string, next: string | null) => {
       const { documents } = caps();
@@ -263,7 +243,6 @@ export function useDocuments(context: Context) {
     [host, caps],
   );
 
-  // KEY, about to be shown, wakes when it sleeps.
   const wakeSleeping = useCallback(
     (key: string) => {
       const sleeping = host.bookmarks.get(key);
@@ -274,7 +253,6 @@ export function useDocuments(context: Context) {
     [host, open],
   );
 
-  // KEY leaves the manager and the tab row, or, with BOOKMARK, sleeps in the tab row.
   const remove = useCallback(
     (key: string, bookmark: Bookmark | null) => {
       const held = host.held.get(key);
@@ -324,8 +302,6 @@ export function useDocuments(context: Context) {
     [host, storageOf, projection, placeOf, remove],
   );
 
-  // The PDFs past the AWAKE_READERS shown last sleep. One that cannot settle stays awake and
-  // says why when shown; the next activation tries it again.
   const sleepDrowsy = useCallback(() => {
     for (const key of host.recent.slice(AWAKE_READERS)) {
       sleepReader(key, true).catch(() => undefined);
@@ -354,13 +330,11 @@ export function useDocuments(context: Context) {
     [host, storageOf, remove, changed],
   );
 
-  // The stored PDF replaces the user's copy of KEY, which opens again where it was.
   const reload = useCallback(
     (key: string) => {
       const title = host.titles.get(key) ?? key;
       const index = projection().tabs.findIndex((tab) => tab.key === key);
       const position = placeOf(key);
-      // KEY is shown again at once, so no other tab takes its place meanwhile.
       host.focus = null;
       remove(key, { title, position, index });
       open(key, title);
@@ -368,17 +342,52 @@ export function useDocuments(context: Context) {
     [host, projection, remove, placeOf, open],
   );
 
-  return { activate, open, remove, sleepReader, sleepDrowsy, close, reload };
+  const saved = useCallback(
+    (): SavedTab[] =>
+      projection().tabs.map((tab) => {
+        const bookmark = host.bookmarks.get(tab.key);
+        const held = host.held.get(tab.key);
+        const position =
+          bookmark !== undefined
+            ? bookmark.position
+            : held?.status === "open" && host.laidOut.has(tab.key)
+              ? placeOf(tab.key)
+              : held?.status === "loading" && held.openAt !== null && "position" in held.openAt
+                ? held.openAt.position
+                : null;
+        return { key: tab.key, title: tab.title, position };
+      }),
+    [host, projection, placeOf],
+  );
+
+  const restore = useCallback(
+    (tabs: SavedTab[]) => {
+      tabs.forEach(({ key, title, position }, index) => {
+        if (host.held.has(key) || host.bookmarks.has(key)) {
+          return;
+        }
+        host.titles.set(key, title);
+        host.bookmarks.set(key, {
+          title,
+          position: position === null ? null : { ...position, zoom: viewerZoom(position.zoom) },
+          index,
+        });
+      });
+      changed();
+    },
+    [host, changed],
+  );
+
+  return { activate, open, remove, sleepReader, sleepDrowsy, close, reload, saved, restore };
 }
 
-// The reader offers ONCONTROL its operations on the PDFs it holds.
 export function useControl(
   onControl: (control: ReaderControl) => void,
   host: ReaderHost,
   changed: () => void,
   documents: ReturnType<typeof useDocuments>,
 ) {
-  const { open, activate, close, remove, sleepReader } = documents;
+  const { open, activate, close, remove, sleepReader, saved, restore } = documents;
   useEffect(() => {
     onControl({
       open,
@@ -412,10 +421,11 @@ export function useControl(
         );
         await Promise.all(storages.map((storage) => storage.settle()));
       },
+      saved,
+      restore,
     });
-  }, [onControl, open, activate, close, remove, sleepReader, changed, host]);
+  }, [onControl, open, activate, close, remove, sleepReader, saved, restore, changed, host]);
 
-  // Leaving the page while an annotation is not yet saved asks first.
   useEffect(() => {
     const leaving = (event: BeforeUnloadEvent) => {
       const unsaved = [...host.held.values()].some(
@@ -430,15 +440,12 @@ export function useControl(
   }, [host]);
 }
 
-// The reading session of the PDF shown follows whether it is shown and the user's input; returns
-// the handler that reports one input.
 export function useReadingInput(
   shown: boolean,
   activeStorage: () => DocumentStorage | null,
   isShown: (key: string) => boolean,
   scopeShortcuts: () => void,
 ) {
-  // The reader shown again starts reading its PDF's page; hidden, that stretch ends and reports.
   useEffect(() => {
     const storage = activeStorage();
     if (storage !== null) {
@@ -468,8 +475,6 @@ export function useReadingInput(
       document.removeEventListener("visibilitychange", changedVisibility);
   }, [activeStorage, isShown]);
 
-  // Any key is reading input while the reader is shown: EmbedPDF's viewer holds no focus of its
-  // own, so the keys arrive at the document, as EmbedPDF's own shortcuts do.
   const readingInput = useCallback(() => {
     const storage = activeStorage();
     if (storage !== null) {

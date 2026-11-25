@@ -721,3 +721,44 @@ export const LIBRARY_VIEW_KEY = "pdf-bucket.library-view";
 export const LibraryViewKeySchema = z.literal(LIBRARY_VIEW_KEY).describe(
   "The session-storage key under which the library page keeps its current view (the address's hash, for example `#/unfiled`); the reader's Library button returns to that view.",
 );
+
+export const WINDOW_TABS_KEY = "pdf-bucket.window-tabs";
+export const WindowTabsKeySchema = z.literal(WINDOW_TABS_KEY).describe(
+  "The session-storage key under which the library window keeps its reader tabs while the page unloads, so a reload of the window gives them back.",
+);
+
+export const WindowTabsSchema = z
+  .strictObject({
+    tabs: z.array(
+      z.strictObject({
+        key: z.string().min(1),
+        title: z.string(),
+        position: z
+          .strictObject({
+            pageNumber: z.int().min(1),
+            x: z.number(),
+            y: z.number(),
+            zoom: ZoomLevelSchema,
+          })
+          .nullable()
+          .describe(
+            "Where the PDF was: its page, the page coordinates of the viewport's top-left corner, and the zoom; null for a PDF still loading or that failed to open, which reopens at its reading record.",
+          ),
+      }),
+    ),
+    shown: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe("The key of the tab shown, or null when the Library showed."),
+    fromReaderReload: z
+      .boolean()
+      .describe(
+        "True when the reader page at a tab's address was reloaded and handed the window back to the library page.",
+      ),
+  })
+  .describe(
+    "The library window's reader tabs in tab order, kept in session storage when the page unloads.",
+  );
+export type WindowTabs = z.infer<typeof WindowTabsSchema>;
+export type SavedTab = WindowTabs["tabs"][number];

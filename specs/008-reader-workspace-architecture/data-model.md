@@ -4,8 +4,9 @@
 | --- | --- | --- | --- |
 | Reader Manager | EmbedPDF DocumentManagerPlugin in the one `PDFViewer` (`src/web/reader/Reader.tsx`), with `newHost()` state (`src/web/reader/readerHost.ts`) | manager: `documentOrder`, `activeDocumentId`, per-document zoom and scroll; host: `held`, `bookmarks`, `focus`, `parked`, `moving` | none |
 | Workspace Tab | `TabEntry` in `ReaderProjection {tabs, active}` | key, title, state (open, loading, failed, asleep) | built from manager plus host maps |
-| Reading Record | `ReadingSchema` (`src/contract/library.ts`), written by `PUT /api/items/<key>/reading` | `unread`, or `viewed` with page, pages, zoom, viewedAt; zoom is absent from records written before the reader reported it | no record of open tabs |
+| Reading Record | `ReadingSchema` (`src/contract/library.ts`), written by `PUT /api/items/<key>/reading` | `unread`, or `viewed` with page, pages, zoom, viewedAt; zoom is absent from records written before the reader reported it | none |
 | PDF Revision | the stored PDF; its SHA-256 ETag; `X-Pdf-Edition` | bytes, entity tag, provenance | none |
+| Window Tabs | `WindowTabsSchema` (`src/contract/library.ts`), in session storage under `WINDOW_TABS_KEY` | tabs in order (key, title, position or null), shown key or null, `fromReaderReload` | lives for one reload of one window |
 | Position (support) | `Position` (`src/web/reader/documentStorage.ts`) | pageNumber, x, y, zoom | lives only in memory |
 | Bookmark (support) | `Bookmark` (`readerHost.ts`) | title, position, index | lives only in memory |
 

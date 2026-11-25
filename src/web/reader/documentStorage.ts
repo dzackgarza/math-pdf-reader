@@ -1,4 +1,4 @@
-import type { ZoomLevel } from "@embedpdf/react-pdf-viewer";
+import { type ZoomLevel, ZoomMode } from "@embedpdf/react-pdf-viewer";
 import {
   MIN_PAGE_SECONDS,
   READER_IDLE_MINUTES,
@@ -9,6 +9,16 @@ import {
 import { ProvenanceSchema } from "../../contract/capture";
 import { requestError } from "../useLibraryApi";
 import { ReadingSession } from "./readingSession";
+
+const ZOOM_MODES = {
+  automatic: ZoomMode.Automatic,
+  "fit-page": ZoomMode.FitPage,
+  "fit-width": ZoomMode.FitWidth,
+} as const;
+
+export function viewerZoom(recorded: RecordedZoom): ZoomLevel {
+  return typeof recorded === "number" ? recorded : ZOOM_MODES[recorded];
+}
 
 export type Position = {
   pageNumber: number;

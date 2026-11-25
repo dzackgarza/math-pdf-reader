@@ -12,6 +12,7 @@ import { Reader } from "./reader/Reader";
 import type { ReaderControl, ReaderProjection, TabEntry } from "./reader/readerHost";
 import { type ItemMenu, type ReaderExtraction, ReaderTabsContext } from "./readerTabs";
 import { showLibraryAddress, showReaderAddress } from "./windowAddress";
+import { keepTabs, tabsToRestore } from "./windowTabs";
 
 declare global {
   interface WindowEventMap {
@@ -20,6 +21,8 @@ declare global {
 }
 
 const LIBRARY_TAB = "library";
+
+const restoring = tabsToRestore();
 
 function readerKey(url: string): string {
   return decodeURIComponent(new URL(url).pathname.slice("/read/".length));
@@ -55,7 +58,13 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   const shown = libraryShown || projection.active === null ? LIBRARY_TAB : projection.active;
   const stateRef = useRef({ projection, shown });
   stateRef.current = { projection, shown };
-  const pages = useRef(new Map<string, number>());
+  const pages = useRef(
+    new Map<string, number>(
+      (restoring?.tabs ?? []).flatMap(({ key, position }) =>
+        position === null ? [] : [[key, position.pageNumber] as const],
+      ),
+    ),
+  );
   useEffect(() => {
     if (shown === LIBRARY_TAB) {
       showLibraryAddress();
@@ -74,11 +83,57 @@ export function ReaderTabs({ children }: { children: ReactNode }) {
   const [readerMounted, setReaderMounted] = useState(false);
   const control = useRef<ReaderControl | null>(null);
   const waiting = useRef<[string, string][]>([]);
+  const restored = useRef(false);
   const onControl = useCallback((given: ReaderControl) => {
     control.current = given;
+    if (restoring !== null && !restored.current) {
+      restored.current = true;
+      given.restore(restoring.tabs);
+      if (restoring.shown !== null) {
+        given.activate(restoring.shown);
+      }
+    }
     for (const [key, title] of waiting.current.splice(0)) {
       given.open(key, title);
     }
+  }, []);
+
+  useEffect(() => {
+    if (restoring === null || restoring.tabs.length === 0) {
+      return;
+    }
+    const root = document.documentElement;
+    const mount = () => {
+      if (root.dataset.theme === undefined) {
+        return;
+      }
+      observer.disconnect();
+      if (restoring.shown !== null) {
+        setLibraryShown(false);
+      }
+      setReaderMounted(true);
+    };
+    const observer = new MutationObserver(mount);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    mount();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const leaving = () => {
+      const current = control.current;
+      if (current === null) {
+        return;
+      }
+      const shownKey = stateRef.current.shown;
+      keepTabs({
+        tabs: current.saved(),
+        shown: shownKey === LIBRARY_TAB ? null : shownKey,
+        fromReaderReload: false,
+      });
+    };
+    window.addEventListener("pagehide", leaving);
+    return () => window.removeEventListener("pagehide", leaving);
   }, []);
   const reader = useCallback((): ReaderControl => {
     if (control.current === null) {

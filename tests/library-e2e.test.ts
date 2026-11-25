@@ -1586,7 +1586,14 @@ test("a reload of the library window gives back its tabs in order, the tab shown
   );
 
   await page.reload();
-  await page.waitForSelector(tab("reading"), { timeout: 10_000 }).catch(() => undefined);
+  await page
+    .waitForFunction(
+      () =>
+        document.querySelectorAll("[data-tab-key]").length === 2 &&
+        window.location.pathname + window.location.hash === "/read/reading#page=5",
+      { timeout: 10_000 },
+    )
+    .catch(() => undefined);
   expect({ tabs: await tabKeys(), address: address() }).toEqual({
     tabs: ["notes", "reading"],
     address: "/read/reading#page=5",

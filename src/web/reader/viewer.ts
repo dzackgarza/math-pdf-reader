@@ -16,14 +16,12 @@ import {
   type ToolbarItem,
   UIPlugin,
   ViewportPlugin,
-  type ZoomLevel,
-  ZoomMode,
   ZoomPlugin,
 } from "@embedpdf/react-pdf-viewer";
 import { ArrowLeft, ArrowRight, type IconNode, Library, Link, Moon } from "lucide";
 import { type RefObject, useEffect } from "react";
-import { type BucketItem, type RecordedZoom, ThemeSchema } from "../../contract/library";
-import type { DocumentStorage, Position } from "./documentStorage";
+import { type BucketItem, ThemeSchema } from "../../contract/library";
+import { type DocumentStorage, type Position, viewerZoom } from "./documentStorage";
 import { fallbackFonts } from "./fallbackFonts";
 import { stylusMode } from "./pointerInput";
 import {
@@ -41,16 +39,6 @@ const NIGHT_PAGES = 'div[style*="transform-origin"][style*="background-color: rg
 
 const LINE_STEP = 40;
 const PAGE_SHARE = 0.9;
-
-const ZOOM_MODES = {
-  automatic: ZoomMode.Automatic,
-  "fit-page": ZoomMode.FitPage,
-  "fit-width": ZoomMode.FitWidth,
-} as const;
-
-function viewerZoom(recorded: RecordedZoom): ZoomLevel {
-  return typeof recorded === "number" ? recorded : ZOOM_MODES[recorded];
-}
 
 function startPage(openAt: { page: number } | null, item: BucketItem): number {
   if (openAt !== null) {
