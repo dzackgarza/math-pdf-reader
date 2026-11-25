@@ -276,19 +276,22 @@ test("unknown items and unknown plugins are not found", async () => {
   expect(kinds).toEqual(["unknown_item", "unknown_plugin"]);
 });
 
-// The desktop trash entry (freedesktop.org trash specification) holding what was at PATH.
-function trashed(path: string): string {
+// The one desktop trash entry (freedesktop.org trash specification) named NAME that came from
+// below the store ROOT. Publication swaps the new part into place, so the old part reaches the
+// trash from the publication's hidden staging directory under its own file name.
+function trashed(root: string, name: string): string {
   const trash = join(SCRATCH_DATA_HOME, "Trash");
-  for (const info of readdirSync(join(trash, "info"))) {
-    const lines = readFileSync(join(trash, "info", info), "utf8").split("\n");
-    if (
-      lines.includes(`Path=${encodeURI(path)}`) ||
-      lines.includes(`Path=${path}`)
-    ) {
-      return join(trash, "files", info.slice(0, -".trashinfo".length));
-    }
+  const matches = readdirSync(join(trash, "info")).filter((info) => {
+    const line = readFileSync(join(trash, "info", info), "utf8")
+      .split("\n")
+      .find((entry) => entry.startsWith("Path="));
+    const path = decodeURI(line?.slice("Path=".length) ?? "");
+    return path.startsWith(`${root}/`) && basename(path) === name;
+  });
+  if (matches.length !== 1) {
+    throw new Error(`${matches.length} trash entries named ${name} came from ${root}`);
   }
-  throw new Error(`nothing from ${path} is in the trash`);
+  return join(trash, "files", matches[0]!.slice(0, -".trashinfo".length));
 }
 
 test("a run gets the stored PDF and an empty output directory staged in the root, removed after", async () => {
@@ -349,8 +352,6 @@ test("the previous extraction stays readable during publication and after interr
   const document = join(root, "lattices");
   const markdown = join(document, "lattices.md");
   const original = readFileSync(markdown, "utf8");
-  const artifact = join(document, "lattices.extraction", "source.pdf");
-  const originalArtifact = readFileSync(artifact);
   await app.stop();
   const options = { root, zoteroUrl: closedPortUrl(), extractionsManifest: manifestPath };
   const gate = join(root, ".publication");
@@ -361,9 +362,11 @@ test("the previous extraction stays readable during publication and after interr
     const deadline = performance.now() + 15000;
     while (!existsSync(`${gate}.ready`) && performance.now() < deadline) await Bun.sleep(20);
     expect(existsSync(`${gate}.ready`)).toBe(true);
+    // Paused between the two swaps: the artifact directory has changed in one step, the
+    // Markdown that marks completion still holds the previous complete result.
     expect(existsSync(markdown)).toBe(true);
     expect(readFileSync(markdown, "utf8")).toBe(original);
-    expect(readFileSync(artifact)).toEqual(originalArtifact);
+    expect(readdirSync(join(document, "lattices.extraction"))).toEqual(["metadata.json"]);
   } finally {
     await publishing.stop();
     await request;
@@ -475,13 +478,13 @@ test("a later run moves the whole previous extraction to the trash; a failed run
     "# Extracted by the markdown mode\n",
   );
   expect(
-    readFileSync(trashed(join(root, "lattices", "lattices.md")), "utf8"),
+    readFileSync(trashed(root, "lattices.md"), "utf8"),
   ).toBe(recorded);
   expect(
     sha256(
       readFileSync(
         join(
-          trashed(join(root, "lattices", "lattices.extraction")),
+          trashed(root, "lattices.extraction"),
           "source.pdf",
         ),
       ),

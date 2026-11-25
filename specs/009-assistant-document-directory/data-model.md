@@ -24,8 +24,9 @@
 - Artifacts: `<root>/<key>/<key>.extraction/`.
 - Metadata remains in the artifact directory as `metadata.json`.
 - LaTeX source remains authoritative for arXiv extraction; the single derived Markdown file is the reading copy for that source.
-- Validation occurs in hidden root staging. The artifact directory moves first and
-  Markdown last after previous complete outputs move to trash.
+- Validation occurs in hidden root staging. The artifact directory swaps in first and
+  Markdown last. Each swap is atomic, so a reader never finds a missing part; the
+  displaced previous outputs then move to trash.
 
 ## Arbitrary Paper Artifact
 

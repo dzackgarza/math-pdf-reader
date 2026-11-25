@@ -1458,11 +1458,11 @@ impl Store {
         self.clean_pending_linked_retirements().await
     }
 
-    /// Places a finished extraction beside KEY's PDF: the previous `<key>.md` and
-    /// `<key>.extraction/` go to the desktop trash, then ARTIFACTS (if any) becomes
+    /// Places a finished extraction beside KEY's PDF: ARTIFACTS (if any) becomes
     /// `<key>.extraction/` and MARKDOWN becomes `<key>.md`, last, since the Markdown marks a
-    /// complete extraction. Staging and destination share one filesystem, so each move is a
-    /// rename.
+    /// complete extraction. Each path swaps in one atomic step, so the previous part stays
+    /// readable until its successor is in place; the previous parts then go to the desktop
+    /// trash. Staging and destination share one filesystem, so each move is a rename.
     pub async fn place_extraction(
         &self,
         key: &str,
