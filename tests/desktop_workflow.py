@@ -275,8 +275,17 @@ def test_wheel_reading_keeps_position(app: webdriver.WebKitGTK, tmp_path: Path) 
     time.sleep(1)
     reader.run("P('viewport').scrollTo({x:0,y:100,behavior:'instant'})")
     time.sleep(0.5)
+    reader.run(
+        "window.__moves = []; const t0 = performance.now(), at = () => Math.round(performance.now() - t0); window.__at = at;"
+        " const named = (e) => e instanceof Element ? `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className).slice(0, 40)}` : String(e);"
+        " P('viewport').onScrollChange(({ scrollMetrics: m }) => window.__moves.push(['scroll', at(), m.scrollTop]));"
+        f" V.__registry.getPlugin('viewport').onScrollRequest({json.dumps(key)}, ({{ x, y, behavior }}) => window.__moves.push(['request', at(), Math.round(x), Math.round(y), behavior]));"
+        " S.addEventListener('scroll', (e) => window.__moves.push(['dom-scroll', at(), named(e.target), Math.round(e.target.scrollTop)]), true);"
+        " window.addEventListener('wheel', (e) => window.__moves.push(['wheel', at(), named(e.composedPath()[0]), e.deltaY, e.deltaMode, e.defaultPrevented]));"
+    )
     for delta in [240] * 20 + [-240] * 20:
         before = reader.number("P('viewport').getMetrics().scrollTop")
+        reader.run(f"window.__moves.push(['wheel-sent', window.__at(), {delta}])")
         actions = ActionChains(app)
         actions.reset_actions()
         actions.scroll_from_origin(
@@ -316,6 +325,7 @@ class Reader:
             boxes: S ? [...S.querySelectorAll('{PAGE_BOX}')].map((e) => {{ const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }}) : null,
             images: S ? [...S.querySelectorAll('{PAGE_BOX} img')].map((image) => ({{complete: image.complete, width: image.naturalWidth, src: image.src.slice(0, 40)}})) : null,
             errors: window.__errors, pens: window.__pens?.slice(0, 6), moves: window.__moves?.slice(-40), body: document.body.innerText.slice(0, 1000),
+            pointed: [document.elementFromPoint(900, 600), S?.elementFromPoint(900, 600)].map((e) => e instanceof Element ? `${{e.tagName.toLowerCase()}}.${{String(e.className).slice(0, 60)}}` : String(e)),
           }};
           if (V === null) {{ done(page); return; }}
           page.visibility = document.visibilityState;
