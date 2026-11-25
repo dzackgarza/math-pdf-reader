@@ -209,13 +209,12 @@ These are the findings that the convergence phase of [tasks.md](tasks.md) lists:
 7. The tray item sets no title or tooltip (`lib.rs:390`) (FR-001).
 8. No test covers FR-001 to FR-008 except the `/status` extension report.
 
-## Open question for the owner
+## Owner decision on "bucket"
 
-User-visible strings call the app's server and store "the bucket" (for example "The
-bucket is not serving", "The bucket refused", the popup's "Bucket" label). The spec and
-`AGENTS.md` use "bucket" as the name of the reading store, so the word is not by itself
-the old product name. Only the owner can decide whether these strings break FR-001.
-Convergence task T034 waits on this answer.
+"The bucket" in user-visible strings is the old product name (owner, 2026-11-25). Every
+string the user reads names "Math PDF Reader", or "the app" where the product name does
+not fit ("Math PDF Reader is not serving", "Math PDF Reader refused"). Code identifiers,
+paths, and the reading-store term in repository docs stay. Task T034 applies this.
 
 ## Risks / Recovery / Stop Rules
 

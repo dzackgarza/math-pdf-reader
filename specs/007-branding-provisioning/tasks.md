@@ -176,14 +176,14 @@ that is not `[X]` maps to a task here.
   the forget instruction does not work; the working command is `just forget <key>`. Add
   a test for each string. Per FR-002, US1/AC2, edge case "internal compatibility names
   … without being shown to users" (partial).
-- [ ] T034 Decide whether "the bucket" in user-visible strings is the old product name:
+- [ ] T034 Rename "the bucket" in user-visible strings to "Math PDF Reader" (owner decision in plan.md):
   `desktop/src-tauri/src/lib.rs:71,98,112,373-375`, `desktop/src/index.html` ("The
   bucket is not serving"), `src/web/actionFailure.ts:48-51`,
   `src/web/screens/OrganizationScreen.tsx:166`, the popup heading "Checking the
   bucket…" and label "Bucket" (`popup/main.ts:55`), the badge title and the Firefox
   replacement text in `src/extension/bucket-status.ts`, and
-  `src/extension/entrypoints/background.ts:97`. If yes, rename them and test each. Per
-  FR-001, US1/AC1 (partial; blocked on the owner question in plan.md).
+  `src/extension/entrypoints/background.ts:97`. Rename each and test each. Per
+  FR-001, US1/AC1 (partial).
 
 ## Dependencies
 
@@ -191,7 +191,6 @@ that is not `[X]` maps to a task here.
 - T023 before the fingerprint half of T024.
 - T026 before T025 (T025 reads the build state that T026 adds to `/status`).
 - T030 needs `tests/bucket.ts` to take an extensions directory.
-- T034 waits on the owner.
 
 ## Traceability
 
