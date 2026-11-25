@@ -31,7 +31,9 @@ with the current payload.
 `organization.json` for the filing
 
 **Testing**: `bun test` with the real server: `tests/library-api.test.ts` (HTTP API) and
-`tests/library-e2e.test.ts` (Puppeteer against the built library UI)
+`tests/library-e2e.test.ts` (Puppeteer against the built library UI). Each e2e test starts its
+own server over a fresh library and its own Chromium, and seeds the filing and reading state it
+needs through the HTTP API, so a test runs alone with `-t`.
 
 **Target Platform**: Linux desktop (Tauri window with the in-process server on 127.0.0.1)
 
@@ -120,6 +122,11 @@ payload:
 Rules are evaluated on each render from the current payload. A metadata edit changes the
 payload, so saved-search membership follows it with no stored membership list.
 
+A view with no rows says "No PDF matches <view name>" (`viewName`: the quick filter, collection,
+tag label or saved search). An empty library says "No PDFs yet", and a search that excludes
+every row says "No matches" with Clear search. An empty Needs Re-fetch says "Every PDF is in the
+library."
+
 ### Filing
 
 The server applies tag and collection edits as deltas (`/api/bulk/tags`,
@@ -137,10 +144,15 @@ the bucket.
 
 ### Inspector
 
-The header shows the title, the authors and year when present, the abstract when present,
-the PDF URL's site as a link, the capture date and the file size. `Sources` shows the PDF
-URL with its last check, the capture lineage, mirrors with Add mirror, and Verify. The table's
-Status column shows Cached or Offline.
+The header shows the title, the authors and the year, the abstract, the PDF URL's site as a
+link, the capture date and the file size. Missing authors, year or abstract show as "No
+authors", "No year" and "No abstract" in muted italics, never as an empty line. The first
+page has a fixed height: the image loads after the panel draws and must not push the fields
+down. The details list Cache status (Cached or Offline, from `availability`, with the last
+check as its tooltip), File path (`item.file.path`) and SHA-256 (the original bytes'
+`provenance.original_sha256`). `Sources` shows the PDF URL with its last check, the capture
+lineage, mirrors with Add mirror, and Verify. The table's Status column shows the same Cached
+or Offline.
 
 ### Window state
 
@@ -201,18 +213,8 @@ needs (a name, a confirmation), calls the library API, and moves to the result.
 
 | Requirement | Gap | Class |
 | --- | --- | --- |
-| US1/AC2, SC-002 | An empty quick filter shows the generic "Empty" | partial |
-| FR-007, US3/AC1 | The inspector shows no SHA-256, no file path and no cache state | partial |
-| FR-008, SC-004, US3/AC2 | Missing authors, year and abstract are hidden, not marked missing | partial |
 | US2/AC3, SC-005 | No test shows membership following a metadata edit | partial |
 | FR-002 recent, FR-004 tag filter, edge cases | Code exists; no test through the real path | partial |
-
-## Risks
-
-- `tests/library-e2e.test.ts` shares one bucket across its tests. A test filtered with `-t`
-  can fail because an earlier test did not create its fixture state (for example the
-  "Quadratic forms" collection, or a viewed item for the Unread filter). New e2e tests for
-  this feature create the state they need.
 
 ## Decision Log
 

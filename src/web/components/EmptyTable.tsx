@@ -1,15 +1,18 @@
-// What the table says when it has no rows: the bucket is empty, the search excludes
-// everything, or nothing has been filed under this view yet.
 export default function EmptyTable({
   bucketEmpty,
   searching,
+  viewName,
   onClearSearch,
 }: {
   bucketEmpty: boolean;
   searching: boolean;
+  viewName: string | null;
   onClearSearch: () => void;
 }) {
-  if (searching && !bucketEmpty) {
+  if (bucketEmpty) {
+    return <p className="text-sm text-muted">No PDFs yet</p>;
+  }
+  if (searching) {
     return (
       <>
         <p className="text-sm text-muted">No matches</p>
@@ -23,5 +26,9 @@ export default function EmptyTable({
       </>
     );
   }
-  return <p className="text-sm text-muted">{bucketEmpty ? "No PDFs yet" : "Empty"}</p>;
+  return (
+    <p className="text-sm text-muted">
+      {viewName === null ? "No PDF matches this view" : `No PDF matches ${viewName}`}
+    </p>
+  );
 }

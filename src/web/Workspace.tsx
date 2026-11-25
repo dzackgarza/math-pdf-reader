@@ -55,7 +55,13 @@ import {
   sourceActions,
   updatePreferences,
 } from "./libraryActions";
-import { type LibraryView, relatedItems, viewExists, visibleItems } from "./librarySelectors";
+import {
+  type LibraryView,
+  relatedItems,
+  viewExists,
+  viewName,
+  visibleItems,
+} from "./librarySelectors";
 import { useReaderTabs } from "./readerTabs";
 import { entryView, readerPath, type Screen } from "./routes";
 import OrganizationScreen from "./screens/OrganizationScreen";
@@ -400,6 +406,7 @@ export default function Workspace({
     <EmptyTable
       bucketEmpty={payload.items.length === 0}
       searching={search.query.trim().length > 0}
+      viewName={view === null ? null : viewName(payload, view)}
       onClearSearch={() => setSearch(defaultSearchSettings())}
     />
   );

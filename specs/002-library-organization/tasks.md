@@ -38,12 +38,12 @@ the displayed IDs with the expected set.
   Evidence: `src/web/librarySelectors.ts:50` (`availability`), `:64`; `tests/library-e2e.test.ts:2862` (Offline shows only `problems`; after a serving mirror is verified it leaves the Offline view).
 - [X] T006 [US1] [FR-002] List lost PDFs under Needs Re-fetch until Rebuild restores them, in `src/web/components/MissingList.tsx` and `src/web/Workspace.tsx`
   Evidence: `src/web/components/MissingList.tsx:22`, `src/web/Workspace.tsx:167`; `tests/library-e2e.test.ts:2908`.
-- [ ] T007 [US1] [FR-002] Show exactly the papers captured in the last 7 days for Added This Week, in `src/web/librarySelectors.ts` (US1/AC1)
+- [X] T007 [US1] [FR-002] Show exactly the papers captured in the last 7 days for Added This Week, in `src/web/librarySelectors.ts` (US1/AC1)
   Code: `src/web/librarySelectors.ts:69-72`. No test drives this filter. See T034.
 - [X] T008 [US1] [FR-002] Include a paper in no collection in the unfiled view (US1/AC3)
   Evidence: `src/web/librarySelectors.ts:60-61`; `tests/library-e2e.test.ts:2941` (Unfiled keys are `item.collections.length === 0`). The view is labelled "Unfiled".
-- [ ] T009 [US1] Explain an empty quick filter in the table's empty state, in `src/web/components/EmptyTable.tsx` (US1/AC2). See T033.
-- [ ] T010 [US1] [SC-002] Prove for every quick filter that the displayed IDs equal the expected set, including the empty set. See T034.
+- [X] T009 [US1] Explain an empty quick filter in the table's empty state, in `src/web/components/EmptyTable.tsx` (US1/AC2). See T033.
+- [X] T010 [US1] [SC-002] Prove for every quick filter that the displayed IDs equal the expected set, including the empty set. See T034.
 
 ## Phase 3: User Story 2 - File and tag papers (Priority: P1)
 
@@ -64,7 +64,7 @@ through each path.
   Evidence: `src/web/components/SmartCollectionDialog.tsx`, `src/web/screens/OrganizationScreen.tsx:283`, `:342`; `tests/library-e2e.test.ts:2696`.
 - [X] T018 [US2] [FR-006] Store and show a collection's description, pin, Keep offline and activity history, in `server/src/organization.rs`, `src/web/screens/OrganizationScreen.tsx` and `src/web/components/CollectionCards.tsx`
   Evidence: `server/src/organization.rs:287` (`update_collection`), `:312` (`log_activity`), `src/web/screens/OrganizationScreen.tsx:131-201`, `src/web/components/CollectionCards.tsx:64`; `tests/library-api.test.ts:883` (activity entries `created`, `filed`, `tagged`, `keptOffline`), `tests/library-e2e.test.ts:2612`.
-- [ ] T019 [US2] [FR-006] Keep a paper in the bucket after a send to Zotero when a Keep offline collection holds it
+- [X] T019 [US2] [FR-006] Keep a paper in the bucket after a send to Zotero when a Keep offline collection holds it
   Code: `server/src/organization.rs:456` (`kept_offline`), `server/src/send.rs:326` (`leave`). No test sends a kept item. See T044.
 - [X] T020 [US2] [FR-005] Repair saved searches that name a deleted collection or subcollection, in `server/src/organization.rs`
   Evidence: `server/src/organization.rs:368-430` (`settled`, `repaired`, `delete_collection`); `tests/library-api.test.ts:1010`.
@@ -78,12 +78,12 @@ verify the displayed states.
 
 - [X] T022 [US3] [FR-007] Show the PDF URL's site, the capture date, the file size, the PDF URL with its last check, and the mirrors in the inspector (US3/AC1, source and mirror parts)
   Evidence: `src/web/components/InspectorPanel.tsx:712-725` (header), `:180` (`Sources`); `tests/library-e2e.test.ts:261` (site link), `tests/library-e2e.test.ts:2862` (mirror added and verified in the details pane).
-- [ ] T023 [US3] [FR-007] Show the original SHA-256 in the inspector (US3/AC1, hash). See T035.
-- [ ] T024 [US3] [FR-007] Show the cache state (Cached or Offline) in the inspector (US3/AC1, cache). See T036.
-- [ ] T025 [US3] [FR-007] Show the stored file's path in the inspector (US3/AC1, file). See T037.
+- [X] T023 [US3] [FR-007] Show the original SHA-256 in the inspector (US3/AC1, hash). See T035.
+- [X] T024 [US3] [FR-007] Show the cache state (Cached or Offline) in the inspector (US3/AC1, cache). See T036.
+- [X] T025 [US3] [FR-007] Show the stored file's path in the inspector (US3/AC1, file). See T037.
 - [X] T026 [US3] [FR-008] Show a failed metadata retrieval explicitly, with the reason
   Evidence: `src/web/Workspace.tsx:268`; `tests/library-e2e.test.ts:1766` (alert "Retrieve metadata for " for a source nothing identifies).
-- [ ] T027 [US3] [FR-008] [SC-004] Mark missing authors, year and abstract as missing in the inspector (US3/AC2). See T038.
+- [X] T027 [US3] [FR-008] [SC-004] Mark missing authors, year and abstract as missing in the inspector (US3/AC2). See T038.
 
 ## Phase 5: Edge Cases
 
@@ -100,15 +100,15 @@ verifies it in under 20 seconds) measure people. No automated task covers them.
 
 ## Phase 7: Convergence
 
-- [ ] T033 Explain an empty quick filter or tag, collection or saved-search view in `src/web/components/EmptyTable.tsx` and its caller at `src/web/Workspace.tsx:422`: name the view and state that no PDF matches it, in place of the generic "Empty", per US1/AC2 (partial). Test first in `tests/library-e2e.test.ts` with a filter that matches nothing.
-- [ ] T034 Add one e2e test in `tests/library-e2e.test.ts` that seeds its own items and, for each of Unread, Unfiled, Added This Week, Offline and Needs Re-fetch, asserts the row keys equal the expected set, once with a non-empty set and once with the empty set (Needs Re-fetch empty shows "Every PDF is in the library."), per SC-002, FR-002 and US1/AC1 (partial). The existing test covers only Unread and Unfiled with non-empty sets.
-- [ ] T035 Show the original SHA-256 from `item.provenance.original_sha256` in the inspector's details in `src/web/components/InspectorPanel.tsx`, with an e2e test that reads it, per FR-007 and US3/AC1 (missing).
-- [ ] T036 Show the cache state (Cached or Offline, from `availability`) in the inspector in `src/web/components/InspectorPanel.tsx`, with the e2e test at `tests/library-e2e.test.ts:2862` extended to read it there, per FR-007 and US3/AC1 (partial). The state shows only in the table's Status column.
-- [ ] T037 Show the stored file's path (`item.file.path`) in the inspector in `src/web/components/InspectorPanel.tsx`, with an e2e test, per FR-007 and US3/AC1 (partial). The inspector shows the size only; the path is reachable only through Show in folder.
-- [ ] T038 Mark missing authors, year and abstract as missing in the inspector header in `src/web/components/InspectorPanel.tsx:699-709`, in place of hiding them, with an e2e test on an item whose metadata has none, per FR-008, SC-004 and US3/AC2 (partial).
+- [X] T033 Explain an empty quick filter or tag, collection or saved-search view in `src/web/components/EmptyTable.tsx` and its caller at `src/web/Workspace.tsx:422`: name the view and state that no PDF matches it, in place of the generic "Empty", per US1/AC2 (partial). Test first in `tests/library-e2e.test.ts` with a filter that matches nothing.
+- [X] T034 Add one e2e test in `tests/library-e2e.test.ts` that seeds its own items and, for each of Unread, Unfiled, Added This Week, Offline and Needs Re-fetch, asserts the row keys equal the expected set, once with a non-empty set and once with the empty set (Needs Re-fetch empty shows "Every PDF is in the library."), per SC-002, FR-002 and US1/AC1 (partial). The existing test covers only Unread and Unfiled with non-empty sets.
+- [X] T035 Show the original SHA-256 from `item.provenance.original_sha256` in the inspector's details in `src/web/components/InspectorPanel.tsx`, with an e2e test that reads it, per FR-007 and US3/AC1 (missing).
+- [X] T036 Show the cache state (Cached or Offline, from `availability`) in the inspector in `src/web/components/InspectorPanel.tsx`, with the e2e test at `tests/library-e2e.test.ts:2862` extended to read it there, per FR-007 and US3/AC1 (partial). The state shows only in the table's Status column.
+- [X] T037 Show the stored file's path (`item.file.path`) in the inspector in `src/web/components/InspectorPanel.tsx`, with an e2e test, per FR-007 and US3/AC1 (partial). The inspector shows the size only; the path is reachable only through Show in folder.
+- [X] T038 Mark missing authors, year and abstract as missing in the inspector header in `src/web/components/InspectorPanel.tsx:699-709`, in place of hiding them, with an e2e test on an item whose metadata has none, per FR-008, SC-004 and US3/AC2 (partial).
 - [ ] T039 Add an e2e test in `tests/library-e2e.test.ts` that builds smart collections with title, author and tag rules, edits each item's metadata or tags through the details pane, and asserts the smart collection's rows follow each edit without a reload, per SC-005 and US2/AC3 (partial).
 - [ ] T040 Add an e2e test in `tests/library-e2e.test.ts` that opens `#/organization/tags/<tag>` from the Tags page for a tag on several papers and asserts the rows equal the papers that carry it, per FR-004 and US2/AC2 (partial).
 - [ ] T041 Add a test that files one paper into two collections and asserts it shows in both collection views and not in Unfiled, then removes both and asserts it shows in Unfiled, per the edge case "multiple collections and no collection" and FR-003 (partial).
 - [ ] T042 Add a test that removes a tag from its last paper while a saved search names it, and asserts the saved search stays, opens without error and shows the empty-result state from T033, per the edge case "tags removed while saved searches reference them" and FR-005 (partial).
 - [ ] T043 Add an e2e test that makes `GET /api/library` fail and asserts the alert "The library could not be loaded" with Reload, and that an empty library shows "No PDFs yet" with no alert, per the edge case "empty result distinguishable from a failed load" (partial). Code: `src/web/App.tsx:45-57`, `src/web/components/EmptyTable.tsx:26`.
-- [ ] T044 Add a test in `tests/server-send.test.ts` that sends an item held by a Keep offline collection (directly and through a subcollection) to the fake Zotero and asserts the item stays in the library, and that an item outside such a collection leaves, per FR-006 offline retention (partial). Code: `server/src/send.rs:326`.
+- [X] T044 Add a test in `tests/server-send.test.ts` that sends an item held by a Keep offline collection (directly and through a subcollection) to the fake Zotero and asserts the item stays in the library, and that an item outside such a collection leaves, per FR-006 offline retention (partial). Code: `server/src/send.rs:326`.

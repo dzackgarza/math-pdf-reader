@@ -39,7 +39,7 @@ import {
   topicTag,
 } from "../format";
 import type { ItemSourceActions, SendAttempt, SendWay } from "../libraryActions";
-import type { Related } from "../librarySelectors";
+import { availability, type Related } from "../librarySelectors";
 import { BucketRequestError } from "../useLibraryApi";
 import { CollectionChip, TagChip } from "./Chips";
 import ExtractionRunner, { type ItemExtractionActions } from "./ExtractionRunner";
@@ -50,16 +50,11 @@ export type ItemFilingActions = {
   removeTag: (tag: string) => void;
   fileIn: (collectionId: string) => void;
   unfile: (collectionId: string) => void;
-  // Creates a collection with this name and files the item in it.
   fileInNewCollection: (name: string) => void;
-  // Resolves once the server has stored the note.
   addNote: (note: string) => Promise<void>;
-  // Asks first; the note is gone once confirmed.
   deleteNote: (note: ItemNote) => void;
 };
 
-// The unsent text of the item's new note, kept by the window per item so it outlives the
-// Notes tab and the selection.
 export type NoteDraft = { text: string; onChange: (text: string) => void };
 
 export type ItemSendActions = {
@@ -104,7 +99,6 @@ function ArtifactRow({ name, path, sizeBytes }: { name: string; path: string; si
   );
 }
 
-// The Markdown and the artifacts an extraction plugin left beside the PDF.
 function ExtractionFiles({ extraction }: { extraction: Extraction }) {
   if (extraction.status === "none") {
     return null;
@@ -138,7 +132,6 @@ const CHECK_MARKS: Record<SourceCheck["status"], { icon: ReactNode; label: strin
   },
 };
 
-// A URL the PDF can be fetched from, with what its last check found.
 function SourceLine({
   url,
   check,
@@ -176,7 +169,6 @@ function SourceLine({
   );
 }
 
-// The PDF URL and the mirrors, a field to add a mirror, and Verify.
 function Sources({
   item,
   sources,
@@ -337,6 +329,10 @@ function Sources({
   );
 }
 
+function Missing({ children }: { children: ReactNode }) {
+  return <span className="text-muted italic">{children}</span>;
+}
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
@@ -472,7 +468,6 @@ function Details({
 
   return (
     <>
-      {/* A fixed height: the image loads after the panel draws, and must not push the fields down. */}
       <img
         src={`${thumbnailPath(item.id, 640)}&revision=${item.provenance.original_sha256}`}
         alt="First page"
@@ -529,6 +524,17 @@ function Details({
               arxiv={props.arxiv}
               onPromoted={props.onPromoted}
             />
+          </Row>
+          <Row label="Cache status">
+            <span title={sourceCheckText(item.sourceCheck)}>
+              {availability(item) === "offline" ? "Offline" : "Cached"}
+            </span>
+          </Row>
+          <Row label="File path">
+            <span className="font-mono text-xs break-all">{item.file.path}</span>
+          </Row>
+          <Row label="SHA-256">
+            <span className="font-mono text-xs break-all">{item.provenance.original_sha256}</span>
           </Row>
           <Row label="Extraction">
             <div className="w-full space-y-2">
@@ -610,7 +616,6 @@ function Notes({
   );
 }
 
-// What each related item shares with this one; a click selects it.
 function RelatedList({
   related,
   collections,
@@ -659,7 +664,6 @@ function RelatedList({
   );
 }
 
-// A send that failed or was refused; a completed send takes the item out of the bucket.
 function SendNotice({ attempt }: { attempt: SendAttempt | undefined }) {
   if (attempt?.kind !== "refused" && attempt?.kind !== "failed") {
     return null;
@@ -686,7 +690,6 @@ export default function InspectorPanel(props: InspectorPanelProps) {
   const [tab, setTab] = useState("details");
   const [editing, setEditing] = useState(false);
   const sending = send.attempt?.kind === "sending";
-  // Sent with every step done: the item stays only because a collection keeps it offline.
   const inZotero = item.zotero.status === "sent" && item.zotero.pending.length === 0;
   return (
     <aside
@@ -696,14 +699,16 @@ export default function InspectorPanel(props: InspectorPanelProps) {
       <header className="flex items-start gap-2 px-4 pt-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-base leading-snug font-semibold text-ink">{item.title}</h2>
-          {(item.authors.length > 0 || item.year !== null) && (
-            <p className="mt-0.5 text-sm text-ink/80">
-              {[item.authors.join(", "), item.year]
-                .filter((part) => part !== null && part !== "")
-                .join(" · ")}
+          <p className="mt-0.5 text-sm text-ink/80">
+            {item.authors.length > 0 ? item.authors.join(", ") : <Missing>No authors</Missing>}
+            {" · "}
+            {item.year ?? <Missing>No year</Missing>}
+          </p>
+          {item.abstract === null ? (
+            <p className="mt-1.5 text-xs">
+              <Missing>No abstract</Missing>
             </p>
-          )}
-          {item.abstract !== null && (
+          ) : (
             <details className="mt-1.5 text-sm">
               <summary className="cursor-pointer text-xs font-medium text-accent">Abstract</summary>
               <p className="mt-1 max-h-48 overflow-y-auto text-ink/80">{item.abstract}</p>
