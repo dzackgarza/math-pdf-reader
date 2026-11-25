@@ -68,6 +68,8 @@ const served = new Map<string, Uint8Array<ArrayBuffer>>();
 let atomFeed: string | undefined;
 // When each arXiv API request arrived, in milliseconds since the epoch.
 const apiRequests: number[] = [];
+// A refusal the arXiv API answers instead of a feed, when set.
+let apiRefusal: { status: number; headers: Record<string, string> } | undefined;
 let pdfRedirect: string | undefined;
 const publisher = Bun.serve({
   hostname: "127.0.0.1",
@@ -76,6 +78,9 @@ const publisher = Bun.serve({
     const url = new URL(request.url);
     if (url.pathname === "/api/query") {
       apiRequests.push(Date.now());
+      if (apiRefusal !== undefined) {
+        return new Response("Rate exceeded.", apiRefusal);
+      }
       return new Response(
         atomFeed ??
           `<?xml version="1.0" encoding="UTF-8"?>
@@ -2222,6 +2227,92 @@ test("discovery refuses a placeholder title and tells the user to set the title"
   }
   expect(apiRequests.length).toBe(before);
 });
+
+test("an arXiv refusal or an unreachable API is an explicit arXiv error, not an empty result", async () => {
+  const config = loadAppConfig(CONFIG_PATH);
+  const arxiv = (api_url: string) => ({
+    ...config,
+    arxiv: {
+      api_url,
+      abs_url: at("/abs/"),
+      pdf_url: at("/pdf/"),
+      e_print_url: at("/e-print/"),
+    },
+  });
+  const refused = await bucket(null, arxiv(at("/api/query")));
+  await refused.capture(lectureNotes, "refused", at("/notes/refused.pdf"));
+  await recordMetadata(refused.root, "refused", "resolver", {
+    title: "Promotion Notes",
+    authors: ["An Author"],
+    year: 2024,
+  });
+  const search = async (request: typeof refused.request, key: string) => {
+    const response = await request("POST", `/api/items/${key}/arxiv`);
+    return [response.status, ApiErrorSchema.parse(await response.json()).error] as const;
+  };
+  try {
+    for (const [status, retryAfter, when] of [
+      [429, "120", "after 120 s"],
+      [503, "Wed, 21 Oct 2026 07:28:00 GMT", "after Wed, 21 Oct 2026 07:28:00 GMT"],
+    ] as const) {
+      apiRefusal = { status, headers: { "Retry-After": retryAfter } };
+      const [code, error] = await search(refused.request, "refused");
+      expect([code, error.kind]).toEqual([503, "arxiv_unavailable"]);
+      expect(error.message).toContain(`arXiv refused the search (HTTP ${status}`);
+      expect(error.message).toContain(when);
+    }
+    apiRefusal = { status: 429, headers: {} };
+    const [, unannounced] = await search(refused.request, "refused");
+    expect(unannounced.message).toContain("arXiv refused the search (HTTP 429");
+    expect(unannounced.message).not.toContain("http://");
+  } finally {
+    apiRefusal = undefined;
+  }
+
+  const closed = closedPortUrl().replace("localhost", "127.0.0.1");
+  const unreachable = await bucket(null, arxiv(`${closed}/api/query`));
+  await unreachable.capture(lectureNotes, "unreachable", at("/notes/unreachable.pdf"));
+  await recordMetadata(unreachable.root, "unreachable", "resolver", {
+    title: "Promotion Notes",
+    authors: ["An Author"],
+    year: 2024,
+  });
+  const [code, error] = await search(unreachable.request, "unreachable");
+  expect([code, error.kind]).toEqual([503, "arxiv_unavailable"]);
+  expect(error.message).toContain("arXiv could not be reached");
+});
+
+test("discovery with the production configuration keeps its arXiv API requests 3 s apart", async () => {
+  const config = loadAppConfig(CONFIG_PATH);
+  // The arXiv API terms of use ask for at most one request every 3 s.
+  const interval = 3;
+  const { root, request, capture } = await bucket(null, {
+    ...config,
+    arxiv: {
+      api_url: at("/api/query"),
+      abs_url: at("/abs/"),
+      pdf_url: at("/pdf/"),
+      e_print_url: at("/e-print/"),
+      request_interval_seconds: config.arxiv.request_interval_seconds,
+    },
+  });
+  await capture(lectureNotes, "spaced", at("/notes/spaced.pdf"));
+  await recordMetadata(root, "spaced", "resolver", {
+    title: "Promotion Notes",
+    authors: ["An Author"],
+    year: 2024,
+  });
+  const before = apiRequests.length;
+  const searches = await Promise.all(
+    [0, 1, 2].map(() => request("POST", "/api/items/spaced/arxiv")),
+  );
+  expect(searches.map((response) => response.status)).toEqual([200, 200, 200]);
+  const arrivals = apiRequests.slice(before);
+  expect(arrivals.length).toBe(3);
+  for (let at = 1; at < arrivals.length; at++) {
+    expect(arrivals[at] - arrivals[at - 1]).toBeGreaterThanOrEqual(interval * 1000);
+  }
+}, 60_000);
 
 test("known arXiv papers rank in the accepted results on the 20-paper corpus", async () => {
   expect(discoveryCorpus.length).toBeGreaterThanOrEqual(20);
