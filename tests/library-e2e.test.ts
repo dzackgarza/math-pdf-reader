@@ -3091,6 +3091,19 @@ test("each send control sends its way: the details menu, the row and tab context
     await shot("send-extract-all-failed");
     await page.waitForSelector(row("lattices"), { hidden: true });
 
+    await page.click(row("problems"));
+    await shows('[role="alert"]', "Sent to Zotero, but no plugin extracted the PDF");
+    for (const button of [await byRole("button", "Open"), await inspectorSend()]) {
+      expect(
+        await button.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return hit !== null && element.contains(hit);
+        }),
+      ).toBe(true);
+    }
+    await shot("send-extract-failed-inspector-usable");
+
     await page.click(row("problems"), { button: "right" });
     await (await menuItem("Send PDF Only to Zotero")).click();
     await page.waitForSelector(row("problems"), { hidden: true });
