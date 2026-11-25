@@ -14,10 +14,12 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `tests/launch.test.ts` with a scratch git worktree of the checkout, scratch
+- [X] T001 Add `tests/launch.test.ts` with a scratch git worktree of the checkout, scratch
   `HOME`, `XDG_DATA_HOME` and `XDG_CONFIG_HOME`, and recording substitutes on `PATH` for
   `kitty`, `notify-send`, `just` and `~/.local/bin/pdf-bucket-desktop`
   (research.md R6)
+  - Evidence: `tests/launch.test.ts` `scratchCheckout` and `launcherCheckout`, with the
+    programs in `tests/fixtures/launch`; the real `just` runs (research.md R6).
 
 ## Phase 2: User Story 1 - One product identity (P1)
 
@@ -30,8 +32,11 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
 - [ ] T003 [P] [US1] Name the dialogs and the tray items "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:32,154,383-384` (FR-001, US1/AC1). Source has it; no
   test.
-- [ ] T004 [P] [US1] Name the launcher and autostart entry `Name=Math PDF Reader` in
-  `desktop/pdf-bucket-desktop.desktop` (FR-001, US1/AC1). Source has it; no test.
+- [X] T004 [P] [US1] Name the launcher and autostart entry `Name=Math PDF Reader` in
+  `desktop/pdf-bucket-desktop.desktop` (FR-001, US1/AC1).
+  - Evidence: `tests/launch.test.ts` "provisioning for a launch" runs the real
+    `scripts/provision.sh --for-launch` and reads `Name=Math PDF Reader` in the installed
+    entry.
 - [ ] T005 [P] [US1] Name both extensions "Math PDF Reader" in `wxt.config.ts:41`
   (FR-001, US1/AC1). Source has it; `tests/extension-manifest.test.ts` checks only the
   permissions.
@@ -61,19 +66,32 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
   - Evidence: `scripts/source-fingerprint:4-9`; `tests/launch.test.ts` "the application
     input hash" edits each extension input in a scratch checkout and expects the same
     hash, and expects a new hash after an edit to `src/web/index.html`.
-- [ ] T011 [US2] Rebuild before the launch when the binary or the stamp is missing or the
+- [X] T011 [US2] Rebuild before the launch when the binary or the stamp is missing or the
   stamp differs, then start the new build, in `scripts/launch:37-44` (FR-003, SC-002,
-  US2/AC1). Source has it; no test.
-- [ ] T012 [US2] On a failed rebuild, keep the output in the terminal, send a critical
+  US2/AC1).
+  - Evidence: `tests/launch.test.ts` "with no app installed, and again after a source
+    edit": two rebuilds in the `kitty` terminal titled "Math PDF Reader - Building", each
+    followed by the start of the new build.
+- [X] T012 [US2] On a failed rebuild, keep the output in the terminal, send a critical
   notification, exit 1 and start no app, in `scripts/launch:12-32,39-40` (FR-004,
-  SC-003, US2/AC2). Source has it; no test.
-- [ ] T013 [US2] With an unchanged stamp, start the installed binary with no rebuild in
-  `scripts/launch:37,44` (FR-003). Source has it; no test.
-- [ ] T014 [US2] Hash the input before the build and write the stamp as the last install
-  step in `scripts/provision.sh:14,73` (FR-003, FR-004). Source has it; no test.
-- [ ] T015 [US2] Serialize two concurrent launches with the lock in
+  SC-003, US2/AC2).
+  - Evidence: `tests/launch.test.ts` "a failed rebuild keeps its output": the build
+    output and "Rebuild failed (exit 3). Press Enter to close." are printed, the launcher
+    waits until Enter, exits 1, sends the critical notification and starts no app.
+- [X] T013 [US2] With an unchanged stamp, start the installed binary with no rebuild in
+  `scripts/launch:37,44` (FR-003).
+  - Evidence: `tests/launch.test.ts` "with the source unchanged since the last build":
+    one provision, two starts of build 1.
+- [X] T014 [US2] Hash the input before the build and write the stamp as the last install
+  step in `scripts/provision.sh:14,73` (FR-003, FR-004).
+  - Evidence: `tests/launch.test.ts` "provisioning for a launch": the stamp equals the
+    hash taken before a build that edits `src/web/index.html`; a failed build writes no
+    stamp.
+- [X] T015 [US2] Serialize two concurrent launches with the lock in
   `scripts/launch:34-36,42`, so a second launch does not start the old build while the
-  first rebuilds (FR-003). Source has it; no test.
+  first rebuilds (FR-003).
+  - Evidence: `tests/launch.test.ts` "two launches during one rebuild build once": one
+    provision, two starts of build 1.
 
 ## Phase 4: User Story 3 - Separate browser integrations (P2)
 
@@ -121,7 +139,7 @@ that is not `[X]` maps to a task here.
   them now rebuilds the app. Per FR-005 and SC-004 (contradicts).
   - Evidence: `scripts/source-fingerprint:4-9`; the red test (ec7d7e9) failed for both
     scripts and passes after the change.
-- [ ] T024 Test the launcher in `tests/launch.test.ts` (T001 harness): changed source
+- [X] T024 Test the launcher in `tests/launch.test.ts` (T001 harness): changed source
   runs `just provision-for-launch` in the `kitty` substitute and then the new binary
   (T011); a failed substitute build gives exit 1, the critical notification, a terminal
   that waits for Enter, and no app start (T012); an unchanged stamp runs the binary with
@@ -132,6 +150,8 @@ that is not `[X]` maps to a task here.
   `bunx`, `uv`, `pgrep`, `killall` and `systemctl`, and assert that the stamp is the hash
   taken before the build and is absent after a failed build (T014). Per FR-003, FR-004,
   FR-005, SC-002, SC-003, SC-004, US2/AC1-AC3 (missing).
+  - Evidence: `tests/launch.test.ts`, all three describe blocks; the programs it
+    substitutes are in `tests/fixtures/launch`.
 - [ ] T025 Keep the failure of the last rebuild after its terminal closes, and show it in
   the next window, and mark an app that is already running as stale when its source
   changed: `scripts/launch`, `scripts/provision.sh`, `server/src/app.rs` (`/status`),

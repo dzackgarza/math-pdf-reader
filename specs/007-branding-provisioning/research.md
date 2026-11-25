@@ -58,11 +58,15 @@ shows, its reason from the source comments and docs, and the alternatives they n
 
 ## R6. Test boundary for the launcher
 
-- **Decision**: Tier-1 launcher tests run the real `scripts/launch` and
-  `scripts/source-fingerprint` in a scratch git worktree with scratch `HOME` and `XDG_*`
-  directories. They substitute `kitty`, `notify-send`, `just` and the installed binary by
-  scripts on `PATH` and in the scratch `~/.local/bin`. The substitutes record their
-  arguments and exit with a chosen status.
+- **Decision**: Tier-1 launcher tests run the real `scripts/launch`,
+  `scripts/source-fingerprint`, `justfile` and `just` in a scratch git repository that
+  holds a copy of the checkout's build input, with scratch `HOME` and `XDG_*`
+  directories. The copy's `scripts/provision.sh` is
+  `tests/fixtures/launch/provision-for-launch.sh`, which installs a binary that records
+  its start and writes the stamp, or fails when `BUILD_FAILS` is set. `kitty` and
+  `notify-send` are recording programs in `tests/fixtures/launch/bin` on `PATH`; the
+  `kitty` one runs its command in the launcher's own terminal, so the test reads the
+  build output and answers the Enter prompt.
 - **Rationale**: The real build takes minutes. `provision.sh:35-37` kills every
   `pdf-bucket-desktop` process and talks to the real systemd user manager, so it would
   stop the owner's app. The launcher's own decisions (rebuild or not, start or not,

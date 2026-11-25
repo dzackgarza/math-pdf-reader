@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$RECORD/direnv"
+shift 2
+exec "$@"

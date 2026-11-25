@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+printf '%s\n' "$1 $2 $3 $4" >> "$RECORD/kitty"
+[[ "$1" == --title ]] && shift 2
+exec "$@"
