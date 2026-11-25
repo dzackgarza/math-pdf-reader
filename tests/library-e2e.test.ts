@@ -2349,6 +2349,7 @@ test("the grid view shows each PDF's first page, and a double-click opens the re
 });
 
 test("rows chosen with their checkboxes are tagged and filed together", async () => {
+  await api("POST", "/api/collections", { name: "Quadratic forms" });
   await openLibrary();
   const chosen = ["problems", "lattices"];
   for (const key of chosen) {
@@ -2476,6 +2477,12 @@ test("Import URL and Add Folder in the toolbar add PDFs to the library", async (
 });
 
 test("the Related tab lists the PDFs that share authors, collections, topics or tags with the selected one", async () => {
+  await fileInto("Quadratic forms", ["problems", "lattices"]);
+  await api("POST", "/api/bulk/tags", {
+    keys: ["problems", "notes"],
+    add: ["survey"],
+    remove: [],
+  });
   await openLibrary();
   const org = await organization();
   const filing = (key: string) => [
@@ -2558,6 +2565,8 @@ test("collection cards show counts and pins; a collection keeps a description, K
     page.$$eval("[data-collection-id]", (entries) =>
       entries.map((entry) => entry.getAttribute("data-collection-name")),
     );
+  await fileInto("Lattice theory", ["outlined"]);
+  await fileInto("Quadratic forms", ["lattices", "problems"]);
   await page.goto(`${bucket.origin}/#/organization/collections`);
   await page.waitForSelector("[data-collection-id]");
   const org = await organization();
@@ -2637,6 +2646,8 @@ test("collection cards show counts and pins; a collection keeps a description, K
 });
 
 test("a smart collection built from rules lists the PDFs meeting all of them, and after an edit any of them", async () => {
+  await fileInto("Quadratic forms", ["lattices", "problems"]);
+  await markViewed("lattices", 2, 2);
   const payload = LibraryPayloadSchema.parse(
     await (await fetch(`${bucket.origin}/api/library`)).json(),
   );
@@ -2658,7 +2669,7 @@ test("a smart collection built from rules lists the PDFs meeting all of them, an
   expect(either.length).toBeGreaterThan(both.length);
 
   await page.goto(`${bucket.origin}/#/organization/saved`);
-  await page.click('button[aria-label="Smart Collection"]');
+  await (await page.waitForSelector('button[aria-label="Smart Collection"]'))?.click();
   await page.type(
     '[role="dialog"] input[aria-label="Name"]',
     "Unread quadratic forms",
