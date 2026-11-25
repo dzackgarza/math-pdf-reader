@@ -2714,6 +2714,41 @@ test("the page in the address wins over the recorded reading position, on open a
   expect(new URL(page.url()).hash).toBe("#page=7");
 });
 
+test("a reader address with a page opens at that page with no jump to page 1 on the way, for a PDF read before at a fitted zoom", async () => {
+  const item = (await libraryPayload()).items.find((candidate) => candidate.id === "reading");
+  if (item === undefined) {
+    throw new Error("the library holds no reading");
+  }
+  await api("PUT", "/api/items/reading/reading", {
+    page: 1,
+    pages: 10,
+    zoom: "fit-page",
+    edition: item.provenance,
+  });
+  const pages: number[] = [];
+  const onConsole = async (message: ConsoleMessage) => {
+    if (message.text().startsWith("reader page changed")) {
+      const changed = z
+        .object({ documentId: z.string(), pageNumber: z.number() })
+        .parse(await message.args()[1]?.jsonValue());
+      if (changed.documentId === "reading") {
+        pages.push(changed.pageNumber);
+      }
+    }
+  };
+  await page.goto("about:blank");
+  page.on("console", onConsole);
+  try {
+    await page.goto(`${bucket.origin}/read/reading#page=7`);
+    await readerLoaded("reading");
+    await showsPage("reading", 7);
+    await Bun.sleep(1500);
+  } finally {
+    page.off("console", onConsole);
+  }
+  expect({ pages, hash: new URL(page.url()).hash }).toEqual({ pages: [7], hash: "#page=7" });
+});
+
 test("a page outside the PDF, or a fragment that names no page, says so and opens and records page 1", async () => {
   for (const fragment of ["#page=99", "#page=abc"]) {
     await markViewed("reading", 4, 10);
