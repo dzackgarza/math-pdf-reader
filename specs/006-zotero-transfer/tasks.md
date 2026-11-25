@@ -272,3 +272,10 @@ last.
   Evidence: red in 4222c79 (expected true, received false); with the message in the library
   pane, `tests/library-e2e.test.ts` "each send control sends its way" passes at 1400 px and
   1024 px wide; screenshots `send-extract-failed-inspector-usable-1400.png` and `-1024.png`.
+- [ ] T033 Name where the paper went in each send's message in the library UI: "in the
+  collection “<name>”", "in My Library", or "in the place an earlier send put it". The
+  server puts the collection's name in `SendTarget`: Send to Zotero reads it from
+  `get_selected_collection`; Send PDF Only reads it from Zotero's local API
+  (`/api/users/0/collections/<key>`), because the attach answer gives only the key. Per
+  FR-005 and US1. First commit a failing test in `tests/library-e2e.test.ts` through the
+  details menu, the details pane's button, the row and tab context menus and the palette.
