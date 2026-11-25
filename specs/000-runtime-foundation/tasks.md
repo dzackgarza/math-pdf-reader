@@ -26,7 +26,7 @@ on a fresh release build. Other cited tests were read but not run in this sessio
 - [X] T001 Drive the release app through its own window on headless Weston under
   WebKitWebDriver, in a private network namespace, in `tests/desktop_workflow.py` and
   the `test-desktop` recipe in `justfile`
-  - Evidence: harness `tests/desktop_workflow.py:53-125`, `justfile:107-110`; run
+  - Evidence: harness `tests/desktop_workflow.py:65-140`, `justfile:107-110`; run
     `test_wheel_reading_keeps_position` passed.
 
 ## Phase 2: Foundational
@@ -34,7 +34,7 @@ on a fresh release build. Other cited tests were read but not run in this sessio
 - [X] T002 Bind the bucket's port in the app's own process before the window loads, in
   `start()` in `desktop/src-tauri/src/lib.rs` and `serve()` in `server/src/lib.rs`
   - Evidence: code `desktop/src-tauri/src/lib.rs:118-134`, `server/src/lib.rs:48-69`;
-    test `tests/desktop_workflow.py:117-125` waits until the window is at `ORIGIN`.
+    test `tests/desktop_workflow.py:137-140` waits until the window is at `ORIGIN`.
 - [X] T003 Derive the PDF and reader addresses from the key alone and route them in
   `server/src/reader.rs` and `server/src/app.rs`
   - Evidence: code `server/src/reader.rs:9-15`, `server/src/app.rs:462-463`; test
@@ -52,19 +52,19 @@ its reader address.
 - [X] T004 [US1] Open the window on the app's own page, then go to the bucket origin's
   library, in `desktop/src-tauri/src/lib.rs` (US1/AC1, FR-001)
   - Evidence: code `desktop/src-tauri/src/lib.rs:279-341`; test
-    `tests/desktop_workflow.py:117-125`.
+    `tests/desktop_workflow.py:137-140`.
 - [X] T005 [US1] Open a captured PDF's reader in a tab of the window from the
   `open-reader` event, and render it, in `server/src/events.rs`, `src/web/tabs.tsx` and
   `desktop/src-tauri/src/follow-open-events.js` (US1/AC2, FR-001, FR-003)
   - Evidence: code `server/src/events.rs:36-40`, `src/web/tabs.tsx:209-211`,
     `desktop/src-tauri/src/follow-open-events.js:41-49`; tests
-    `tests/desktop_workflow.py:128-169` (`capture` waits for the active tab and a drawn
-    PDF), `tests/desktop_workflow.py:189-207`, `tests/server-events.test.ts:14-50`.
+    `tests/desktop_workflow.py:143-177` (`capture` waits for the active tab and a drawn
+    PDF), `tests/desktop_workflow.py:204-222`, `tests/server-events.test.ts:14-50`.
 - [X] T006 [US1] Open a stored PDF from the library table in a reader tab, in
   `src/web/Workspace.tsx` and `src/web/tabs.tsx` (FR-003)
   - Evidence: code `src/web/Workspace.tsx:307`; test `open_from_library` in
-    `tests/desktop_workflow.py:598-625`, used by `test_a_reading_session`
-    (`tests/desktop_workflow.py:694`); not run in this session.
+    `tests/desktop_workflow.py:633-654`, used by `test_a_reading_session`
+    (`tests/desktop_workflow.py:724`); not run in this session.
 - [X] T007 [US1] Serve every stored PDF's bytes at `/pdf/<key>.pdf` and its reader page
   at `/read/<key>`, including PDFs imported or present at startup, in
   `server/src/app.rs` (FR-002, US1/AC2)

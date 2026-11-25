@@ -1,14 +1,28 @@
 """One reading session in the desktop app, driven through its own window.
 
-The release app (target/release/pdf-bucket-desktop) runs against a scratch data home whose
-runtime files are the checkout's, on a headless Weston display, under WebKitWebDriver (Tauri's
-WebDriver path on Linux). `just test-desktop` runs it in a private network namespace, so the app
-can take its fixed port. pytest collects this file only when it is named on the command line.
+The release app (target/release/pdf-bucket-desktop) runs against a scratch data home whose runtime
+files are the checkout's, on a headless Weston display, under WebKitWebDriver (Tauri's WebDriver
+path on Linux). `just test-desktop` runs it in a private network namespace, so the app can take its
+fixed port. pytest collects this file only when it is named on the command line.
 
-Every step goes through the window: pointer drags over the page's text, clicks on the reader's
-and the library's controls, typing into the inspector. The reader's state is read by script from
+Every step goes through the window: pointer drags over the page's text, clicks on the reader's and
+the library's controls, typing into the inspector. The reader's state is read by script from
 EmbedPDF's plugins, and its controls are found in the viewer's shadow root. The stored PDFs are
 checked at the end with pikepdf, not through the app.
+
+`RUNTIME`: The runtime files `just provision` installs, taken from the checkout.
+
+`Script`: A value a script hands back through WebDriver: JSON.
+
+`NOTES_LINE`: The first line of body text on pages 2 to 10 of outlined-notes.pdf, and on page 1 of
+ten-page-notes.pdf, as fractions of the page's width and height (pdftotext -bbox).
+
+`BELOW_NOTES_LINE`: The next paragraph's line below NOTES_LINE's line on page 2 of
+outlined-notes.pdf ("A change of basis..."), clear of a highlight drawn over that line (pdftotext -bbox).
+
+`PAGE_BOX`: A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
+
+`HIGHLIGHT`: PdfAnnotationSubtype.HIGHLIGHT
 """
 
 from __future__ import annotations
@@ -39,14 +53,12 @@ REPO = Path(__file__).resolve().parents[1]
 APP = REPO / "target/release/pdf-bucket-desktop"
 ORIGIN = f"http://127.0.0.1:{json.loads((REPO / 'pdf-bucket.config.json').read_text())['server']['port']}"
 FIXTURES = REPO / "tests/fixtures"
-# The runtime files `just provision` installs, taken from the checkout.
 RUNTIME = {
     "dist/web": REPO / "dist/web",
     "plugins/manifests": REPO / "plugins/manifests",
     ".venv": REPO / ".venv",
 }
 SETTLE = 2.0
-# A value a script hands back through WebDriver: JSON.
 type Script = str | int | float | bool | None | list[Script] | dict[str, Script]
 
 
@@ -77,12 +89,12 @@ def headless_display(stack: ExitStack) -> str:
 
 @pytest.fixture
 def data_home(tmp_path: Path) -> Path:
+    """direnv keeps its `direnv allow` records in the data home; without them the `.envrc` is blocked."""
     runtime = tmp_path / "data/pdf-bucket-app"
     for name, source in RUNTIME.items():
         (runtime / name).parent.mkdir(parents=True, exist_ok=True)
         (runtime / name).symlink_to(source)
     (runtime / "extensions").mkdir()
-    # direnv keeps its `direnv allow` records in the data home; without them the `.envrc` is blocked.
     user_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share"))
     (tmp_path / "data/direnv").symlink_to(user_data / "direnv")
     return tmp_path / "data"
@@ -90,8 +102,13 @@ def data_home(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
+    """The app starts as autostart starts it: outside any shell that has loaded the `.envrc`.
+
+    The driver and the app write to the test's output, which pytest shows when the run fails.
+
+    A start failure replaces the library with a page that names the cause.
+    """
     with ExitStack() as stack:
-        # The app starts as autostart starts it: outside any shell that has loaded the `.envrc`.
         env = {
             **{
                 name: value
@@ -108,7 +125,6 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         options = webdriver.WebKitGTKOptions()
         options.binary_location = str(APP)
         options.set_capability("browserName", "wry")
-        # The driver and the app write to the test's output, which pytest shows when the run fails.
         service = webdriver.WebKitGTKService(
             executable_path="/usr/bin/WebKitWebDriver",
             env=env,
@@ -119,7 +135,6 @@ def app(data_home: Path, tmp_path: Path) -> Iterator[webdriver.WebKitGTK]:
         try:
             WebDriverWait(driver, 60).until(lambda d: d.current_url.startswith(ORIGIN))
         except TimeoutException:
-            # A start failure replaces the library with a page that names the cause.
             body = driver.find_element(By.TAG_NAME, "body").text
             pytest.fail(f"the window stayed at {driver.current_url}: {body}")
         yield driver
@@ -148,25 +163,25 @@ def capture(driver: webdriver.WebKitGTK, fixture: str) -> str:
     ).stdout
     key = json.loads(output)["key"]
     assert isinstance(key, str), output
-    WebDriverWait(driver, 30).until(
-        lambda d: d.find_elements(
-            By.CSS_SELECTOR, f"[data-tab-key='{key}'][data-state='active']"
+    try:
+        WebDriverWait(driver, 30).until(
+            lambda d: d.find_elements(
+                By.CSS_SELECTOR, f"[data-tab-key='{key}'][data-state='active']"
+            )
         )
-    )
+    except TimeoutException:
+        pytest.fail(
+            f"The capture of {fixture} as {key} did not show its tab: {window_state(driver)}"
+        )
     Reader(driver, key).loaded()
     return key
 
 
-# The first line of body text on pages 2 to 10 of outlined-notes.pdf, and on page 1 of
-# ten-page-notes.pdf, as fractions of the page's width and height (pdftotext -bbox).
 NOTES_LINE = (134 / 612, 154 / 792)
-# The next paragraph's line below NOTES_LINE's line on page 2 of outlined-notes.pdf ("A change of
-# basis..."), clear of a highlight drawn over that line (pdftotext -bbox).
 BELOW_NOTES_LINE = (134 / 612, 197 / 792)
 PROBLEMS_LINE = (134 / 595.276, 268 / 841.89)
-# A page of the PDF: EmbedPDF draws each in a white box (its snippet's renderPage).
 PAGE_BOX = 'div[style*="transform-origin"][style*="background-color"]'
-HIGHLIGHT = 9  # PdfAnnotationSubtype.HIGHLIGHT
+HIGHLIGHT = 9
 
 
 def watch(driver: webdriver.WebKitGTK) -> None:
@@ -381,7 +396,12 @@ class Reader:
         )
 
     def next_page(self) -> None:
-        """Go to the next page with the page controls in the toolbar."""
+        """Go to the next page with the page controls in the toolbar.
+
+        The pages settle at their zoom after they first show. On WebKitGTK 2.52 a smooth scroll
+        that starts while the scroll height changes does not move, and EmbedPDF's page change then
+        never ends.
+        """
         page = self.page_number()
         self.run(
             "if (window.__moves === undefined) { window.__moves = []; const v = P('viewport'), t0 = performance.now(), at = () => Math.round(performance.now() - t0);"
@@ -389,9 +409,6 @@ class Reader:
             " v.onScrollChange(({ scrollMetrics: m }) => window.__moves.push(['scroll', at(), m.scrollTop]));"
             " P('zoom').onZoomChange((e) => window.__moves.push(['zoom', at(), e.newZoom])); } window.__moves = [];"
         )
-        # The pages settle at their zoom after they first show. On WebKitGTK 2.52 a smooth scroll
-        # that starts while the scroll height changes does not move, and EmbedPDF's page change
-        # then never ends.
         heights = [
             self.number(
                 f"P('viewport').forDocument({json.dumps(self.key)}).getMetrics().scrollHeight"
@@ -444,14 +461,19 @@ class Reader:
         )
 
     def highlight(self, page: int, line: tuple[float, float]) -> None:
-        """Draw a highlight with the Annotate toolbar's highlight tool over LINE of PAGE; wait for its save."""
+        """Draw a highlight with the Annotate toolbar's highlight tool over LINE of PAGE; wait for its
+        save.
+
+        The Annotate toolbar opens below the main one and moves the pages down, so the page is
+        found once it is open.
+
+        Escape puts the highlighter down: the default tool, which selects text, is in hand.
+        """
         saved = len(self.saves())
         before = self.highlights()
         self.click("[data-epdf-i='annotate-mode'] button")
         self.click("[data-epdf-i='add-highlight'] button")
         self.wait("P('annotation').getActiveTool()?.id === 'highlight'")
-        # The Annotate toolbar opens below the main one and moves the pages down, so the page is
-        # found once it is open.
         self.drag_across(page, line)
         self.wait(
             f"P('annotation').forDocument({json.dumps(self.key)}).getAnnotations()"
@@ -461,7 +483,6 @@ class Reader:
             f"window.__saves.filter(([url]) => url.endsWith({json.dumps(f'/api/items/{self.key}/pdf')})).length > {saved}"
         )
         time.sleep(SETTLE)
-        # Escape puts the highlighter down: the default tool, which selects text, is in hand.
         ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
         self.wait(
             "P('interaction-manager').getActiveMode() === P('interaction-manager').getDefaultMode() && P('annotation').getActiveTool() === null"
@@ -595,13 +616,28 @@ def night_pixel_counts(pixmap: pymupdf.Pixmap, boxes: list[Script]) -> tuple[int
     return light, darkened
 
 
+def window_state(driver: webdriver.WebKitGTK) -> Script:
+    """The window's address, tabs, page errors and text, for a failure message."""
+    state: Script = driver.execute_script("""
+        return {
+            url: location.href,
+            tabs: [...document.querySelectorAll('[data-tab-key]')].map((tab) =>
+                ({key: tab.dataset.tabKey, state: tab.dataset.state})),
+            errors: window.__errors ?? [],
+            body: document.body.innerText.slice(0, 3000)
+        };
+    """)
+    return state
+
+
 def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
+    """The reader's normal Enter shortcut opens the selected item without relying on a
+    platform-dependent double-click interval or moving across an inspector overlay.
+    """
     show_library(driver)
     row = f"//tbody/tr[@data-item-id={json.dumps(key)}]/td[@data-column='title']"
     cell = WebDriverWait(driver, 30).until(lambda d: d.find_element(By.XPATH, row))
     cell.click()
-    # The reader's normal Enter shortcut opens the selected item without relying on a
-    # platform-dependent double-click interval or moving across an inspector overlay.
     ActionChains(driver).send_keys(Keys.ENTER).perform()
     reader = Reader(driver, key)
     try:
@@ -611,15 +647,9 @@ def open_from_library(driver: webdriver.WebKitGTK, key: str) -> Reader:
             )
         )
     except TimeoutException:
-        state = driver.execute_script("""
-            return {
-                tabs: [...document.querySelectorAll('[data-tab-key]')].map((tab) =>
-                    ({key: tab.dataset.tabKey, state: tab.dataset.state})),
-                errors: window.__errors ?? [],
-                body: document.body.innerText.slice(0, 3000)
-            };
-        """)
-        pytest.fail(f"Opening reader {key} did not select its tab: {state}")
+        pytest.fail(
+            f"Opening reader {key} did not select its tab: {window_state(driver)}"
+        )
     reader.loaded()
     return reader
 
@@ -692,6 +722,32 @@ def highlights_in(pdf: pikepdf.Pdf) -> int:
 
 
 def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
+    """Open the notes from the library and read: go on past the first pages.
+
+    Select a passage with a plain drag; the selection stays.
+
+    Highlight it. The text shows through the highlight.
+
+    In night mode the text still shows through the highlight, light on its darkened colour.
+
+    Jump to a section from the outline, go back, then type a page number. The sidebar holds the
+    page thumbnails, then the outline, whose entries are the notes' section titles.
+
+    Read it: a page counts as read after MIN_PAGE_SECONDS (src/contract/library.ts).
+
+    Leave for the library and the timeline, then open the problem set and highlight there.
+
+    Back in the notes, the page and the highlight are where they were.
+
+    Correct the notes' metadata in the library's inspector.
+
+    The notes' reader opened the PDF before the bucket wrote that metadata into it; a new highlight
+    is saved all the same.
+
+    Close the notes and open them again: both highlights and the new title are there.
+
+    Another PDF reader draws the saved highlights with the text showing through them too.
+    """
     notes = capture(app, "outlined-notes.pdf")
     problems = capture(app, "ten-page-notes.pdf")
     for key in (notes, problems):
@@ -699,13 +755,11 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
             close_tab(app, key)
     watch(app)
 
-    # Open the notes from the library and read: go on past the first pages.
     reader = open_from_library(app, notes)
     assert reader.page_number() == 1
     while reader.page_number() < 3:
         reader.next_page()
 
-    # Select a passage with a plain drag; the selection stays.
     page = reader.page_number()
     reader.drag_across(page, NOTES_LINE)
     selected = reader.selection()
@@ -713,12 +767,10 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     time.sleep(SETTLE)
     assert reader.selection() == selected
 
-    # Highlight it. The text shows through the highlight.
     reader.highlight(page, NOTES_LINE)
     reader.assert_saved()
     dark, yellow = reader.highlighted_pixels(page, pixel_counts)
     assert dark > 0 and yellow > 0, (dark, yellow)
-    # In night mode the text still shows through the highlight, light on its darkened colour.
     reader.click_command("night-mode")
     reader.wait(
         "[...S.querySelectorAll('style')].some((sheet) => sheet.textContent.includes('invert(1)'))"
@@ -727,8 +779,6 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     assert light > 0 and darkened > 0, (light, darkened)
     reader.click_command("night-mode")
 
-    # Jump to a section from the outline, go back, then type a page number. The sidebar holds
-    # the page thumbnails, then the outline, whose entries are the notes' section titles.
     reader.click("[data-epdf-i='sidebar-button'] button")
     reader.click_element("S.querySelectorAll('[role=tab]')[1]")
     reader.wait(
@@ -745,10 +795,8 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
         Keys.CONTROL
     ).send_keys("7", Keys.ENTER).perform()
     reader.shows("page === 7")
-    # Read it: a page counts as read after MIN_PAGE_SECONDS (src/contract/library.ts).
     time.sleep(6)
 
-    # Leave for the library and the timeline, then open the problem set and highlight there.
     show_library(app)
     nav_to(app, "Timeline")
     Select(
@@ -762,12 +810,10 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
     other.highlight(1, PROBLEMS_LINE)
     other.assert_saved()
 
-    # Back in the notes, the page and the highlight are where they were.
     show_tab(app, notes)
     reader.shows("page === 7")
     assert reader.highlights() == 1
 
-    # Correct the notes' metadata in the library's inspector.
     show_library(app)
     app.find_element(
         By.XPATH,
@@ -793,13 +839,10 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
         lambda _: not inspector.find_elements(By.CSS_SELECTOR, "[aria-label='Title']")
     )
 
-    # The notes' reader opened the PDF before the bucket wrote that metadata into it; a new
-    # highlight is saved all the same.
     show_tab(app, notes)
     reader.highlight(7, NOTES_LINE)
     reader.assert_saved()
 
-    # Close the notes and open them again: both highlights and the new title are there.
     close_tab(app, notes)
     reader = open_from_library(app, notes)
     reader.wait(
@@ -812,7 +855,6 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
 
     assert app.execute_script("return window.__errors") == []
 
-    # Another PDF reader draws the saved highlights with the text showing through them too.
     dark, yellow = highlighted_pixels_in(
         data_home / "pdf-bucket" / notes / f"{notes}.pdf"
     )
@@ -828,7 +870,27 @@ def test_a_reading_session(app: webdriver.WebKitGTK, data_home: Path) -> None:
 def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> None:
     """View temporarily forces pen highlighting. Annotate leaves the selected annotation tool
     unchanged and delegates the pen stroke to EmbedPDF. Switching back to View restores the
-    always-highlight behavior without changing the selected editing tool."""
+    always-highlight behavior without changing the selected editing tool.
+
+    A pen press, and the pen's release: the highlighter is in hand only while the pen is down, and
+    the tool the pen found, the default one (none), is back afterwards.
+
+    A mouse at the same point changes no tool.
+
+    A whole stroke with the pen: press, drag across the line, release. The highlight is made and
+    saved, and the tool the pen found is back in hand.
+
+    Annotate is the actual secondary toolbar, not merely the presence of an active tool.
+
+    The highlighter's button takes up the tool and opens no options over the page.
+
+    In Annotate, GTK passes the stylus's native stream through WebKit. Its trusted pointer events
+    support EmbedPDF's ink pointer capture; the synthetic View-mode events do not.
+
+    No synthetic stylus events are delivered when Annotate owns the page.
+
+    View closes the secondary toolbar and returns to the default interaction mode.
+    """
     notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
@@ -836,14 +898,11 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
         reader.next_page()
     reader.wait("V.dataset.bucketStylusMode === 'view'")
 
-    # A pen press, and the pen's release: the highlighter is in hand only while the pen is down,
-    # and the tool the pen found, the default one (none), is back afterwards.
     point = reader.pen_press(2, NOTES_LINE)
     reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
     reader.pen_release(point)
     reader.wait("P('annotation').getActiveTool() === null")
 
-    # A mouse at the same point changes no tool.
     x, y, w, h = reader.page_box(2)
     actions = ActionChains(app)
     actions.w3c_actions.pointer_action.move_to_location(
@@ -852,8 +911,6 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     actions.perform()
     assert reader.run("return P('annotation').getActiveTool()") is None
 
-    # A whole stroke with the pen: press, drag across the line, release. The highlight is made and
-    # saved, and the tool the pen found is back in hand.
     saved, before = len(reader.saves()), reader.highlights()
     reader.pen_drag_across(2, NOTES_LINE)
     reader.wait(
@@ -864,13 +921,11 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     )
     reader.wait("P('annotation').getActiveTool() === null")
 
-    # Annotate is the actual secondary toolbar, not merely the presence of an active tool.
     reader.click("[data-epdf-i='annotate-mode'] button")
     reader.wait("V.dataset.bucketStylusMode === 'edit'")
     reader.wait(
         "P('ui').forDocument(P('document-manager').getActiveDocumentId()).getActiveToolbar('top', 'secondary') === 'annotation-toolbar'"
     )
-    # The highlighter's button takes up the tool and opens no options over the page.
     controls = "[...S.querySelectorAll('[data-epdf-i]')].filter((e) => e.getClientRects().length > 0).map((e) => e.getAttribute('data-epdf-i')).sort()"
     shown = reader.items(controls)
     reader.click("[data-epdf-i='add-highlight'] button")
@@ -884,8 +939,6 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     ActionChains(app).send_keys(Keys.ESCAPE).perform()
     reader.wait("P('annotation').getActiveTool() === null")
 
-    # In Annotate, GTK passes the stylus's native stream through WebKit. Its trusted pointer
-    # events support EmbedPDF's ink pointer capture; the synthetic View-mode events do not.
     reader.run("P('annotation').setActiveTool('ink')")
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
     before_ink = reader.number(
@@ -899,7 +952,6 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
     assert reader.highlights() == before_highlights
 
-    # No synthetic stylus events are delivered when Annotate owns the page.
     x, y, w, h = reader.page_box(2)
     point = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
     reader.shell_pen_event("pointerdown", *point)
@@ -912,7 +964,6 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
     )
     assert reader.highlights() == before_highlights
 
-    # View closes the secondary toolbar and returns to the default interaction mode.
     reader.click("[data-epdf-i='view-mode'] button")
     reader.wait("V.dataset.bucketStylusMode === 'view'")
     reader.wait(
@@ -938,8 +989,23 @@ def test_a_pen_always_highlights(app: webdriver.WebKitGTK, data_home: Path) -> N
 def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
     app: webdriver.WebKitGTK, data_home: Path
 ) -> None:
-    """GTK's pen-only gesture event goes through Tauri's IPC and the page's actual bridge,
-    not through a fake proximity flag. Mouse drag still selects while the pen is hovering."""
+    """GTK's pen-only gesture event goes through Tauri's IPC and the page's actual bridge, not through
+    a fake proximity flag. Mouse drag still selects while the pen is hovering.
+
+    The pen is hovering: ordinary mouse drag selects without activating the highlighter.
+
+    Interrupted stylus contact restores the previous tool, not a stuck highlighter.
+
+    GTK's own pen recognizer sends down/motion/up, which the bridge forwards as pen events.
+
+    Releasing the stylus restores the pointer tool; a subsequent mouse drag selects again.
+
+    A pen can still use ordinary reader controls, even though GTK suppresses its duplicate native
+    mouse events: the bridge emits a click on a non-dragged button press/release.
+
+    Native pen clicks must still select a Library table row, whose click handler is on an ancestor
+    rather than an explicit button.
+    """
     other = capture(app, "ten-page-notes.pdf")
     notes = capture(app, "outlined-notes.pdf")
     watch(app)
@@ -947,7 +1013,6 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
     while reader.page_number() < 2:
         reader.next_page()
 
-    # The pen is hovering: ordinary mouse drag selects without activating the highlighter.
     x, y, w, h = reader.page_box(2)
     reader.shell_pen_event("pointerhover", x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
     reader.drag_across(2, BELOW_NOTES_LINE)
@@ -955,14 +1020,12 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
     assert reader.highlights() == 0
     assert reader.run("return P('annotation').getActiveTool()") is None
 
-    # Interrupted stylus contact restores the previous tool, not a stuck highlighter.
     point = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
     reader.shell_pen_event("pointerdown", *point)
     reader.wait("P('annotation').getActiveTool()?.id === 'highlight'")
     reader.shell_pen_event("pointercancel", *point)
     reader.wait("P('annotation').getActiveTool() === null")
 
-    # GTK's own pen recognizer sends down/motion/up, which the bridge forwards as pen events.
     saved, before = len(reader.saves()), reader.highlights()
     reader.shell_pen_drag_across(2, NOTES_LINE)
     reader.wait(
@@ -976,7 +1039,6 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
     assert set(reader.saves()) == {200}
     after_near = len(reader.saves())
 
-    # Releasing the stylus restores the pointer tool; a subsequent mouse drag selects again.
     reader.drag_across(2, BELOW_NOTES_LINE)
     assert reader.selection().strip()
     time.sleep(SETTLE)
@@ -984,8 +1046,6 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
     assert len(reader.saves()) == after_near
     assert app.execute_script("return window.__errors") == []
 
-    # A pen can still use ordinary reader controls, even though GTK suppresses its duplicate
-    # native mouse events: the bridge emits a click on a non-dragged button press/release.
     cx, cy, cw, ch = reader.items("""(() => {
         const b = S.querySelector("[data-epdf-i='bucket-page-controls'] button[aria-label='Next Page']").getBoundingClientRect();
         return [b.x, b.y, b.width, b.height];
@@ -995,8 +1055,6 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
     reader.shell_pen_event("pointerup", *center)
     reader.shows("page > 2")
 
-    # Native pen clicks must still select a Library table row, whose click handler is on
-    # an ancestor rather than an explicit button.
     show_library(app)
     cell = app.find_element(
         By.CSS_SELECTOR, f"tr[data-item-id='{other}'] td[data-column='title']"
@@ -1015,12 +1073,28 @@ def test_gtk_stylus_bridge_preserves_mouse_and_highlights(
 def test_stylus_opens_annotate_and_native_tools_keep_working(
     app: webdriver.WebKitGTK, data_home: Path
 ) -> None:
-    """A pen tap in View opens Annotate. WebKit's native pointer path must then operate
-    the annotation toolbar and drawing tools, before a native click returns to View.
+    """A pen tap in View opens Annotate. WebKit's native pointer path must then operate the annotation
+    toolbar and drawing tools, before a native click returns to View.
 
-    The native editing path is exercised with real WebDriver pointer input because
-    WebKitGTK currently maps tablet input to that mouse-compatible path. This does
-    not emulate a physical GDK tablet device; its delivery is left to GTK/GDK.
+    The native editing path is exercised with real WebDriver pointer input because WebKitGTK
+    currently maps tablet input to that mouse-compatible path. This does not emulate a physical GDK
+    tablet device; its delivery is left to GTK/GDK.
+
+    GDK's View-mode bridge generates pen PointerEvents, including button activation; the Annotate
+    button is inside EmbedPDF's shadow DOM.
+
+    WebKit must receive native clicks and a native pointer drag in Annotate. This covers actual
+    toolbar interaction, not only programmatic setActiveTool('ink').
+
+    EmbedPDF opens an annotation action menu above a new ink stroke. Start the next stroke
+    elsewhere on the same page rather than pressing that floating menu.
+
+    Escape Annotate with the normal browser click pathway and resume the View-only pen highlighter,
+    without interference from the earlier pointer-capture strokes.
+
+    An annotation toolbar can activate on pointerdown (rather than click). If a View-mode pen press
+    changes the mode before its release, the bridge must still finish its click, otherwise toolbar
+    controls intermittently stop responding.
     """
     notes = capture(app, "outlined-notes.pdf")
     watch(app)
@@ -1029,8 +1103,6 @@ def test_stylus_opens_annotate_and_native_tools_keep_working(
         reader.next_page()
     reader.wait("V.dataset.bucketStylusMode === 'view'")
 
-    # GDK's View-mode bridge generates pen PointerEvents, including button activation;
-    # the Annotate button is inside EmbedPDF's shadow DOM.
     x, y, w, h = reader.items("""(() => {
       const b = S.querySelector("[data-epdf-i='annotate-mode'] button").getBoundingClientRect();
       return [b.x, b.y, b.width, b.height];
@@ -1043,23 +1115,17 @@ def test_stylus_opens_annotate_and_native_tools_keep_working(
         "P('ui').forDocument(P('document-manager').getActiveDocumentId()).getActiveToolbar('top', 'secondary') === 'annotation-toolbar'"
     )
 
-    # WebKit must receive native clicks and a native pointer drag in Annotate. This covers
-    # actual toolbar interaction, not only programmatic setActiveTool('ink').
     reader.click("[data-epdf-i='add-ink'] button")
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
     reader.drag_across(2, (0.15, 0.56))
     reader.wait("P('annotation').getAnnotations().some((a) => a.object.type === 15)")
     reader.click("[data-epdf-i='add-ink-highlighter'] button")
     reader.wait("P('annotation').getActiveTool()?.id === 'inkHighlighter'")
-    # EmbedPDF opens an annotation action menu above a new ink stroke. Start the next
-    # stroke elsewhere on the same page rather than pressing that floating menu.
     reader.drag_across(2, (0.58, 0.65))
     reader.wait(
         "P('annotation').getAnnotations().filter((a) => a.object.type === 15).length === 2"
     )
 
-    # Escape Annotate with the normal browser click pathway and resume the View-only
-    # pen highlighter, without interference from the earlier pointer-capture strokes.
     reader.click("[data-epdf-i='view-mode'] button")
     reader.wait("V.dataset.bucketStylusMode === 'view'")
     reader.wait("P('annotation').getActiveTool() === null")
@@ -1081,9 +1147,6 @@ def test_stylus_opens_annotate_and_native_tools_keep_working(
             == 2
         )
 
-    # An annotation toolbar can activate on pointerdown (rather than click). If a View-mode
-    # pen press changes the mode before its release, the bridge must still finish its click,
-    # otherwise toolbar controls intermittently stop responding.
     reader.run("""window.__annotatePenClicks = 0;
       S.querySelector("[data-epdf-i='annotate-mode'] button").addEventListener(
         'click', () => { window.__annotatePenClicks += 1; }
@@ -1103,8 +1166,13 @@ def test_stylus_opens_annotate_and_native_tools_keep_working(
 def test_annotate_delete_and_backspace_remove_selected_annotations(
     app: webdriver.WebKitGTK, data_home: Path
 ) -> None:
-    """Delete and Backspace remove selected annotations through the reader's keyboard.
-    Editable fields retain these keys, and deleting the selection persists to the PDF.
+    """Delete and Backspace remove selected annotations through the reader's keyboard. Editable fields
+    retain these keys, and deleting the selection persists to the PDF.
+
+    Select the highlighted text through an actual WebKit pointer click, not a programmatic
+    annotation selection, then use a real keyboard Delete press.
+
+    A text-editing field must consume Backspace rather than deleting an annotation.
     """
     notes = capture(app, "outlined-notes.pdf")
     watch(app)
@@ -1125,8 +1193,6 @@ def test_annotate_delete_and_backspace_remove_selected_annotations(
         f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).map((a) => a.object.id)"
     )
     assert len(ids) == 2
-    # Select the highlighted text through an actual WebKit pointer click, not a
-    # programmatic annotation selection, then use a real keyboard Delete press.
     rx, ry, rw, rh = reader.items(f"""(() => {{
       const a = P('annotation').getAnnotations().find((a) => a.object.id === {json.dumps(ids[0])});
       const r = a.object.segmentRects[0];
@@ -1142,7 +1208,6 @@ def test_annotate_delete_and_backspace_remove_selected_annotations(
         f"P('annotation').getSelectedAnnotations().some((a) => a.object.id === {json.dumps(ids[0])})"
     )
 
-    # A text-editing field must consume Backspace rather than deleting an annotation.
     reader.click("[data-epdf-i='bucket-page-controls'] input")
     reader.run(f"P('annotation').selectAnnotation(1, {json.dumps(ids[0])})")
     reader.wait("P('annotation').getSelectedAnnotations().length === 1")
@@ -1175,7 +1240,29 @@ def test_stylus_eraser_removes_highlights_it_crosses(
     app: webdriver.WebKitGTK, data_home: Path
 ) -> None:
     """Native eraser reports button 5/buttons 32. A fast stroke deletes a crossed highlight,
-    preserving a nearby highlight, the pen's tool, and the stored PDF's remaining highlights."""
+    preserving a nearby highlight, the pen's tool, and the stored PDF's remaining highlights.
+
+    Neither a changed zoom nor another active annotation tool can turn the eraser into ink or make
+    its hit test use stale page coordinates.
+
+    A stroke well outside either highlighted paragraph must leave both untouched.
+
+    Use the highlight's own text segment geometry. Only the end points of this fast stroke are
+    *outside* the highlight; the segment between them must still erase it.
+
+    Zoom changes the scroll position as well as the size of a page. Re-read its rendered
+    coordinates *after* the zoom/layout settles; the earlier page_box is stale if EmbedPDF
+    repositions the viewport while the first eraser stroke is being delivered.
+
+    Turning the stylus back over draws a fresh highlight, not an eraser stroke.
+
+    In Annotate, ordinary pen input still draws with the selected tool, but the flipped eraser
+    deletes annotations it crosses instead of drawing more ink.
+
+    The eraser must also remove an actual ink stroke, not merely a text-markup annotation.
+
+    The eraser must delete this text markup in Annotate without altering the active pen tool.
+    """
     notes = capture(app, "outlined-notes.pdf")
     watch(app)
     reader = open_from_library(app, notes)
@@ -1199,15 +1286,12 @@ def test_stylus_eraser_removes_highlights_it_crosses(
         assert highlights_in(pdf) == 2
     before = len(reader.saves())
 
-    # Neither a changed zoom nor another active annotation tool can turn the eraser into
-    # ink or make its hit test use stale page coordinates.
     reader.run("P('zoom').requestZoom(1.25)")
     reader.wait("Math.abs(P('zoom').getState().currentZoomLevel - 1.25) < 0.01")
     reader.wait("!P('scroll').getPageChangeState().isChanging")
     reader.run("P('annotation').setActiveTool('ink')")
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
     x, y, w, h = reader.page_box(2)
-    # A stroke well outside either highlighted paragraph must leave both untouched.
     blank = (x + w * 0.05, y + h * 0.05)
     reader.shell_pen_event("pointerhover", *blank, tool="eraser")
     reader.shell_pen_event("pointerdown", *blank, tool="eraser")
@@ -1215,8 +1299,6 @@ def test_stylus_eraser_removes_highlights_it_crosses(
     reader.shell_pen_event("pointerup", x + w * 0.8, blank[1], tool="eraser")
     assert reader.highlights() == 2
 
-    # Use the highlight's own text segment geometry. Only the end points of this fast stroke
-    # are *outside* the highlight; the segment between them must still erase it.
     rects = reader.items(f"""(() => {{
         const a = P('annotation').getAnnotations().filter((t) => t.object.type === {HIGHLIGHT})
             .map((t) => t.object.segmentRects[0]);
@@ -1226,9 +1308,6 @@ def test_stylus_eraser_removes_highlights_it_crosses(
     first = rects[0]
     assert isinstance(first, list)
     rx, ry, rw, rh = first
-    # Zoom changes the scroll position as well as the size of a page. Re-read its rendered
-    # coordinates *after* the zoom/layout settles; the earlier page_box is stale if EmbedPDF
-    # repositions the viewport while the first eraser stroke is being delivered.
     x, y, w, h = reader.page_box(2)
     start = (x + w * (rx / 612 - 0.06), y + h * ((ry + rh / 2) / 792))
     end = (x + w * ((rx + rw) / 612 + 0.06), start[1])
@@ -1254,15 +1333,12 @@ def test_stylus_eraser_removes_highlights_it_crosses(
     with stored_pdf(data_home, notes) as pdf:
         assert highlights_in(pdf) == 1
 
-    # Turning the stylus back over draws a fresh highlight, not an eraser stroke.
     reader.shell_pen_drag_across(2, NOTES_LINE)
     reader.wait(
         f"P('annotation').getAnnotations().filter((a) => a.object.type === {HIGHLIGHT}).length === 2"
     )
     assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
 
-    # In Annotate, ordinary pen input still draws with the selected tool, but the flipped
-    # eraser deletes annotations it crosses instead of drawing more ink.
     reader.click("[data-epdf-i='annotate-mode'] button")
     reader.wait("V.dataset.bucketStylusMode === 'edit'")
     reader.run("P('annotation').setActiveTool('ink')")
@@ -1278,7 +1354,6 @@ def test_stylus_eraser_removes_highlights_it_crosses(
     assert reader.highlights() == before_highlights
     reader.wait("P('annotation').getActiveTool()?.id === 'ink'")
 
-    # The eraser must also remove an actual ink stroke, not merely a text-markup annotation.
     ink_points = reader.items("""(() => {
       const ink = P('annotation').getAnnotations().find((a) => a.object.type === 15).object;
       return ink.inkList[0].points.map(({x, y}) => [x, y]);
@@ -1295,7 +1370,6 @@ def test_stylus_eraser_removes_highlights_it_crosses(
     assert reader.highlights() == before_highlights
     assert reader.run("return P('annotation').getActiveTool()?.id") == "ink"
 
-    # The eraser must delete this text markup in Annotate without altering the active pen tool.
     x, y, w, h = reader.page_box(2)
     start = (x + w * NOTES_LINE[0], y + h * NOTES_LINE[1])
     reader.shell_pen_event("pointerdown", *start, tool="eraser")
@@ -1310,4 +1384,70 @@ def test_stylus_eraser_removes_highlights_it_crosses(
             "P('annotation').getAnnotations().filter((a) => a.object.type === 15).length"
         )
         == before_ink
+    )
+
+
+FLOATING = """(() => {
+  const shown = (element) => { const box = element.getBoundingClientRect(); const style = getComputedStyle(element);
+    return box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity) > 0; };
+  const floating = [...S.querySelectorAll('[role=tooltip], [role=menu], [role=dialog], [role=listbox]')]
+    .concat([...S.querySelectorAll('[role=menuitem]')].map((item) => item.parentElement))
+    .filter((element, index, all) => element !== null && all.indexOf(element) === index && shown(element))
+    .map((element) => (element.getAttribute('role') ?? element.tagName) + ': ' + element.textContent.trim().slice(0, 80));
+  const ui = V.__registry.getStore().getState().plugins.ui.documents[KEY];
+  const menus = Object.keys(ui?.openMenus ?? {});
+  const sidebars = Object.values(ui?.activeSidebars ?? {}).filter((sidebar) => sidebar.isOpen).map((sidebar) => sidebar.sidebarId);
+  const modal = ui?.activeModal ?? null;
+  return { floating, menus, sidebars, modal };
+})()"""
+
+
+def test_one_press_on_the_highlight_tool_takes_the_highlighter_and_opens_nothing(
+    app: webdriver.WebKitGTK, tmp_path: Path
+) -> None:
+    """One press on the Annotate toolbar's highlight button puts the highlighter in hand, and
+    no tool options, menu or panel opens over the page."""
+    notes = capture(app, "outlined-notes.pdf")
+    reader = open_from_library(app, notes)
+    floating = FLOATING.replace("KEY", json.dumps(notes))
+    reader.click("[data-epdf-i='annotate-mode'] button")
+    reader.wait("S?.querySelector(\"[data-epdf-i='add-highlight'] button\")")
+    time.sleep(SETTLE)
+    before = reader.run(f"return {floating}")
+    reader.click("[data-epdf-i='add-highlight'] button")
+    time.sleep(SETTLE)
+    app.save_screenshot(str(tmp_path / "one-press-highlight.png"))
+    after = reader.run(f"return {floating}")
+    tool = reader.run("return P('annotation').getActiveTool()?.id ?? null")
+    assert {"tool": tool, "open": after} == {"tool": "highlight", "open": before}, (
+        tmp_path / "one-press-highlight.png"
+    )
+
+
+def test_keys_reach_the_reader_opened_from_the_library_before_any_click_in_it(
+    app: webdriver.WebKitGTK,
+) -> None:
+    """A reader opened from the library with the keyboard takes PageDown and Ctrl+= at once:
+    the page moves on and the zoom grows, with no click in the reader first."""
+    notes = capture(app, "outlined-notes.pdf")
+    close_tab(app, notes)
+    reader = open_from_library(app, notes)
+    reader.shows("page === 1")
+    zoom = reader.number(
+        f"P('zoom').forDocument({json.dumps(notes)}).getState().currentZoomLevel"
+    )
+    top = reader.number(
+        f"P('viewport').forDocument({json.dumps(notes)}).getMetrics().scrollTop"
+    )
+    ActionChains(app).send_keys(Keys.PAGE_DOWN).perform()
+    reader.wait(
+        f"P('viewport').forDocument({json.dumps(notes)}).getMetrics().scrollTop > {top}",
+        timeout=10,
+    )
+    ActionChains(app).key_down(Keys.CONTROL).send_keys("=").key_up(
+        Keys.CONTROL
+    ).perform()
+    reader.wait(
+        f"P('zoom').forDocument({json.dumps(notes)}).getState().currentZoomLevel > {zoom}",
+        timeout=10,
     )
