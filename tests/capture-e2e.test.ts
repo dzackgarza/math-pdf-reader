@@ -479,47 +479,11 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
           ),
         ),
       );
-  const extensionWorkers = () =>
-    browser
-      .targets()
-      .filter(
-        (target) =>
-          target.type() === "service_worker" &&
-          target.url().startsWith(extensionOrigin),
-      );
-  const statusPageReloadsChrome = async () => {
-    const cdp = await browser.target().createCDPSession();
-    cdp.on("Target.targetCreated", (event) =>
-      workerConsole.push(
-        `[cdp created ${event.targetInfo.type} ${event.targetInfo.targetId} ${event.targetInfo.url}]`,
-      ),
+  const chromeReloadedFor = async (version: string) => {
+    await openStatus("ready");
+    await page.evaluate(
+      `chrome.storage.local.set({ reloadedFor: ${JSON.stringify(version)} })`,
     );
-    cdp.on("Target.targetDestroyed", (event) =>
-      workerConsole.push(`[cdp destroyed ${event.targetId}]`),
-    );
-    await cdp.send("Target.setDiscoverTargets", { discover: true });
-    const old = extensionWorkers();
-    const restarted = browser
-      .waitForTarget(
-        (target) =>
-          target.type() === "service_worker" &&
-          target.url().startsWith(extensionOrigin) &&
-          !old.includes(target),
-        { timeout: 0 },
-      )
-      .then(() => workerConsole.push("[new service worker target]"));
-    const opener = await browser.newPage();
-    followPage(opener);
-    void opener.goto(`${extensionOrigin}/popup.html`).catch(() => undefined);
-    await step(
-      "service worker restart after runtime.reload",
-      restarted,
-      async () => (opener.isClosed() ? "status page closed" : opener.url()),
-    );
-    if (!opener.isClosed()) {
-      await opener.close().catch(() => undefined);
-    }
-    await cdp.detach();
   };
 
   const provenance = async (key: string) =>
@@ -600,17 +564,17 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
     );
   });
 
-  test("a build other than the provisioned one shows OLD with its replacement and refuses a PDF link, which is stored once the provisioned build is the loaded one", async () => {
+  test("a build other than the provisioned one shows OLD with its replacement and refuses a PDF link and Send tabs; the link is stored once the provisioned build is the loaded one", async () => {
     const own = z
       .object({ version: z.string() })
       .parse(
         JSON.parse(readFileSync(join(extension ?? "", "manifest.json"), "utf8")),
       ).version;
+    if (engine === "chrome") {
+      await chromeReloadedFor("0.0.1");
+    }
     bucket.provision("0.0.1");
     try {
-      if (engine === "chrome") {
-        await statusPageReloadsChrome();
-      }
       await openStatus("stale");
       await shotCapturePage("status-stale");
 
@@ -632,6 +596,16 @@ describe.each<Engine>(["chrome", "firefox"])("capture in %s", (engine) => {
       await followLinkToFailure("/abs/2401.00001");
       expect(await page.title()).toBe("Not saved · Math PDF Reader");
       expect(await text("#details")).toContain(`${stale}${replacement}`);
+      expect(bucket.files()).toEqual(before);
+
+      await openStatus("stale");
+      await page.$eval("#send-tabs", (button) => {
+        if (button instanceof HTMLButtonElement) {
+          button.click();
+        }
+      });
+      await page.waitForSelector('#tabs[data-state="failed"]');
+      expect(await text("#sent-tabs")).toBe(`Not sent: ${stale}${replacement}`);
       expect(bucket.files()).toEqual(before);
 
       bucket.provision(own);

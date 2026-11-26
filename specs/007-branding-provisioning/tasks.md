@@ -138,31 +138,33 @@ captures and names its replacement.
     `tests/server-status.test.ts:93-134` (versions, `updates.json` hash and link,
     `firefox.xpi` bytes and type), `tests/server-status.test.ts:136-148` (404 with no
     signed build).
-- [ ] T018 [US3] Refuse every capture and Send tabs from a build whose version differs
+- [X] T018 [US3] Refuse every capture and Send tabs from a build whose version differs
   from the provisioned one, in `src/extension/bucket-status.ts:66-70` and
   `src/extension/entrypoints/background.ts:68-74,85-89,174-179` (FR-008, SC-005,
   US3/AC3). Source has it; no test (`tests/bucket.ts` gives every e2e server an empty
   extensions directory).
-  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
-    (see T030).
-- [ ] T019 [US3] Show This build, Provisioned and Replacement in the popup of a stale
+  - Evidence: T030's test, in Chrome and Firefox: the followed PDF link reaches the
+    "Not saved" page with the stale detail and stores nothing, and Send tabs shows
+    "Not sent: " with the stale detail and stores nothing (pass 2026-11-26).
+- [X] T019 [US3] Show This build, Provisioned and Replacement in the popup of a stale
   build, in `src/extension/entrypoints/popup/main.ts:63-70` and
   `src/extension/bucket-status.ts:99` (FR-008, US3/AC3). Source has it; no test.
-  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
-    (see T030).
-- [ ] T020 [US3] Show the badge `OLD` with the replacement as its title for a stale
+  - Evidence: T030's test asserts the popup's Address, This build, Provisioned and
+    Replacement in Chrome and Firefox (pass 2026-11-26).
+- [X] T020 [US3] Show the badge `OLD` with the replacement as its title for a stale
   build in `src/extension/bucket-status.ts` (FR-007, FR-008, US3/AC3). Source has it; no
   test.
-  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
-    (see T030).
+  - Evidence: T030's test asserts badge `OLD` and the stale detail as the toolbar title
+    in Chrome and Firefox (pass 2026-11-26).
 - [X] T021 [US3] Run the server and report `null` for each browser that has no
   provisioned build (US3/AC2, server half)
   - Evidence: `server/src/extensions.rs:50-66`; `tests/server-status.test.ts:22-40`
     expects `extensions: { chrome: null, firefox: null }` from a server given no builds.
-- [ ] T022 [US3] After the matching build replaces a stale one, the same PDF navigation
+- [X] T022 [US3] After the matching build replaces a stale one, the same PDF navigation
   stores the PDF and opens the reader (US3/AC4, SC-005). No test of the replacement.
-  - Blocked (Chrome): the Chrome evidence comes from T030, which the suite cannot give
-    (see T030).
+  - Evidence: T030's test writes the loaded version to the manifests, and the same link
+    opens `/read/2401.00001` and stores `2401.00001/2401.00001.pdf`, in Chrome and Firefox
+    (pass 2026-11-26).
 
 ## Phase 5: Convergence
 
@@ -231,35 +233,22 @@ that is not `[X]` maps to a task here.
   - Evidence: `scripts/provision-extensions.sh:37-70`; `tests/launch.test.ts` "a Chromium
     that does not load the build stops only the Chrome build" (red at 8f9c5a2) and "a
     Firefox without the add-on policy stops only the Firefox build".
-- [ ] T030 Test a stale build in `tests/capture-e2e.test.ts` for Chrome and Firefox: give
+- [X] T030 Test a stale build in `tests/capture-e2e.test.ts` for Chrome and Firefox: give
   the server an extensions directory whose manifests name another version; assert badge
   `OLD`, the popup's This build, Provisioned and Replacement, and that a PDF navigation
   stores nothing (T018-T020); then write the loaded version to the manifests and assert
   that the same navigation stores the PDF and opens the reader (T022). Extend
   `tests/bucket.ts:62-81` to take that directory. Per FR-008, SC-005, US3/AC3-AC4
   (missing).
-  - Open: "a build other than the provisioned one shows OLD" passes in Firefox (T018-T020,
-    T022). In Chrome it fails at its labelled step "service worker restart after
-    runtime.reload" (run 2026-11-25): the status page that called `runtime.reload`
-    closed, and no service worker target of the extension was created, in Puppeteer's
-    targets or in the browser's CDP target events, also with the suite's debug session
-    detached first.
-  - Blocked (Chrome): in Chromium 156 an unpacked extension that Puppeteer loaded does not
-    come back after `chrome.runtime.reload()` (tests/TRAPS.md, capture suite). A
-    standalone probe with the installed `chrome-mv3` build, loaded by `enableExtensions`
-    and by `--load-extension`, headless and headful under `xvfb-run`, found no service
-    worker target, no target of the extension in `Target.getTargets`,
-    `net::ERR_BLOCKED_BY_CLIENT` for its popup page, and no Chromium log line for it. The
-    timeout is not an extension defect a test can expose. It is unblocked by a Chromium
-    that reloads a test-loaded unpacked extension, or by a check in the user's own
-    Chrome: provision a new version while the old unpacked build is loaded, and see
-    `OLD`, the popup's This build, Provisioned and Replacement, a refused PDF link, and a
-    stored PDF after the new build is loaded.
-  - Chrome for Testing 158.0.8127.88 (`bunx @puppeteer/browsers install chrome@stable`,
-    2026-11-26) is no route: the same probe with the installed `chrome-mv3` build 1.0.408,
-    loaded by `enableExtensions`, headless and headful under `xvfb-run`, saw the service
-    worker answer before `chrome.runtime.reload()`, then no new `service_worker` target
-    and `net::ERR_BLOCKED_BY_CLIENT` for `popup.html`.
+  - Evidence: "a build other than the provisioned one shows OLD with its replacement and
+    refuses a PDF link and Send tabs; the link is stored once the provisioned build is
+    the loaded one" in `tests/capture-e2e.test.ts` passes in Chrome and Firefox
+    (2026-11-26). In Chrome the test first sets storage `reloadedFor` to the provisioned
+    version, the state of a stale build after Chrome reloaded an unpacked folder that
+    still held it, so `reloadStaleBuild` does not reload.
+  - The `chrome.runtime.reload()` call itself has no Chrome test: in Chromium 156 and
+    Chrome for Testing 158.0.8127.88 an unpacked extension that Puppeteer loaded does not
+    come back after it (tests/TRAPS.md, capture suite).
 - [X] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the
