@@ -152,15 +152,23 @@ inspect the Zotero item.
 
 ## Phase 5: Installed verification
 
-- [ ] T019 After the last runtime change, run `just provision` and follow
+- [X] T019 After the last runtime change, run `just provision` and follow
   `specs/006-zotero-transfer/quickstart.md` on port 8770. Per the constitution's Development
   Workflow.
   Done: `just provision` installed the build with the selected-collection step; the app on
-  8770 answers; the quickstart's tier 1 and `just test-zotero-live` pass.
-  Open: the quickstart's installed-app steps need the owner. They capture into the owner's own
-  bucket, send a test item from it into the owner's Zotero library outside the live suite's
-  cleanup, select a collection and quit Zotero in its window, and save with the Zotero
-  Connector in a browser.
+  8770 answers; the quickstart's tier 1 and `just test-zotero-live` pass. The installed-app
+  steps passed on 2026-11-26 with Zotero 7 and the local write API 3.11.2:
+  1. arXiv 1706.03762v7 was imported, read, tagged and extracted with `mineru-flash`. Zotero
+     had no new item.
+  2. With a new Zotero collection selected, the send gave a preprint in that collection
+     with one Full Text PDF, the extracted Markdown and a note. The paper left the library.
+  3. With Zotero quit, Send to Zotero in the inspector for arXiv 1512.03385v1 showed
+     "Zotero is not running: start Zotero"; the paper stayed unsent and `/read/` answered.
+  4. Zotero's Embedded Metadata web translator, which the Connector runs, saved
+     `/read/1512.03385v1` as an item with the page's `citation_title` and the PDF from
+     `citation_pdf_url`.
+  5. Both Zotero items went to Zotero's trash, the test collection was erased, and the
+     second paper was forgotten from the library.
 
 ## Dependencies & Execution Order
 
