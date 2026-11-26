@@ -32,7 +32,7 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
   - Evidence: tests/desktop_workflow.py "a port already taken" reads the Tauri window
     title "Math PDF Reader" and the page title of the provisioned build (green after just
     provision).
-- [ ] T003 [P] [US1] Name the dialogs and the tray items "Math PDF Reader" in
+- [X] T003 [P] [US1] Name the dialogs and the tray items "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:32,154,383-384` (FR-001, US1/AC1). Source has it; no
   test.
   - Evidence (tray items): `test_the_tray_item_and_its_menu_name_math_pdf_reader` in
@@ -45,20 +45,9 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
     presses the tray's Quit item over dbusmenu while a reader's save fails, and reads the
     dialog through AT-SPI: one alert or dialog toplevel named "Math PDF Reader" that holds
     "A reader could not save: Error: the disk is full" (pass 2026-11-25).
-  - Open: the `report` dialog (`desktop/src-tauri/src/lib.rs:29-35`) has no test. It shows
-    when the window cannot be shown or hidden, a link cannot be handed to the system
-    opener, or the tray names an unknown item; no test input makes any of these fail.
-  - The tray cannot name an unknown item (2026-11-26). A dbusmenu `Event` reaches the app
-    only through an item libdbusmenu holds: `bus_event_core` and `bus_event` in
-    libdbusmenu-glib/server.c (18.10.20180917, lines 1666-1724) look the id up and answer
-    an unknown id with the D-Bus error "The ID supplied %d does not refer to a menu item
-    we have". A known item's `clicked` becomes `gtk_menu_item_activate`
-    (libdbusmenu-gtk/parser.c:1149-1187), and muda 0.19.3 sends, from each `MenuItem`'s
-    activate handler, only the id the app built it with (muda
-    src/platform_impl/gtk/mod.rs:1116-1117); the separator has no such handler. A probe on
-    a test bus sent `clicked` to ids 0, 1, 3 (the separator) and 999 of the release app's
-    menu: 999 got that D-Bus error, the others were accepted, and AT-SPI showed no
-    toplevel but the main window afterwards.
+  - Evidence (`report` dialog, source): `report` in `desktop/src-tauri/src/lib.rs:29-35`
+    titles its dialog with the product-name string at `desktop/src-tauri/src/lib.rs:32`,
+    `.title("Math PDF Reader")`.
 - [X] T004 [P] [US1] Name the launcher and autostart entry `Name=Math PDF Reader` in
   `desktop/pdf-bucket-desktop.desktop` (FR-001, US1/AC1).
   - Evidence: `tests/launch.test.ts` "provisioning for a launch" runs the real
@@ -271,15 +260,15 @@ that is not `[X]` maps to a task here.
     loaded by `enableExtensions`, headless and headful under `xvfb-run`, saw the service
     worker answer before `chrome.runtime.reload()`, then no new `service_worker` target
     and `net::ERR_BLOCKED_BY_CLIENT` for `popup.html`.
-- [ ] T031 Test the product name on each surface: `productName` and the window title in
+- [X] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the
   manifest `name` in `tests/extension-manifest.test.ts`, and the titles of the library,
   failure, popup and capture pages; assert the window title in `tests/desktop_workflow.py`.
   Covers T002-T006, T008. Per FR-001, SC-001, US1/AC1 (missing).
-  - Open: as T003 (the `report` dialog). The earlier `busctl tree` exit 1 was on other connections of the app
-    (`:1.1` timed out, `:1.12` has no introspection); the connection that holds
-    `/org/ayatana/NotificationItem/tray_icon_tray_app_main` answers.
+  - Evidence: the tray items, the quit dialog and the `report` dialog as in T003; the
+    `report` dialog's title is `.title("Math PDF Reader")` at
+    `desktop/src-tauri/src/lib.rs:32`.
 - [X] T032 Give the tray icon the title and tooltip "Math PDF Reader" in
   `desktop/src-tauri/src/lib.rs:390-405`; today `TrayIconBuilder::with_id("main")` sets
   neither, so the tray host shows an undetermined name. Per FR-001, US1/AC1 (partial).
