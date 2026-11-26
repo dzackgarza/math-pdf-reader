@@ -60,6 +60,33 @@ app. Browser extension changes use the private `just _provision-extensions` reci
 signs and installs the extensions independently; an extension whose version differs from the
 provisioned one refuses captures until it is replaced.
 
+What `scripts/provision.sh` must keep:
+
+- The EmbedPDF packages of the fork `dzackgarza/embed-pdf-viewer` are `overrides` that name a
+  `-dist` branch, not a commit. Each provision runs `bun update` on them, which moves `bun.lock`
+  to the head of each branch; `bun install` keeps the locked commit.
+- It hashes the source before the build: an edit during the build leaves the stamp stale, so the
+  next launch provisions again. It writes the stamp last, when the app and its runtime files are
+  complete.
+- `direnv exec` runs before the build: the app reads the provider keys with `direnv export json`,
+  so a blocked `.envrc` stops the provision.
+- A running app keeps the old binary and the port of the bucket, so it is stopped: the autostart
+  unit through systemd, and an app started outside systemd through `killall`. `pgrep -x` matches
+  the 15-character process name of the kernel (`pdf-bucket-desk`); `killall` needs the full name.
+  With `--for-launch` (`just provision-for-launch`, from `scripts/launch`) the script neither stops
+  nor starts the autostart unit, because that unit can be the launch that runs it.
+- The app runs an installed copy of the binary and of its runtime files, in the layout of the
+  checkout (`config::installed`): the web bundle, the extraction manifest, and a Python
+  environment made from a wheel of this package with the locked dependencies. A later build or
+  change of the checkout does not change the installed app.
+- `~/.local/bin/pdf-bucket` runs `scripts/launch`, so no start runs an old build.
+- The launcher entry, the autostart entry and the icon have the name of the Wayland `app_id` of
+  the window (the binary name), so launchers and taskbars match the window to them.
+- This Hyprland session starts `hyprland-session.target`, not XDG autostart; the drop-in makes that
+  target start the unit of the autostart entry.
+- `systemd-xdg-autostart-generator` makes that unit at `daemon-reload`. `systemctl cat` checks it;
+  `systemd-analyze verify` does not search the generator directories.
+
 Every start of the app goes through `scripts/launch`, which provisions first when the build input's hash differs from the stamp of the last provision, so an old build cannot open. `just provision` is still how a change reaches the running app without a restart by the user.
 
 Run `just provision` at these points (a push does not provision: the pre-push hook only checks syntax, and CI runs the QC gates):

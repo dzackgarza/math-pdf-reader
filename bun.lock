@@ -63,9 +63,9 @@
     },
   },
   "overrides": {
-    "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#3cb2c8ceb78035c0aef1f7c2b7cb54e5fe4a7906",
-    "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#bf1d249476e7e4d908b87b44f498668c519cdbfa",
-    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#825714fdd0ffe6786ccb55955d2c7a46e54f9cf6",
+    "@embedpdf/core": "github:dzackgarza/embed-pdf-viewer#core-2.15.1-per-document-debounce-dist",
+    "@embedpdf/plugin-viewport": "github:dzackgarza/embed-pdf-viewer#fix-v2-viewport-resize-dist",
+    "@embedpdf/snippet": "github:dzackgarza/embed-pdf-viewer#fix-v2-reader-resize-dist",
   },
   "packages": {
     "@1natsu/wait-element": ["@1natsu/wait-element@4.2.0", "", { "dependencies": { "defu": "^6.1.4", "many-keys-map": "^3.0.0" } }, "sha512-Om0Q+WE9mNrpY4AwMTvkFiYHv8VM7TML3PvOqXy+w6kAjLjKhGYHYX+305+a6J8RVpds9s7IF2Z5aOPYwULFNw=="],
