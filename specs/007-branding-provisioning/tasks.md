@@ -48,6 +48,17 @@ that behaviour were both read. Both are named on an indented `Evidence` line.
   - Open: the `report` dialog (`desktop/src-tauri/src/lib.rs:29-35`) has no test. It shows
     when the window cannot be shown or hidden, a link cannot be handed to the system
     opener, or the tray names an unknown item; no test input makes any of these fail.
+  - The tray cannot name an unknown item (2026-11-26). A dbusmenu `Event` reaches the app
+    only through an item libdbusmenu holds: `bus_event_core` and `bus_event` in
+    libdbusmenu-glib/server.c (18.10.20180917, lines 1666-1724) look the id up and answer
+    an unknown id with the D-Bus error "The ID supplied %d does not refer to a menu item
+    we have". A known item's `clicked` becomes `gtk_menu_item_activate`
+    (libdbusmenu-gtk/parser.c:1149-1187), and muda 0.19.3 sends, from each `MenuItem`'s
+    activate handler, only the id the app built it with (muda
+    src/platform_impl/gtk/mod.rs:1116-1117); the separator has no such handler. A probe on
+    a test bus sent `clicked` to ids 0, 1, 3 (the separator) and 999 of the release app's
+    menu: 999 got that D-Bus error, the others were accepted, and AT-SPI showed no
+    toplevel but the main window afterwards.
 - [X] T004 [P] [US1] Name the launcher and autostart entry `Name=Math PDF Reader` in
   `desktop/pdf-bucket-desktop.desktop` (FR-001, US1/AC1).
   - Evidence: `tests/launch.test.ts` "provisioning for a launch" runs the real
@@ -255,6 +266,11 @@ that is not `[X]` maps to a task here.
     Chrome: provision a new version while the old unpacked build is loaded, and see
     `OLD`, the popup's This build, Provisioned and Replacement, a refused PDF link, and a
     stored PDF after the new build is loaded.
+  - Chrome for Testing 158.0.8127.88 (`bunx @puppeteer/browsers install chrome@stable`,
+    2026-11-26) is no route: the same probe with the installed `chrome-mv3` build 1.0.408,
+    loaded by `enableExtensions`, headless and headful under `xvfb-run`, saw the service
+    worker answer before `chrome.runtime.reload()`, then no new `service_worker` target
+    and `net::ERR_BLOCKED_BY_CLIENT` for `popup.html`.
 - [ ] T031 Test the product name on each surface: `productName` and the window title in
   `desktop/src-tauri/tauri.conf.json`, the tray item labels and dialog titles in
   `desktop/src-tauri/src/lib.rs`, `Name=` in `desktop/pdf-bucket-desktop.desktop`, the
@@ -303,9 +319,16 @@ that is not `[X]` maps to a task here.
     failure in lib.rs (`test_a_library_folder_that_cannot_be_made_shows_math_pdf_reader_is_not_serving`
     in tests/desktop_workflow.py, pass 2026-11-25).
   - Open, not reached by a test:
-    - lib.rs's server stopped/failed reports: they show when `axum::serve`'s task ends,
-      which happens only on a listener error or a panic; nothing a test does from outside
-      the process ends it.
+    - lib.rs's server stopped/failed reports: they show when `axum::serve`'s task ends.
+      In axum 0.8.9 (Cargo.lock) that task never ends: `Serve::run` is `async fn run(self)
+      -> !`, a `loop` over `listener.accept()` (axum src/serve/mod.rs:179-193; its doc at
+      :85-87 says "it will never actually complete or return an error"). The
+      `TcpListener` accept loop retries every error (src/serve/listener.rs:29-36): it
+      returns at once on a refused, aborted or reset connection, and logs any other error,
+      EMFILE from a lowered `RLIMIT_NOFILE` among them, then sleeps 1 s
+      (listener.rs:140-167). A panic cannot end the task alone: the release profile has
+      `panic = "abort"` (Cargo.toml:17), which ends the process. So no route from outside
+      the process exists (2026-11-26).
     - lib.rs's "does not serve" dialog: it shows only when the server stops before the
       app's own page loads, so it needs the stop above; it is also a dialog (see T003).
     - background.ts's "lost" download failure: it shows after a download's delivery
