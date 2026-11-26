@@ -296,24 +296,26 @@ that is not `[X]` maps to a task here.
     the port failure report in lib.rs (tests/desktop_workflow.py), the library folder
     failure in lib.rs (`test_a_library_folder_that_cannot_be_made_shows_math_pdf_reader_is_not_serving`
     in tests/desktop_workflow.py, pass 2026-11-25).
-  - Open, not reached by a test:
-    - lib.rs's server stopped/failed reports: they show when `axum::serve`'s task ends.
-      In axum 0.8.9 (Cargo.lock) that task never ends: `Serve::run` is `async fn run(self)
-      -> !`, a `loop` over `listener.accept()` (axum src/serve/mod.rs:179-193; its doc at
-      :85-87 says "it will never actually complete or return an error"). The
-      `TcpListener` accept loop retries every error (src/serve/listener.rs:29-36): it
-      returns at once on a refused, aborted or reset connection, and logs any other error,
-      EMFILE from a lowered `RLIMIT_NOFILE` among them, then sleeps 1 s
-      (listener.rs:140-167). A panic cannot end the task alone: the release profile has
-      `panic = "abort"` (Cargo.toml:17), which ends the process. So no route from outside
-      the process exists (2026-11-26).
-    - lib.rs's "does not serve" dialog: it shows only when the server stops before the
-      app's own page loads, so it needs the stop above; it is also a dialog (see T003).
-    - background.ts's "lost" download failure: it shows after a download's delivery
-      began in more than `MAX_DELIVERIES` service workers that Chrome stopped before the
-      server answered. A server that delays its answer would hold a delivery open, but the
-      Chrome suite sees no service worker restart, not even in the browser's CDP target
-      events (T030).
+  - Evidence (source): lib.rs's server stopped/failed reports say "Math PDF Reader's
+    server stopped." and "Math PDF Reader's server failed: …" at
+    `desktop/src-tauri/src/lib.rs:381-383`, and its dialog says "Math PDF Reader does not
+    serve" at `desktop/src-tauri/src/lib.rs:71`. No test reaches them: they show when
+    `axum::serve`'s task ends, and in axum 0.8.9 (Cargo.lock) that task never ends.
+    `Serve::run` is `async fn run(self) -> !`, a `loop` over `listener.accept()` (axum
+    src/serve/mod.rs:179-193; its doc at :85-87 says "it will never actually complete or
+    return an error"). The `TcpListener` accept loop retries every error
+    (src/serve/listener.rs:29-36): it returns at once on a refused, aborted or reset
+    connection, and logs any other error, EMFILE from a lowered `RLIMIT_NOFILE` among
+    them, then sleeps 1 s (listener.rs:140-167). A panic ends the process: the release
+    profile has `panic = "abort"` (Cargo.toml:17).
+  - Open, not reached by a test: background.ts's "lost" download failure. It shows after
+    a download's delivery began in more than `MAX_DELIVERIES` service workers that Chrome
+    stopped before the server answered. The suite's Chromium (156.0.8078.79) does not
+    restart a stopped extension worker (probe 2026-11-26): with the `chrome-mv3` build
+    loaded by `enableExtensions`, CDP `ServiceWorker.stopAllWorkers` moved its worker to
+    `stopped`; a `chrome.runtime.sendMessage` from the extension's popup then moved it to
+    `starting`, where it stayed, no new `service_worker` target was created, and the
+    message got no answer in 80 s.
 
 ## Dependencies
 
