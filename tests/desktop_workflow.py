@@ -332,7 +332,8 @@ def test_wheel_reading_keeps_position(app: webdriver.WebKitGTK, tmp_path: Path) 
         "window.__moves = []; const t0 = performance.now(), at = () => Math.round(performance.now() - t0); window.__at = at;"
         " const named = (e) => e instanceof Element ? `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className).slice(0, 40)}` : String(e);"
         " P('viewport').onScrollChange(({ scrollMetrics: m }) => window.__moves.push(['scroll', at(), m.scrollTop]));"
-        f" V.__registry.getPlugin('viewport').onScrollRequest({json.dumps(key)}, ({{ x, y, behavior }}) => window.__moves.push(['request', at(), Math.round(x), Math.round(y), behavior]));"
+        f" V.__registry.getPlugin('viewport').onScrollRequest({json.dumps(key)}, ({{ x, y, behavior }}) => window.__moves.push(['request', at(), Math.round(x), Math.round(y), behavior, new Error().stack.split('\\n').slice(1, 8).join(' < ')]));"
+        f" P('viewport').onViewportResize(({{ documentId, metrics: m }}) => documentId === {json.dumps(key)} && window.__moves.push(['resize', at(), m.clientWidth, m.clientHeight, m.scrollTop]));"
         " S.addEventListener('scroll', (e) => window.__moves.push(['dom-scroll', at(), named(e.target), Math.round(e.target.scrollTop)]), true);"
         " window.addEventListener('wheel', (e) => window.__moves.push(['wheel', at(), named(e.composedPath()[0]), e.deltaY, e.deltaMode, e.defaultPrevented]));"
     )
