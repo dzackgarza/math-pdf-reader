@@ -30,6 +30,7 @@ from __future__ import annotations
 import configparser
 import json
 import os
+import signal
 import socket
 import subprocess
 import time
@@ -159,11 +160,12 @@ def quit_and_wait(
     service: webdriver.WebKitGTKService,
     processes: list[int],
 ) -> None:
-    """End the session, then wait until the app is gone, so its port is free for the next test's
-    app.
+    """End the session, end the app, then wait until the app is gone, so its port is free for
+    the next test's app.
 
-    The driver's quit can return before the app has exited, and the app holds the bucket's port
-    until its last thread has exited. The thread-group leader shows state Z as soon as its own
+    The app does not exit when its window closes, and WebKitWebDriver kills it only if the app has
+    not closed its automation connection first (tests/TRAPS.md), so the test ends the app itself.
+    The app holds the bucket's port until its last thread has exited. The thread-group leader shows state Z as soon as its own
     thread exits, while the other threads still hold the descriptors.
 
     If the app outlives the wait, the failure gives how long the quit took, WebKitWebDriver's exit
@@ -174,12 +176,15 @@ def quit_and_wait(
     started = time.monotonic()
     driver.quit()
     quit_took = time.monotonic() - started
+    for pid in processes:
+        if live_threads(pid):
+            os.kill(pid, signal.SIGTERM)
     deadline = time.monotonic() + 30
     for pid in processes:
         while threads := live_threads(pid):
             if time.monotonic() >= deadline:
                 pytest.fail(
-                    f"the app {pid} did not exit after the driver quit; quit took {quit_took:.1f} s; "
+                    f"the app {pid} did not exit after the driver quit and SIGTERM; quit took {quit_took:.1f} s; "
                     f"WebKitWebDriver {service.process.pid} exit status {service.process.poll()}; "
                     f"{process_status(pid)}; threads {threads}; "
                     f"WebKitWebDriver's journal: {journal(service.process.pid)}"
