@@ -92,10 +92,9 @@ test-commit:
     @bun run build
     @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-commit
 
-[doc("Run the full Python and Bun test suites before pushing, then provision the desktop app from the pushed state.")]
+[doc("Run the full Python and Bun test suites before pushing.")]
 test-push:
     @just -f ~/ai-review-ci/justfiles/bun-python.just -d . test-push
-    @just provision
 
 [doc("Run CI acceptance QC through the central bun-python and Rust implementations, and the desktop workflow through the release app. CI runs it on every pull request and every push to main.")]
 test-ci:
